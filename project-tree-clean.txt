@@ -1,0 +1,504 @@
+?? .agents/
+?? .git/
+?? .obsidian/
+?? .venv/
+?? .vscode/
+?? agents/
+?? ai_workflows/
+?? app/
+?? autonomy/
+?? backend/
+?? bridge/
+?? config/
+?? control/
+?? conversation/
+?? core/
+?? data/
+?? environment/
+?? execution/
+?? graphify-out/
+?? learning/
+?? logs/
+?? memory/
+?? monitoring/
+?? node_modules/
+?? perception/
+?? planner/
+?? reasoning/
+?? scheduler/
+?? security/
+?? self_healing/
+?? simulation/
+?? skills/
+?? system/
+?? tests/
+?? tools/
+?? vision/
+?? voice/
+?? .env
+?? .env.example
+?? .gitignore
+?? analysis.json
+?? analyze.ts
+?? architecture of jarvis in antigravity
+?? clean_structure.txt
+?? count_modules.ts
+?? debug_imports.ts
+?? DEPENDENCY_CLEANUP_PROOF.md
+?? find_importers.ts
+?? fix_executor.ts
+?? fix_imports.ts
+?? folder_structure.txt
+?? fresh_structure.txt
+?? fresh_structure_utf8.txt
+?? index.ts
+?? jarvis-clean-folder-tree.txt
+?? jarvis.ts
+?? JARVIS_FULL_PROJECT_AUDIT_REPORT.md
+?? JARVIS_FULL_PROJECT_ERRORS_REPORT.md
+?? JARVIS_LATENCY_AUDIT_2026.md
+?? JARVIS_PERFORMANCE_OPTIMIZATIONS_2026.md
+?? JARVIS_PERFORMANCE_REPORT_2026.md
+?? JARVIS_PHASE_2_YOUTUBE_VOICE_FIX_REPORT.md
+?? JARVIS_PHASE_3_SECURITY_FIX_REPORT.md
+?? JARVIS_PHASE_4_PERFORMANCE_FIX_REPORT.md
+?? jarvis_stability_report_2026-06-11T05-04-59-262Z.json
+?? JARVIS_STAGE_1_FOUNDATION_AUDIT.md
+?? JARVIS_STAGE_1_FOUNDATION_ERRORS_REPORT.md
+?? JARVIS_STAGE_2_RUNTIME_PERFORMANCE_SECURITY_AUDIT.md
+?? JARVIS_STAGE_2_RUNTIME_PERFORMANCE_SECURITY_ERRORS_REPORT.md
+?? jarvis_structure.txt
+?? jarvis_structure_utf8.txt
+?? LEGACY_ARCHITECTURE_IMPORT_REPORT.md
+?? package.json
+?? pnpm-lock.yaml
+?? project-tree-clean.txt
+?? project_structure.txt
+?? project_tree.txt
+?? pyrightconfig.json
+?? refactor_mem.ts
+?? refactor_p2.ts
+?? report.md
+?? report.ts.bak
+?? requirements.txt
+?? scaffold.ps1
+?? stabilityTest.ts
+?? stateMachineVerification.ts
+?? temp_stt_1777830229.wav
+?? test_node_redis.ts
+?? test_production_hardening.ts
+?? tsconfig.json
+?? tsc_output.txt
+?? Untitled.base
+?? Untitled.canvas
+  ?? plugins/
+  ?? app.json
+  ?? appearance.json
+  ?? community-plugins.json
+  ?? core-plugins.json
+  ?? graph.json
+  ?? workspace.json
+    ?? file-tree-generator/
+      ?? main.js
+      ?? manifest.json
+      ?? styles.css
+  ?? settings.json
+  ?? codingAgent.ts
+  ?? jarvisAgent.ts
+  ?? researchAgent.py
+  ?? supervisorAgent.ts
+  ?? systemAgent.ts
+  ?? runs/
+  ?? stages/
+  ?? _config/
+  ?? CLAUDE.md
+  ?? CONTEXT.md
+    ?? README.md
+    ?? 01_intake/
+    ?? 02_diagnosis/
+    ?? 03_patch_plan/
+    ?? 04_implementation/
+    ?? 05_verification/
+    ?? 06_final_report/
+      ?? output/
+      ?? CONTEXT.md
+        ?? issue_brief.md
+      ?? output/
+      ?? CONTEXT.md
+        ?? diagnosis.md
+      ?? output/
+      ?? CONTEXT.md
+        ?? patch_plan.md
+      ?? output/
+      ?? CONTEXT.md
+        ?? change_log.md
+      ?? output/
+      ?? CONTEXT.md
+        ?? verification.md
+      ?? output/
+      ?? CONTEXT.md
+        ?? final_report.md
+    ?? add this to your fyp projct.txt
+    ?? ARCHITECTURE_MAP.md
+    ?? CODING_RULES.md
+    ?? CONTEXT_LOADING_RULES.md
+    ?? DEVELOPMENT_CHECKLIST.md
+    ?? DO_NOT_BREAK.md
+    ?? DUPLICATE_FILE_AUDIT_GUIDE.md
+    ?? github my persnal tokens.txt
+    ?? JARVIS_CURRENT_STATUS.md
+    ?? ROOT_FILE_AUDIT_GUIDE.md
+    ?? RUNTIME_PROTECTED_FILES.md
+    ?? SECURITY_RULES.md
+    ?? TEST_MATRIX.md
+    ?? VOICE_ROUTE_CONTRACT.md
+    ?? YOUTUBE_OPENAPP_INVESTIGATION.md
+  ?? api/
+    ?? memory/
+      ?? route.ts
+  ?? longTaskRunner.ts
+  ?? scheduler.ts
+  ?? selfCorrection.ts
+  ?? taskQueue.ts
+  ?? memory/
+    ?? __pycache__/
+    ?? README.md
+    ?? redis_client.py
+    ?? test_redis.py
+  ?? groqProvider.ts
+  ?? llmTypes.ts
+  ?? messageSchema.json
+  ?? modelRouter.ts
+  ?? nodeBridge.ts
+  ?? pythonBridge.py
+  ?? configValidator.ts
+  ?? fs-extra.d.ts
+  ?? llmconfig.ts
+  ?? voiceConfig.ts
+  ?? ws.d.ts
+  ?? actionAuditLog.ts
+  ?? actionQueue.ts
+  ?? adminController.ts
+  ?? appController.ts
+  ?? browserController.ts
+  ?? fileController.ts
+  ?? helper.ts
+  ?? inputController.ts
+  ?? keyboardController.ts
+  ?? mouseController.ts
+  ?? pcControlKernel.ts
+  ?? permissionSession.ts
+  ?? processController.ts
+  ?? rollbackManager.ts
+  ?? systemController.ts
+  ?? windowController.ts
+  ?? win_automate.ps1
+  ?? contextManager.ts
+  ?? tools/
+  ?? adaptiveRamManager.ts
+  ?? agentStateMachine.ts
+  ?? brain.ts
+  ?? brainLoop.ts
+  ?? commandSafety.ts
+  ?? consciousnessClock.ts
+  ?? conversationBus.ts
+  ?? environmentContext.ts
+  ?? fileManager.ts
+  ?? fileTools.ts
+  ?? goalManager.ts
+  ?? interruptManager.ts
+  ?? messageBus.ts
+  ?? orchestrator.ts
+  ?? plannerIntelligence.ts
+  ?? reflectionEngine.ts
+  ?? skillLoader.ts
+  ?? skillRegistry.ts
+  ?? systemController.ts
+  ?? taskGraphEngine.ts
+  ?? terminalTools.ts
+  ?? toolExecutionSandbox.ts
+  ?? toolRegistry.ts
+  ?? toolRegistryV2.ts
+  ?? voiceContinuation.ts
+  ?? voiceEchoFilter.ts
+    ?? index.ts
+    ?? memoryTool.ts
+    ?? windowsCommands.json
+  ?? backups/
+  ?? conversations/
+  ?? knowledge/
+  ?? logs/
+  ?? runtime/
+  ?? temp/
+  ?? goals.json
+    ?? 2026-08-02_09-14-40/
+      ?? alerts.jsonl
+      ?? failure_analytics.jsonl
+      ?? jarvis_memory.json
+      ?? manifest.json
+    ?? .gitkeep
+    ?? .gitkeep
+    ?? .gitkeep
+    ?? alerts.jsonl
+    ?? failure_analytics.jsonl
+    ?? security_audit.log
+    ?? stt_debug.log
+    ?? tool_audit.log
+    ?? system_state.json
+    ?? stt_1784200128319.wav
+  ?? systemInfo.json
+  ?? actionExecutor.ts
+  ?? skillExecutor.ts
+  ?? toolSelector.ts
+  ?? cache/
+  ?? .graphify_analysis.json
+  ?? .graphify_root
+  ?? graph.json
+  ?? manifest.json
+    ?? ast/
+    ?? stat-index.json
+      ?? v0.9.32/
+        ?? 03e290e05d35b2ea7be30199c4152583d44f65c620328e88aff72b2126bc110a.json
+        ?? 0447436584dbb28081f769d0f97c0165a0947e9e4a389ede667e9dee028f7a9b.json
+        ?? 0f7c60da55bd6013402ae5f12578a712dc5dab329c756a753b786a98fb0fed48.json
+        ?? 1571eb7bba5e1fe44cc5a9555b0d5ee5b8d8d8b62c9d07a20a73bd08961309e6.json
+        ?? 2c193e39642aab5cf35bbdb486d4020da6ee53189490fa03a46f5ba43634ea54.json
+        ?? 504de0c34d20c542721c043d6a3181b3b00c4b75605d3c62887aec002ba6ac01.json
+        ?? 604bf7d22035c1c97950aad54c1cca92eba420781cdf1220297aced3ce28e14e.json
+        ?? 8a0380e0da05e791b3970336bbfc646c6c50c688b932bd5eac08e681d1d2258e.json
+        ?? 8f586f9ae29821e69f7617a26f1b9ac4e3baafaf4f6d577fa4c614404d62a39c.json
+        ?? 8f99900a653dc7b58bf69ac2863987f4f1387187d26948e248ae31771de3f483.json
+        ?? 993b3de211593722699f1348a373aa81aee66962005bcdf68feecc1d73988484.json
+        ?? a2a5e5626936e128fb8d67f18ef9cdbfff760f08971117f32e85fd3467019445.json
+        ?? aa39d456dd81887873badd0bf6763856e6c6b6645fb47a9cd006257f13e29e9e.json
+        ?? ab54c69d281270340badd738f49f3356f434eafa10deeaf3f6c5c3e43699fe83.json
+        ?? ab95cfd11ba2a1269b4e009e9f5aaad9db41eb486f1d5d2418619ee6bad9abef.json
+        ?? c3c62cdca39226d7220c41e31a5002763d3eb807a5ae35b3726877d178589ea1.json
+        ?? de29cf9896634cd7d8d5473024f3e9ae0a7d7560ce5762367c67e9e44e3aef63.json
+        ?? e35eccfa1f8553a56f8373ea5a566fbfed1309715b0d021d5fd872dc23a246e8.json
+        ?? e38bda5aa378b492b4e17db390b5d9f60b975c9a17aa4f6c1dbe01ff1c366239.json
+        ?? e664fcc47b8ccdae09c79ad0ba9da69c4392cadc4e415d1463955e95d2734a94.json
+        ?? ff9c2e07151feec03ade6080144b068a5201add46c62eb245d0ecbc470d6edc9.json
+  ?? improvementEngine.py
+  ?? mistakeAnalyzer.py
+  ?? selfAudit.ts
+  ?? jarvis-actions.jsonl
+  ?? jarvis-health.jsonl
+  ?? vector_stderr.txt
+  ?? vector_stdout.txt
+  ?? agentMemory.ts
+  ?? cacheManager.ts
+  ?? contextBuilder.ts
+  ?? graphMemory.ts
+  ?? intentClassifier.ts
+  ?? jarvis_memory.json
+  ?? memoryIndexer.py
+  ?? memoryManager.ts
+  ?? redisCache.ts
+  ?? taskHistory.json
+  ?? unifiedContextBuilder.ts
+  ?? userMemory.json
+  ?? vectorMemory.py
+  ?? vectorMemorySupervisor.ts
+  ?? eventLogger.ts
+  ?? healthCheck.ts
+  ?? healthManager.ts
+  ?? performanceMonitor.ts
+  ?? resourceMonitor.ts
+  ?? runtimeDashboard.ts
+  ?? structuredLogger.ts
+  ?? chromeState.ts
+  ?? get_windows_state.ps1
+  ?? inputProcessor.ts
+  ?? intentAnalyzer.ts
+  ?? jarvisServiceState.ts
+  ?? semanticCache.ts
+  ?? systemStateObserver.ts
+  ?? visionIntentManager.ts
+  ?? windowsState.ts
+  ?? goalDecomposer.ts
+  ?? taskPlanner.ts
+  ?? decisionRouter.ts
+  ?? grokCore.ts
+  ?? promptTemplates.ts
+  ?? systemPrompt.ts
+  ?? approvalGate.ts
+  ?? commandValidator.ts
+  ?? permissionManager.ts
+  ?? sandbox.ts
+  ?? securityAuditLogger.ts
+  ?? workspacePathPolicy.ts
+  ?? alertManager.ts
+  ?? failureAnalytics.ts
+  ?? failureClassifier.ts
+  ?? failureDetector.ts
+  ?? fallbackRouter.ts
+  ?? fsWatcher.ts
+  ?? healthChecker.ts
+  ?? healthScorer.ts
+  ?? index.ts
+  ?? pipelineRegistry.ts
+  ?? pipelineWatchdog.ts
+  ?? recoveryPlanner.ts
+  ?? repairExecutor.ts
+  ?? selfHealingManager.ts
+  ?? worldModel.ts
+  ?? automation/
+  ?? cancel_current_action/
+  ?? coding/
+  ?? control_app/
+  ?? control_browser/
+  ?? control_file/
+  ?? control_keyboard/
+  ?? control_mouse/
+  ?? control_process/
+  ?? control_system/
+  ?? control_window/
+  ?? disable_full_control_session/
+  ?? enable_full_control_session/
+  ?? get_active_window/
+  ?? get_browser_tabs/
+  ?? get_jarvis_service_status/
+  ?? get_open_apps/
+  ?? get_pc_state/
+  ?? get_permission_status/
+  ?? get_system_state/
+  ?? is_app_open/
+  ?? is_tab_open/
+  ?? search/
+  ?? weather/
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+    ?? description.json
+    ?? skill.ts
+  ?? backupRestore.ts
+  ?? codeGenerator.ts
+  ?? containerManager.ts
+  ?? installer.ts
+  ?? actionQueueRecoveryTest.ts
+  ?? adaptiveRamOptimizationTest.ts
+  ?? adminControlTest.ts
+  ?? appControlTest.ts
+  ?? bargeInEchoTest.ts
+  ?? bargeInProcessingTest.ts
+  ?? bridgeAuthUnitTest.ts
+  ?? browserControlTest.ts
+  ?? chromeStateSmokeTest.ts
+  ?? closeAppRouteTest.ts
+  ?? dashboardAccuracyTest.ts
+  ?? dashboardHealthSystemTest.ts
+  ?? dependencyImportCheck.ts
+  ?? deterministicCommandRouteTest.ts
+  ?? echoFilterCommandAcceptanceTest.ts
+  ?? echoFilterVerificationTest.ts
+  ?? endToEndLatencyTest.ts
+  ?? errorHandlingAuditTest.ts
+  ?? executionDispatchAuditTest.ts
+  ?? faultInjectionTest.ts
+  ?? fileControlSafetyTest.ts
+  ?? fileToolWorkspaceSafetyTest.ts
+  ?? finalIntegrationSuiteTest.ts
+  ?? fullSystemIntegrationTest.ts
+  ?? goalLifecycleAuditTest.ts
+  ?? inputControlTest.ts
+  ?? interruptGatingTest.ts
+  ?? latencySmokeTest.ts
+  ?? memoryPerformanceTest.ts
+  ?? mouseKeyboardControlTest.ts
+  ?? nodeBridgeSingletonTest.ts
+  ?? noGroqForLocalCommandsTest.ts
+  ?? noThinkMemoryTest.ts
+  ?? openAppSecurityTest.ts
+  ?? openAppSmokeTest.ts
+  ?? parallelizationTimeoutAuditTest.ts
+  ?? pcControlKernelTest.ts
+  ?? permissionSessionTest.ts
+  ?? plannerDecisionAuditTest.ts
+  ?? plannerDesktopToolSelectionTest.ts
+  ?? planningPerformanceTest.ts
+  ?? processControlSafetyTest.ts
+  ?? resourceUsageAuditTest.ts
+  ?? rollbackManagerTest.ts
+  ?? runCommandSafetyTest.ts
+  ?? scratch.txt
+  ?? securityGateUnitTest.ts
+  ?? simpleNoGoalTest.ts
+  ?? startupPerformanceTest.ts
+  ?? stopClearsTtsQueueTest.ts
+  ?? sttReliabilityTest.ts
+  ?? successfulExecutionLifecycleAuditTest.ts
+  ?? systemControlSafetyTest.ts
+  ?? systemStateRouteTest.ts
+  ?? systemStateSmokeTest.ts
+  ?? toolAuditHelper.ts
+  ?? toolDiscoverabilityAuditTest.ts
+  ?? toolExecutionPipelineVerificationTest.ts
+  ?? toolPerformanceBenchmarkTest.ts
+  ?? toolRegistryOptimizationTest.ts
+  ?? ttsLifecycleStateTest.ts
+  ?? ttsSpeakingLifecycleTest.ts
+  ?? vectorSupervisorDashboardTest.ts
+  ?? voiceContinuationFallbackTest.ts
+  ?? voiceQueueAntiDeadlockTest.ts
+  ?? voiceRouteMockTest.ts
+  ?? voiceYouTubeIntegrationTest.ts
+  ?? watchdogUnitTest.ts
+  ?? windowControlTest.ts
+  ?? browserTool.py
+  ?? claudeCodeTool.ts
+  ?? dispatcher.ts
+  ?? fileTool.ts
+  ?? systemTool.ts
+  ?? terminalTool.ts
+  ?? webSearchTool.ts
+  ?? __pycache__/
+  ?? screen_capture.py
+  ?? __pycache__/
+  ?? stt.py
+  ?? tts.py
+  ?? wakeWord.py
+  ?? wakeWords.py

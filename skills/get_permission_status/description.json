@@ -1,0 +1,7 @@
+{
+  "id": "get_permission_status",
+  "name": "Get Permission Status",
+  "description": "Returns the active permission level and session lifetime info.",
+  "riskLevel": "low",
+  "parameters": {}
+}

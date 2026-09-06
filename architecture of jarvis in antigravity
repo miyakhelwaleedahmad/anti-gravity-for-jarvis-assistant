@@ -1,0 +1,128 @@
+# JARVIS Advanced Voice Pipeline Architecture
+
+The JARVIS voice pipeline represents a robust hybrid architecture, utilizing a Node.js central hub to manage long-running Python AI subsystems securely. This documentation provides a visual overview of how audio flows securely and resiliently through your system.
+
+## High-Level Architecture Components
+
+1. **Central Brain (`jarvis.ts`)**: The core Node.js process housing the WebSocket server (`NodeBridge`), memory integrations, LLMs routing (`jarvisBrain`), and CLI fallbacks.
+2. **SelfHealingManager (`selfHealingManager.ts`)**: The autonomous supervisor. It spawns the Python scripts securely, intercepts crashes through `FailureDetector`, safely filters standard log outputs, restarts crashed components using exponential backoffs, and maintains circuit breakers to avoid crash loops.
+3. **Wake Word Engine (`wakeWords.py`)**: A continuous-listening local daemon. It monitors microphone levels, checks Google STT output for similarity against phrases like `"hey jarvis"`, and triggers the entire pipeline without exhausting local resources.
+4. **Speech-To-Text (`stt.py`)**: The dedicated OpenAI Whisper transcriber. It safely loads highly-accurate neural models on a background thread so as to not block the connection queue, records your command strictly upon NodeBridge command, and transcribes exactly what you said.
+5. **Text-To-Speech (`tts.py`)**: The responsive Microsoft Edge neural voice output layer. It safely queues outputs sequentially avoiding speech overlaps.
+
+---
+
+## 1. Process Initialization & Self-Correction Flow
+
+When `pnpm run dev` kicks off `jarvis.ts`, the `SelfHealingManager` manages the Python processes silently.
+
+```mermaid
+sequenceDiagram
+    participant OS as Operating System
+    participant SHM as SelfHealingManager
+    participant NB as NodeBridge (WS: 9000)
+    participant WW as wakeWords.py
+    participant STT as stt.py (Whisper)
+    participant TTS as tts.py (EdgeTTS)
+
+    %% Startup
+    OS->>SHM: Start JARVIS (jarvis.ts)
+    SHM->>NB: Start WebSocket Server
+    SHM->>WW: spawn() as Child Process
+    SHM->>STT: spawn() as Child Process
+    SHM->>TTS: spawn() as Child Process
+
+    %% Connection Handshake
+    WW->>NB: Connect as "wakeword" & Send READY
+    TTS->>NB: Connect as "tts" & Send READY
+    STT->>STT: Load Whisper Model (Background Thread)
+    STT->>NB: Connect WS (Awaiting Model)
+    STT->>NB: Model Loaded -> Send READY as "stt"
+    NB->>TTS: Flush Boot "JARVIS online" Greeting
+```
+
+> [!TIP]
+> Notice the **Background Threading** behavior in `stt.py`. Since Whisper takes ~10 seconds to load, moving this to a background thread allows STT to connect immediately without being marked as "Crashed" or timing out.
+
+---
+
+## 2. Voice Interaction Loop (The Standard Run)
+
+When you are across the room and speak an activation phrase, the system routes everything cleanly.
+
+```mermaid
+sequenceDiagram
+    actor User as You
+    participant Mic as Microphone 
+    participant WW as WakeWord (Python)
+    participant NB as NodeBridge (TypeScript)
+    participant STT as Whisper STT (Python)
+    participant Brain as JarvisBrain (LLM)
+    participant TTS as EdgeTTS (Python)
+
+    %% Step 1: Trigger
+    User->>Mic: "Hey Jarvis..."
+    Mic->>WW: Audio Stream
+    WW->>WW: Fuzzy recognize "hey jarvis"
+    WW->>NB: {"type": "wake_word", "payload": {"detected": true}}
+    
+    %% Step 2: Listen trigger
+    NB->>NB: Filter specific 'stt' role clients
+    NB->>STT: {"type": "command", "payload": {"action": "listen"}}
+    
+    %% Step 3: Command
+    STT->>STT: [log] "[STT] Listening..." 
+    User->>Mic: "Tell me a joke."
+    Mic->>STT: Audio Stream -> Silence detected
+    STT->>STT: whisper.transcribe()
+    STT->>NB: {"type": "stt_result", "payload": {"text": "Tell me a joke."}}
+    
+    %% Step 4: AI & Execution
+    NB->>Brain: Route string "Tell me a joke."
+    Brain->>Brain: Inject memories + System Context
+    Brain->>Brain: groq.LLM.chat()
+    Brain-->>NB: Respond: "Why did the AI..."
+    
+    %% Step 5: Speak
+    NB->>TTS: {"type": "tts", "payload": {"text": "Why did the AI..."}}
+    TTS->>TTS: Generate Neural Voice
+    TTS->>User: Play via Speakers
+```
+
+> [!NOTE]
+> The NodeBridge implements **Role-Aware Routing**. By saving `this.clientRoles.set(ws, role)`, it makes sure that `STT` listen commands don't randomly end up in the Text-To-Speech engine buffer and error out.
+
+---
+
+## 3. Self-Healing Crash Mitigation (The Safety Nets)
+
+If any system goes down or locks up, JARVIS automatically kicks off mitigation strategies without crashing to desktop.
+
+```mermaid
+sequenceDiagram
+    participant STT as Whisper STT 
+    participant FD as FailureDetector
+    participant SHM as SelfHealingManager
+    participant RE as RepairExecutor
+    
+    %% Crash Incident
+    STT--XSTT: OutOfMemoryError / Traceback Exception
+    STT-->>FD: stream stderr
+    FD->>FD: regex check isRealError == true
+    FD->>SHM: emit("failure", {severity: 'critical', type: 'PythonCrash'})
+    
+    %% Auto-Healing Logic
+    SHM->>SHM: Extract Restart Logic (Attempt 1/3)
+    SHM->>RE: repairExecutor.restartProcess("STT")
+    RE->>RE: Wait Exponential Backoff (3000ms delay)
+    RE->>STT: re-spawn(python, stt.py)
+    
+    %% Mitigation Feedback
+    SHM->>NB: "Sir, I have detecting a failure in my STT module"
+```
+
+### Why This Design is "Ideal" For You
+
+1. **Scalability:** Since WS (`ws://127.0.0.1:9000`) acts as the core bus, you could technically run `stt.py` on another fast machine while `tts.py` acts on another, completely distributed.
+2. **Resilience:** The Node process (where your LLM tooling / database / API keys live) will practically **never crash** if Python runs out of VRAM or internet acts spotty.
+3. **True Autonomy:** The `FailureDetector` doesn't just log out stack traces—it counts failure iterations. After roughly 3 consecutive `Traceback` failures, it completely seals the module with a **Circuit Breaker** to protect desktop stability so you avoid an infinite CPU loop.

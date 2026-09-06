@@ -1,0 +1,19 @@
+{
+  "id": "explain_code",
+  "name": "Explain Code",
+  "description": "Read a code file and provide a clear explanation of what it does, its structure, dependencies, and potential issues.",
+  "riskLevel": "low",
+  "parameters": {
+    "file_path": {
+      "type": "string",
+      "description": "Absolute or relative path to the code file to explain",
+      "required": true
+    },
+    "focus": {
+      "type": "string",
+      "description": "Optional: specific aspect to focus on, e.g., 'security', 'performance', 'logic flow'",
+      "required": false
+    }
+  },
+  "fallbacks": []
+}

@@ -1,0 +1,69 @@
+ # Environment variables — NEVER commit these!
+
+.env
+.env.local
+.env.*.local
+
+# Python
+
+.venv/
+**pycache**/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+*.log
+
+# Node / TypeScript
+
+node_modules/
+dist/
+*.js.map
+*.d.ts.map
+
+# Memory / DB files (optional — remove if you want to keep them)
+
+memory/jarvis_memory.json
+memory/reflections.json
+memory/session_summaries.jsonl
+
+# OS
+
+.DS_Store
+Thumbs.db
+
+# Runtime and logs
+
+data/runtime/*.json
+logs/*.jsonl
+logs/*.log
+
+# Private credentials
+
+ai_workflows/_config/github my persnal tokens.txt
+
+# Generated/runtime artifacts
+
+*.wav
+analysis.json
+tsc_output.txt
+**stability_report**.json
+logs/*.txt
+
+
+
+# Local/runtime generated data
+data/backups/
+data/logs/
+graphify-out/
+
+# Local scratch files
+tests/scratch.txt
+Untitled.base
+Untitled.canvas
+
+# Obsidian local workspace metadata
+.obsidian/
+ai_workflows/_config/github my persnal tokens.txt
+.env
+.env.*

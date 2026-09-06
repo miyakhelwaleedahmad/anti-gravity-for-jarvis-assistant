@@ -1,0 +1,1962 @@
+/**
+ * core/orchestrator.ts  (Phase 1 — Controlled Autonomy Layer)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * JARVIS Central Orchestration Kernel
+ *
+ * PLAN → EXECUTE → OBSERVE → REFLECT → REPAIR → REPEAT
+ *
+ * Phase 1 additions (non-breaking extensions):
+ *   - GoalManager       : wraps every request in a persistent Goal lifecycle
+ *   - EnvironmentContext: injects OS/CWD/process awareness into LLM planning
+ *   - Memory-driven plan: retrieves relevant facts before every planning call
+ *   - Pre-execution     : reflectionEngine.preExecutionCheck() before DAG runs
+ *   - Mid-execution     : reflectionEngine.midExecutionCheck() after each batch
+ */
+
+import { agentStateMachine, AgentState } from './agentStateMachine.js';
+import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
+import { toolRegistryV2 } from './toolRegistryV2.js';
+import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
+import { agentMemory } from '../memory/agentMemory.js';
+import { modelRouter } from '../bridge/modelRouter.js';
+import { nodeBridge } from '../bridge/nodeBridge.js';
+import { llmConfig } from '../config/llmconfig.js';
+import { conversationBus } from './conversationBus.js';
+import { registerAllTools } from './tools/index.js';
+import { SkillLoader } from './skillLoader.js';
+import type { ILLMMessage, ILLMToolCall } from '../bridge/llmTypes.js';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+// ── Phase 1: New module imports ───────────────────────────────────────────────
+import { goalManager, type Goal } from './goalManager.js';
+import { getSystemContext } from './environmentContext.js';
+import { memoryManager } from '../memory/memoryManager.js';
+import { unifiedContextBuilder } from '../memory/unifiedContextBuilder.js';
+// ── Phase 6: Adaptive planning intelligence ────────────────────────────────
+import { plannerIntelligence } from './plannerIntelligence.js';
+import { taskGraphEngine as _tge } from './taskGraphEngine.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface OrchestratorConfig {
+  maxRepairCycles: number;      // Max REFLECT→REPAIR→EXECUTE loops before abort
+  streamingEnabled: boolean;    // Whether to stream LLM output to TTS
+  voiceEnabled: boolean;        // Whether to route output to nodeBridge
+}
+
+const DEFAULT_CONFIG: OrchestratorConfig = {
+  maxRepairCycles: 3,
+  streamingEnabled: true,
+  voiceEnabled: true,
+};
+
+// ─── Orchestrator ─────────────────────────────────────────────────────────────
+
+export class JarvisOrchestrator {
+  private config: OrchestratorConfig;
+  private isLoopRunning = false;
+
+  // ── Concurrent execution protection ─────────────────────────────────────────
+  // Only one runAgentLoop() may be active at a time. A second process() call
+  // while a loop is active will abort the previous one before starting a new one.
+  private _loopExecuting = false;
+
+  // Phase 1: tracks the active Goal object during a request
+  private activeGoal: Goal | null = null;
+  private currentProcessCallId: string | null = null;
+  private currentAbortController: AbortController | null = null;
+  private isConversationEndDeferred = false;
+  // Guard to prevent speaking:end listener and finally block from both
+  // calling conversationEnded() / reset() simultaneously.
+  private _conversationEndHandled = false;
+  // Tracks whether conversationBus.conversationStarted() was called for the
+  // current request — ensures the finally block can always pair it with
+  // conversationEnded() even on very early exceptions.
+  private _conversationStarted = false;
+  public onBargeIn: (() => void)[] = [];
+
+  constructor(config: Partial<OrchestratorConfig> = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+
+    // Register all built-in tools on creation
+    registerAllTools();
+
+    // Load skills from skills/ directory and register as AgentTools
+    const skillsDir = path.join(__dirname, '..', 'skills');
+    const skillLoader = new SkillLoader(skillsDir);
+    skillLoader.loadSkills().then(count => {
+      if (count > 0) {
+        console.log(`[Orchestrator] 🎯 ${count} skill(s) loaded into ToolRegistry.`);
+      }
+
+      // Phase 7: Pre-warm context + tool caches immediately after skill load
+      // so the first user request never suffers a cold-start penalty.
+      Promise.resolve().then(async () => {
+        try {
+          // 1. LLM definition cache warm (was already here — moved inside skill callback)
+          toolRegistryV2.getLLMDefinitions();
+
+          // 2. Pre-warm unifiedContextBuilder with a placeholder 'default' session
+          //    so the first light context build is a cache hit
+          await unifiedContextBuilder.buildContext('startup warmup', 'default', {
+            includeHeavy: false,
+            depthHint: 'fast',
+          });
+          console.log('[Orchestrator] ☁️  Phase 7: context cache pre-warmed.');
+        } catch { /* non-fatal */ }
+      }).catch(() => {});
+    }).catch(err => {
+      console.warn('[Orchestrator] Skill loading failed (non-fatal):', err);
+    });
+
+    // OPT-8: Pre-warm the LLM definition cache immediately (before skill load completes)
+    Promise.resolve().then(() => toolRegistryV2.getLLMDefinitions()).catch(() => {});
+
+
+    // OPT-8: Run GoalManager and MemoryManager init concurrently at startup.
+    // Both are independent — no ordering requirement between them.
+    Promise.all([
+      goalManager.init().then(() => {
+        console.log('[Orchestrator] 🎯 GoalManager initialized.');
+      }),
+      memoryManager.init().then(async () => {
+        const { decayed, removed } = await memoryManager.decayMemory();
+        if (decayed > 0) {
+          console.log(`[Orchestrator] 🌙 Memory decay: ${decayed} facts aged, ${removed} pruned.`);
+        }
+      }),
+    ]).catch(err => {
+      console.warn('[Orchestrator] Startup init warning (non-fatal):', err);
+    });
+
+    // Wire interrupt signal: abort active graph on interrupt
+    agentStateMachine.on('interrupted', () => {
+      this.currentAbortController?.abort();
+      this.isConversationEndDeferred = false;
+      const graph = taskGraphEngine.getCurrentGraph();
+      if (graph) {
+        console.log('[Orchestrator] 🛑 Interrupt received — aborting active task graph.');
+        taskGraphEngine.interrupt(graph);
+      }
+      agentMemory.clearWorkingContext();
+      // Phase 1: fail the active goal on interrupt
+      if (this.activeGoal) {
+        goalManager.failGoal(this.activeGoal.id, 'Interrupted by user').catch(() => {});
+        this.activeGoal = null;
+      }
+    });
+
+    // Handle deferred conversation end and reset.
+    // Guard with _conversationEndHandled to prevent the speaking:end listener
+    // and the finally block from racing each other.
+    conversationBus.on('speaking:end', () => {
+      if (this.isConversationEndDeferred && !this._conversationEndHandled) {
+        this._conversationEndHandled = true;
+        console.log('[Orchestrator] Deferred TTS finished. Ending conversation and resetting state to IDLE.');
+        this.isConversationEndDeferred = false;
+        conversationBus.conversationEnded();
+        if (agentStateMachine.currentState === AgentState.SPEAKING) {
+          agentStateMachine.reset();
+        }
+      }
+    });
+
+    agentStateMachine.on('watchdog_reset', (data) => {
+      this.handleWatchdogReset(data as { fromState: AgentState; reason: string });
+    });
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────────
+
+  /**
+   * Main entry point. Accepts user input and drives the full agent loop.
+   * Called by jarvis.ts for both voice (source='voice') and CLI (source='cli').
+   */
+  async process(input: string, source: 'cli' | 'voice' = 'cli'): Promise<void> {
+    const callId = Math.random().toString(36).substring(7);
+    this.currentProcessCallId = callId;
+    // Abort any in-flight request from a previous process() call.
+    this.currentAbortController?.abort();
+    this.currentAbortController = new AbortController();
+    this.isConversationEndDeferred = false;
+    this._conversationEndHandled = false;
+
+    const curState = agentStateMachine.currentState;
+    if (curState === AgentState.SPEAKING || curState === AgentState.INTERRUPTED) {
+      this.handleBargeInBeforeProcessing(input, source);
+    }
+
+    if (agentStateMachine.is(AgentState.INTERRUPTED)) {
+      console.log('[Orchestrator] ⚠️  System interrupted — ignoring new input until reset.');
+      return;
+    }
+
+    // Concurrent execution protection: if a loop is already executing (e.g. a
+    // slow LLM call is in-flight) abort it and wait for it to drain before
+    // starting the new one.  The previous AbortController abort above signals
+    // the old loop to exit; we do NOT await it — the finally block in the old
+    // process() call will clean up its own state.
+    if (this._loopExecuting) {
+      console.warn('[Orchestrator] ⚠️  Concurrent process() call detected — previous loop aborted, proceeding.');
+      agentStateMachine.reset();
+    }
+
+    console.log(`[Orchestrator] Processing input [${source}]: "${input}"`);
+    const t0 = performance.now();
+    // Per-stage plan timings injected by planPhase() via (this as any)._planStageTimings
+    (this as any)._planStageTimings = {};
+
+    this._conversationStarted = true;
+    conversationBus.conversationStarted();
+
+    // ── Phase 1: Create Goal ─────────────────────────────────────────────────
+    // PIPELINE-OPT: Goal creation is now non-blocking. The disk I/O (20-50ms)
+    // runs concurrently with the agent loop start. We only resolve the promise
+    // when we need the goal object (after the loop completes).
+    let goal: Goal | null = null;
+    let goalPromise: Promise<Goal | null> | null = null;
+    const shouldCreateGoal =
+      !this.matchDeterministicCommand(input) &&
+      !this.isSimpleConversationalInput(input);
+
+    if (shouldCreateGoal) {
+      goalPromise = goalManager.createGoal(input, source).then(g => {
+        g.status = 'in_progress';
+        g.startedAt = Date.now();
+        g.updatedAt = Date.now();
+        goalManager.persistNow?.().catch(() => {});
+        this.activeGoal = g;
+        goal = g;
+        return g;
+      }).catch(err => {
+        console.warn('[Orchestrator] GoalManager unavailable (non-fatal):', err);
+        return null;
+      });
+    } else {
+      console.log('[Orchestrator] Skipping GoalManager for simple/deterministic request.');
+    }
+
+    let loopOutcome: 'success' | 'failed' | 'blocked' = 'success';
+    try {
+      // Agent loop starts IMMEDIATELY — goal creation runs in background
+      loopOutcome = await this.runAgentLoop(input, source, goal);
+
+      // ── Phase 1: Resolve Goal based on actual outcome ──────────────────────
+      // PIPELINE-OPT: Resolve the background goal promise now (it ran concurrently
+      // with the agent loop, so this is effectively free — it's already settled).
+      if (goalPromise) {
+        goal = await goalPromise;
+      }
+      if (goal) {
+        if (loopOutcome === 'success') {
+          await goalManager.completeGoal(goal.id);
+        } else {
+          // 'failed' or 'blocked' — do NOT mark as completed
+          await goalManager.failGoal(
+            goal.id,
+            loopOutcome === 'blocked' ? 'blocked by safety policy' : 'agent loop ended without success'
+          ).catch(() => {});
+        }
+        this.activeGoal = null;
+      }
+    } catch (err) {
+      console.error('[Orchestrator] ❌ Unhandled error in agent loop:', err);
+
+      // ── Structured exception classification ────────────────────────────────
+      // Distinguish transient infrastructure errors from hard code bugs so the
+      // user gets a precise message and we log the right severity.
+      const errStr = String(err);
+      const isRateLimit    = errStr.includes('rate-limited') || errStr.includes('429');
+      const isTimeout      = errStr.includes('timeout') || errStr.includes('ETIMEDOUT') || errStr.includes('AbortError');
+      const isNetworkError = errStr.includes('ECONNREFUSED') || errStr.includes('ENOTFOUND') || errStr.includes('fetch failed');
+      const isAborted      = this.currentAbortController?.signal.aborted;
+
+      let fallback: string;
+      if (isAborted) {
+        // Aborted by a newer request — stay silent; the new request handles the response.
+        fallback = '';
+      } else if (isRateLimit) {
+        fallback = 'The cloud model is rate-limited, sir. Local commands are still available.';
+      } else if (isTimeout) {
+        fallback = 'My reasoning systems timed out, sir. Please try again in a moment.';
+      } else if (isNetworkError) {
+        fallback = 'I cannot reach my reasoning backend, sir. Please check your connection.';
+      } else {
+        fallback = 'I encountered an unexpected error, sir. Please try again.';
+      }
+
+      if (fallback) this.speak(fallback);
+
+      // ── Phase 1: Fail Goal on unhandled error ──────────────────────────────
+      if (goalPromise) { goal = await goalPromise; }
+      if (goal) {
+        await goalManager.failGoal(goal.id, errStr).catch(() => {});
+        this.activeGoal = null;
+      }
+    } finally {
+      this._loopExecuting = false;
+      if (this.currentProcessCallId === callId) {
+        this.currentAbortController = null;
+        agentMemory.clearWorkingContext();
+        if (agentStateMachine.currentState !== AgentState.SPEAKING) {
+          // ── Conversation recovery guarantee ─────────────────────────────────
+          // Always pair conversationStarted() with conversationEnded() to prevent
+          // the bus from getting stuck in isActive=true after an early exception.
+          if (!this._conversationEndHandled) {
+            this._conversationEndHandled = true;
+            if (this._conversationStarted) {
+              conversationBus.conversationEnded();
+            }
+          }
+          this._conversationStarted = false;
+          agentStateMachine.reset();
+        } else {
+          console.log('[Orchestrator] State is SPEAKING — deferring reset and conversationEnded to IDLE until TTS completes.');
+          this.isConversationEndDeferred = true;
+        }
+      } else {
+        // This callId is superseded — still reset _conversationStarted so the
+        // flag doesn't bleed into the next request.
+        this._conversationStarted = false;
+        console.log(`[Orchestrator] callId ${callId} is no longer the current active call. Skipping state reset.`);
+      }
+      const totalMs = Math.round(performance.now() - t0);
+      // ── Print per-stage timing table ────────────────────────────────────────────────
+      const planStages: Record<string, number> = (this as any)._planStageTimings ?? {};
+      if (Object.keys(planStages).length > 0) {
+        console.log('\n┌────────────────────────────────────────────┐');
+        console.log('│  ⏱  JARVIS Timing Breakdown                 │');
+        console.log('├────────────────────────────────────────────┤');
+        for (const [stage, ms] of Object.entries(planStages)) {
+          if (stage === 'TokensEstimated') {
+            const dots = '.'.repeat(Math.max(1, 22 - stage.length));
+            console.log(`│  ${stage}${dots}${String(ms).padStart(8)} tok  │`);
+          } else {
+            const dots = '.'.repeat(Math.max(1, 26 - stage.length));
+            console.log(`│  ${stage}${dots}${String(ms).padStart(6)}ms  │`);
+          }
+        }
+        console.log('├────────────────────────────────────────────┤');
+        console.log(`│  TOTAL........................${String(totalMs).padStart(6)}ms  │`);
+        console.log('└────────────────────────────────────────────┘\n');
+      } else {
+        console.log(`[Timing] Total request processing time: ${totalMs}ms`);
+      }
+
+    }
+  }
+
+  startLoop(): void {
+    if (this.isLoopRunning) return;
+    this.isLoopRunning = true;
+    console.log('[Orchestrator] ♾️  Autonomy loop active.');
+  }
+
+  stopLoop(): void {
+    this.isLoopRunning = false;
+    console.log('[Orchestrator] ⏹️  Autonomy loop stopped.');
+  }
+
+  getState(): AgentState {
+    return agentStateMachine.currentState;
+  }
+
+  // ── Safe Runtime Reset ────────────────────────────────────────────────────
+
+  /**
+   * Encapsulated runtime reset — the single authoritative path for emergency
+   * teardown.  Combines all the ad-hoc reset fragments that were previously
+   * scattered across the class into one atomic operation.
+   *
+   * Safe to call from:
+   *   - watchdog handlers
+   *   - external shutdown signals
+   *   - test teardown
+   *   - barge-in recovery
+   *
+   * After this call the orchestrator is in a clean IDLE state, ready for the
+   * next request.  Any in-flight LLM / tool call is aborted via the
+   * AbortController.
+   */
+  public safeReset(reason = 'manual_reset'): void {
+    console.log(`[Orchestrator] 🔄 safeReset() called. Reason: ${reason}`);
+
+    // 1. Abort any in-flight async operation
+    if (this.currentAbortController) {
+      this.currentAbortController.abort(new Error(reason));
+      this.currentAbortController = null;
+    }
+
+    // 2. Fail the active goal so it isn't left as 'in_progress'
+    if (this.activeGoal) {
+      goalManager.failGoal(this.activeGoal.id, reason).catch(() => {});
+      this.activeGoal = null;
+    }
+
+    // 3. Interrupt and abort any active task graph
+    const graph = taskGraphEngine.getCurrentGraph();
+    if (graph) {
+      taskGraphEngine.interrupt(graph);
+    }
+
+    // 4. Clear ephemeral agent memory
+    agentMemory.clearWorkingContext();
+
+    // 5. Ensure conversation bus is closed (prevent isActive=true leak)
+    if (!this._conversationEndHandled && this._conversationStarted) {
+      this._conversationEndHandled = true;
+      conversationBus.conversationEnded();
+    }
+    this._conversationStarted = false;
+    this.isConversationEndDeferred = false;
+
+    // 6. Reset deferred flags
+    this._conversationEndHandled = false;
+    this._loopExecuting = false;
+    this.currentProcessCallId = null;
+
+    // 7. Reset the state machine to IDLE (clears watchdogs and queued transitions)
+    agentStateMachine.reset();
+
+    console.log('[Orchestrator] ✅ safeReset() complete — system is IDLE.');
+  }
+
+  // ── Agent Loop ────────────────────────────────────────────────────────────
+
+  /**
+   * The core PLAN → EXECUTE → OBSERVE → REFLECT → REPAIR cycle.
+   */
+  private async runAgentLoop(input: string, source: 'cli' | 'voice', goal: Goal | null = null): Promise<'success' | 'failed' | 'blocked'> {
+    this._loopExecuting = true;
+
+    // ── ⚡ Deterministic Pre-Router: known open/launch commands ───────────────
+    // Checked FIRST — before memory writes — so memory unavailability never
+    // blocks a fast-path command. Bypasses LLM to prevent Groq 429 failures.
+    const route = this.matchDeterministicCommand(input);
+    if (route) {
+      console.log(`[Orchestrator] ⚡ Deterministic command route: type="${route.type}"${route.target ? ` target="${route.target}"` : ''}`);
+      // Transition through IDLE → PLANNING → EXECUTING only if not already there.
+      // This prevents illegal PLANNING→PLANNING or EXECUTING→EXECUTING throws when
+      // a new deterministic command arrives mid-execution of a previous one.
+      const curSt = agentStateMachine.currentState;
+      if (curSt !== AgentState.PLANNING && curSt !== AgentState.EXECUTING) {
+        try { agentStateMachine.transition(AgentState.PLANNING); } catch {}
+      }
+      if (agentStateMachine.currentState !== AgentState.EXECUTING) {
+        try { agentStateMachine.transition(AgentState.EXECUTING); } catch {}
+      }
+      try {
+        if (route.type === 'open_app' && route.target) {
+          const result = await toolRegistryV2.execute('open_app', { target: route.target, source });
+          const reply = result?.success
+            ? route.reply
+            : `I tried to open ${route.target} but encountered an issue, sir.`;
+          this.speak(reply);
+        } else if (route.type === 'close_browser_tab' && route.target) {
+          const result = await toolRegistryV2.execute('control_browser', { action: 'close', target: route.target });
+          const reply = result?.success
+            ? route.reply
+            : `I tried to close the tab "${route.target}" but encountered an issue, sir.`;
+          this.speak(reply);
+        } else if (route.type === 'close_current_tab') {
+          const result = await toolRegistryV2.execute('control_browser', { action: 'close_current' });
+          const reply = result?.success
+            ? route.reply
+            : `I tried to close the current tab but encountered an issue, sir.`;
+          this.speak(reply);
+        } else if (route.type === 'close_app' && route.target) {
+          const result = await toolRegistryV2.execute('control_app', { action: 'close', target: route.target });
+          const reply = result?.success
+            ? route.reply
+            : `I tried to close the application "${route.target}" but encountered an issue, sir.`;
+          this.speak(reply);
+        } else if (route.type === 'close_current_window') {
+          const result = await toolRegistryV2.execute('control_window', { action: 'close_current' });
+          const reply = result?.success
+            ? route.reply
+            : `I tried to close the active window but encountered an issue, sir.`;
+          this.speak(reply);
+        } else if (route.type === 'get_system_state') {
+          const result = await toolRegistryV2.execute('get_system_state', {});
+          this.speak(result?.success ? `Here is the current system state, sir: ${result.output}` : 'Failed to retrieve system state, sir.');
+        } else if (route.type === 'get_browser_tabs') {
+          const result = await toolRegistryV2.execute('get_browser_tabs', {});
+          this.speak(result?.success ? `Here are the open Chrome tabs, sir: ${result.output}` : 'Failed to retrieve browser tabs, sir.');
+        } else if (route.type === 'is_tab_open' && route.target) {
+          const result = await toolRegistryV2.execute('is_tab_open', { tabNameOrUrl: route.target });
+          this.speak(result?.success && result.output === 'true' ? `Yes, the ${route.target} tab is open, sir.` : `No, the ${route.target} tab is not open, sir.`);
+        } else if (route.type === 'enable_full_control_session') {
+          const result = await toolRegistryV2.execute('enable_full_control_session', { source });
+          this.speak(result?.success ? `Full control mode enabled, sir.` : 'Failed to enable full control, sir.');
+        } else {
+          if (route.type === 'stop') {
+            nodeBridge.sendToRole('tts', { type: 'command', payload: { action: 'stop' } });
+            (nodeBridge as any).pendingTTS = [];
+            for (const cb of this.onBargeIn) {
+              try { cb(); } catch {}
+            }
+          }
+          this.speak(route.reply);
+        }
+      } catch (err) {
+        console.error('[Orchestrator] Deterministic command execution error:', err);
+        this.speak(`Sorry, I could not process the command, sir.`);
+      }
+      return 'success'; // deterministic commands complete the goal
+    }
+
+    // Record user input to memory — fire-and-forget (non-blocking).
+    // PIPELINE-OPT: This was awaited before, blocking 5-30ms before planning.
+    // Memory write doesn't affect planning — no reason to wait.
+    try {
+      agentMemory.addConversationMessage('user', input).catch((memErr) => {
+        console.warn('[Orchestrator] Memory write failed (non-fatal):', (memErr as Error).message);
+      });
+      agentMemory.pushEpisode('user_input', `User [${source}]: ${input.substring(0, 200)}`, {}, 3);
+    } catch (memErr) {
+      console.warn('[Orchestrator] Memory write failed (non-fatal):', (memErr as Error).message);
+    }
+
+    // ── Phase 1: PLANNING ────────────────────────────────────────────────────
+
+    if (this.isSimpleConversationalInput(input)) {
+      await this.streamDirectChat(input);
+      return 'success';
+    }
+
+    agentStateMachine.transition(AgentState.PLANNING);
+    if (goal) {
+      goalManager.updateGoalStatus(goal.id, 'planning').catch(() => {});
+    }
+
+    if (this.isInterrupted()) return 'failed';
+
+    const planResult = await this.planPhase(input);
+
+    if (!planResult) {
+      const isActionRequest = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i.test(input);
+      const isAborted = this.isInterrupted() || this.currentAbortController?.signal.aborted;
+
+      if (isAborted || isActionRequest) {
+        console.warn(`[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "${input}". Goal marked FAILED.`);
+        if (goal) {
+          await goalManager.failGoal(
+            goal.id,
+            isAborted ? 'Planning interrupted by watchdog/abort' : 'Planning produced no tool execution graph'
+          ).catch(() => {});
+        }
+        agentStateMachine.transition(AgentState.IDLE);
+        return 'failed';
+      }
+
+      // Pure conversational answer (non-action query)
+      agentStateMachine.transition(AgentState.IDLE);
+      return 'success';
+    }
+
+    // ── Phase 1: PRE-EXECUTION CHECK ─────────────────────────────────────────
+    const preCheck = await reflectionEngine.preExecutionCheck(planResult);
+    console.log(`[Orchestrator] 🔍 Pre-check: ${preCheck.verdict} — ${preCheck.summary}`);
+
+    if (preCheck.verdict === 'rejected') {
+      const msg = `My plan was invalid before it started, sir. ${preCheck.issues[0] ?? 'Unknown issue.'}`;
+      this.speak(msg);
+      if (goal) await goalManager.failGoal(goal.id, preCheck.summary);
+      return 'failed';
+    }
+
+    // ── Phase 6: PLANNER INTELLIGENCE ANALYSIS ─────────────────────────────
+    // Runs after structural preCheck — adds confidence scoring, failure
+    // prediction, and plan validation on top of the structural check.
+    try {
+      const intelligence = plannerIntelligence.analyzeGraph(planResult);
+
+      if (intelligence.recommendation === 'replan') {
+        const highRisk = intelligence.predictions.filter(p => p.riskLevel === 'high');
+        const topIssue = highRisk[0];
+        const msg = topIssue
+          ? `My plan has high-risk steps, sir. I'll reconsider. (${topIssue.reasons[0] ?? 'low confidence'})`
+          : `My plan confidence is too low to proceed safely, sir. Replanning.`;
+
+        console.warn(`[Orchestrator] ⚠️ PlannerIntelligence: recommendation=replan. Failing plan.`);
+        this.speak(msg);
+        if (goal) await goalManager.failGoal(goal.id, 'PlannerIntelligence: low confidence plan rejected');
+        return 'failed';
+      }
+
+      if (intelligence.recommendation === 'proceed_with_caution') {
+        console.warn(`[Orchestrator] ⚠️ PlannerIntelligence: proceeding with caution (medium risk).`);
+        // Log the top predicted failure so the repair phase has context
+        const topRisk = intelligence.predictions[0];
+        if (topRisk) {
+          console.warn(`[Orchestrator]   Top risk: node="${topRisk.nodeId}" tool="${topRisk.tool}" reasons=${topRisk.reasons.join('; ')}`);
+        }
+      }
+    } catch (err) {
+      // Non-fatal — intelligence analysis should never block execution
+      console.warn('[Orchestrator] PlannerIntelligence analysis failed (non-fatal):', err);
+    }
+
+    if (goal) {
+      goalManager.updateGoalStatus(goal.id, 'executing', {
+        planSummary: preCheck.summary,
+        taskGraphId: planResult.id,
+      }).catch(() => {});
+    }
+
+    let graph = planResult;
+    let repairCycles = 0;
+
+    // ── Repair Loop ──────────────────────────────────────────────────────────
+    while (repairCycles <= this.config.maxRepairCycles) {
+      if (this.isInterrupted()) return 'failed';
+
+      // ── Phase 2: EXECUTING with mid-execution monitoring ───────────────────
+      agentStateMachine.transition(AgentState.EXECUTING);
+
+      graph = await taskGraphEngine.execute(graph, this.makeMidMonitoredExecutor(graph));
+
+      if (this.isInterrupted()) return 'failed';
+
+      // ── Phase 3: OBSERVING ─────────────────────────────────────────────────
+      agentStateMachine.transition(AgentState.OBSERVING);
+
+      this.collectObservations(graph);
+
+      // ── Phase 4: REFLECTING ────────────────────────────────────────────────
+      agentStateMachine.transition(AgentState.REFLECTING);
+
+      // OPT-3: Fast-path — skip full LLM-capable reflection for low-risk tools.
+      // reflectionEngine.reflect() can invoke the LLM for unknown failure diagnosis,
+      // costing 200-800ms even on success. For read/open/info operations that all
+      // succeeded, we know the outcome and skip directly to handleSuccess.
+      const allNodes = [...graph.nodes.values()];
+      const LOW_RISK_TOOLS = new Set([
+        'open_app', 'get_time', 'get_date', 'get_weather', 'weather',
+        'get_system_info', 'system_info', 'get_system_state', 'get_pc_state',
+        'get_active_window', 'get_browser_tabs', 'get_open_apps', 'is_app_open',
+        'is_tab_open', 'search_memory', 'read_clipboard', 'set_clipboard',
+        'get_volume', 'set_volume', 'get_brightness', 'set_brightness',
+        'calculator', 'calc', 'math', 'web_search', 'deep_search',
+        'read_file', 'explain_code',
+      ]);
+      const allSucceeded = allNodes.every(n => n.status === 'done');
+      const allLowRisk   = allNodes.every(n => LOW_RISK_TOOLS.has(n.tool));
+
+      if (allSucceeded && allLowRisk) {
+        console.log(`[Orchestrator] ⚡ OPT-3: Skipping full reflection for low-risk successful graph.`);
+        await this.handleSuccess(graph, input);
+        return 'success';
+      }
+
+      const reflection = await reflectionEngine.reflect(graph, agentMemory);
+
+      console.log(`[Orchestrator] 💡 Reflection: ${reflection.outcome} | strategy: ${reflection.repairStrategy}`);
+
+      // ── Success path ───────────────────────────────────────────────────────
+      if (reflection.outcome === 'success') {
+        await this.handleSuccess(graph, input);
+        return 'success';
+      }
+
+      // ── Abort path ─────────────────────────────────────────────────────────
+      if (reflection.repairStrategy === 'abort' || repairCycles >= this.config.maxRepairCycles) {
+        if (reflection.shouldSpeak && reflection.voiceMessage) {
+          this.speak(reflection.voiceMessage);
+        }
+        console.log(`[Orchestrator] ⛔ Aborting after ${repairCycles} repair cycle(s).`);
+
+        // Store failure as long-term memory
+        await agentMemory.rememberFact(
+          `Failed task: "${input.substring(0, 100)}" — ${reflection.failureClass ?? 'unknown error'}`,
+          7, 'agent_failure'
+        );
+
+        // Detect safety-blocked scenarios to report accurate goal outcome
+        const isBlocked = reflection.failureClass === 'tool_error' &&
+          reflection.summary?.toLowerCase().includes('safety policy');
+
+        // Phase 1: fail the goal
+        if (goal) await goalManager.failGoal(goal.id, reflection.summary).catch(() => {});
+        return isBlocked ? 'blocked' : 'failed';
+      }
+
+      // ── Phase 5: REPAIRING ────────────────────────────────────────────────
+      agentStateMachine.transition(AgentState.REPAIRING);
+      repairCycles++;
+
+      console.log(`[Orchestrator] 🔧 Repair cycle ${repairCycles}/${this.config.maxRepairCycles}: ${reflection.repairStrategy}`);
+      agentMemory.pushEpisode('repair', `Repair cycle ${repairCycles}: ${reflection.repairStrategy}`, {
+        failureClass: reflection.failureClass,
+        strategy: reflection.repairStrategy,
+        failedNodes: reflection.failedNodes.map(n => n.id),
+      }, 7);
+
+      // ── Phase 6: Dynamic Replanning Guard ─────────────────────────────────
+      // Before entering the repair phase, check: if strategy is 'replan',
+      // gate it through the canReplan() guard so we never loop infinitely.
+      if (reflection.repairStrategy === 'replan') {
+        const allowed = taskGraphEngine.canReplan(input);
+        if (!allowed) {
+          console.warn(`[Orchestrator] ⛔ Phase 6 replan guard: max replans reached for this goal.`);
+          this.speak('I have attempted multiple strategies and was unable to complete the task, sir.');
+          if (goal) await goalManager.failGoal(goal.id, 'max replans exceeded').catch(() => {});
+          return 'failed';
+        }
+        // Generate and log alternative strategies for failed nodes
+        try {
+          for (const failedNode of reflection.failedNodes.slice(0, 3)) {
+            const alts = plannerIntelligence.generateAlternatives(failedNode);
+            if (alts.length > 0) {
+              console.log(`[Orchestrator] 🔀 Alternatives for node "${failedNode.id}" (${failedNode.tool}):`);
+              alts.slice(0, 2).forEach(a => console.log(`  [${a.priority}] ${a.description}`));
+            }
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      const repaired = await this.repairPhase(
+        reflection.repairStrategy,
+        reflection.repairArgs ?? {},
+        graph,
+        input
+      );
+
+      if (!repaired) {
+        // Repair produced no actionable plan
+        console.log('[Orchestrator] ⛔ Repair failed — no recovery possible.');
+        const msg = reflection.voiceMessage ?? 'I was unable to recover from the error, sir.';
+        this.speak(msg);
+        return 'failed';
+      }
+
+      // repairPhase may have produced a new graph (replan) or mutated the existing one
+      if (repaired instanceof Map || typeof repaired === 'object' && 'nodes' in repaired) {
+        graph = repaired as TaskGraph;
+      }
+    }
+    return 'success';
+  }
+
+  // ── Phase Implementations ─────────────────────────────────────────────────
+
+  /**
+   * PLANNING PHASE
+   * Calls the LLM to infer intent and generate tool_calls.
+   * Builds a TaskGraph from the response.
+   */
+  private cachedSystemPrompt: string = '';
+  private cachedSysTokens: number = 0;
+
+  public getPrewarmedSystemPrompt(): { prompt: string; tokens: number } {
+    if (!this.cachedSystemPrompt) {
+      const sys = llmConfig.systemPrompt;
+      const maxChars = 1200 * 4;
+      this.cachedSystemPrompt = sys.length > maxChars ? sys.substring(0, maxChars) + '...' : sys;
+      this.cachedSysTokens = Math.ceil(this.cachedSystemPrompt.length / 4);
+    }
+    return { prompt: this.cachedSystemPrompt, tokens: this.cachedSysTokens };
+  }
+
+  private async planPhase(input: string): Promise<TaskGraph | null> {
+    console.log('[Orchestrator] 🧠 PLANNING — calling LLM...');
+    const planPrepStart = performance.now();
+
+    // ── 1. Fast Pre-Warmed System Prompt ──────────────────────────────────────
+    const { prompt: systemPrompt, tokens: sysTokens } = this.getPrewarmedSystemPrompt();
+    const messages: ILLMMessage[] = [{ role: 'system', content: systemPrompt }];
+
+    // ── 2. Optimized Tool Selection & Fast Token Estimate (Zero Serialization) 
+    const selectedToolNames = this.selectPlanningToolNames(input);
+    const tools = selectedToolNames.length > 0
+      ? toolRegistryV2.getLLMDefinitions(selectedToolNames)
+      : [];
+    const toolTokens = selectedToolNames.length > 0
+      ? toolRegistryV2.getToolTokensEstimate(selectedToolNames)
+      : 0;
+
+    // ── 3. Memory Injection — Unified Memory Fast Path (No Duplication) ───────
+    let unifiedCtxText = '';
+    let uniTokens = 0;
+    try {
+      const ctxStart = performance.now();
+      const sessionId = memoryManager.getStats().sessionId || 'default';
+      const includeHeavyContext = this.shouldUseHeavyContext(input);
+      const unifiedCtx = await unifiedContextBuilder.buildContext(input, sessionId, {
+        includeHeavy: includeHeavyContext,
+      });
+      const ctxMs = Math.round(performance.now() - ctxStart);
+      console.log(`[Timing] buildContext: ${ctxMs}ms (heavy=${includeHeavyContext})`);
+      
+      const pt = (this as any)._planStageTimings ?? {};
+      pt['ContextBuild'] = ctxMs;
+      (this as any)._planStageTimings = pt;
+
+      unifiedCtxText = unifiedCtx.mergedContext;
+      uniTokens = unifiedCtxText.length >> 2;
+      messages.push({ role: 'system', content: unifiedCtxText });
+
+      const recentGoals = goalManager.getRecentGoalContext(4);
+      if (recentGoals) {
+        messages.push({ role: 'system', content: recentGoals.length > 800 ? recentGoals.substring(0, 800) + '...' : recentGoals });
+      }
+    } catch (err) {
+      console.warn('[Orchestrator] Unified Memory retrieval failed (non-fatal):', err);
+    }
+
+    // Only inject working context from agentMemory if active, avoiding duplicate LTM
+    let memTokens = 0;
+    const workingContext = agentMemory.getWorkingContext();
+    if (workingContext) {
+      const workingSummary = `[ACTIVE TASK] Goal: ${workingContext.goal} (Iter: ${workingContext.iteration})`;
+      memTokens = workingSummary.length >> 2;
+      messages.push({ role: 'system', content: workingSummary });
+    }
+
+    // Inject vision frame if available
+    const visionFrame = nodeBridge.getLatestScreenFrame();
+    if (visionFrame) {
+      const visionCtx = `[SCREEN CONTEXT — Active Window: "${visionFrame.active_window}" | OCR: "${visionFrame.ocr_text?.substring(0, 300)}"]`;
+      messages.push({ role: 'system', content: visionCtx });
+    }
+
+    // ── 4. Fast History Trimming ──────────────────────────────────────────────
+    let historyTokens = 0;
+    const history = agentMemory.getConversationHistory(5);
+    const trimmedHistory: ILLMMessage[] = [];
+    for (let i = history.length - 1; i >= 0; i--) {
+      const h = history[i];
+      const tks = h.content.length >> 2;
+      if (historyTokens + tks <= 500) {
+        trimmedHistory.unshift({ role: h.role as ILLMMessage['role'], content: h.content });
+        historyTokens += tks;
+      } else {
+        break;
+      }
+    }
+
+    messages.push(...trimmedHistory);
+    messages.push({ role: 'user', content: input });
+
+    const inputTokens = input.length >> 2;
+    const totalTokens = sysTokens + memTokens + uniTokens + historyTokens + toolTokens + inputTokens;
+    const planPrepMs = Math.round(performance.now() - planPrepStart);
+
+    console.log(`[Orchestrator] 📊 Planning preparation complete in ${planPrepMs}ms (Estimated Tokens: ~${totalTokens})`);
+
+    // Set up working context
+    const taskId = `task_${Date.now()}`;
+    agentMemory.setWorkingContext({
+      taskId,
+      goal: input,
+      startedAt: Date.now(),
+      toolResults: {},
+      observations: [],
+      iteration: 1,
+      metadata: {},
+    });
+
+    // LLM call with tools
+    try {
+      const request: {
+        model: string;
+        messages: ILLMMessage[];
+        tools?: any[];
+        tool_choice?: 'auto' | 'none';
+        signal?: AbortSignal;
+      } = {
+        model: llmConfig.model,
+        messages,
+        signal: this.currentAbortController?.signal,
+      };
+      if (tools.length > 0) {
+        request.tools = tools;
+        request.tool_choice = 'auto';
+      } else {
+        request.tool_choice = 'none';
+      }
+
+      // Check interrupt before calling
+      if (this.isInterrupted()) return null;
+
+      const llmStart = performance.now();
+      console.log(`[Timing] LLM call starting — model=${llmConfig.model} totalTokensEst=${totalTokens}`);
+      const response = await modelRouter.chat(request);
+      const llmMs = Math.round(performance.now() - llmStart);
+      // Record in plan stage timings for the outer table
+      const planTimings = (this as any)._planStageTimings ?? {};
+      planTimings['LLM Network'] = llmMs;
+      planTimings['TokensEstimated'] = totalTokens;
+      (this as any)._planStageTimings = planTimings;
+      console.log(`[Timing] LLM returned in ${llmMs}ms — tokens_used=${response.usage?.totalTokens ?? '?'} prompt_tokens=${response.usage?.promptTokens ?? '?'}`);
+      // Strip <think> tags from reasoning models
+      let reply = (response.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+      if (this.isInterrupted()) return null;
+
+      // ── Tool call extraction fallback & handling ──────────────────────────
+      if (!response.tool_calls || response.tool_calls.length === 0) {
+        const extracted = this.extractToolCallsFromContent(reply);
+        if (extracted.length > 0) {
+          console.log(`[Orchestrator] 🔧 Extracted ${extracted.length} tool call(s) from LLM text response.`);
+          response.tool_calls = extracted;
+        } else {
+          // Direct answer text
+          console.log(`\n🤖 JARVIS: ${reply}\n`);
+          await agentMemory.addConversationMessage('assistant', reply);
+          agentMemory.pushEpisode('task_complete', `Direct answer: ${reply.substring(0, 100)}`, {}, 3);
+
+          agentStateMachine.transition(AgentState.SPEAKING);
+          this.speak(reply);
+          return null;
+        }
+      }
+
+      // ── Tool calls: build task graph ──────────────────────────────────────
+      const toolCalls = response.tool_calls;
+      const toolNames = toolCalls.map((t: any) => t.function.name).join(', ');
+      console.log(`[Orchestrator] 🔧 LLM requested tools: ${toolNames}`);
+
+      await agentMemory.addConversationMessage(
+        'assistant',
+        `[Planning] Using tools: ${toolNames}`
+      );
+      agentMemory.pushEpisode('task_start', `Planning with tools: ${toolNames}`, {
+        goal: input,
+        toolNames,
+      }, 5);
+
+      const graph = TaskGraphBuilder.fromToolCalls(input, toolCalls);
+      console.log(`[Orchestrator] 📊 Task graph built: ${graph.nodes.size} node(s)`);
+      return graph;
+
+    } catch (err) {
+      const planningAborted =
+        this.currentAbortController?.signal.aborted ||
+        agentStateMachine.currentState === AgentState.IDLE;
+      if (planningAborted) {
+        console.warn('[Orchestrator] Planning aborted by watchdog or interrupt. Returning safely to IDLE.');
+        return null;
+      }
+
+      console.error('[Orchestrator] Planning phase LLM error:', err);
+
+      // ── LLM SINGLE POINT OF FAILURE FALLBACK ──
+      // Use rule-based planner fallback or simplified response mode
+      console.log('[Orchestrator] ⚠️ Attempting rule-based fallback recovery...');
+      
+      try {
+          const lowerInput = input.toLowerCase();
+          if (lowerInput.includes('search') || lowerInput.includes('lookup') || lowerInput.includes('find')) {
+              console.log('[Orchestrator] Fallback: Engaging emergency web search task graph.');
+              const graph = new TaskGraphBuilder(input);
+              graph.addTask({
+                  tool: 'web_search',
+                  args: { query: input },
+                  description: 'Emergency fallback search'
+              });
+              return graph.build();
+          } else if (lowerInput.includes('system') || lowerInput.includes('status')) {
+              console.log('[Orchestrator] Fallback: Engaging emergency system tool graph.');
+              const graph = new TaskGraphBuilder(input);
+              graph.addTask({
+                  tool: 'system_info',
+                  args: {},
+                  description: 'Emergency fallback system status'
+              });
+              return graph.build();
+          }
+      } catch (fallbackErr) {
+          console.error('[Orchestrator] Fallback recovery also failed.', fallbackErr);
+      }
+
+      // Graceful degradation: inform user
+      const fallback = this.isInterrupted()
+        ? ''
+        : `I'm experiencing difficulty reaching my primary reasoning systems, sir. Operating in degraded fallback mode.`;
+
+      if (fallback) {
+        this.speak(fallback);
+        await agentMemory.addConversationMessage('assistant', fallback);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Phase 1: Tool executor with mid-execution monitoring wired in.
+   * After every node settles, checks for failure cascades and stalls.
+   * If mid-check signals abort/replan, interrupts the active graph.
+   */
+  private makeMidMonitoredExecutor(graph: TaskGraph) {
+    return async (tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string> => {
+      const result = await toolRegistryV2.execute(tool, args, signal);
+
+      // Record in working context
+      agentMemory.addObservation(
+        `${tool}: ${result.success ? result.output.substring(0, 150) : `FAILED: ${result.error}`}`
+      );
+      agentMemory.pushEpisode(
+        result.success ? 'tool_used' : 'tool_failed',
+        `${tool}: ${result.success ? 'success' : result.error ?? 'failed'}`,
+        { tool, args, output: result.output.substring(0, 200) },
+        result.success ? 4 : 7
+      );
+
+      if (!result.success) {
+        throw new Error(result.error ?? result.output);
+      }
+
+      // ── Phase 1: Mid-execution check after each settled node ──────────────
+      const midCheck = reflectionEngine.midExecutionCheck(graph);
+      if (midCheck.signal === 'abort') {
+        console.error(`[Orchestrator] 💥 Mid-execution abort: ${midCheck.reason}`);
+        taskGraphEngine.interrupt(graph);
+        this.speak(`I detected a critical failure mid-execution and stopped, sir.`);
+      } else if (midCheck.signal === 'replan') {
+        console.warn(`[Orchestrator] ⚠️  Mid-execution replan suggested: ${midCheck.reason}`);
+        // Let the repair loop handle it after execution completes
+      } else if (midCheck.signal === 'warn') {
+        console.warn(`[Orchestrator] ⚠️  Mid-execution warning: ${midCheck.reason}`);
+      }
+
+      return result.output;
+    };
+  }
+
+  /**
+   * Collect observations from all completed nodes into working context.
+   */
+  private collectObservations(graph: TaskGraph): void {
+    for (const node of graph.nodes.values()) {
+      if (node.result) {
+        agentMemory.addToolResult(node.id, node.result);
+      }
+    }
+
+    const summary = taskGraphEngine.getGraphSummary(graph);
+    agentMemory.addObservation(summary);
+    console.log(`[Orchestrator] 👁️  Observations collected: ${summary}`);
+  }
+
+  /**
+   * Handle successful task completion.
+   * Calls LLM again to synthesize a final answer from all tool results.
+   */
+  private async handleSuccess(graph: TaskGraph, originalInput: string): Promise<void> {
+    const nodes = [...graph.nodes.values()];
+    const toolsUsed = nodes.map(n => n.tool);
+
+    // OPT-SYNTH-1: Expanded bypass list — all single-action tools that produce
+    // self-contained output don't need a second LLM call to "explain" the result.
+    const simpleTools = [
+      'open_app', 'close_app', 'get_system_info', 'system_info', 'search_memory',
+      'read_file', 'get_weather', 'weather', 'time', 'help', 'stop', 'cancel',
+      'pause', 'resume', 'type_text', 'press_key', 'click', 'scroll', 'move_mouse',
+      'take_screenshot', 'get_clipboard', 'set_clipboard', 'run_command',
+      'get_volume', 'set_volume', 'get_battery', 'get_wifi', 'list_files',
+      'open_url', 'close_tab', 'switch_tab', 'search_web', 'get_active_window',
+      'minimize_window', 'maximize_window', 'focus_window',
+    ];
+    const onlySimpleTools = toolsUsed.every(t => simpleTools.includes(t));
+
+    if (onlySimpleTools) {
+      console.log('[Orchestrator] Simple tool(s) succeeded. Bypassing LLM synthesis.');
+      const firstNode = nodes[0];
+      let reply = 'Task completed, sir.';
+
+      if (firstNode && firstNode.tool === 'open_app') {
+        const target = String(firstNode.args?.target ?? '');
+        reply = `Opening ${this.formatTargetName(target)}, sir.`;
+      } else if (firstNode && firstNode.result) {
+        try {
+          const parsed = JSON.parse(firstNode.result);
+          if (parsed.success && parsed.target) {
+            reply = `Opening ${this.formatTargetName(String(parsed.target))}, sir.`;
+          } else if (parsed.success && parsed.message) {
+            reply = parsed.message;
+          } else if (parsed.success && parsed.output) {
+            reply = String(parsed.output).slice(0, 500);
+          } else {
+            reply = 'Done, sir.';
+          }
+        } catch {
+          if (firstNode.result.length < 150) {
+            reply = firstNode.result;
+          }
+        }
+      }
+
+      console.log(`\n🤖 JARVIS: ${reply}\n`);
+      await agentMemory.addConversationMessage('assistant', reply);
+      this.speak(reply);
+      return;
+    }
+
+    const toolOutputs = nodes
+      .filter(n => n.status === 'done' && n.result)
+      .map(n => `[${n.tool}]: ${n.result}`)
+      .join('\n');
+
+    // OPT-SYNTH-2: Smart short-output bypass.
+    // If there is exactly one completed node and its result is already a
+    // short, human-readable sentence (no raw JSON / technical noise), speak
+    // it directly and skip the second LLM round-trip entirely.
+    // Saves 500–3000ms on the majority of single-tool non-complex requests.
+    const completedNodes = nodes.filter(n => n.status === 'done' && n.result);
+    if (completedNodes.length === 1) {
+      const singleResult = completedNodes[0].result!;
+      const looksNatural = (
+        singleResult.length <= 280 &&
+        !singleResult.startsWith('{') &&
+        !singleResult.startsWith('[') &&
+        !singleResult.includes('\\n') &&
+        !/:\s*"/.test(singleResult)      // no JSON key-value patterns
+      );
+      if (looksNatural) {
+        console.log('[Orchestrator] OPT-SYNTH-2: Short natural output — bypassing synthesis LLM.');
+        console.log(`\n🤖 JARVIS: ${singleResult}\n`);
+        await agentMemory.addConversationMessage('assistant', singleResult);
+        // speak() calls safeTransitionToSpeaking() internally — do NOT also
+        // call transition(SPEAKING) here or we get a double-transition crash.
+        this.speak(singleResult);
+        return;
+      }
+    }
+
+    // OPT-PAYLOAD-1: Synthesis prompt uses minimal system instruction (~30 tokens)
+    // instead of the full JARVIS system prompt (~350 tokens). Synthesis only converts
+    // tool output to a natural sentence — it doesn't need tool rules or persona details.
+    // Saves ~320 tokens per synthesis call.
+    const synthesisMessages: ILLMMessage[] = [
+      {
+        role: 'system',
+        content: 'You are JARVIS. Convert the following tool results into a single concise natural-language response. Address the user as "sir". Be brief and direct.',
+      },
+      { role: 'user', content: originalInput },
+      {
+        role: 'system',
+        content: `Tool results:\n\n${toolOutputs}\n\nRespond naturally in 1-2 sentences.`,
+      },
+    ];
+
+
+    try {
+      if (this.isInterrupted()) return;
+
+      const synthesisRequest = {
+        // OPT-SYNTH-3: Use fast 8B model for synthesis — it only needs to convert
+        // structured tool output into a natural sentence, not call tools or plan.
+        // Saves ~400–1500ms vs the 32B planning model.
+        model: process.env.JARVIS_FAST_MODEL ?? 'llama-3.1-8b-instant',
+        messages: synthesisMessages,
+        signal: this.currentAbortController?.signal,
+        max_tokens: 200,  // OPT-SYNTH-4: cap synthesis at 200 tokens — just a sentence or two
+      };
+
+      if (this.config.streamingEnabled) {
+        await this.streamSynthesis(synthesisRequest, originalInput);
+      } else {
+        const resp = await modelRouter.chat(synthesisRequest);
+        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        console.log(`\n🤖 JARVIS: ${reply}\n`);
+        await agentMemory.addConversationMessage('assistant', reply);
+        // speak() calls safeTransitionToSpeaking() internally — do NOT also
+        // call transition(SPEAKING) here or we get a double-transition crash.
+        this.speak(reply);
+      }
+
+    } catch (err) {
+      console.error('[Orchestrator] Synthesis error:', err);
+      // Fall back to raw tool output
+      const raw = toolOutputs.substring(0, 500);
+      this.speak(`I completed the task. Here are the results: ${raw}`);
+    }
+  }
+
+
+  /**
+   * Stream the synthesis response to TTS in sentence chunks.
+   */
+  private async streamSynthesis(request: any, originalInput: string): Promise<void> {
+    let fullReply = '';
+    let speakBuffer = '';
+    let lastIndex = 0;
+    const t0 = performance.now();
+    let firstChunkTime: number | null = null;
+
+    try {
+      process.stdout.write('\n🤖 JARVIS: ');
+
+      for await (let chunk of modelRouter.streamChat(request)) {
+        if (this.isInterrupted()) {
+          console.log('\n[Orchestrator] 🛑 Stream interrupted.');
+          break;
+        }
+
+        if (firstChunkTime === null) {
+          firstChunkTime = performance.now() - t0;
+          console.log(`\n[Timing] Synthesis stream first chunk: ${firstChunkTime.toFixed(2)}ms`);
+        }
+
+        // Clean encoding artifacts + think tags
+        chunk = chunk
+          .replace(/\uFFFD/g, "'")
+          .replace(/['']/g, "'")
+          .replace(/[""]/g, '"');
+
+        fullReply += chunk;
+
+        // Strip <think> blocks from what gets spoken and printed
+        const clean = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/, '').trimStart();
+        const newPart = clean.substring(lastIndex);
+
+        if (newPart) {
+          process.stdout.write(newPart);
+          speakBuffer += newPart;
+          lastIndex = clean.length;
+
+          // Send to TTS at sentence boundaries
+          if (/[.!?\n]\s/.test(speakBuffer)) {
+            const parts = speakBuffer.split(/(?<=[.!?\n])\s+/);
+            speakBuffer = parts.pop() ?? '';
+
+            let chunk2Send = '';
+            for (const part of parts) {
+              chunk2Send += part + ' ';
+              if (chunk2Send.length > 25 || parts.length === 1) {
+                this.speak(chunk2Send.trim());
+                chunk2Send = '';
+              }
+            }
+            if (chunk2Send.trim()) speakBuffer = chunk2Send + speakBuffer;
+          }
+        }
+      }
+
+      // Send remaining buffer
+      if (speakBuffer.trim() && !this.isInterrupted()) {
+        this.speak(speakBuffer.trim());
+      }
+
+      console.log('\n');
+      console.log(`[Timing] Synthesis stream total: ${(performance.now() - t0).toFixed(2)}ms`);
+
+      if (!this.isInterrupted()) {
+        const cleanReply = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        await agentMemory.addConversationMessage('assistant', cleanReply);
+        agentMemory.pushEpisode('task_complete', `Synthesized: ${cleanReply.substring(0, 100)}`, {}, 3);
+      }
+
+    } catch (err) {
+      console.error('[Orchestrator] Synthesis stream failed, fallback to direct synthesis:', err);
+      try {
+        const resp = await modelRouter.chat(request);
+        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        console.log(`\n🤖 JARVIS: ${reply}\n`);
+        await agentMemory.addConversationMessage('assistant', reply);
+        this.speak(reply);
+      } catch (fallbackErr) {
+        console.error('[Orchestrator] Fallback synthesis also failed:', fallbackErr);
+      }
+    }
+  }
+
+  /**
+   * REPAIR PHASE
+   * Applies the repair strategy decided by ReflectionEngine.
+   * Returns a new TaskGraph (for replan) or the mutated existing graph (for retry),
+   * or null if repair is impossible.
+   */
+  private async repairPhase(
+    strategy: RepairStrategy,
+    repairArgs: Record<string, unknown>,
+    graph: TaskGraph,
+    originalInput: string
+  ): Promise<TaskGraph | null> {
+    switch (strategy) {
+      case 'retry_same': {
+        const nodeIds = (repairArgs['nodeIds'] as string[]) ?? [];
+        reflectionEngine.resetFailedNodes(graph, nodeIds);
+        return graph;
+      }
+
+      case 'retry_with_delay': {
+        const delayMs = (repairArgs['delayMs'] as number) ?? 1000;
+        const nodeIds = (repairArgs['nodeIds'] as string[]) ?? [];
+        console.log(`[Orchestrator] ⏳ Waiting ${delayMs}ms before retry...`);
+        await sleep(delayMs);
+        reflectionEngine.resetFailedNodes(graph, nodeIds);
+        return graph;
+      }
+
+      case 'fallback_tool': {
+        const nodeIds = (repairArgs['nodeIds'] as string[]) ?? [];
+        reflectionEngine.resetFailedNodes(graph, nodeIds);
+        return graph;
+      }
+
+      case 'replan': {
+        console.log('[Orchestrator] 📋 Re-planning with additional context...');
+
+        const context = repairArgs['context'] as string ?? '';
+        const augmentedInput = `${originalInput}\n\n[SYSTEM NOTE: Previous attempt failed. ${context} Please use a different approach.]`;
+
+        // Transition to PLANNING, but only if not already there (re-entrant
+        // repair cycles would cause an illegal PLANNING→PLANNING throw).
+        if (!agentStateMachine.is(AgentState.PLANNING)) {
+          agentStateMachine.transition(AgentState.PLANNING);
+        }
+        const newGraph = await this.planPhase(augmentedInput);
+
+        if (!newGraph) {
+          // LLM gave a direct answer during re-plan
+          return null;
+        }
+
+        return newGraph;
+      }
+
+      case 'abort':
+      default:
+        return null;
+    }
+  }
+
+
+  // ── Deterministic Pre-Router ─────────────────────────────────────────────
+
+  /**
+   * ⚡ Fast-path for known "open/launch/start X", greetings, status, time commands.
+   * Returns a DeterministicRoute structure if matched; null means fall through to LLM.
+   */
+  public matchDeterministicCommand(input: string): { type: string; target?: string; reply: string } | null {
+    const normalized = normalizeVoiceInput(input);
+    const clean = normalized.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+
+    // 1. Stop / Interrupt commands
+    if (clean === 'stop' || clean === 'cancel' || clean === 'jarvis stop' || clean === 'jarvis cancel') {
+      return { type: 'stop', reply: 'Stopped, sir.' };
+    }
+    if (clean === 'pause') {
+      return { type: 'stop', reply: 'Paused, sir.' };
+    }
+    if (clean === 'resume') {
+      return { type: 'stop', reply: 'Resuming, sir.' };
+    }
+    if (clean === 'shutdown') {
+      return { type: 'stop', reply: 'Shutting down, sir.' };
+    }
+
+    // ── Pre-defined Mappings ──────────────────────────────────────────────────
+    if (clean === 'close youtube') {
+      return { type: 'close_browser_tab', target: 'youtube', reply: 'Closing YouTube, sir.' };
+    }
+    if (clean === 'close current tab') {
+      return { type: 'close_current_tab', reply: 'Closing current tab, sir.' };
+    }
+    if (clean === 'close notepad') {
+      return { type: 'close_app', target: 'notepad', reply: 'Closing Notepad, sir.' };
+    }
+    if (clean === 'close current window') {
+      return { type: 'close_current_window', reply: 'Closing current window, sir.' };
+    }
+    if (clean === 'what is open') {
+      return { type: 'get_system_state', reply: 'Checking what is open, sir.' };
+    }
+    if (clean === 'what is open in chrome') {
+      return { type: 'get_browser_tabs', reply: 'Checking open Chrome tabs, sir.' };
+    }
+    if (clean === 'is youtube open') {
+      return { type: 'is_tab_open', target: 'youtube', reply: 'Checking if YouTube is open, sir.' };
+    }
+    if (clean === 'enable full control mode') {
+      return { type: 'enable_full_control_session', reply: 'Enabling full control mode, sir.' };
+    }
+
+    // 2. Simple conversational phrases (no Groq)
+    const simplePhrases: Record<string, string> = {
+      'how are you': 'Operational and ready, sir.',
+      'thank you': 'Anytime, sir.',
+      'thanks': 'Anytime, sir.',
+      'good morning': 'Good morning, sir.',
+      'good evening': 'Good evening, sir.',
+      'good night': 'Good night, sir.',
+      'okay': 'Understood.',
+      'ok': 'Understood.',
+      'yes': 'Confirmed.',
+      'no': 'Understood.',
+    };
+    if (clean in simplePhrases) {
+      return { type: 'simple_reply', reply: simplePhrases[clean] };
+    }
+
+    const greetings = ['hello', 'hi', 'hey', 'are you there', 'jarvis hello', 'jarvis hi'];
+    if (greetings.includes(clean)) {
+      return { type: 'greeting', reply: 'Hello, sir. How may I assist you today?' };
+    }
+
+    // 3. Capabilities / Identity
+    if (clean === 'what can you do' || clean === 'who are you') {
+      return {
+        type: 'what_can_you_do',
+        reply: 'I am JARVIS, your cognitive assistant, sir. I can launch applications, search the web, manage system files, and run commands.'
+      };
+    }
+
+    // 4. Time
+    if (clean === 'what time is it' || clean === 'time' || clean === 'what is the time') {
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return { type: 'time', reply: `It is ${timeStr}, sir.` };
+    }
+
+    // 5. System Status
+    if (clean === 'status' || clean === 'system status') {
+      return { type: 'status', reply: 'All systems are operational, sir.' };
+    }
+
+    // 6. Help
+    if (clean === 'help') {
+      return { type: 'help', reply: 'I can assist you with local automation, calculations, and general queries. Just say the word, sir.' };
+    }
+
+    // 7. open_app aliases
+    const ALIASES: Record<string, string> = {
+      'youtube':          'youtube',
+      'you tube':         'youtube',   // FIX: Whisper split-word fallback
+      'google':           'google',
+      'gmail':            'gmail',
+      'github':           'github',
+      'git hub':          'github',    // FIX: Whisper split-word fallback
+      'whatsapp':         'whatsapp',
+      'whats app':        'whatsapp',
+      'vscode':           'vscode',
+      'vs code':          'vscode',
+      'code':             'vscode',
+      'visual studio code': 'vscode',
+      'notepad':          'notepad',
+      'cmd':              'cmd',
+      'command prompt':   'cmd',
+      'terminal':         'cmd',
+      'calculator':       'calculator',
+      'calc':             'calculator',
+      'spotify':          'spotify',
+      'chrome':           'chrome',
+      'firefox':          'firefox',
+      'edge':             'edge',
+      'browser':          'chrome',
+      'settings':         'settings',
+      'ms-settings':      'settings',
+      'downloads':        'downloads',
+    };
+
+    const triggers = ['open', 'launch', 'start'];
+    for (const trigger of triggers) {
+      const idx = clean.indexOf(trigger);
+      if (idx === -1) continue;
+      // Ensure trigger is a whole word at start or preceded by space
+      if (idx > 0 && clean[idx - 1] !== ' ') continue;
+
+      const afterTrigger = clean.substring(idx + trigger.length).trim();
+      // Strip filler words — extended list to handle natural speech variants:
+      // "open youtube for me" / "open youtube now" / "open youtube right now"
+      const stripped = afterTrigger
+        .replace(/\bfor me\b/g, '')
+        .replace(/\bplease\b/g, '')
+        .replace(/\bthe\b/g, '')
+        .replace(/\ba\b/g, '')
+        .replace(/\bright now\b/g, '')
+        .replace(/\bnow\b/g, '')
+        .replace(/\bquickly\b/g, '')
+        .replace(/\bimmediately\b/g, '')
+        .replace(/\basap\b/g, '')
+        .replace(/\bup\b/g, '')
+        .trim();
+
+      for (const [alias, target] of Object.entries(ALIASES)) {
+          // Exact match: stripped is exactly the alias
+          if (stripped === alias) {
+            return { type: 'open_app', target, reply: `Opening ${target}, sir.` };
+          }
+          // Prefix match: alias followed by a space
+          if (stripped.startsWith(alias + ' ')) {
+            const remainder = stripped.substring(alias.length).trim()
+              .replace(/\bfor me\b/g, '')
+              .replace(/\bplease\b/g, '')
+              .replace(/\bthe\b/g, '')
+              .replace(/\ba\b/g, '')
+              .trim();
+            if (remainder === '') {
+              return { type: 'open_app', target, reply: `Opening ${target}, sir.` };
+            }
+          }
+        }
+    }
+    return null;
+  }
+
+  // ── Safe Direct Streaming Path ────────────────────────────────────────────
+
+  private isSimpleConversationalInput(input: string): boolean {
+    const cleanInput = input.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    
+    // Explicit guard against action verbs to ensure they always go through the planning/tool route
+    const actionVerbs = ['open', 'launch', 'start', 'run', 'search', 'read', 'write', 'create', 'delete', 'send'];
+    const words = cleanInput.split(/\s+/);
+    if (words.some(w => actionVerbs.includes(w))) {
+      return false;
+    }
+
+    const simpleGreetings = [
+      'hello', 'hi', 'hey', 'how are you', 'thank you', 'thanks',
+      'who are you', 'what can you do', 'good morning', 'good evening', 'are you there'
+    ];
+    return simpleGreetings.includes(cleanInput);
+  }
+
+  private async streamDirectChat(input: string): Promise<void> {
+    console.log('[Orchestrator] 🚀 Direct conversational path triggered.');
+    
+    let systemPrompt = llmConfig.systemPrompt;
+    let history = agentMemory.getConversationHistory(5);
+    const messages: ILLMMessage[] = [
+      { role: 'system', content: systemPrompt },
+      ...history.map(h => ({ role: h.role as ILLMMessage['role'], content: h.content })),
+      { role: 'user', content: input }
+    ];
+
+    const request = {
+      model: llmConfig.model,
+      messages,
+      // no tools mapped, ensuring it only converses
+      signal: this.currentAbortController?.signal,
+    };
+
+    let firstChunkTime: number | null = null;
+    const t0 = performance.now();
+
+    try {
+      let fullReply = '';
+      let speakBuffer = '';
+      let lastIndex = 0;
+
+      process.stdout.write('\n🤖 JARVIS (Direct Stream): ');
+
+      for await (let chunk of modelRouter.streamChat(request)) {
+        if (this.isInterrupted()) {
+          console.log('\n[Orchestrator] 🛑 Stream interrupted.');
+          break;
+        }
+
+        if (firstChunkTime === null) {
+          firstChunkTime = performance.now() - t0;
+          console.log(`\n[Timing] Direct conversational stream first chunk: ${firstChunkTime.toFixed(2)}ms`);
+        }
+
+        chunk = chunk
+          .replace(/\uFFFD/g, "'")
+          .replace(/['']/g, "'")
+          .replace(/[""]/g, '"');
+
+        fullReply += chunk;
+
+        const clean = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/, '').trimStart();
+        const newPart = clean.substring(lastIndex);
+
+        if (newPart) {
+          process.stdout.write(newPart);
+          speakBuffer += newPart;
+          lastIndex = clean.length;
+
+          if (/[.!?\n]\s/.test(speakBuffer)) {
+            const parts = speakBuffer.split(/(?<=[.!?\n])\s+/);
+            speakBuffer = parts.pop() ?? '';
+
+            let chunk2Send = '';
+            for (const part of parts) {
+              chunk2Send += part + ' ';
+              if (chunk2Send.length > 25 || parts.length === 1) {
+                this.speak(chunk2Send.trim());
+                chunk2Send = '';
+              }
+            }
+            if (chunk2Send.trim()) speakBuffer = chunk2Send + speakBuffer;
+          }
+        }
+      }
+
+      if (speakBuffer.trim() && !this.isInterrupted()) {
+        this.speak(speakBuffer.trim());
+      }
+      console.log('\n');
+      console.log(`[Timing] Direct conversational stream total: ${(performance.now() - t0).toFixed(2)}ms`);
+
+      if (!this.isInterrupted()) {
+        const cleanReply = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '').trim();
+        await agentMemory.addConversationMessage('assistant', cleanReply);
+        agentMemory.pushEpisode('task_complete', `Direct chat response: ${cleanReply.substring(0, 100)}`, {}, 4);
+      }
+      
+      agentStateMachine.transition(AgentState.IDLE);
+    } catch (err) {
+      console.error('[DirectStream] Streaming failed, falling back to blocking chat:', err);
+      try {
+        const resp = await modelRouter.chat(request);
+        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '').trim();
+        console.log(`\n🤖 JARVIS: ${reply}\n`);
+        await agentMemory.addConversationMessage('assistant', reply);
+        this.speak(reply);
+        agentStateMachine.transition(AgentState.IDLE);
+      } catch (fallbackErr) {
+        console.error('[DirectStream] Fallback also failed:', fallbackErr);
+        this.speak('I am having trouble connecting to my reasoning center, sir.');
+        agentStateMachine.transition(AgentState.IDLE);
+      }
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  private isInterrupted(): boolean {
+    return agentStateMachine.is(AgentState.INTERRUPTED);
+  }
+
+  private shouldUseHeavyContext(input: string): boolean {
+    const clean = normalizeVoiceInput(input).toLowerCase();
+    if (!clean) return false;
+
+    const simplePatterns = [
+      /^(open|launch|start)\s+[a-z0-9 ]{1,40}$/,
+      /^(close|stop|pause|resume)\b/,
+      /^(what time is it|time|status|system status|help)$/,
+      /^(is .+ open|what is open|what is open in chrome)$/,
+    ];
+
+    return !simplePatterns.some((pattern) => pattern.test(clean));
+  }
+
+  private selectPlanningToolNames(input: string): string[] {
+    const clean = normalizeVoiceInput(input).toLowerCase();
+    const requested = new Set<string>();
+
+    const addIfRegistered = (...names: string[]) => {
+      for (const name of names) {
+        if (toolRegistryV2.has(name)) requested.add(name);
+      }
+    };
+
+    const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimize|maximize)\b/i.test(clean);
+    const isLaunchIntent = !isKillOrClose && /\b(open|launch|start|run|app|application|desktop|whatsapp|youtube|chrome|calculator|vscode|code|notepad|spotify|browser|gmail|github)\b/i.test(clean);
+    const isExplicitSearch = /\b(search|lookup|find|internet|online|research)\b/i.test(clean);
+
+    // 1. App / Desktop launch requests: ALWAYS include open_app & control_app at top priority
+    if (isLaunchIntent) {
+      addIfRegistered('open_app', 'control_app');
+    }
+
+    // 2. Web search: ONLY if explicit search intent or not a pure app launch request
+    if (isExplicitSearch || (!isLaunchIntent && /\b(google|web|internet|online|research)\b/i.test(clean))) {
+      addIfRegistered('web_search', 'deep_search');
+    }
+
+    if (/\b(weather|forecast|temperature|rain|humidity)\b/.test(clean)) {
+      addIfRegistered('get_weather', 'weather');
+    }
+
+    if (/\b(file|folder|read|write|save|edit|create)\b/.test(clean)) {
+      addIfRegistered('read_file', 'write_file', 'control_file');
+    }
+
+    if (/\b(keyboard|type|press|key|hotkey|shortcut)\b/.test(clean)) {
+      addIfRegistered('control_keyboard');
+    }
+
+    if (/\b(mouse|click|right click|double click|scroll|drag|cursor)\b/.test(clean)) {
+      addIfRegistered('control_mouse');
+    }
+
+    if (/\b(kill|process|task|pid|stop app|terminate)\b/.test(clean)) {
+      addIfRegistered('control_process');
+    }
+
+    if (/\b(screenshot|screen|volume|mute|service|network|disk|powershell|settings|system control)\b/.test(clean)) {
+      addIfRegistered('control_system');
+    }
+
+    if (/\b(window|minimize|maximize|resize|move window|close window)\b/.test(clean)) {
+      addIfRegistered('control_window');
+    }
+
+    if (/\b(tab|browser|url|open url|close tab|refresh)\b/.test(clean)) {
+      addIfRegistered('control_browser');
+    }
+
+    if (/\b(cancel|abort|stop action)\b/.test(clean)) {
+      addIfRegistered('cancel_current_action');
+    }
+
+    if (/\b(full control|admin|permission|level 2|session)\b/.test(clean)) {
+      addIfRegistered('enable_full_control_session', 'disable_full_control_session', 'get_permission_status');
+    }
+
+    if (/\b(system|status|pc|computer|windows|chrome|browser|app|running|open apps|active window)\b/.test(clean)) {
+      addIfRegistered(
+        'get_system_info',
+        'get_system_state',
+        'get_pc_state',
+        'get_open_apps',
+        'get_active_window',
+        'get_browser_tabs',
+        'is_app_open',
+        'is_tab_open'
+      );
+    }
+
+    if (/\b(memory|remember|recall|forget|relation|preference)\b/.test(clean)) {
+      addIfRegistered('search_memory', 'save_relation');
+    }
+
+    if (/\b(code|explain|debug|typescript|javascript|python|error|stack trace)\b/.test(clean)) {
+      addIfRegistered('explain_code', 'read_file');
+    }
+
+    if (/\b(command|terminal|shell|npm|pnpm|npx|git|test|build|tsc)\b/.test(clean)) {
+      addIfRegistered('run_command');
+    }
+
+    // Default fallback: if no tool selected, provide general utility tools so LLM is never given 0 tools
+    if (requested.size === 0) {
+      addIfRegistered('open_app', 'web_search', 'get_system_info', 'run_command');
+    }
+
+    return [...requested].slice(0, 8);
+  }
+
+  private extractToolCallsFromContent(content: string): ILLMToolCall[] {
+    if (!content || !content.trim()) return [];
+
+    const jsonMatches: string[] = [];
+    const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+    let match;
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      if (match[1]) jsonMatches.push(match[1].trim());
+    }
+
+    if (jsonMatches.length === 0 && (content.includes('{') || content.includes('['))) {
+      jsonMatches.push(content.trim());
+    }
+
+    const toolCalls: ILLMToolCall[] = [];
+
+    for (const jsonStr of jsonMatches) {
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const items = Array.isArray(parsed) ? parsed : (parsed.tool_calls || [parsed]);
+
+        for (const item of items) {
+          const toolName = item.tool || item.name || item.function?.name;
+          const rawArgs = item.args || item.arguments || item.parameters || item.function?.arguments || {};
+
+          if (toolName && toolRegistryV2.has(toolName)) {
+            const argsString = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs);
+            toolCalls.push({
+              id: item.id || `extracted_${Date.now()}_${toolCalls.length}`,
+              type: 'function',
+              function: {
+                name: toolName,
+                arguments: argsString,
+              },
+            });
+          }
+        }
+      } catch {
+        // Ignore non-JSON or invalid snippets
+      }
+    }
+
+    return toolCalls;
+  }
+
+  private formatTargetName(target: string): string {
+    const clean = target.trim().toLowerCase();
+    const names: Record<string, string> = {
+      youtube: 'YouTube',
+      google: 'Google',
+      gmail: 'Gmail',
+      github: 'GitHub',
+      chrome: 'Chrome',
+      notepad: 'Notepad',
+      calculator: 'Calculator',
+      calc: 'Calculator',
+      cmd: 'Command Prompt',
+    };
+    return names[clean] ?? (target.trim() || 'that');
+  }
+
+  public speak(text: string): void {
+    if (!text || !text.trim()) return;
+    if (this.isInterrupted()) {
+      console.log(`[Orchestrator] 🛑 speak() blocked: system interrupted. Text: "${text.substring(0, 30)}..."`);
+      return;
+    }
+
+    // 1. Sanitize <think>...</think> and partial <think> blocks
+    let cleanText = text
+      .replace(/<think>[\s\S]*?<\/think>/g, '')
+      .replace(/<think>[\s\S]*/g, '')
+      .trim();
+
+    // 2. Remove markdown formatting characters for clean spoken output
+    cleanText = cleanText
+      .replace(/[*_`#~]/g, '')                // formatting characters
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links -> raw text
+      .replace(/-\s+/g, '')                   // list hyphens
+      .replace(/^\s*[-*+]\s+/gm, '')          // bullet points
+      .trim();
+
+    if (!cleanText) return;
+
+    // 3. Apply concise personality rule: limit verbal response to max 3 sentences
+    const sentences = cleanText.split(/(?<=[.!?])\s+/);
+    if (sentences.length > 3) {
+      cleanText = sentences.slice(0, 3).join(' ') + ' I have printed the full details to the console, sir.';
+    }
+
+    // 4. Ensure the state is SPEAKING
+    try {
+      agentStateMachine.safeTransitionToSpeaking();
+    } catch (err) {
+      console.warn(`[Orchestrator] speak() safe state transition failed:`, err);
+    }
+
+    // 5. Track last spoken text in NodeBridge
+    nodeBridge.lastTtsText = cleanText;
+
+    // 6. Pause wake word immediately to prevent echo
+    nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'pause' } });
+
+    // 7. Send text to clients via WebSocket
+    if (this.config.voiceEnabled) {
+      nodeBridge.speakToClients(cleanText);
+    }
+  }
+
+  private handleBargeInBeforeProcessing(input: string, source: 'cli' | 'voice'): void {
+    const curState = agentStateMachine.currentState;
+    this.currentAbortController?.abort();
+    console.log(`[Orchestrator] 🚨 Barge-in detected in state ${curState}. Input: "${input}"`);
+
+    // 1. Send hard TTS stop
+    nodeBridge.sendToRole('tts', { type: 'command', payload: { action: 'stop' } });
+
+    // 2. Clear TTS queue
+    (nodeBridge as any).pendingTTS = [];
+
+    // 3. Clear stale voice queue
+    for (const cb of this.onBargeIn) {
+      try { cb(); } catch {}
+    }
+
+    // 4. Transition SPEAKING -> INTERRUPTED if needed
+    if (curState === AgentState.SPEAKING) {
+      try {
+        agentStateMachine.interrupt();
+      } catch (err) {
+        console.error(`[Orchestrator] Barge-in transition SPEAKING -> INTERRUPTED failed:`, err);
+      }
+    }
+
+    // 5. Transition INTERRUPTED -> PROCESSING_STT
+    try {
+      agentStateMachine.transition(AgentState.PROCESSING_STT);
+    } catch (err) {
+      console.warn(`[Orchestrator] Barge-in transition to PROCESSING_STT failed. Trying recovery reset:`, err);
+      try {
+        agentStateMachine.reset();
+        agentStateMachine.transition(AgentState.PROCESSING_STT);
+      } catch (recErr) {
+        console.error(`[Orchestrator] Barge-in recovery transition failed:`, recErr);
+      }
+    }
+  }
+
+  private handleWatchdogReset(data: { fromState: AgentState; reason: string }): void {
+    if (data.fromState === AgentState.PLANNING) {
+      console.warn('[Orchestrator] PLANNING watchdog reset received — invoking safeReset().');
+      // Route through safeReset() so all state is torn down atomically.
+      this.safeReset(data.reason);
+      return;
+    }
+
+    if (data.fromState === AgentState.SPEAKING) {
+      console.warn('[Orchestrator] SPEAKING watchdog reset received. Forcing TTS recovery cleanup.');
+      nodeBridge.sendToRole('tts', { type: 'command', payload: { action: 'stop' } });
+      nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
+      if (this.isConversationEndDeferred) {
+        this.isConversationEndDeferred = false;
+        if (this._conversationStarted && !this._conversationEndHandled) {
+          this._conversationEndHandled = true;
+          this._conversationStarted = false;
+          conversationBus.conversationEnded();
+        }
+      }
+    }
+  }
+}
+
+// ─── Sleep Helper ─────────────────────────────────────────────────────────────
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ─── Singleton ────────────────────────────────────────────────────────────────
+
+export const orchestrator = new JarvisOrchestrator();
+
+export function normalizeVoiceInput(text: string): string {
+  if (!text) return "";
+
+  // 1. Lowercase and replace punctuation (keeping hyphens for now to handle "you-tube")
+  let result = text.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim();
+
+  // Collapse spaces
+  result = result.replace(/\s+/g, ' ');
+
+  // 2. Normalize brand names
+  result = result.replace(/\byou tube\b/g, 'youtube');
+  result = result.replace(/\byou-tube\b/g, 'youtube');
+  result = result.replace(/\bgit-hub\b/g, 'github');
+  result = result.replace(/\bgit hub\b/g, 'github');
+
+  // Strip remaining hyphens
+  result = result.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+
+  // 3. Strip wake word prefixes
+  const wakePrefixes = ['hey jarvis', 'jarvis'];
+  for (const prefix of wakePrefixes) {
+    if (result.startsWith(prefix + ' ')) {
+      result = result.substring(prefix.length).trim();
+      break;
+    } else if (result === prefix) {
+      result = '';
+      break;
+    }
+  }
+
+  // 4. Strip filler words/phrases
+  const fillers = ['for me', 'please', 'can you', 'could you', 'would you'];
+  for (const filler of fillers) {
+    const regex = new RegExp(`\\b${filler}\\b`, 'g');
+    result = result.replace(regex, '');
+  }
+  result = result.replace(/\bfor\b$/g, '');
+
+  // Collapse spaces and trim one last time
+  result = result.replace(/\s+/g, ' ').trim();
+
+  return result;
+}

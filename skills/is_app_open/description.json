@@ -1,0 +1,13 @@
+{
+  "id": "is_app_open",
+  "name": "Is App Open",
+  "description": "Check if an application window is open by matching its process name or window title.",
+  "riskLevel": "low",
+  "parameters": {
+    "appName": {
+      "type": "string",
+      "description": "Name or part of the name of the application to check.",
+      "required": true
+    }
+  }
+}

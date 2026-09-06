@@ -1,0 +1,17 @@
+{
+  "id": "control_keyboard",
+  "name": "Control Keyboard",
+  "description": "Simulates keyboard actions: typing text, pressing a key, pressing a hotkey.",
+  "riskLevel": "high",
+  "parameters": {
+    "action": {
+      "type": "string",
+      "description": "Keyboard command: 'type', 'press_key', 'press_hotkey'",
+      "required": true,
+      "enum": ["type", "press_key", "press_hotkey"]
+    },
+    "text": { "type": "string", "description": "Text to type", "required": false },
+    "key": { "type": "string", "description": "Key to press (e.g. 'enter', 'escape', 'tab')", "required": false },
+    "keys": { "type": "array", "description": "Hotkey keys (e.g. ['ctrl', 'w'])", "required": false }
+  }
+}

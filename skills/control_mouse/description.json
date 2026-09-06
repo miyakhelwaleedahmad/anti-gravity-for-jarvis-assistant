@@ -1,0 +1,21 @@
+{
+  "id": "control_mouse",
+  "name": "Control Mouse",
+  "description": "Simulates cursor actions: move, click, right_click, double_click, scroll, drag.",
+  "riskLevel": "high",
+  "parameters": {
+    "action": {
+      "type": "string",
+      "description": "Mouse command: 'move', 'click', 'right_click', 'double_click', 'scroll', 'drag'",
+      "required": true,
+      "enum": ["move", "click", "right_click", "double_click", "scroll", "drag"]
+    },
+    "x": { "type": "number", "description": "X position", "required": false },
+    "y": { "type": "number", "description": "Y position", "required": false },
+    "amount": { "type": "number", "description": "Scroll offset", "required": false },
+    "fromX": { "type": "number", "description": "Drag start X", "required": false },
+    "fromY": { "type": "number", "description": "Drag start Y", "required": false },
+    "toX": { "type": "number", "description": "Drag end X", "required": false },
+    "toY": { "type": "number", "description": "Drag end Y", "required": false }
+  }
+}

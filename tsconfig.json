@@ -1,0 +1,23 @@
+{
+ "compilerOptions": {
+  "target": "ES2022",
+  "module": "NodeNext",
+  "moduleResolution": "NodeNext",
+  "outDir": "./dist",
+  "rootDir": ".",
+  "esModuleInterop": true,
+  "allowSyntheticDefaultImports": true,
+  "strict": true,
+  "skipLibCheck": true,
+  "types": ["node"]
+ },
+ "include": [
+  "**/*.ts",
+  "config/**/*.d.ts"
+ ],
+ "exclude": [
+  "node_modules",
+  ".venv",
+  "app"
+ ]
+}

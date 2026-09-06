@@ -1,0 +1,2 @@
+// agents/codingAgent.ts
+export {};

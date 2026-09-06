@@ -1,0 +1,7 @@
+{
+  "id": "get_open_apps",
+  "name": "Get Open Apps",
+  "description": "Get the list of all currently open application windows with titles and process IDs.",
+  "riskLevel": "low",
+  "parameters": {}
+}

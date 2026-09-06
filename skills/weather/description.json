@@ -1,0 +1,19 @@
+{
+  "id": "get_weather",
+  "name": "Get Weather",
+  "description": "Get the current weather and forecast for any city or location. Returns temperature, conditions, humidity, and wind speed.",
+  "riskLevel": "low",
+  "parameters": {
+    "location": {
+      "type": "string",
+      "description": "City name or location to get weather for (e.g., 'London', 'New York', 'Tokyo')",
+      "required": true
+    },
+    "units": {
+      "type": "string",
+      "description": "Temperature units: 'metric' (Celsius) or 'imperial' (Fahrenheit). Default: metric",
+      "required": false
+    }
+  },
+  "fallbacks": ["web_search"]
+}

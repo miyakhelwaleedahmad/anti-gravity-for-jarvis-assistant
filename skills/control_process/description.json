@@ -1,0 +1,15 @@
+{
+  "id": "control_process",
+  "name": "Control Process",
+  "description": "Inspects and kills running OS processes.",
+  "riskLevel": "high",
+  "parameters": {
+    "action": {
+      "type": "string",
+      "description": "Process command: 'list', 'find', 'kill', 'restart'",
+      "required": true,
+      "enum": ["list", "find", "kill", "restart"]
+    },
+    "target": { "type": "string", "description": "Process name or PID (required for find/kill/restart)", "required": false }
+  }
+}

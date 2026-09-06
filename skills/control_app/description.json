@@ -1,0 +1,15 @@
+{
+  "id": "control_app",
+  "name": "Control App",
+  "description": "Launches, closes, focuses, or restarts OS applications.",
+  "riskLevel": "high",
+  "parameters": {
+    "action": {
+      "type": "string",
+      "description": "App command: 'open', 'close', 'focus', 'restart'",
+      "required": true,
+      "enum": ["open", "close", "focus", "restart"]
+    },
+    "target": { "type": "string", "description": "Application name or executable (e.g. 'notepad')", "required": true }
+  }
+}

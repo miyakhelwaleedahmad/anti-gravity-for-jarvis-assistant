@@ -1,0 +1,7 @@
+{
+  "id": "get_pc_state",
+  "name": "Get PC State",
+  "description": "Returns the complete current PC state including active window, open apps, Chrome tabs, and services.",
+  "riskLevel": "low",
+  "parameters": {}
+}

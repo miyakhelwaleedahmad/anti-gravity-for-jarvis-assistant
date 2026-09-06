@@ -1,0 +1,15 @@
+{
+  "id": "control_system",
+  "name": "Control System",
+  "description": "Performs system operations (network status, disk status, settings, service controls, shell commands).",
+  "riskLevel": "high",
+  "parameters": {
+    "action": {
+      "type": "string",
+      "description": "System command: 'network_status', 'disk_status', 'settings', 'restart_jarvis', 'shell', 'powershell', 'start_service', 'stop_service', 'restart_service'",
+      "required": true,
+      "enum": ["network_status", "disk_status", "settings", "restart_jarvis", "shell", "powershell", "start_service", "stop_service", "restart_service"]
+    },
+    "target": { "type": "string", "description": "Command string, setting page, or service name", "required": false }
+  }
+}

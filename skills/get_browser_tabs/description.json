@@ -1,0 +1,7 @@
+{
+  "id": "get_browser_tabs",
+  "name": "Get Browser Tabs",
+  "description": "Get the list of open Chrome tabs with titles, URLs, and active status.",
+  "riskLevel": "low",
+  "parameters": {}
+}

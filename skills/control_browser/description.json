@@ -1,0 +1,15 @@
+{
+  "id": "control_browser",
+  "name": "Control Browser",
+  "description": "Manages browser tabs (list, focus, close, close_current, open_url, refresh).",
+  "riskLevel": "high",
+  "parameters": {
+    "action": {
+      "type": "string",
+      "description": "Browser command: 'list', 'focus', 'close', 'close_current', 'open_url', 'refresh'",
+      "required": true,
+      "enum": ["list", "focus", "close", "close_current", "open_url", "refresh"]
+    },
+    "target": { "type": "string", "description": "Tab title, URL pattern, or target tab search query", "required": false }
+  }
+}

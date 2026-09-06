@@ -1,0 +1,18 @@
+{
+  "id": "enable_full_control_session",
+  "name": "Enable Full Control Session",
+  "description": "Requests explicit approval before enabling a time-limited Level 2 Full Control Mode session.",
+  "riskLevel": "high",
+  "parameters": {
+    "source": {
+      "type": "string",
+      "description": "Request source: voice, text, or llm.",
+      "required": false
+    },
+    "durationMinutes": {
+      "type": "number",
+      "description": "Requested session duration, clamped to 1-30 minutes.",
+      "required": false
+    }
+  }
+}

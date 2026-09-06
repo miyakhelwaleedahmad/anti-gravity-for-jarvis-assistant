@@ -1,0 +1,687 @@
+/**
+ * core/toolRegistryV2.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Advanced modular tool registry with schema validation, fallback chains,
+ * and structured ToolResult outputs.
+ *
+ * Replaces:
+ *   - core/toolRegistry.ts       (static OpenAI definitions only)
+ *   - core/toolExecutor.ts       (hard-coded switch/case)
+ *   - execution/toolExecutor.ts  (cache wrapper with switch/case)
+ *
+ * Usage:
+ *   // Register a tool
+ *   toolRegistryV2.register(myTool);
+ *
+ *   // Execute with full validation + fallback handling
+ *   const result = await toolRegistryV2.execute('web_search', { query: 'TypeScript' });
+ *
+ *   // Get OpenAI-compatible definitions for LLM context
+ *   const defs = toolRegistryV2.getLLMDefinitions();
+ */
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+import { toolExecutionSandbox } from './toolExecutionSandbox.js';
+
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+export interface ToolSchemaProperty {
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  description: string;
+  required: boolean;
+  enum?: string[];
+}
+
+export interface ToolResult {
+  success: boolean;
+  output: string;
+  error?: string;
+  tool: string;
+  durationMs: number;
+  fromFallback?: string;
+  fromCache?: boolean;
+  /** Phase 5: which retry attempt produced this result (0 = first attempt) */
+  attemptNumber?: number;
+}
+
+/**
+ * Phase 5: Per-tool retry policy.
+ * Overrides registry defaults for individual tools.
+ */
+export interface RetryPolicy {
+  /** Max retry attempts after initial failure (default: 2) */
+  maxRetries: number;
+  /** Base delay in ms between retries — doubled per attempt (exponential backoff) */
+  baseDelayMs: number;
+  /** If true, do NOT retry on AbortError/timeout (default: true) */
+  skipRetryOnTimeout: boolean;
+}
+
+export interface AgentTool {
+  name: string;
+  description: string;
+  riskLevel: RiskLevel;
+  inputSchema: Record<string, ToolSchemaProperty>;
+  fallbacks: string[];
+  /** Phase 5: optional per-tool retry policy (overrides registry default) */
+  retryPolicy?: Partial<RetryPolicy>;
+  /**
+   * Phase 5: optional rollback hook.
+   * Called when the tool succeeded but a downstream step failed and
+   * the orchestrator requests undoing this tool's side effects.
+   */
+  rollback?(args: Record<string, unknown>, executionResult: string): Promise<void>;
+  execute(args: Record<string, unknown>, signal?: AbortSignal): Promise<string>;
+}
+
+/**
+ * Phase 5: Per-tool health and metrics tracking.
+ */
+export interface ToolMetrics {
+  tool: string;
+  totalCalls: number;
+  successCount: number;
+  failureCount: number;
+  /** Running average execution duration in ms */
+  avgDurationMs: number;
+  /** Consecutive failure count — resets on any success */
+  consecutiveFailures: number;
+  /** True if the tool has been automatically degraded due to repeated failures */
+  degraded: boolean;
+  lastFailureReason?: string;
+  lastSuccessAt?: number;
+  lastFailureAt?: number;
+}
+
+/** Phase 5: Execution history entry */
+export interface ExecutionRecord {
+  tool: string;
+  args: Record<string, unknown>;
+  success: boolean;
+  durationMs: number;
+  error?: string;
+  attemptNumber: number;
+  timestamp: number;
+}
+
+// OpenAI-compatible definition shape (used in LLM API calls)
+export interface LLMToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, { type: string; description: string; enum?: string[] }>;
+      required: string[];
+    };
+  };
+}
+
+// ─── Tool Registry V2 ─────────────────────────────────────────────────────────
+
+export class ToolRegistryV2 {
+  private tools = new Map<string, AgentTool>();
+  private resultCache = new Map<string, { result: string; expiresAt: number }>();
+  private readonly CACHE_TTL_MS = 30_000;
+  private readonly EXECUTION_TIMEOUT_MS = 25_000;
+  private executionQueue = Promise.resolve<any>(null);
+
+  private _llmDefCache: LLMToolDefinition[] | null = null;
+  private _singleDefMap = new Map<string, { def: LLMToolDefinition; tokens: number }>();
+
+  // Phase 5 additions
+  private _metrics = new Map<string, ToolMetrics>();
+  /** Execution history ring buffer (max 200 entries) */
+  private _history: ExecutionRecord[] = [];
+  private readonly HISTORY_MAX = 200;
+  /** Consecutive failures before a tool is auto-degraded */
+  private readonly DEGRADE_THRESHOLD = 5;
+  /** Default retry policy for all tools (can be overridden per-tool) */
+  private readonly DEFAULT_RETRY: RetryPolicy = {
+    maxRetries: 2,
+    baseDelayMs: 500,
+    skipRetryOnTimeout: true,
+  };
+
+  // ── Registration ──────────────────────────────────────────────────────────
+
+  register(tool: AgentTool): void {
+    if (this.tools.has(tool.name)) {
+      const existing = this.tools.get(tool.name);
+      if (existing === tool) {
+        return; // Exact duplicate reference, skip
+      }
+      // If description and schema are identical, skip overwriting
+      if (existing && existing.description === tool.description && JSON.stringify(existing.inputSchema) === JSON.stringify(tool.inputSchema)) {
+        return;
+      }
+      console.log(`[ToolRegistry] Updating registered tool: "${tool.name}"`);
+    }
+    this.tools.set(tool.name, tool);
+    this._llmDefCache = null; // Invalidate cached definitions
+
+    // Pre-build single tool definition & pre-compute estimated tokens
+    const def: LLMToolDefinition = {
+      type: 'function' as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          type: 'object' as const,
+          properties: Object.fromEntries(
+            Object.entries(tool.inputSchema).map(([key, prop]) => [
+              key,
+              {
+                type: prop.type,
+                description: prop.description,
+                ...(prop.enum ? { enum: prop.enum } : {}),
+              },
+            ])
+          ),
+          required: Object.entries(tool.inputSchema)
+            .filter(([, prop]) => prop.required)
+            .map(([key]) => key),
+        },
+      },
+    };
+
+    const estTokens = Math.ceil(JSON.stringify(def).length / 4);
+    this._singleDefMap.set(tool.name, { def, tokens: estTokens });
+
+    for (const fallback of tool.fallbacks) {
+      if (!this.tools.has(fallback)) {
+        console.warn(`[ToolRegistry] ⚠️  Tool "${tool.name}" declares fallback "${fallback}" which is not yet registered.`);
+      }
+    }
+
+    // Debug log only if explicitly enabled
+    if (process.env.JARVIS_VERBOSE_LOGS === 'true') {
+      console.log(`[ToolRegistry] Registered: "${tool.name}" [risk: ${tool.riskLevel}]`);
+    }
+  }
+
+  registerMany(tools: AgentTool[]): void {
+    for (const tool of tools) {
+      this.register(tool);
+    }
+    console.log(`[ToolRegistry] ✅ Registered ${tools.length} tool(s) into registry.`);
+  }
+
+  get(name: string): AgentTool | undefined {
+    return this.tools.get(name);
+  }
+
+  getAll(): AgentTool[] {
+    return [...this.tools.values()];
+  }
+
+  has(name: string): boolean {
+    return this.tools.has(name);
+  }
+
+  names(): string[] {
+    return [...this.tools.keys()];
+  }
+
+  // ── LLM Definitions ───────────────────────────────────────────────────────
+
+  /**
+   * Returns OpenAI-compatible tool definitions to pass in LLM API calls.
+   * Cached per tool for maximum planning performance.
+   */
+  getLLMDefinitions(toolNames?: string[]): LLMToolDefinition[] {
+    if (toolNames && toolNames.length > 0) {
+      const defs: LLMToolDefinition[] = [];
+      for (const name of toolNames) {
+        const cached = this._singleDefMap.get(name);
+        if (cached) defs.push(cached.def);
+      }
+      return defs;
+    }
+
+    if (this._llmDefCache) {
+      return this._llmDefCache;
+    }
+
+    const defs: LLMToolDefinition[] = [];
+    for (const entry of this._singleDefMap.values()) {
+      defs.push(entry.def);
+    }
+
+    this._llmDefCache = defs;
+    return defs;
+  }
+
+  /**
+   * Fast token estimation for selected tools without JSON.stringify overhead.
+   */
+  getToolTokensEstimate(toolNames?: string[]): number {
+    if (toolNames && toolNames.length > 0) {
+      let total = 0;
+      for (const name of toolNames) {
+        const cached = this._singleDefMap.get(name);
+        if (cached) total += cached.tokens;
+      }
+      return total;
+    }
+
+    let total = 0;
+    for (const entry of this._singleDefMap.values()) {
+      total += entry.tokens;
+    }
+    return total;
+  }
+
+  // ── Validation ────────────────────────────────────────────────────────────
+
+  private validateArgs(
+    tool: AgentTool,
+    args: Record<string, unknown>
+  ): string | null {
+    for (const [key, schema] of Object.entries(tool.inputSchema)) {
+      if (schema.required && !(key in args)) {
+        return `Missing required argument: "${key}"`;
+      }
+      if (key in args) {
+        const val = args[key];
+        const actualType = Array.isArray(val) ? 'array' : typeof val;
+        if (actualType !== schema.type) {
+          return `Argument "${key}" expects type "${schema.type}" but got "${actualType}"`;
+        }
+        if (schema.enum && typeof val === 'string' && !schema.enum.includes(val)) {
+          return `Argument "${key}" must be one of: ${schema.enum.join(', ')}`;
+        }
+      }
+    }
+    return null; // valid
+  }
+
+  // ── Cache ─────────────────────────────────────────────────────────────────
+
+  private getCacheKey(name: string, args: Record<string, unknown>): string {
+    return `${name}::${JSON.stringify(args)}`;
+  }
+
+  private getFromCache(name: string, args: Record<string, unknown>): string | null {
+    const key = this.getCacheKey(name, args);
+    const entry = this.resultCache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      this.resultCache.delete(key);
+      return null;
+    }
+    return entry.result;
+  }
+
+  private setCache(name: string, args: Record<string, unknown>, result: string): void {
+    const key = this.getCacheKey(name, args);
+    this.resultCache.set(key, { result, expiresAt: Date.now() + this.CACHE_TTL_MS });
+  }
+
+  // ── Execution ─────────────────────────────────────────────────────────────
+
+  /**
+   * Execute a tool by name.
+   * Pipeline:
+   *   1. Tool exists check
+   *   2. Schema validation
+   *   3. Cache lookup
+   *   4. Execute with AbortSignal + timeout
+   *   5. On failure: try fallback tools in order
+   *   6. Return structured ToolResult
+   */
+  async execute(
+    name: string,
+    args: Record<string, unknown>,
+    externalSignal?: AbortSignal
+  ): Promise<ToolResult> {
+    const start = Date.now();
+
+    // 1. Tool exists?
+    const tool = this.tools.get(name);
+    if (!tool) {
+      return {
+        success: false,
+        output: `Tool "${name}" is not registered. Available: ${this.names().join(', ')}`,
+        error: `Unknown tool: ${name}`,
+        tool: name,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // 2. Schema validation
+    const validationError = this.validateArgs(tool, args);
+    if (validationError) {
+      return {
+        success: false,
+        output: `Invalid arguments for tool "${name}": ${validationError}`,
+        error: validationError,
+        tool: name,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // Check abort signal first
+    if (externalSignal?.aborted) {
+      return {
+        success: false,
+        output: `Execution of tool "${name}" was aborted: Error: ABORTED`,
+        error: 'ABORTED',
+        tool: name,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // 3. Cache lookup (low-risk tools only)
+    if (tool.riskLevel === 'low') {
+      const cached = this.getFromCache(name, args);
+      if (cached !== null) {
+        return {
+          success: true,
+          output: cached,
+          tool: name,
+          durationMs: Date.now() - start,
+          fromCache: true,
+        };
+      }
+    }
+
+    const runUnderLock = async () => {
+      // 4. Execute with timeout + abort signal
+      const result = await this.executeWithFallbacks(tool, args, externalSignal, start);
+
+      // 5. Cache successful low-risk results
+      if (result.success && tool.riskLevel === 'low') {
+        this.setCache(name, args, result.output);
+      }
+      return result;
+    };
+
+    if (tool.riskLevel === 'low') {
+      return runUnderLock();
+    }
+
+    // Queue medium/high risk executions sequentially
+    const queuedResult = new Promise<ToolResult>((resolve) => {
+      this.executionQueue = this.executionQueue.then(async () => {
+        try {
+          const res = await runUnderLock();
+          resolve(res);
+        } catch (err: any) {
+          resolve({
+            success: false,
+            output: `Queue execution error: ${err.message}`,
+            error: err.message,
+            tool: tool.name,
+            durationMs: Date.now() - start,
+          });
+        }
+      });
+    });
+
+    return queuedResult;
+  }
+
+  /**
+   * Attempts the primary tool then falls through to each fallback in order.
+   * Phase 5: applies per-tool retry policy with exponential backoff,
+   * records metrics and execution history on every attempt.
+   */
+  private async executeWithFallbacks(
+    tool: AgentTool,
+    args: Record<string, unknown>,
+    externalSignal: AbortSignal | undefined,
+    startTime: number
+  ): Promise<ToolResult> {
+    const chain = [tool.name, ...tool.fallbacks];
+
+    for (let i = 0; i < chain.length; i++) {
+      const toolName = chain[i]!;
+      const currentTool = this.tools.get(toolName);
+
+      if (!currentTool) {
+        console.warn(`[ToolRegistry] Fallback tool "${toolName}" not registered. Skipping.`);
+        continue;
+      }
+
+      // Phase 5: warn if degraded but still attempt (degraded != disabled)
+      const metrics = this._ensureMetrics(toolName);
+      if (metrics.degraded) {
+        console.warn(`[ToolRegistry] ⚠️ Tool "${toolName}" is degraded (${metrics.consecutiveFailures} consecutive failures). Attempting anyway.`);
+      }
+
+      // Phase 5: resolve retry policy (per-tool overrides default)
+      const policy: RetryPolicy = {
+        ...this.DEFAULT_RETRY,
+        ...(currentTool.retryPolicy ?? {}),
+      };
+
+      let lastErr: string | undefined;
+      let attemptNumber = 0;
+
+      // Retry loop for this tool in the chain
+      for (let attempt = 0; attempt <= policy.maxRetries; attempt++) {
+        attemptNumber = attempt;
+        const attemptStart = Date.now();
+
+        // Backoff before retry (not before first attempt)
+        if (attempt > 0) {
+          const delay = policy.baseDelayMs * Math.pow(2, attempt - 1);
+          console.log(`[ToolRegistry] Retry ${attempt}/${policy.maxRetries} for "${toolName}" in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+        }
+
+        try {
+          // Phase 5: route through sandbox for medium/high risk tools
+          let output: string;
+          if (currentTool.riskLevel === 'low') {
+            output = await this._executeRaw(currentTool, args, externalSignal);
+          } else {
+            output = await toolExecutionSandbox.run(currentTool, args, externalSignal);
+          }
+          const durationMs = Date.now() - attemptStart;
+
+          const isError = output.toLowerCase().startsWith('error:') ||
+                          output.toLowerCase().startsWith('tool "');
+
+          // Record metrics and history
+          this._recordMetric(toolName, !isError, durationMs, isError ? output : undefined);
+          this._pushHistory({ tool: toolName, args, success: !isError, durationMs, error: isError ? output : undefined, attemptNumber, timestamp: Date.now() });
+
+          if (!isError || i === chain.length - 1) {
+            return {
+              success: !isError,
+              output,
+              tool: toolName,
+              durationMs: Date.now() - startTime,
+              attemptNumber,
+              ...(i > 0 ? { fromFallback: toolName } : {}),
+            };
+          }
+
+          console.warn(`[ToolRegistry] Tool "${toolName}" returned error, trying fallback...`);
+          break; // move to next in chain
+
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          const durationMs = Date.now() - attemptStart;
+          lastErr = errMsg;
+
+          // Phase 5: skip retry on timeout/abort if policy says so
+          const isTimeout = errMsg.includes('AbortError') || errMsg.includes('aborted') || errMsg.includes('timeout');
+          if (isTimeout && policy.skipRetryOnTimeout) {
+            console.warn(`[ToolRegistry] Tool "${toolName}" timed out — no retry per policy.`);
+            this._recordMetric(toolName, false, durationMs, errMsg);
+            this._pushHistory({ tool: toolName, args, success: false, durationMs, error: errMsg, attemptNumber, timestamp: Date.now() });
+            break;
+          }
+
+          this._recordMetric(toolName, false, durationMs, errMsg);
+          this._pushHistory({ tool: toolName, args, success: false, durationMs, error: errMsg, attemptNumber, timestamp: Date.now() });
+
+          if (attempt < policy.maxRetries) {
+            console.warn(`[ToolRegistry] Tool "${toolName}" threw (attempt ${attempt + 1}/${policy.maxRetries + 1}): ${errMsg}. Retrying...`);
+          }
+        }
+      } // end retry loop
+
+      // If we've exhausted retries for this chain entry, try next fallback
+      if (i < chain.length - 1) {
+        console.warn(`[ToolRegistry] Tool "${toolName}" exhausted retries. Trying next fallback...`);
+      } else {
+        // All options exhausted
+        return {
+          success: false,
+          output: `All tool attempts failed for "${tool.name}". Last error: ${lastErr ?? 'unknown'}`,
+          error: lastErr,
+          tool: toolName,
+          durationMs: Date.now() - startTime,
+          attemptNumber,
+        };
+      }
+    }
+
+    return {
+      success: false,
+      output: `No tools available for "${tool.name}"`,
+      error: 'All tools unavailable',
+      tool: tool.name,
+      durationMs: Date.now() - startTime,
+    };
+  }
+
+  /** Direct execution with global timeout — used for low-risk tools only.
+   *  Medium/high risk tools go through toolExecutionSandbox.run() instead. */
+  private async _executeRaw(
+    tool: AgentTool,
+    args: Record<string, unknown>,
+    externalSignal?: AbortSignal
+  ): Promise<string> {
+    const ac = new AbortController();
+
+    // Chain external abort signal
+    if (externalSignal) {
+      externalSignal.addEventListener('abort', () => ac.abort(), { once: true });
+    }
+
+    const timeoutId = setTimeout(() => ac.abort(), this.EXECUTION_TIMEOUT_MS);
+
+    try {
+      const result = await tool.execute(args, ac.signal);
+      return result;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  // ── Discovery ─────────────────────────────────────────────────────────────
+
+  /**
+   * Find tools that could handle a given capability description.
+   * Simple keyword matching — good enough for dynamic tool selection.
+   */
+  findByCapability(capability: string): AgentTool[] {
+    const lower = capability.toLowerCase();
+    return [...this.tools.values()].filter(tool =>
+      tool.description.toLowerCase().includes(lower) ||
+      tool.name.toLowerCase().includes(lower)
+    );
+  }
+
+  getStats(): Record<string, unknown> {
+    return {
+      totalTools: this.tools.size,
+      cacheSize: this.resultCache.size,
+      tools: this.names(),
+    };
+  }
+
+  // ── Phase 5: Metrics, Health, History, Rollback ───────────────────────────
+
+  private _ensureMetrics(name: string): ToolMetrics {
+    if (!this._metrics.has(name)) {
+      this._metrics.set(name, {
+        tool: name, totalCalls: 0, successCount: 0, failureCount: 0,
+        avgDurationMs: 0, consecutiveFailures: 0, degraded: false,
+      });
+    }
+    return this._metrics.get(name)!;
+  }
+
+  private _recordMetric(name: string, success: boolean, durationMs: number, error?: string): void {
+    const m = this._ensureMetrics(name);
+    m.totalCalls++;
+    m.avgDurationMs = Math.round((m.avgDurationMs * (m.totalCalls - 1) + durationMs) / m.totalCalls);
+    if (success) {
+      m.successCount++;
+      m.consecutiveFailures = 0;
+      m.lastSuccessAt = Date.now();
+      if (m.degraded) {
+        console.log(`[ToolRegistry] ✅ Tool "${name}" recovered — marking healthy.`);
+        m.degraded = false;
+      }
+    } else {
+      m.failureCount++;
+      m.consecutiveFailures++;
+      m.lastFailureReason = error;
+      m.lastFailureAt = Date.now();
+      if (m.consecutiveFailures >= this.DEGRADE_THRESHOLD && !m.degraded) {
+        console.warn(`[ToolRegistry] ⚠️ Tool "${name}" degraded after ${m.consecutiveFailures} consecutive failures.`);
+        m.degraded = true;
+      }
+    }
+  }
+
+  private _pushHistory(record: ExecutionRecord): void {
+    if (this._history.length >= this.HISTORY_MAX) {
+      this._history.shift(); // drop oldest
+    }
+    this._history.push(record);
+  }
+
+  /** Returns metrics for all tools or a specific tool. */
+  getMetrics(toolName?: string): ToolMetrics[] {
+    if (toolName) {
+      const m = this._metrics.get(toolName);
+      return m ? [m] : [];
+    }
+    return [...this._metrics.values()];
+  }
+
+  /** Returns recent execution history (newest last). */
+  getHistory(limit = 50): ExecutionRecord[] {
+    return this._history.slice(-limit);
+  }
+
+  /** Health report: lists degraded tools and overall registry health. */
+  getHealthReport(): { healthy: boolean; degradedTools: string[]; metrics: ToolMetrics[] } {
+    const metrics = [...this._metrics.values()];
+    const degradedTools = metrics.filter(m => m.degraded).map(m => m.tool);
+    return { healthy: degradedTools.length === 0, degradedTools, metrics };
+  }
+
+  /**
+   * Phase 5: Execute rollback for a previously succeeded tool.
+   * Calls tool.rollback() if defined; no-op otherwise.
+   */
+  async rollback(name: string, args: Record<string, unknown>, executionResult: string): Promise<void> {
+    const tool = this.tools.get(name);
+    if (!tool?.rollback) {
+      console.log(`[ToolRegistry] No rollback defined for "${name}" — skipping.`);
+      return;
+    }
+    try {
+      console.log(`[ToolRegistry] Rolling back "${name}"...`);
+      await tool.rollback(args, executionResult);
+      console.log(`[ToolRegistry] Rollback for "${name}" completed.`);
+    } catch (err) {
+      console.error(`[ToolRegistry] Rollback for "${name}" failed:`, err);
+    }
+  }
+}
+
+// ─── Singleton ────────────────────────────────────────────────────────────────
+
+export const toolRegistryV2 = new ToolRegistryV2();

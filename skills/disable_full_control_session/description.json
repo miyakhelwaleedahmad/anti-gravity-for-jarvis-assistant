@@ -1,0 +1,7 @@
+{
+  "id": "disable_full_control_session",
+  "name": "Disable Full Control Session",
+  "description": "Disables Level 2 Full Control Mode and falls back to Safe Control.",
+  "riskLevel": "low",
+  "parameters": {}
+}

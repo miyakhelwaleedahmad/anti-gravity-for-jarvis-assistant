@@ -1,0 +1,46 @@
+{
+  "started": "2026-06-11T05:03:59.262Z",
+  "ended": "2026-06-11T05:04:59.262Z",
+  "durationMinutes": 1,
+  "totalCycles": 2,
+  "failedCycles": 0,
+  "avgHeapMB": 14,
+  "maxHeapMB": 14,
+  "avgContextBuildMs": 896,
+  "avgToolExecuteMs": 10,
+  "totalErrors": 0,
+  "errors": [],
+  "potentialIssues": [],
+  "cycles": [
+    {
+      "cycleNum": 1,
+      "timestamp": "2026-06-11T05:04:28.191Z",
+      "heapUsedMB": 14,
+      "heapTotalMB": 24,
+      "rssMB": 76,
+      "memoryWriteMs": 18,
+      "contextBuildMs": 740,
+      "toolExecuteMs": 10,
+      "messageBusMs": 54,
+      "redisOk": true,
+      "vectorOk": true,
+      "cacheOk": true,
+      "errors": []
+    },
+    {
+      "cycleNum": 2,
+      "timestamp": "2026-06-11T05:04:59.260Z",
+      "heapUsedMB": 14,
+      "heapTotalMB": 19,
+      "rssMB": 77,
+      "memoryWriteMs": 13,
+      "contextBuildMs": 1052,
+      "toolExecuteMs": 9,
+      "messageBusMs": 60,
+      "redisOk": true,
+      "vectorOk": true,
+      "cacheOk": true,
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "open_app",
+  "name": "Open Application",
+  "description": "Use to launch or open desktop applications and web targets (WhatsApp, Chrome, Calculator, VS Code, YouTube, Settings, Notepad, CMD, Spotify, GitHub, Gmail, Firefox, Edge, Downloads). DO NOT use web_search for application launch requests. Required parameter: target (string app name). Returns application execution status string.",
+  "riskLevel": "medium",
+  "parameters": {
+    "target": {
+      "type": "string",
+      "description": "Allowlisted app or website target name: whatsapp, youtube, chrome, calculator, vscode, google, notepad, github, gmail, spotify, firefox, edge, or cmd.",
+      "required": true
+    },
+    "source": {
+      "type": "string",
+      "description": "Request source: voice, text, or llm.",
+      "required": false
+    },
+    "dryRun": {
+      "type": "boolean",
+      "description": "Validate and resolve the target without launching anything.",
+      "required": false
+    }
+  },
+  "fallbacks": []
+}

@@ -1,0 +1,19 @@
+{
+  "id": "deep_search",
+  "name": "Deep Search",
+  "description": "Perform a deep multi-query web search and summarize findings. Use this when a single search isn't enough — it runs multiple related queries and merges results for comprehensive research.",
+  "riskLevel": "low",
+  "parameters": {
+    "topic": {
+      "type": "string",
+      "description": "The main topic or question to research thoroughly",
+      "required": true
+    },
+    "depth": {
+      "type": "string",
+      "description": "Search depth: 'quick' (1 query), 'normal' (2 queries), 'deep' (3 queries). Default: normal",
+      "required": false
+    }
+  },
+  "fallbacks": ["web_search"]
+}

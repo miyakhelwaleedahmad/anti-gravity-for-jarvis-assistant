@@ -1,0 +1,7 @@
+{
+  "id": "get_active_window",
+  "name": "Get Active Window",
+  "description": "Get details of the currently active foreground window.",
+  "riskLevel": "low",
+  "parameters": {}
+}

@@ -1,0 +1,13 @@
+{
+  "id": "is_tab_open",
+  "name": "Is Tab Open",
+  "description": "Check if a Chrome tab is open matching a title or URL query.",
+  "riskLevel": "low",
+  "parameters": {
+    "tabNameOrUrl": {
+      "type": "string",
+      "description": "The title or URL domain/substring of the tab to check.",
+      "required": true
+    }
+  }
+}

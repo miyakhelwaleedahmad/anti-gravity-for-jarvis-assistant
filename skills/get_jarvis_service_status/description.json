@@ -1,0 +1,7 @@
+{
+  "id": "get_jarvis_service_status",
+  "name": "Get JARVIS Service Status",
+  "description": "Get status of JARVIS internal services (Redis, Vector Memory, NodeBridge, STT, TTS, WakeWord, Vision).",
+  "riskLevel": "low",
+  "parameters": {}
+}

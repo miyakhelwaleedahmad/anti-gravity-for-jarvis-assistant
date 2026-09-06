@@ -1,0 +1,74 @@
+{
+  "windows_commands": {
+    "system": [
+      "systeminfo", "wmic", "tasklist", "tasklist /v", "dxdiag", "msinfo32",
+      "perfmon", "eventvwr", "devmgmt.msc", "services.msc"
+    ],
+    "network": [
+      "ipconfig", "ipconfig /all", "ipconfig /release", "ipconfig /renew", "ipconfig /flushdns",
+      "ping", "tracert", "pathping", "netstat", "netstat /an", "nslookup", "getmac", "arp",
+      "route", "route add", "route delete", "net use", "net view", "net share", "net user",
+      "net group", "net localgroup", "net stop", "net start", "net statistics", "netsh",
+      "netsh interface", "netsh int ip show", "telnet", "ftp", "tftp", "scp", "ssh"
+    ],
+    "files": [
+      "dir", "dir /s", "dir /a", "cd", "chdir", "mkdir", "md", "rmdir", "rd", "rmdir /s /q",
+      "copy", "copy /y", "move", "ren", "del", "erase", "del /s /q", "type", "more", "find",
+      "findstr", "fc", "xcopy", "xcopy /s /e /y", "robocopy", "attrib", "attrib +h", "attrib -h",
+      "attrib -r", "compact", "cipher", "whoami", "cd ..", "tree", "tree /f"
+    ],
+    "disk": [
+      "chkdsk", "chkdsk /f", "chkdsk /r", "diskpart", "format", "format X: /fs:NTFS", "vol",
+      "label", "defrag", "defrag C: /U", "fsutil", "fsutil fsinfo", "fsutil volume list",
+      "fsutil file createnew", "diskperf"
+    ],
+    "processes": [
+      "tasklist", "tasklist /v", "tasklist /m", "taskkill", "taskkill /im", "taskkill /pid",
+      "taskkill /f", "wmic process list", "wmic process get", "wmic process call", "start",
+      "start /B", "start /wait", "start /high", "start /realtime", "timeout", "pause", "exit"
+    ],
+    "batch": [
+      "echo", "echo.", "echo:", "@echo off", "@echo on", "cls", "set", "set /p", "setlocal",
+      "endlocal", "if", "if exist", "if errorlevel", "for", "for /L", "for /F", "for /R", "for /D",
+      "goto", "call", "rem", "::"
+    ],
+    "print": [
+      "print", "lpr", "lpq", "lprm", "wmic printjob", "rundll32"
+    ],
+    "registry": [
+      "reg query", "reg add", "reg delete", "reg export", "reg import", "reg load", "reg unload",
+      "reg restore", "regedit", "reg compare"
+    ],
+    "user_accounts": [
+      "whoami", "whoami /user", "whoami /groups", "whoami /priv", "wmic useraccount", "net user",
+      "net user /add", "net user /delete", "net user /active", "net localgroup", "net localgroup /add",
+      "usermod", "passwd"
+    ],
+    "security": [
+      "icacls", "icacls * /grant", "icacls * /remove", "cacls", "cipher", "cipher /e", "cipher /d",
+      "certutil", "certutil -hashfile", "gpupdate", "gpupdate /force", "secedit", "takeown"
+    ],
+    "maintenance": [
+      "shutdown", "shutdown /s", "shutdown /r", "shutdown /h", "shutdown /t 30", "shutdown /c \"msg\"",
+      "shutdown /a", "sfc /scannow", "sfc /verifyonly", "sfc /scanfile", "DISM /Online", "powercfg",
+      "powercfg /batteryreport", "ipconfig /all"
+    ],
+    "performance": [
+      "systeminfo", "wmic os get", "wmic CPU get", "wmic memphysical get", "tasklist /v", "perfmon",
+      "eventvwr", "resmon", "taskmgr", "netstat /an", "netstat /e", "gpresult /h report.html"
+    ],
+    "developer": [
+      "msbuild", "devenv", "git", "npm", "python", "node", "java", "javac", "cl", "csc"
+    ],
+    "miscellaneous": [
+      "date", "date /t", "time", "time /t", "title", "color", "mode", "mode con: cols=120 lines=40",
+      "cls", "ver", "help", "help <command>", "<command> /?", "clip", "tree", "sort", "more"
+    ],
+    "ads": [
+      "dir /R", "type file > file.txt"
+    ],
+    "operators": [
+      ">", ">>", "<", "|", "&", "&&", "||", "(...)", "set /a", "!", "%"
+    ]
+  }
+}

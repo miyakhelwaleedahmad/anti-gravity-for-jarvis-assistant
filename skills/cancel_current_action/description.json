@@ -1,0 +1,7 @@
+{
+  "id": "cancel_current_action",
+  "name": "Cancel Current Action",
+  "description": "Cancels the currently running action queue task (emergency stop).",
+  "riskLevel": "low",
+  "parameters": {}
+}

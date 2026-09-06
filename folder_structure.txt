@@ -1,0 +1,45 @@
+anti gravity for jarvis assistant
+├── bridge
+│   ├── groqProvider.ts
+│   ├── llmTypes.ts
+│   ├── modelRouter.ts
+│   ├── nodeBridge.ts
+│   └── pythonBridge.ts
+├── config
+│   ├── fs-extra.d.ts
+│   ├── llmconfig.ts
+│   └── ws.d.ts
+├── core
+│   ├── brain.ts
+│   ├── fileManager.ts
+│   ├── fileTools.ts
+│   ├── groqCore.ts
+│   ├── terminalTools.ts
+│   └── toolExecutor.ts
+├── memory
+│   ├── jarvis_memory.json
+│   ├── memoryManager.ts
+│   ├── memoryTypes.ts
+│   ├── sqliteMemory.ts
+│   └── vectorMemory.ts
+├── self_healing
+│   ├── failureClassifier.ts
+│   ├── failureDetector.ts
+│   ├── fallbackRouter.ts
+│   ├── index.ts
+│   ├── recoveryPlanner.ts
+│   ├── repairExecutor.ts
+│   └── selfHealingManager.ts
+├── voice
+│   ├── reflectionEngine.py
+│   ├── stt.py
+│   ├── tts.py
+│   └── wakeWords.py
+├── .env
+├── .gitignore
+├── architecture of jarvis in antigravity
+├── jarvis.ts
+├── package-lock.json
+├── package.json
+├── pnpm-lock.yaml
+└── tsconfig.json
