@@ -116,4 +116,5 @@ These cannot be proven here and must not be reported as verified:
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 | ✅ Complete | — | Baseline captured, 3 real defects isolated from 8 environmental failures |
+| 2 | ✅ Complete | `phase-2` | JARVIS-004/008. First-call tool latency **503ms → 2ms** (measured directly). Repeated identical command no longer fails without executing. Suite **61 pass / 8 fail**, zero regressions. New test verified to fail 4/10 against pre-fix code. |
 | 1 | ✅ Complete | `phase-1` | JARVIS-001/001b/012. Suite **56→60 pass**, 11→8 fail, **zero regressions**. All 8 remaining failures are the baseline's environmental ones. New `workspaceRootPortabilityTest` 26/26. |

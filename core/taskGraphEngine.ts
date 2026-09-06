@@ -259,9 +259,25 @@ export class TaskGraphEngine extends EventEmitter {
    */
   private readonly MAX_GRAPH_RETRIES = 2;
   private _graphRetryCount = new Map<string, number>(); // goal → retry count
+  /** Upper bound on the retry-guard map, so a long session cannot grow it without limit. */
+  private readonly MAX_TRACKED_GOALS = 100;
 
   private abortControllers = new Map<string, AbortController>();
   private toolExecutionQueues = new Map<string, Promise<void>>();
+  /**
+   * Last invocation time per tool, used to space out calls to the same tool.
+   * Bounded by the number of registered tools.
+   */
+  private lastToolInvocation = new Map<string, number>();
+  /**
+   * Minimum gap between two calls to the *same* tool. Previously this was an
+   * unconditional 500 ms sleep before every node, including the first call to a
+   * tool, which added 500 ms to every tool-using request (JARVIS-004).
+   */
+  private readonly MIN_TOOL_GAP_MS = Math.max(
+    0,
+    Number(process.env['JARVIS_MIN_TOOL_GAP_MS'] ?? 250),
+  );
   private currentGraph: TaskGraph | null = null;
 
   constructor() {
@@ -319,6 +335,15 @@ export class TaskGraphEngine extends EventEmitter {
     }
 
     graph.completedAt = Date.now();
+
+    // Clear the replan guard once the goal settles successfully. Previously the
+    // counter was only deleted inside the guard branch itself and
+    // `resetReplanCount()` had no callers, so a goal that had used up its
+    // replans stayed poisoned: repeating the same command later in the session
+    // failed instantly without executing anything (JARVIS-008).
+    if (graph.status === 'completed') {
+      this._graphRetryCount.delete(graph.goal);
+    }
 
     this.emit('graph_completed', {
       graphId: graph.id,
@@ -412,8 +437,14 @@ export class TaskGraphEngine extends EventEmitter {
       const previousExecution = this.toolExecutionQueues.get(node.tool) || Promise.resolve();
       
       const executionPromise = previousExecution.then(async () => {
-        // Enforce a small backoff between calls to the same tool
-        await sleep(500); 
+        // Space out repeat calls to the same tool, but never delay its first
+        // call. Measured start-to-start, so a slow tool needs no extra wait.
+        const last = this.lastToolInvocation.get(node.tool);
+        const wait = last === undefined
+          ? 0
+          : Math.max(0, this.MIN_TOOL_GAP_MS - (Date.now() - last));
+        if (wait > 0) await sleep(wait);
+        this.lastToolInvocation.set(node.tool, Date.now());
         if (graph.status === 'interrupted') throw new Error('interrupted');
         return executor(node.tool, node.args, ac.signal);
       }).catch(err => {
@@ -560,6 +591,12 @@ export class TaskGraphEngine extends EventEmitter {
   canReplan(goal: string): boolean {
     const count = this._graphRetryCount.get(goal) ?? 0;
     if (count >= this.MAX_GRAPH_RETRIES) return false;
+    // Evict the oldest entry rather than letting the map grow for the life of
+    // the process (Map preserves insertion order).
+    if (!this._graphRetryCount.has(goal) && this._graphRetryCount.size >= this.MAX_TRACKED_GOALS) {
+      const oldest = this._graphRetryCount.keys().next();
+      if (!oldest.done) this._graphRetryCount.delete(oldest.value);
+    }
     this._graphRetryCount.set(goal, count + 1);
     return true;
   }
