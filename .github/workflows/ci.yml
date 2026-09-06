@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # Runs every test that does not need Windows, Redis, a Python virtualenv,
+      # or a reachable LLM API. Those are reported as skipped with the reason,
+      # so a genuine regression is the only thing that turns this red.
+      - name: Test (platform-independent subset)
+        run: pnpm test -- --ci
+
+  python-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # sentence-transformers is deliberately not installed: it pulls in torch,
+      # and the vector-persistence test stubs the embedding model.
+      - name: Install light Python dependencies
+        run: python -m pip install --quiet numpy fastapi pydantic
+
+      - name: Compile-check every Python file
+        run: python -m compileall -q memory voice vision bridge
+
+      - name: Vector persistence and fact-id tests
+        run: python tests/python/test_vector_persistence.py

@@ -9,11 +9,13 @@
     "build": "tsc",
     "start": "node dist/jarvis.js",
     "clean": "rimraf dist",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tsx tests/runAll.ts",
     "test:latency": "tsx tests/latencySmokeTest.ts",
     "test:voice-core": "npx tsc --noEmit && npx tsx tests/nodeBridgeSingletonTest.ts && npx tsx tests/voiceRouteMockTest.ts && npx tsx tests/interruptGatingTest.ts && npx tsx tests/openAppSmokeTest.ts youtube && npx tsx tests/openAppSmokeTest.ts notepad && npx tsx tests/openAppSmokeTest.ts cmd && npx tsx tests/latencySmokeTest.ts \"open YouTube for me\" && npx tsx tests/deterministicCommandRouteTest.ts && npx tsx tests/noGroqForLocalCommandsTest.ts && npx tsx tests/ttsLifecycleStateTest.ts && npx tsx tests/stopClearsTtsQueueTest.ts && npx tsx tests/noThinkMemoryTest.ts && npx tsx tests/bargeInProcessingTest.ts && npx tsx tests/voiceYouTubeIntegrationTest.ts",
     "test:pc-control": "npx tsc --noEmit && npx tsx tests/systemStateSmokeTest.ts && npx tsx tests/chromeStateSmokeTest.ts && npx tsx tests/systemStateRouteTest.ts && npx tsx tests/permissionSessionTest.ts && npx tsx tests/actionQueueRecoveryTest.ts && npx tsx tests/rollbackManagerTest.ts && npx tsx tests/closeAppRouteTest.ts && npx tsx tests/pcControlKernelTest.ts && npx tsx tests/appControlTest.ts && npx tsx tests/windowControlTest.ts && npx tsx tests/browserControlTest.ts && npx tsx tests/inputControlTest.ts && npx tsx tests/mouseKeyboardControlTest.ts && npx tsx tests/fileControlSafetyTest.ts && npx tsx tests/processControlSafetyTest.ts && npx tsx tests/systemControlSafetyTest.ts && npx tsx tests/adminControlTest.ts",
-    "test:all": "npm run test:voice-core && npm run test:pc-control"
+    "test:all": "npm run test:voice-core && npm run test:pc-control",
+    "test:ci": "tsx tests/runAll.ts --ci",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "axios": "^1.15.0",
