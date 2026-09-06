@@ -448,48 +448,57 @@ export class JarvisOrchestrator {
       if (agentStateMachine.currentState !== AgentState.EXECUTING) {
         try { agentStateMachine.transition(AgentState.EXECUTING); } catch {}
       }
+      // JARVIS-019: the outcome of these tool calls used to be discarded — the
+      // route always reported 'success', so a failed open_app was recorded as a
+      // completed goal. Track it without changing any spoken reply.
+      let routeSucceeded = true;
+      const runRoutedTool = async (tool: string, args: Record<string, unknown>) => {
+        const result = await toolRegistryV2.execute(tool, args);
+        if (!result?.success) routeSucceeded = false;
+        return result;
+      };
       try {
         if (route.type === 'open_app' && route.target) {
-          const result = await toolRegistryV2.execute('open_app', { target: route.target, source });
+          const result = await runRoutedTool('open_app', { target: route.target, source });
           const reply = result?.success
             ? route.reply
             : `I tried to open ${route.target} but encountered an issue, sir.`;
           this.speak(reply);
         } else if (route.type === 'close_browser_tab' && route.target) {
-          const result = await toolRegistryV2.execute('control_browser', { action: 'close', target: route.target });
+          const result = await runRoutedTool('control_browser', { action: 'close', target: route.target });
           const reply = result?.success
             ? route.reply
             : `I tried to close the tab "${route.target}" but encountered an issue, sir.`;
           this.speak(reply);
         } else if (route.type === 'close_current_tab') {
-          const result = await toolRegistryV2.execute('control_browser', { action: 'close_current' });
+          const result = await runRoutedTool('control_browser', { action: 'close_current' });
           const reply = result?.success
             ? route.reply
             : `I tried to close the current tab but encountered an issue, sir.`;
           this.speak(reply);
         } else if (route.type === 'close_app' && route.target) {
-          const result = await toolRegistryV2.execute('control_app', { action: 'close', target: route.target });
+          const result = await runRoutedTool('control_app', { action: 'close', target: route.target });
           const reply = result?.success
             ? route.reply
             : `I tried to close the application "${route.target}" but encountered an issue, sir.`;
           this.speak(reply);
         } else if (route.type === 'close_current_window') {
-          const result = await toolRegistryV2.execute('control_window', { action: 'close_current' });
+          const result = await runRoutedTool('control_window', { action: 'close_current' });
           const reply = result?.success
             ? route.reply
             : `I tried to close the active window but encountered an issue, sir.`;
           this.speak(reply);
         } else if (route.type === 'get_system_state') {
-          const result = await toolRegistryV2.execute('get_system_state', {});
+          const result = await runRoutedTool('get_system_state', {});
           this.speak(result?.success ? `Here is the current system state, sir: ${result.output}` : 'Failed to retrieve system state, sir.');
         } else if (route.type === 'get_browser_tabs') {
-          const result = await toolRegistryV2.execute('get_browser_tabs', {});
+          const result = await runRoutedTool('get_browser_tabs', {});
           this.speak(result?.success ? `Here are the open Chrome tabs, sir: ${result.output}` : 'Failed to retrieve browser tabs, sir.');
         } else if (route.type === 'is_tab_open' && route.target) {
-          const result = await toolRegistryV2.execute('is_tab_open', { tabNameOrUrl: route.target });
+          const result = await runRoutedTool('is_tab_open', { tabNameOrUrl: route.target });
           this.speak(result?.success && result.output === 'true' ? `Yes, the ${route.target} tab is open, sir.` : `No, the ${route.target} tab is not open, sir.`);
         } else if (route.type === 'enable_full_control_session') {
-          const result = await toolRegistryV2.execute('enable_full_control_session', { source });
+          const result = await runRoutedTool('enable_full_control_session', { source });
           this.speak(result?.success ? `Full control mode enabled, sir.` : 'Failed to enable full control, sir.');
         } else {
           if (route.type === 'stop') {
@@ -504,8 +513,9 @@ export class JarvisOrchestrator {
       } catch (err) {
         console.error('[Orchestrator] Deterministic command execution error:', err);
         this.speak(`Sorry, I could not process the command, sir.`);
+        routeSucceeded = false;
       }
-      return 'success'; // deterministic commands complete the goal
+      return routeSucceeded ? 'success' : 'failed';
     }
 
     // Record user input to memory — fire-and-forget (non-blocking).
@@ -571,6 +581,8 @@ export class JarvisOrchestrator {
     // ── Phase 6: PLANNER INTELLIGENCE ANALYSIS ─────────────────────────────
     // Runs after structural preCheck — adds confidence scoring, failure
     // prediction, and plan validation on top of the structural check.
+    let replanRequest: { reason: string } | null = null;
+    let activePlan = planResult;
     try {
       const intelligence = plannerIntelligence.analyzeGraph(planResult);
 
@@ -581,10 +593,15 @@ export class JarvisOrchestrator {
           ? `My plan has high-risk steps, sir. I'll reconsider. (${topIssue.reasons[0] ?? 'low confidence'})`
           : `My plan confidence is too low to proceed safely, sir. Replanning.`;
 
-        console.warn(`[Orchestrator] ⚠️ PlannerIntelligence: recommendation=replan. Failing plan.`);
+        // The message promised a replan, but the code called failGoal() and
+        // returned 'failed' without ever replanning (JARVIS-007). Record the
+        // intent here and act on it after this analysis block, so a genuine
+        // replan attempt happens and the guard still bounds it.
+        console.warn(`[Orchestrator] ⚠️ PlannerIntelligence: recommendation=replan.`);
         this.speak(msg);
-        if (goal) await goalManager.failGoal(goal.id, 'PlannerIntelligence: low confidence plan rejected');
-        return 'failed';
+        replanRequest = {
+          reason: topIssue?.reasons.join('; ') ?? 'plan confidence below threshold',
+        };
       }
 
       if (intelligence.recommendation === 'proceed_with_caution') {
@@ -600,6 +617,23 @@ export class JarvisOrchestrator {
       console.warn('[Orchestrator] PlannerIntelligence analysis failed (non-fatal):', err);
     }
 
+    // ── Act on a low-confidence plan by actually replanning (JARVIS-007) ────
+    if (replanRequest) {
+      if (!taskGraphEngine.canReplan(input)) {
+        console.warn('[Orchestrator] ⛔ Replan guard: budget exhausted for this goal.');
+        if (goal) await goalManager.failGoal(goal.id, 'PlannerIntelligence: low confidence plan rejected');
+        return 'failed';
+      }
+
+      const replanned = await this.repairPhase('replan', { context: replanRequest.reason }, activePlan, input);
+      if (!replanned) {
+        // The replan produced a direct answer rather than a graph.
+        if (goal) await goalManager.completeGoal(goal.id).catch(() => {});
+        return 'success';
+      }
+      activePlan = replanned;
+    }
+
     if (goal) {
       goalManager.updateGoalStatus(goal.id, 'executing', {
         planSummary: preCheck.summary,
@@ -607,7 +641,7 @@ export class JarvisOrchestrator {
       }).catch(() => {});
     }
 
-    let graph = planResult;
+    let graph = activePlan;
     let repairCycles = 0;
 
     // ── Repair Loop ──────────────────────────────────────────────────────────
@@ -1294,7 +1328,41 @@ export class JarvisOrchestrator {
       }
 
       case 'fallback_tool': {
+        // Previously byte-identical to 'retry_same': it reset the failed nodes
+        // and re-ran them under the *same* tool, so the strategy never did what
+        // its name says (JARVIS-006). Now each failed node is rewritten to the
+        // best registered alternative before the reset; nodes with no usable
+        // alternative simply fall through to a plain retry, as before.
         const nodeIds = (repairArgs['nodeIds'] as string[]) ?? [];
+
+        let switched = 0;
+        for (const nodeId of nodeIds) {
+          const node = graph.nodes.get(nodeId);
+          if (!node) continue;
+
+          const alternative = plannerIntelligence
+            .generateAlternatives(node)
+            .filter((a) => a.type === 'use_fallback' && a.replacementTool)
+            .sort((a, b) => a.priority - b.priority)[0];
+
+          const replacement = alternative?.replacementTool;
+          if (!replacement || replacement === node.tool) continue;
+          if (!toolRegistryV2.get(replacement)) continue;
+
+          console.log(
+            `[Orchestrator] 🔀 fallback_tool: node "${node.id}" "${node.tool}" → "${replacement}"`,
+          );
+          node.tool = replacement;
+          if (alternative.replacementArgs) node.args = alternative.replacementArgs;
+          node.error = undefined;
+          node.errorType = undefined;
+          switched++;
+        }
+
+        if (switched === 0) {
+          console.log('[Orchestrator] fallback_tool: no alternative tool available — plain retry.');
+        }
+
         reflectionEngine.resetFailedNodes(graph, nodeIds);
         return graph;
       }
