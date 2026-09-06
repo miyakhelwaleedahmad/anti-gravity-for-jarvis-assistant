@@ -1,7 +1,7 @@
 {
   "name": "antigravityforjarvisassistant",
   "version": "1.0.0",
-  "description": "JARVIS AI Assistant — Antigravity",
+  "description": "JARVIS AI Assistant \u2014 Antigravity",
   "main": "jarvis.ts",
   "type": "module",
   "scripts": {
@@ -23,11 +23,6 @@
     "ioredis": "^5.11.1",
     "lowdb": "^7.0.1",
     "neo4j-driver": "^6.0.1",
-    "next": "^16.2.9",
-    "node-localstorage": "^3.0.5",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "redis": "^6.0.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {

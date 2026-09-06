@@ -4,7 +4,6 @@ import { getWorkspaceRoot } from '../core/workspaceRoot.js';
 
 const ROOT = getWorkspaceRoot();
 const SOURCE_DIRS = [
-  'app',
   'bridge',
   'config',
   'control',
@@ -67,9 +66,16 @@ console.log(`\nnext imports: ${nextHits.length}`);
 console.log(`react imports: ${reactHits.length}`);
 console.log(`react-dom imports: ${reactDomHits.length}`);
 
-if (nextHits.length === 0) {
-  console.error('Expected at least one Next import while app/api is present.');
+// The orphan `app/api/memory/route.ts` — which exposed unauthenticated
+// arbitrary-key Redis read/write to anyone who started a Next server — has been
+// deleted, along with the five dependencies only it used. This check now guards
+// the reverse: nothing may reintroduce those imports without also restoring the
+// dependencies to package.json.
+const strays = [...nextHits, ...reactHits, ...reactDomHits];
+if (strays.length > 0) {
+  console.error('Unexpected next/react imports — these dependencies were removed from package.json:');
+  for (const s of strays) console.error(`  ${s.file} -> ${s.specifier}`);
   process.exit(1);
 }
 
-console.log('\nResult: dependencies are not removed because Next is still referenced by app/api.');
+console.log('\nResult: no next/react/react-dom imports remain; the dependencies stay removed.');

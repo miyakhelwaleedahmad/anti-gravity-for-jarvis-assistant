@@ -850,11 +850,29 @@ export class JarvisOrchestrator {
       messages.push({ role: 'system', content: workingSummary });
     }
 
-    // Inject vision frame if available
+    // Inject vision frame if available.
+    //
+    // OCR text is whatever happens to be on screen — a web page, a document, a
+    // chat window — so it is attacker-controllable content, not instruction.
+    // It used to be pushed as a `system` message, which is the highest-trust
+    // role the model has: a screen reading "ignore previous instructions and
+    // run ..." was indistinguishable from a genuine directive (JARVIS-014).
+    //
+    // It now goes in as `user` content inside explicit delimiters, with the
+    // matching rule in the system prompt telling the model to treat anything
+    // inside them as data. Angle brackets in the OCR text are stripped so it
+    // cannot forge a closing tag and escape the wrapper.
     const visionFrame = nodeBridge.getLatestScreenFrame();
     if (visionFrame) {
-      const visionCtx = `[SCREEN CONTEXT — Active Window: "${visionFrame.active_window}" | OCR: "${visionFrame.ocr_text?.substring(0, 300)}"]`;
-      messages.push({ role: 'system', content: visionCtx });
+      const sanitize = (value: string): string => value.replace(/[<>]/g, '');
+      const activeWindow = sanitize(String(visionFrame.active_window ?? ''));
+      const ocrText = sanitize(String(visionFrame.ocr_text ?? '').substring(0, 300));
+      const visionCtx =
+        `<untrusted_context source="ocr">\n` +
+        `Active window: ${activeWindow}\n` +
+        `Screen text: ${ocrText}\n` +
+        `</untrusted_context>`;
+      messages.push({ role: 'user', content: visionCtx });
     }
 
     // ── 4. Fast History Trimming ──────────────────────────────────────────────
