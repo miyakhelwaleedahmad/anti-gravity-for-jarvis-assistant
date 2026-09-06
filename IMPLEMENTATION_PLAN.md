@@ -116,6 +116,12 @@ These cannot be proven here and must not be reported as verified:
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 | ✅ Complete | — | Baseline captured, 3 real defects isolated from 8 environmental failures |
+| 13 | ✅ Complete | `phase-13` | JARVIS-026. Document RAG: ingest → parse → chunk → embed → manifest → cited retrieval, plus `ingest_documents` and `search_documents` skills. New `ragPipelineTest` 28/28. |
+| 12 | ✅ Complete | `phase-12` | JARVIS-023/024/021. Repo 46MB → 3.5MB; runtime state untracked (files kept); README + ARCHITECTURE written; 3 factual errors corrected in the old architecture doc. |
+| 11 | ✅ Complete | `phase-11` | JARVIS-025. Real `npm test` runner separating defects from missing prerequisites, plus GitHub Actions CI. |
+| 10 | ✅ Complete | `phase-10` | JARVIS-017. 57 unreachable modules quarantined to `_legacy/` (list derived independently, 5 deliberately kept). Live non-test source 169 → 112 files. |
+| 9 | ✅ Complete | `phase-9` | JARVIS-018/022. Self-healing maps point at files that exist; `core/systemController.ts` → `core/stateShim.ts` ends the name clash. |
+| 8 | ✅ Complete | `phase-8` | JARVIS-015/027. Structured logger joined to the graph event stream; one correlation id per request. |
 | 7 | ✅ Complete | `phase-7` | JARVIS-011/010/016. Config validator wired to fail fast at startup; Groq cache key hashes the full payload; second OpenAI-compatible provider with ordered failover. Suite **66 pass / 8 fail**, zero regressions. New `providerFailoverTest` 13/13. |
 | 6 | ✅ Complete | `phase-6` | JARVIS-013/020/014. Orphan Next route (unauthenticated Redis) deleted with 5 unused deps; Neo4j default password removed; OCR moved out of the `system` role into sanitised `<untrusted_context>` with a matching prompt rule. Suite **65 pass / 8 fail**, zero regressions. New `promptInjectionHardeningTest` 13/13. |
 | 5 | ✅ Complete | `phase-5` | JARVIS-002/003/009. Vector store persists atomically and survives restart with **zero fact loss**; 10-fact rebuild cap lifted to all; vector↔LowDB joined by stable id; episodes persisted as append-only JSONL. Suite **64 pass / 8 fail**, zero regressions. New python test 23/23, `episodicPersistenceTest` 8/8. |

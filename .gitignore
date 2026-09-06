@@ -101,3 +101,6 @@ tsc_output.txt
 analysis.json
 temp_stt_*.wav
 *.ts.bak
+
+# Ingested document manifest — runtime data.
+data/rag/
