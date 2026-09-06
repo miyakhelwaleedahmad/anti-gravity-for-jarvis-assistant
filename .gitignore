@@ -81,3 +81,23 @@ data/vector/*
 
 # Episodic memory log — runtime data, never commit.
 data/episodes.jsonl
+
+# Live runtime state — belongs to the machine, not the repository. A checkout
+# must never overwrite the user's real goals, memory or task history.
+data/goals.json
+memory/taskHistory.json
+memory/userMemory.json
+environment/systemInfo.json
+
+# Stale generated tree dumps (~42 MB of them were committed once).
+project_structure.txt
+project_tree.txt
+jarvis_structure*.txt
+fresh_structure*.txt
+*-tree*.txt
+folder_structure.txt
+clean_structure.txt
+tsc_output.txt
+analysis.json
+temp_stt_*.wav
+*.ts.bak
