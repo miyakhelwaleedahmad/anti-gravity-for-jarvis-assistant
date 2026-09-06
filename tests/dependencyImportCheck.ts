@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getWorkspaceRoot } from '../core/workspaceRoot.js';
 
-const ROOT = path.resolve('W:\\anti gravity for jarvis assistant');
+const ROOT = getWorkspaceRoot();
 const SOURCE_DIRS = [
   'app',
   'bridge',

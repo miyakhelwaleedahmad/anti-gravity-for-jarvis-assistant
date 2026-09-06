@@ -7,33 +7,59 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import {
+  getWorkspaceRoot,
+  isForeignWindowsAbsolute,
+  isPathInside,
+  isProtectedSystemPath,
+} from '../core/workspaceRoot.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { rollbackManager } from './rollbackManager.js';
 
 export class FileController {
+  /**
+   * Directories this controller may operate in.
+   *
+   * Deliberately wider than `workspacePathPolicy`'s workspace-only boundary: a
+   * desktop assistant is expected to manage the user's own document folders.
+   * That difference is intentional and preserved — only the broken workspace
+   * literal and the containment test have changed (JARVIS-012).
+   *
+   * Paths are no longer lower-cased: `searchFiles()` passes these straight to
+   * `fs.readdir`, so a lower-cased `/home/u/desktop` simply never matched on a
+   * case-sensitive filesystem. Casing is now handled by `isPathInside`.
+   */
   private getApprovedFolders(): string[] {
     const home = os.homedir();
     return [
-      path.resolve('W:\\anti gravity for jarvis assistant').toLowerCase(),
-      path.resolve(os.tmpdir()).toLowerCase(),
-      path.resolve(path.join(home, 'Desktop')).toLowerCase(),
-      path.resolve(path.join(home, 'Documents')).toLowerCase(),
-      path.resolve(path.join(home, 'Downloads')).toLowerCase()
+      getWorkspaceRoot(),
+      path.resolve(os.tmpdir()),
+      path.resolve(path.join(home, 'Desktop')),
+      path.resolve(path.join(home, 'Documents')),
+      path.resolve(path.join(home, 'Downloads')),
     ];
   }
 
   private isPathContained(targetPath: string): boolean {
-    const resolved = path.resolve(targetPath).toLowerCase();
-    
-    // Protect system folders explicitly
-    const systemFolders = ['c:\\windows', 'c:\\program files', 'c:\\program files (x86)'];
-    for (const sys of systemFolders) {
-      if (resolved.startsWith(sys)) return false;
-    }
+    const raw = String(targetPath ?? '').trim();
+    if (!raw) return false;
 
-    const approved = this.getApprovedFolders();
-    return approved.some(folder => resolved.startsWith(folder));
+    // Protected OS locations, tested against the RAW input: on a POSIX host
+    // `path.resolve('C:\\Windows\\x')` produces a path inside the project, which
+    // the old `startsWith('c:\\windows')` test could never match (JARVIS-001b).
+    if (isProtectedSystemPath(raw)) return false;
+
+    // Absolute for a different platform than the host — cannot be inside any
+    // approved folder here, and must not be silently treated as relative.
+    if (isForeignWindowsAbsolute(raw)) return false;
+
+    const resolved = path.resolve(raw);
+    if (isProtectedSystemPath(resolved)) return false;
+
+    // Boundary-aware containment. The previous `startsWith` prefix test also
+    // accepted sibling directories such as `<home>/Desktop-evil`.
+    return this.getApprovedFolders().some((folder) => isPathInside(folder, resolved));
   }
 
   private ensureApproved(filePath: string, action: string): void {

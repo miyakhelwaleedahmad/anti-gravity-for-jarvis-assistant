@@ -67,3 +67,6 @@ Untitled.canvas
 ai_workflows/_config/github my persnal tokens.txt
 .env
 .env.*
+
+# Runtime security state (permission sessions) — created at runtime, never commit.
+data/security/

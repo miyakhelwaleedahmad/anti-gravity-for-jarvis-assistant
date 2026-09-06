@@ -18,11 +18,16 @@ import { terminalTools } from '../core/terminalTools.js';
 import { commandValidator } from '../security/commandValidator.js';
 import { securityAuditLogger } from '../security/securityAuditLogger.js';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import {
+  getWorkspaceRoot,
+  isForeignWindowsAbsolute,
+  isPathInside,
+  isProtectedSystemPath,
+} from '../core/workspaceRoot.js';
 
 // ─── Project root (safe working directory) ────────────────────────────────────
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..');
+// Single authority — see core/workspaceRoot.ts (JARVIS-001).
+const PROJECT_ROOT = getWorkspaceRoot();
 
 /** Directories that require approval to run commands within */
 const SYSTEM_DIRECTORY_PATTERNS: readonly RegExp[] = [
@@ -58,7 +63,10 @@ const SAFE_NPM_SCRIPTS = new Set([
 ]);
 
 function isSystemDirectory(dir: string): boolean {
-  return SYSTEM_DIRECTORY_PATTERNS.some((p) => p.test(dir));
+  // The local patterns require a trailing separator, so a bare `C:\\Windows`
+  // slips past them even on Windows; the shared predicate also normalises
+  // separators and matches on any host (JARVIS-001b).
+  return isProtectedSystemPath(dir) || SYSTEM_DIRECTORY_PATTERNS.some((p) => p.test(dir));
 }
 
 function tokenizeCommand(command: string): string[] | null {
@@ -175,14 +183,29 @@ export const runCommandTool: AgentTool = {
   async execute(args, signal) {
     const command = String(args['command'] ?? '').trim();
     const requestedCwd = args['workingDir'] ? String(args['workingDir']).trim() : PROJECT_ROOT;
-    const effectiveCwd = path.resolve(requestedCwd || PROJECT_ROOT);
 
     if (!command) {
       return 'Error: run_command requires a non-empty command argument.';
     }
 
-    const relativeCwd = path.relative(PROJECT_ROOT, effectiveCwd);
-    if (relativeCwd.startsWith('..') || path.isAbsolute(relativeCwd)) {
+    // A cwd that is absolute for a different platform than the host cannot be
+    // resolved meaningfully here — `path.resolve('C:\\Windows')` on POSIX yields
+    // a path *inside* the project root, so the containment check below would
+    // pass it. Reject it up front (JARVIS-001b). Checked before the system-path
+    // guard so the outcome matches Windows, where containment fails first.
+    if (isForeignWindowsAbsolute(requestedCwd)) {
+      securityAuditLogger.denied(
+        command,
+        'HIGH_RISK',
+        `Working directory outside project root blocked: ${requestedCwd}`,
+        'run_command',
+      );
+      return `Error: Working directory "${requestedCwd}" is outside the project workspace.`;
+    }
+
+    const effectiveCwd = path.resolve(requestedCwd || PROJECT_ROOT);
+
+    if (!isPathInside(PROJECT_ROOT, effectiveCwd)) {
       securityAuditLogger.denied(
         command,
         'HIGH_RISK',
