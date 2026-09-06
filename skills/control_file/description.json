@@ -8,10 +8,33 @@
       "type": "string",
       "description": "File command: 'search', 'read', 'write', 'copy', 'move', 'rename', 'delete', 'create_folder', 'delete_folder'",
       "required": true,
-      "enum": ["search", "read", "write", "copy", "move", "rename", "delete", "create_folder", "delete_folder"]
+      "enum": [
+        "search",
+        "read",
+        "write",
+        "copy",
+        "move",
+        "rename",
+        "delete",
+        "create_folder",
+        "delete_folder"
+      ]
     },
-    "path": { "type": "string", "description": "Primary file/folder path or search query", "required": true },
-    "content": { "type": "string", "description": "Text content to write (required for write)", "required": false },
-    "destination": { "type": "string", "description": "Destination path (required for copy/move/rename)", "required": false }
-  }
+    "path": {
+      "type": "string",
+      "description": "Primary file/folder path or search query",
+      "required": true
+    },
+    "content": {
+      "type": "string",
+      "description": "Text content to write (required for write)",
+      "required": false
+    },
+    "destination": {
+      "type": "string",
+      "description": "Destination path (required for copy/move/rename)",
+      "required": false
+    }
+  },
+  "requiredLevel": 2
 }

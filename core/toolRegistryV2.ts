@@ -23,6 +23,8 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 import { toolExecutionSandbox } from './toolExecutionSandbox.js';
+import { permissionSession } from '../control/permissionSession.js';
+import { securityAuditLogger } from '../security/securityAuditLogger.js';
 
 export type RiskLevel = 'low' | 'medium' | 'high';
 
@@ -62,6 +64,23 @@ export interface AgentTool {
   name: string;
   description: string;
   riskLevel: RiskLevel;
+  /**
+   * Minimum permission level required to dispatch this tool (JARVIS-005).
+   *
+   * Enforced by `execute()` before any dispatch, as defence in depth — the
+   * fine-grained checks inside `control/*` remain the primary authority and are
+   * deliberately NOT removed.
+   *
+   * Omitted means "no dispatch-layer requirement" (level 0). It is NOT derived
+   * from `riskLevel`, because that mapping is unsafe in this codebase:
+   *   - `enable_full_control_session` is riskLevel 'high' but is the very tool
+   *     that grants level 2, so requiring level 2 to run it deadlocks elevation;
+   *   - `open_app` is 'medium' and must stay usable at the default level 0;
+   *   - `run_command` is 'high' and legitimately serves allow-listed developer
+   *     commands at level 0.
+   * Tools that need a floor declare one explicitly instead.
+   */
+  requiredLevel?: number;
   inputSchema: Record<string, ToolSchemaProperty>;
   fallbacks: string[];
   /** Phase 5: optional per-tool retry policy (overrides registry default) */
@@ -159,6 +178,17 @@ export class ToolRegistryV2 {
       }
       console.log(`[ToolRegistry] Updating registered tool: "${tool.name}"`);
     }
+    // JARVIS-005: a high-risk tool with no declared floor is authorised only by
+    // whatever controller it happens to call. That is the gap P1-04 describes,
+    // so make it visible at registration rather than leaving it implicit.
+    if (tool.riskLevel === 'high' && typeof tool.requiredLevel !== 'number') {
+      console.warn(
+        `[ToolRegistry] ⚠️  High-risk tool "${tool.name}" declares no requiredLevel — ` +
+        'dispatch-layer authorization is not enforced for it; it relies entirely on ' +
+        'its own controller checks.',
+      );
+    }
+
     this.tools.set(tool.name, tool);
     this._llmDefCache = null; // Invalidate cached definitions
 
@@ -374,7 +404,31 @@ export class ToolRegistryV2 {
       };
     }
 
-    // 3. Cache lookup (low-risk tools only)
+    // 3. Authorization gate (JARVIS-005).
+    // Placed before the cache so a denied call can never be served a cached
+    // result, and before dispatch so a tool that does not route through a
+    // control/* controller still inherits a gate.
+    if (typeof tool.requiredLevel === 'number' && tool.requiredLevel > 0) {
+      if (!permissionSession.checkPermission(tool.requiredLevel, name)) {
+        securityAuditLogger.denied(
+          name,
+          'HIGH_RISK',
+          `Dispatch denied: requires permission level ${tool.requiredLevel}`,
+          name,
+        );
+        return {
+          success: false,
+          output:
+            `Tool "${name}" requires permission level ${tool.requiredLevel}. ` +
+            'Enable a full-control session first, sir.',
+          error: 'PERMISSION_DENIED',
+          tool: name,
+          durationMs: Date.now() - start,
+        };
+      }
+    }
+
+    // 4. Cache lookup (low-risk tools only)
     if (tool.riskLevel === 'low') {
       const cached = this.getFromCache(name, args);
       if (cached !== null) {

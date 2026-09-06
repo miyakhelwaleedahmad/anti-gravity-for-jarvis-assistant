@@ -116,5 +116,54 @@ These cannot be proven here and must not be reported as verified:
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 | ✅ Complete | — | Baseline captured, 3 real defects isolated from 8 environmental failures |
+| 3 | ✅ Complete | `phase-3` | JARVIS-005. Dispatch-layer authz added as defence in depth; controller checks untouched. **Deviated from the audit's default mapping** — it would have deadlocked `enable_full_control_session` and broken `open_app`/`run_command` at L0 (see §F). Floors derived as min(level the controller enforces). Suite **62 pass / 8 fail**, zero regressions. New `dispatchAuthzTest` 23/23. |
 | 2 | ✅ Complete | `phase-2` | JARVIS-004/008. First-call tool latency **503ms → 2ms** (measured directly). Repeated identical command no longer fails without executing. Suite **61 pass / 8 fail**, zero regressions. New test verified to fail 4/10 against pre-fix code. |
 | 1 | ✅ Complete | `phase-1` | JARVIS-001/001b/012. Suite **56→60 pass**, 11→8 fail, **zero regressions**. All 8 remaining failures are the baseline's environmental ones. New `workspaceRootPortabilityTest` 26/26. |
+
+
+---
+
+## F. Correction to the audit — JARVIS-005's default mapping is unsafe here
+
+The audit specifies: *"add `requiredLevel?: number` to `AgentTool` (default derived
+from `riskLevel`: low→0, medium→1, high→2)"*, with the note *"`open_app` must stay
+usable at the default level."*
+
+Applied literally to this codebase, that default breaks three flows:
+
+| Tool | riskLevel | Audit's default | Consequence |
+|---|---|---|---|
+| `enable_full_control_session` | high | L2 | **Deadlock.** This is the tool that *grants* level 2. Requiring L2 to run it means full control can never be enabled again. |
+| `open_app` | medium | L1 | Denied at the default level 0 — violating the audit's own stated constraint. |
+| `run_command` | high | L2 | Denied at L0, but it legitimately serves allow-listed developer commands there today (`runCommandSafetyTest` asserts `git status` succeeds). |
+
+Verified: `permissionSession` starts at level 0, and `checkPermission(n)` returns
+true only for `n <= currentLevel` (and always false for `n >= 3`).
+
+**Implemented instead:** `requiredLevel` is *explicit*, defaulting to 0 (no
+dispatch denial) when undeclared, so no current flow changes. Floors are declared
+per tool as **min(level that tool's controller actually enforces)** — a floor, never
+a ceiling, so nothing that works today is refused:
+
+| Tool | Controller enforces | Declared floor |
+|---|---|---|
+| `control_file` | L2 only | 2 |
+| `control_keyboard` | L2 only | 2 |
+| `control_mouse` | L2 only | 2 |
+| `control_app` | L1, L2 | 1 |
+| `control_window` | L1, L2 | 1 |
+| `control_browser` | L0, L1 | — (has level-0 operations) |
+| `control_process` | L0, L2 | — (has level-0 operations) |
+| `control_system` | L0, L2 | — (has level-0 operations) |
+
+To keep the audit's real concern visible — *"a new tool that bypasses `control/*`
+inherits no gate"* — the registry now logs a warning at registration for any
+high-risk tool that declares no floor. Five do today: `run_command`,
+`control_browser`, `control_process`, `control_system`,
+`enable_full_control_session`. Each is intentional and documented above.
+
+> **NOT VERIFIED:** `test:pc-control` on Windows, which the audit requires before
+> and after this change. It cannot run in this container. The mitigating evidence
+> is that the control tests call controllers directly and so are unaffected by a
+> dispatch-layer gate, and that every declared floor is provably <= what the
+> controller already enforced.

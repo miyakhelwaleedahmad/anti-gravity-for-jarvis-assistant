@@ -70,3 +70,7 @@ ai_workflows/_config/github my persnal tokens.txt
 
 # Runtime security state (permission sessions) — created at runtime, never commit.
 data/security/
+
+# Atomic-write scratch files left behind by interrupted writes — never commit.
+*.json.tmp
+.*.json.tmp

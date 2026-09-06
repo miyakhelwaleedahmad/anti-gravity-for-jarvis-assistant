@@ -26,6 +26,8 @@ export interface SkillDescription {
   name: string;
   description: string;
   riskLevel?: 'low' | 'medium' | 'high';
+  /** Minimum permission level to dispatch this skill (JARVIS-005). Omitted = 0. */
+  requiredLevel?: number;
   parameters?: Record<string, {
     type: 'string' | 'number' | 'boolean' | 'object' | 'array';
     description: string;
@@ -158,6 +160,7 @@ export class SkillLoader {
       name: desc.id,
       description: desc.description || desc.name,
       riskLevel: desc.riskLevel ?? 'medium',
+      ...(typeof desc.requiredLevel === 'number' ? { requiredLevel: desc.requiredLevel } : {}),
       inputSchema: Object.fromEntries(
         Object.entries(desc.parameters ?? {}).map(([key, p]) => [
           key,
