@@ -12,7 +12,10 @@
  * Does NOT replace memoryManager. It wraps and extends it.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { memoryManager } from './memoryManager.js';
+import { getWorkspaceRoot } from '../core/workspaceRoot.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +92,65 @@ export class AgentMemory {
   private readonly MAX_EPISODES = 200;
   private readonly COMPRESS_THRESHOLD = 100;
 
+  /**
+   * Episodes were RAM-only: every restart discarded the agent's entire record
+   * of what it had done, including all failure episodes that reflection and
+   * repair reason over (JARVIS-009). They are now appended to a JSONL log and
+   * the most recent are reloaded on first use.
+   *
+   * The log is append-only and never rewritten from memory, so in-memory
+   * pruning cannot delete history that is already on disk.
+   */
+  private episodesLoaded = false;
+  private readonly EPISODE_LOG = path.join(getWorkspaceRoot(), 'data', 'episodes.jsonl');
+  private readonly EPISODE_RELOAD_COUNT = 200;
+
+  /** Load recent episodes from disk once, lazily. Never throws. */
+  private loadEpisodesOnce(): void {
+    if (this.episodesLoaded) return;
+    this.episodesLoaded = true;
+    try {
+      if (!fs.existsSync(this.EPISODE_LOG)) return;
+      const lines = fs.readFileSync(this.EPISODE_LOG, 'utf-8').split('\n');
+      const recent = lines.slice(-this.EPISODE_RELOAD_COUNT);
+      const restored: Episode[] = [];
+      for (const line of recent) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const parsed = JSON.parse(trimmed) as Episode;
+          // A truncated final line from an interrupted write is skipped rather
+          // than aborting the whole restore.
+          if (parsed && typeof parsed.id === 'string' && typeof parsed.timestamp === 'number') {
+            restored.push(parsed);
+          }
+        } catch {
+          // Ignore an unparseable line and keep the rest.
+        }
+      }
+      this.episodes = [...restored, ...this.episodes];
+      console.log(`[AgentMemory] Restored ${restored.length} episode(s) from disk.`);
+    } catch (err) {
+      console.warn('[AgentMemory] Episode restore failed (continuing empty):', err);
+    }
+  }
+
+  /** Append one episode to the JSONL log. Never throws. */
+  private appendEpisodeToDisk(episode: Episode): void {
+    try {
+      fs.mkdirSync(path.dirname(this.EPISODE_LOG), { recursive: true });
+      fs.appendFileSync(this.EPISODE_LOG, `${JSON.stringify(episode)}\n`, 'utf-8');
+    } catch (err) {
+      console.warn('[AgentMemory] Episode persist failed (kept in memory):', err);
+    }
+  }
+
+  /** Episodes currently held in memory, restoring from disk on first access. */
+  getEpisodeCount(): number {
+    this.loadEpisodesOnce();
+    return this.episodes.length;
+  }
+
   pushEpisode(
     type: EpisodeType,
     summary: string,
@@ -104,9 +166,12 @@ export class AgentMemory {
       importance,
     };
 
+    this.loadEpisodesOnce();
     this.episodes.push(episode);
+    this.appendEpisodeToDisk(episode);
 
-    // Auto-compress when threshold exceeded
+    // Auto-compress when threshold exceeded. This prunes the in-memory working
+    // set only — the on-disk log keeps the full history.
     if (this.episodes.length >= this.MAX_EPISODES) {
       this.pruneOldEpisodes();
     }

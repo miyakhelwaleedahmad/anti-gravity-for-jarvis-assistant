@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import os
+import json
 import time
 import asyncio
 import hashlib
@@ -51,6 +52,18 @@ NEAR_DEDUP_THRESHOLD = float(os.environ.get("VECTOR_NEAR_DEDUP_THRESHOLD", "0.97
 
 # ─── Default score threshold for search results ──────────────────────────────
 DEFAULT_MIN_SCORE = float(os.environ.get("VECTOR_MIN_SCORE", "0.0"))
+
+# ─── Persistence (JARVIS-002) ────────────────────────────────────────────────
+# The store previously lived only in RAM: every restart emptied it, and the
+# TypeScript side re-embedded just the newest 10 facts, so semantic recall was
+# permanently capped at 10 facts regardless of how many were in LowDB.
+_DEFAULT_STORE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "vector")
+STORE_DIR = os.path.abspath(os.environ.get("JARVIS_VECTOR_STORE_DIR", _DEFAULT_STORE_DIR))
+TEXTS_PATH = os.path.join(STORE_DIR, "texts.json")
+EMBEDDINGS_PATH = os.path.join(STORE_DIR, "embeddings.npy")
+PERSIST_ENABLED = os.environ.get("JARVIS_VECTOR_PERSIST", "true").lower() == "true"
+# Flush to disk after this many accepted writes (0 disables interval saving).
+PERSIST_EVERY_N = int(os.environ.get("JARVIS_VECTOR_PERSIST_EVERY", "10"))
 
 # ─── Embedding serialization queue ──────────────────────────────────────────
 # All write operations (embed, batch_embed, dedup, clear) go through this
@@ -87,6 +100,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"[Startup] FATAL: Could not load embedding model: {e}")
 
+    # Restore any persisted store now that the model (and its dimension) is
+    # known. A failure here is never fatal: the store simply stays empty and the
+    # TypeScript side rebuilds it from LowDB (JARVIS-002).
+    if _model_ready:
+        try:
+            result = _memory.load()
+            log.info(f"[Startup] Vector store restore: {result}")
+        except Exception as exc:
+            log.error(f"[Startup] Vector store restore failed (continuing empty): {exc}")
+
     # Start the embedding queue worker
     _queue_worker_running = True
     asyncio.create_task(_embedding_queue_worker())
@@ -94,6 +117,10 @@ async def lifespan(app: FastAPI):
 
     yield
     _queue_worker_running = False
+    try:
+        _memory.save()
+    except Exception as exc:
+        log.error(f"[Shutdown] Final persist failed: {exc}")
     log.info("[Shutdown] Vector memory shutting down.")
 
 
@@ -104,13 +131,29 @@ class VectorMemory:
         self._texts: list[str] = []
         self._text_hashes: set[str] = set()   # for O(1) exact dedup
         self._embeddings: Optional[np.ndarray] = None
+        # Stable LowDB fact id per stored text, positionally aligned with
+        # _texts. Lets callers join search hits back to the source-of-truth
+        # record by id instead of by exact string equality (JARVIS-003).
+        self._fact_ids: list[Optional[str]] = []
 
         # Diagnostic counters
         self.dup_rejected_exact: int = 0
         self.dup_rejected_near: int  = 0
         self.embed_calls: int        = 0
+        self._writes_since_save: int = 0
 
         log.info("VectorMemory initialized (empty).")
+
+    # ── Invariant ─────────────────────────────────────────────────────────────
+
+    def _assert_aligned(self) -> None:
+        """_texts, _fact_ids and _embeddings must stay row-aligned."""
+        n = len(self._texts)
+        if len(self._fact_ids) != n:
+            raise RuntimeError(f"fact_ids/texts misaligned: {len(self._fact_ids)} vs {n}")
+        rows = 0 if self._embeddings is None else int(self._embeddings.shape[0])
+        if rows != n:
+            raise RuntimeError(f"embeddings/texts misaligned: {rows} vs {n}")
 
     # ── Hashing helpers ───────────────────────────────────────────────────────
 
@@ -120,7 +163,7 @@ class VectorMemory:
 
     # ── Core embed (NOT async — called only from the queue worker) ────────────
 
-    def _embed_sync(self, text: str, skip_dedup: bool = False) -> dict:
+    def _embed_sync(self, text: str, skip_dedup: bool = False, fact_id: Optional[str] = None) -> dict:
         """
         Embed a single text. Called synchronously from the queue worker.
         Returns a dict with embedding, stored count, dedup info.
@@ -168,11 +211,16 @@ class VectorMemory:
         # 4. Store
         h = self._text_hash(text)
         self._texts.append(text)
+        self._fact_ids.append(fact_id)
         self._text_hashes.add(h)
         if self._embeddings is None:
             self._embeddings = embedding.reshape(1, -1)
         else:
             self._embeddings = np.vstack([self._embeddings, embedding.reshape(1, -1)])
+
+        self._assert_aligned()
+        self._writes_since_save += 1
+        self._maybe_save()
 
         log.info(f"Stored: '{text[:60]}' — total: {len(self._texts)}")
         return {
@@ -180,12 +228,24 @@ class VectorMemory:
             "dim": len(embedding),
             "stored": len(self._texts),
             "dedup": "new",
+            "fact_id": fact_id,
         }
 
     # ── Batch embed sync (called from queue worker) ───────────────────────────
 
-    def _batch_embed_sync(self, texts: list[str], skip_dedup: bool = False) -> list[dict]:
-        return [self._embed_sync(t, skip_dedup=skip_dedup) for t in texts]
+    def _batch_embed_sync(
+        self,
+        texts: list[str],
+        skip_dedup: bool = False,
+        fact_ids: Optional[list[Optional[str]]] = None,
+    ) -> list[dict]:
+        ids = fact_ids or [None] * len(texts)
+        if len(ids) != len(texts):
+            raise ValueError("fact_ids length must match texts length")
+        return [
+            self._embed_sync(t, skip_dedup=skip_dedup, fact_id=i)
+            for t, i in zip(texts, ids)
+        ]
 
     # ── Search ────────────────────────────────────────────────────────────────
 
@@ -208,6 +268,7 @@ class VectorMemory:
                 "text": self._texts[int(idx)],
                 "score": score,
                 "index": int(idx),
+                "fact_id": self._fact_ids[int(idx)],
             })
         return results
 
@@ -220,11 +281,15 @@ class VectorMemory:
             return False
         h = self._text_hash(text)
         self._texts.pop(idx)
+        self._fact_ids.pop(idx)
         self._text_hashes.discard(h)
         if self._embeddings is not None:
             self._embeddings = np.delete(self._embeddings, idx, axis=0)
             if self._embeddings.shape[0] == 0:
                 self._embeddings = None
+        self._assert_aligned()
+        self._writes_since_save += 1
+        self._maybe_save()
         return True
 
     # ── Dedup scan (called from queue worker) ─────────────────────────────────
@@ -258,6 +323,7 @@ class VectorMemory:
         keep_indices = [i for i in range(n) if keep[i]]
 
         self._texts = [self._texts[i] for i in keep_indices]
+        self._fact_ids = [self._fact_ids[i] for i in keep_indices]
         self._text_hashes = {self._text_hash(t) for t in self._texts}
         self._embeddings = (
             self._embeddings[keep_indices] if keep_indices else None
@@ -266,6 +332,10 @@ class VectorMemory:
             self._embeddings = None
 
         removed = len(removed_texts)
+        self._assert_aligned()
+        if removed:
+            self._writes_since_save += removed
+            self._maybe_save(force=True)
         log.info(f"Dedup scan: removed {removed} near-duplicates, {len(self._texts)} remain.")
         return {"removed": removed, "remaining": len(self._texts), "removed_texts": removed_texts[:20]}
 
@@ -273,8 +343,118 @@ class VectorMemory:
 
     def _clear_sync(self) -> None:
         self._texts = []
+        self._fact_ids = []
         self._text_hashes = set()
         self._embeddings = None
+        self._maybe_save(force=True)
+
+    # ── Persistence (JARVIS-002) ──────────────────────────────────────────────
+
+    def _maybe_save(self, force: bool = False) -> None:
+        """Flush to disk every PERSIST_EVERY_N accepted writes, or on demand."""
+        if not PERSIST_ENABLED:
+            return
+        if not force and (PERSIST_EVERY_N <= 0 or self._writes_since_save < PERSIST_EVERY_N):
+            return
+        try:
+            self.save()
+        except Exception as exc:  # never let a disk problem break a write
+            log.error(f"Persist failed (continuing in memory): {exc}")
+
+    def save(self) -> dict:
+        """
+        Write the store to disk atomically.
+
+        Both files are written to temporary paths and then replaced, so an
+        interrupted save cannot leave a half-written store that would be loaded
+        as truth on the next start.
+        """
+        os.makedirs(STORE_DIR, exist_ok=True)
+        self._assert_aligned()
+
+        payload = {
+            "version": 1,
+            "model": os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
+            "dim": int(self._embeddings.shape[1]) if self._embeddings is not None else 0,
+            "count": len(self._texts),
+            "texts": self._texts,
+            "fact_ids": self._fact_ids,
+            "saved_at": time.time(),
+        }
+
+        tmp_texts = TEXTS_PATH + ".tmp"
+        with open(tmp_texts, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+        os.replace(tmp_texts, TEXTS_PATH)
+
+        if self._embeddings is not None:
+            tmp_emb = EMBEDDINGS_PATH + ".tmp"
+            with open(tmp_emb, "wb") as fh:
+                np.save(fh, self._embeddings)
+            os.replace(tmp_emb, EMBEDDINGS_PATH)
+        elif os.path.exists(EMBEDDINGS_PATH):
+            os.remove(EMBEDDINGS_PATH)
+
+        self._writes_since_save = 0
+        log.info(f"Persisted {len(self._texts)} vector(s) to {STORE_DIR}")
+        return {"saved": len(self._texts), "dir": STORE_DIR}
+
+    def load(self) -> dict:
+        """
+        Restore a persisted store.
+
+        Refuses to load rather than corrupting state if anything is
+        inconsistent: a missing file, a row-count mismatch, or an embedding
+        dimension that does not match the current model. In every such case the
+        in-memory store is left untouched and the caller falls back to
+        rebuilding from LowDB — no fact is ever deleted by this path.
+        """
+        if not PERSIST_ENABLED:
+            return {"loaded": 0, "reason": "persistence_disabled"}
+        if not (os.path.exists(TEXTS_PATH) and os.path.exists(EMBEDDINGS_PATH)):
+            return {"loaded": 0, "reason": "no_store_on_disk"}
+
+        try:
+            with open(TEXTS_PATH, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+            texts = list(payload.get("texts", []))
+            fact_ids = list(payload.get("fact_ids", [])) or [None] * len(texts)
+            embeddings = np.load(EMBEDDINGS_PATH)
+        except Exception as exc:
+            log.error(f"Could not read persisted store ({exc}); rebuilding instead.")
+            return {"loaded": 0, "reason": "unreadable"}
+
+        if len(fact_ids) != len(texts) or embeddings.shape[0] != len(texts):
+            log.error(
+                f"Persisted store is inconsistent "
+                f"(texts={len(texts)}, ids={len(fact_ids)}, rows={embeddings.shape[0]}); rebuilding instead."
+            )
+            return {"loaded": 0, "reason": "inconsistent"}
+
+        if len(texts) == 0:
+            return {"loaded": 0, "reason": "empty"}
+
+        try:
+            expected_dim = len(_get_model().encode("dimension probe", convert_to_numpy=True))
+        except Exception as exc:
+            log.error(f"Could not determine model dimension ({exc}); not loading persisted store.")
+            return {"loaded": 0, "reason": "model_unavailable"}
+
+        if int(embeddings.shape[1]) != int(expected_dim):
+            log.error(
+                f"Persisted embeddings have dim {embeddings.shape[1]} but the current model "
+                f"produces {expected_dim}. The embedding model changed — rebuilding instead of loading."
+            )
+            return {"loaded": 0, "reason": "dim_mismatch"}
+
+        self._texts = texts
+        self._fact_ids = fact_ids
+        self._embeddings = embeddings
+        self._text_hashes = {self._text_hash(t) for t in texts}
+        self._writes_since_save = 0
+        self._assert_aligned()
+        log.info(f"Restored {len(texts)} vector(s) from {STORE_DIR}")
+        return {"loaded": len(texts), "reason": "ok"}
 
     # ── Stats ─────────────────────────────────────────────────────────────────
 
@@ -287,6 +467,9 @@ class VectorMemory:
             "dup_rejected_near": self.dup_rejected_near,
             "embed_calls": self.embed_calls,
             "queue_depth": _embed_queue.qsize(),
+            "persist_enabled": PERSIST_ENABLED,
+            "persisted": os.path.exists(TEXTS_PATH),
+            "writes_since_save": self._writes_since_save,
         }
 
 
@@ -354,10 +537,12 @@ async def timeout_middleware(request: Request, call_next):
 class EmbedReq(BaseModel):
     text: str
     skip_dedup: bool = False
+    fact_id: Optional[str] = None
 
 class BatchEmbedReq(BaseModel):
     texts: list[str] = Field(..., min_items=1, max_items=64)
     skip_dedup: bool = False
+    fact_ids: Optional[list[Optional[str]]] = None
 
 class SearchReq(BaseModel):
     query: str
@@ -380,7 +565,7 @@ async def api_embed(req: EmbedReq):
     if not req.text or not req.text.strip():
         raise HTTPException(status_code=400, detail="Missing or empty text")
     try:
-        result = await _enqueue_write(lambda: _memory._embed_sync(req.text, skip_dedup=req.skip_dedup))
+        result = await _enqueue_write(lambda: _memory._embed_sync(req.text, skip_dedup=req.skip_dedup, fact_id=req.fact_id))
         return result
     except Exception as exc:
         log.error(f"embed error: {exc}")
@@ -399,7 +584,7 @@ async def api_batch_embed(req: BatchEmbedReq):
         raise HTTPException(status_code=400, detail="Empty texts list")
     try:
         results = await _enqueue_write(
-            lambda: _memory._batch_embed_sync(req.texts, skip_dedup=req.skip_dedup)
+            lambda: _memory._batch_embed_sync(req.texts, skip_dedup=req.skip_dedup, fact_ids=req.fact_ids)
         )
         return {"results": results, "count": len(results)}
     except Exception as exc:
@@ -473,6 +658,16 @@ def api_health():
         "total_requests": _request_count,
         **stats,
     }
+
+
+@app.post("/persist")
+async def api_persist():
+    """Force an immediate flush of the vector store to disk."""
+    try:
+        return await _enqueue_write(lambda: _memory.save())
+    except Exception as exc:
+        log.error(f"persist error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/clear")

@@ -116,6 +116,7 @@ These cannot be proven here and must not be reported as verified:
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 | ✅ Complete | — | Baseline captured, 3 real defects isolated from 8 environmental failures |
+| 5 | ✅ Complete | `phase-5` | JARVIS-002/003/009. Vector store persists atomically and survives restart with **zero fact loss**; 10-fact rebuild cap lifted to all; vector↔LowDB joined by stable id; episodes persisted as append-only JSONL. Suite **64 pass / 8 fail**, zero regressions. New python test 23/23, `episodicPersistenceTest` 8/8. |
 | 4 | ✅ Complete | `phase-4` | JARVIS-006/007/019. `fallback_tool` now switches tools; low-confidence plans genuinely replan; deterministic route reports real outcomes. Suite **63 pass / 8 fail**, zero regressions. New `fallbackToolStrategyTest` 8/8 (fails 2/8 pre-fix). |
 | 3 | ✅ Complete | `phase-3` | JARVIS-005. Dispatch-layer authz added as defence in depth; controller checks untouched. **Deviated from the audit's default mapping** — it would have deadlocked `enable_full_control_session` and broken `open_app`/`run_command` at L0 (see §F). Floors derived as min(level the controller enforces). Suite **62 pass / 8 fail**, zero regressions. New `dispatchAuthzTest` 23/23. |
 | 2 | ✅ Complete | `phase-2` | JARVIS-004/008. First-call tool latency **503ms → 2ms** (measured directly). Repeated identical command no longer fails without executing. Suite **61 pass / 8 fail**, zero regressions. New test verified to fail 4/10 against pre-fix code. |

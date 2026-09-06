@@ -293,13 +293,18 @@ export class MemoryManager {
     }
   }
 
-  async embed(text: string): Promise<number[]> {
+  /**
+   * @param factId Stable LowDB id for this text. Sent to the vector service so
+   *   search hits can be joined back by id rather than by exact string equality,
+   *   which silently dropped results after any normalisation drift (JARVIS-003).
+   */
+  async embed(text: string, factId?: string): Promise<number[]> {
     const cached = await getCachedEmbedding(text);
     if (cached) {
       console.log(`[Memory] Redis cache hit for embedding: "${text.slice(0, 40)}"`);
       return cached;
     }
-    const res = await this.vectorRequest('embed', { text });
+    const res = await this.vectorRequest('embed', { text, ...(factId ? { fact_id: factId } : {}) });
     if (res?.embedding) {
       cacheEmbedding(text, res.embedding).catch(() => {});
     }
@@ -342,11 +347,19 @@ export class MemoryManager {
   }
 
   private rebuildVectorIndexInBackground(): void {
+    // Previously hard-capped at 10. Combined with a vector store that had no
+    // persistence, that capped semantic recall at 10 facts across every restart
+    // no matter how many facts LowDB held. The store now persists, so this
+    // rebuild is only a fallback for a missing/refused store — and it covers
+    // every fact by default (JARVIS-002).
+    const rawLimit = Number(process.env['JARVIS_VECTOR_REBUILD_LIMIT'] ?? '0');
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : Infinity;
+
     const candidates = [...this.db.data.longTerm]
       .sort((a, b) => (b.importance - a.importance) || (b.timestamp - a.timestamp))
-      .slice(0, 10);
+      .slice(0, limit === Infinity ? undefined : limit);
 
-    console.log(`[Memory] Scheduling capped vector rebuild for ${candidates.length}/${this.db.data.longTerm.length} facts.`);
+    console.log(`[Memory] Scheduling vector rebuild for ${candidates.length}/${this.db.data.longTerm.length} facts.`);
 
     setTimeout(async () => {
       if (!(await this.isVectorHealthy())) {
@@ -360,7 +373,7 @@ export class MemoryManager {
         while (index < candidates.length) {
           const fact = candidates[index++];
           try {
-            await this.embed(fact.fact);
+            await this.embed(fact.fact, fact.id);
             embedded++;
           } catch {
             // Non-fatal. Circuit breaker handles repeated failures.
@@ -581,7 +594,7 @@ export class MemoryManager {
                // Delete old vector embedding (Python now implements this correctly),
                // then embed the updated text.
                await this.deleteVector(oldText);
-               await this.embed(existingFact.fact).catch(console.error);
+               await this.embed(existingFact.fact, existingFact.id).catch(console.error);
                
                await this.db.write(); // Persist SSOT
                return;
@@ -634,7 +647,7 @@ export class MemoryManager {
 
     // Vector index: embed the fact text (derived index, not SSOT)
     try {
-      await this.embed(fact);
+      await this.embed(fact, entry.id);
       console.log(`[Memory] Vector index updated: "${fact}"`);
     } catch (err) {
       console.error(`[Memory] Failed to embed fact (lexical fallback will be used): ${err}`);
@@ -679,7 +692,7 @@ export class MemoryManager {
           }
         }
 
-        await this.embed(entry.fact);
+        await this.embed(entry.fact, entry.id);
         console.log(`[Memory] Background vector index updated: "${entry.fact.slice(0, 80)}"`);
       } catch (err) {
         console.warn(`[Memory] Background vector dedup/index skipped: ${(err as Error).message}`);
@@ -750,7 +763,11 @@ export class MemoryManager {
       const vectorResults = await this.searchVector(query, topK);
       if (vectorResults && vectorResults.length > 0) {
         for (const vr of vectorResults) {
-          const matched = this.db.data.longTerm.find(f => f.fact === vr.text);
+          // Prefer the stable id; fall back to exact text for vectors embedded
+          // before ids were sent, so nothing already in the store is dropped.
+          const matched =
+            (vr.fact_id ? this.db.data.longTerm.find(f => f.id === vr.fact_id) : undefined)
+            ?? this.db.data.longTerm.find(f => f.fact === vr.text);
           if (matched) {
             results.push({ fact: matched, score: vr.score });
           }

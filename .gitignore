@@ -74,3 +74,10 @@ data/security/
 # Atomic-write scratch files left behind by interrupted writes — never commit.
 *.json.tmp
 .*.json.tmp
+
+# Persisted vector store — runtime data, never commit.
+data/vector/*
+!data/vector/.gitkeep
+
+# Episodic memory log — runtime data, never commit.
+data/episodes.jsonl
