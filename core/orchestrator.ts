@@ -14,6 +14,7 @@
  */
 
 import { agentStateMachine, AgentState } from './agentStateMachine.js';
+import { beginTrace } from './traceContext.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import { toolRegistryV2 } from './toolRegistryV2.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
@@ -178,6 +179,9 @@ export class JarvisOrchestrator {
   async process(input: string, source: 'cli' | 'voice' = 'cli'): Promise<void> {
     const callId = Math.random().toString(36).substring(7);
     this.currentProcessCallId = callId;
+    // One correlation id per request, so the plan, every tool call and the
+    // outcome can be joined back together in the trace log (JARVIS-015).
+    beginTrace();
     // Abort any in-flight request from a previous process() call.
     this.currentAbortController?.abort();
     this.currentAbortController = new AbortController();

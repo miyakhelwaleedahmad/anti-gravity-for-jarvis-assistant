@@ -13,6 +13,7 @@
  */
 
 import 'dotenv/config';
+import { wireExecutionTracing } from './monitoring/traceWiring.js';
 import { configValidator } from './config/configValidator.js';
 import * as readline from 'readline';
 import * as path from 'path';
@@ -30,7 +31,7 @@ import { evaluateEcho }    from './core/voiceEchoFilter.js';
 import { mergePendingVoiceContinuation, shouldUseContinuationContext, accumulateContinuationFragment } from './core/voiceContinuation.js';
 
 // Compat shim — unchanged API surface
-import { systemController, SystemState } from './core/systemController.js';
+import { systemController, SystemState } from './core/stateShim.js';
 
 // Self-healing system
 import { selfHealingManager } from './self_healing/selfHealingManager.js';
@@ -278,6 +279,10 @@ async function startJarvis() {
       }
       process.exit(1);
     }
+
+    // 0b. Join the structured logger to the task graph's event stream so a
+    // request produces one traceable, correlated record (JARVIS-015).
+    wireExecutionTracing();
 
     // 1. Parallel Core Systems Init (Memory + Goals)
     const tMemory = Date.now();
