@@ -1,5 +1,10 @@
 /**
- * core/systemController.ts  (v2 — compatibility shim)
+ * core/stateShim.ts  (compatibility shim)
+ *
+ * Renamed from core/systemController.ts, which collided by name with the
+ * unrelated, also-live control/systemController.ts (JARVIS-022). The exported
+ * `systemController` symbol is unchanged, so no caller had to be rewritten
+ * beyond its import path.
  * ─────────────────────────────────────────────────────────────────────────────
  * Backward-compatibility proxy over agentStateMachine.
  *

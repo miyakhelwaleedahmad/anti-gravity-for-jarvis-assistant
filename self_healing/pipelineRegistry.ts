@@ -33,7 +33,9 @@ export class PipelineRegistry extends EventEmitter {
       "groq_to_memory",
       "memory_to_context",
       "tool_execution",
-      "reflection_loop"
+      // "reflection_loop" removed with JARVIS-018: voice/reflectionEngine.py
+      // does not exist, so the pipeline could never report healthy and the
+      // watchdog could only ever log "no heal plan mapped" for it.
     ];
     for (const p of defaultPipelines) {
       this.pipelines.set(p, {

@@ -4,7 +4,7 @@ import { pythonBridgeConfig } from "../config/llmconfig.js";
 import { failureDetector } from "../self_healing/failureDetector.js";
 import { pipelineRegistry } from "../self_healing/pipelineRegistry.js";
 import { conversationBus } from "../core/conversationBus.js";
-import { systemController } from "../core/systemController.js";
+import { systemController } from "../core/stateShim.js";
 import http from "http";
 
 const LOCALHOST_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);

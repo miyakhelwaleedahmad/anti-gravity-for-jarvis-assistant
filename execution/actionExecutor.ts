@@ -1,6 +1,6 @@
 import { messageBus } from '../core/messageBus.js';
 import { toolRegistryV2 } from '../core/toolRegistryV2.js';
-import { systemController } from '../core/systemController.js';
+import { systemController } from '../core/stateShim.js';
 
 export class ActionExecutor {
     private activeExecutions: Map<string, { abort: () => void }> = new Map();

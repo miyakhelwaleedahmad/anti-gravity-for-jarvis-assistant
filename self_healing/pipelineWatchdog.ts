@@ -21,8 +21,9 @@ const PIPELINE_HEAL_MAP: Record<string, HealAction> = {
   "brain_to_groq":     { action: "retry_connection", target: "groq" },
   "groq_to_memory":    { action: "reinit_memory",    target: "memoryManager" },
   "memory_to_context": { action: "reinit_memory",    target: "memoryManager" },
-  "tool_execution":    { action: "reload_tools",     target: "toolExecutor" },
-  "reflection_loop":   { action: "restart_script",   target: "reflectionEngine.py" },
+  "tool_execution":    { action: "reload_tools",     target: "toolRegistryV2" },
+  // "reflection_loop" removed: voice/reflectionEngine.py does not exist, so the
+  // recovery action could only ever fail (JARVIS-018).
 };
 
 export class PipelineWatchdog extends EventEmitter {

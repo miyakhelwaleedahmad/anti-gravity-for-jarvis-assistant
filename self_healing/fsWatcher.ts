@@ -21,10 +21,15 @@ const FILE_TO_PIPELINE_MAP: Record<string, string[]> = {
   "voice/tts.py":             ["brain_to_tts"],
   "voice/wakeWords.py":       ["wake_to_stt"],
   "bridge/groqProvider.ts":   ["brain_to_groq"],
-  "core/brain.ts":            ["brain_to_groq", "groq_to_memory"],
+  // The brain is core/orchestrator.ts. core/brain.ts is a migration leftover
+  // that nothing imports, so watching it could never detect a real change to
+  // the running reasoning path (JARVIS-018).
+  "core/orchestrator.ts":     ["brain_to_groq", "groq_to_memory"],
   "memory/memoryManager.ts":  ["groq_to_memory", "memory_to_context"],
-  "core/toolExecutor.ts":     ["tool_execution"],
-  "voice/reflectionEngine.py":["reflection_loop"],
+  // Tool execution lives in the registry now; core/toolExecutor.ts does not
+  // exist. voice/reflectionEngine.py does not exist either — both entries were
+  // watching paths that can never fire.
+  "core/toolRegistryV2.ts":   ["tool_execution"],
 };
 
 export class FSWatcher {

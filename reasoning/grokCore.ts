@@ -5,7 +5,7 @@ import { toolRegistryV2 } from '../core/toolRegistryV2.js';
 import { memoryManager } from '../memory/memoryManager.js';
 import { llmConfig } from '../config/llmconfig.js';
 import { nodeBridge } from '../bridge/nodeBridge.js';
-import { systemController, SystemState } from '../core/systemController.js';
+import { systemController, SystemState } from '../core/stateShim.js';
 import { cacheManager } from '../memory/cacheManager.js';
 
 export class GrokCore {
