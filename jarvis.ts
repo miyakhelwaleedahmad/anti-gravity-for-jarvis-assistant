@@ -13,6 +13,7 @@
  */
 
 import 'dotenv/config';
+import { configValidator } from './config/configValidator.js';
 import * as readline from 'readline';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -262,6 +263,21 @@ async function startJarvis() {
 
   try {
     console.log('🔹 Loading configuration...');
+
+    // 0. Validate configuration BEFORE any subsystem starts (JARVIS-011).
+    // configValidator existed but was called from nowhere, so a missing
+    // GROQ_API_KEY surfaced as a 401 midway through the first request instead
+    // of as a clear message at startup.
+    const configReport = configValidator.validate();
+    console.log(configReport.summary);
+    if (!configReport.canStart) {
+      console.error('\n❌ JARVIS cannot start with the current configuration:\n');
+      for (const issue of configReport.issues.filter(i => i.level === 'CRITICAL')) {
+        console.error(`   [${issue.field}] ${issue.message}`);
+        console.error(`   → ${issue.fix}\n`);
+      }
+      process.exit(1);
+    }
 
     // 1. Parallel Core Systems Init (Memory + Goals)
     const tMemory = Date.now();

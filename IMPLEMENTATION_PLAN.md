@@ -116,6 +116,7 @@ These cannot be proven here and must not be reported as verified:
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 | ✅ Complete | — | Baseline captured, 3 real defects isolated from 8 environmental failures |
+| 7 | ✅ Complete | `phase-7` | JARVIS-011/010/016. Config validator wired to fail fast at startup; Groq cache key hashes the full payload; second OpenAI-compatible provider with ordered failover. Suite **66 pass / 8 fail**, zero regressions. New `providerFailoverTest` 13/13. |
 | 6 | ✅ Complete | `phase-6` | JARVIS-013/020/014. Orphan Next route (unauthenticated Redis) deleted with 5 unused deps; Neo4j default password removed; OCR moved out of the `system` role into sanitised `<untrusted_context>` with a matching prompt rule. Suite **65 pass / 8 fail**, zero regressions. New `promptInjectionHardeningTest` 13/13. |
 | 5 | ✅ Complete | `phase-5` | JARVIS-002/003/009. Vector store persists atomically and survives restart with **zero fact loss**; 10-fact rebuild cap lifted to all; vector↔LowDB joined by stable id; episodes persisted as append-only JSONL. Suite **64 pass / 8 fail**, zero regressions. New python test 23/23, `episodicPersistenceTest` 8/8. |
 | 4 | ✅ Complete | `phase-4` | JARVIS-006/007/019. `fallback_tool` now switches tools; low-confidence plans genuinely replan; deterministic route reports real outcomes. Suite **63 pass / 8 fail**, zero regressions. New `fallbackToolStrategyTest` 8/8 (fails 2/8 pre-fix). |

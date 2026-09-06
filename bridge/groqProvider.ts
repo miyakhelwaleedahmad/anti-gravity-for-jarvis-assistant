@@ -72,7 +72,11 @@ export class GroqProvider implements ILLMProvider {
   private static hashRequest(req: ILLMRequest): string {
     const key = JSON.stringify({
       model: req.model ?? llmConfig.model,
-      messages: req.messages.map(m => ({ role: m.role, c: (m.content ?? '').slice(0, 200) })),
+      // Previously `.slice(0, 200)`: two different requests sharing a 200-char
+      // prefix collided in the cache and the second received the first's
+      // response (JARVIS-010). Hashing the full content costs microseconds
+      // against a network round-trip.
+      messages: req.messages.map(m => ({ role: m.role, c: m.content ?? '' })),
       tools: (req.tools ?? []).map((t: any) => t?.function?.name ?? t?.name ?? ''),
     });
     return crypto.createHash('sha1').update(key).digest('hex').slice(0, 16);
