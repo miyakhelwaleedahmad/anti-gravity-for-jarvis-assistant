@@ -2,7 +2,7 @@
 
 **Repository:** `miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant`
 **Base commit:** `f429071` — "Initial upload of Jarvis Assistant"
-**Branch:** `claude/jarvis-repair` · 13 commits
+**Branch:** `claude/jarvis-repair` · 19 commits (14 repair + 5 post-validation fixes, §10)
 **Spec:** `JARVIS_COMPLETE_TECHNICAL_AUDIT.md` (Claude Cowork), verified rather than trusted
 
 ---
@@ -16,7 +16,7 @@ broken working functionality.
 
 | | Before | After |
 |---|---|---|
-| Tests passing | 56 / 67 | **68 / 76** |
+| Tests passing | 56 / 67 | **69 / 77** |
 | Real code defects | 3 | **0** |
 | Environment-only failures | 8 | 8 (unchanged, all explained) |
 | `tsc --noEmit` | clean | clean |
@@ -96,7 +96,7 @@ Implemented instead: `requiredLevel` is explicit, defaults to 0, and each floor 
 | 9 | Self-healing maps point at files that exist; name collision ended | — |
 | 10 | 57 unreachable modules quarantined to `_legacy/` | — |
 | 11 | Real `npm test` runner + GitHub Actions CI | — |
-| 12 | Repo 46 MB → 3.7 MB; runtime state untracked; README + ARCHITECTURE | — |
+| 12 | Repo 46 MB → 3.7 MB; README + ARCHITECTURE. Its untracking of runtime files deleted them on merge — reversed in §10 | — |
 | 13 | Document RAG: ingest → chunk → embed → cited retrieval | +28 new |
 
 ## 5. Data safety
@@ -104,7 +104,8 @@ Implemented instead: `requiredLevel` is explicit, defaults to 0, and each floor 
 No database was reset, no migration run, no fact deleted.
 
 - `memory/jarvis_memory.json` — the live fact store — exists only on your machine and was never touched here.
-- `data/goals.json`, `memory/taskHistory.json`, `memory/userMemory.json` and `environment/systemInfo.json` were **untracked, not deleted**. The local files remain on disk. Verified first that `goalManager.init()` succeeds without `goals.json` and recreates it.
+- **Correction.** An earlier version of this report said these four files were "untracked, not deleted" and that "the local files remain on disk". That was true only for the working copy that made commit `ccf6118`. `git rm --cached` records a deletion, and validation proved that merging it into a clone of `main` **deleted** `data/goals.json` (100 goal records) and the other three files.
+- **Now:** `data/goals.json`, `memory/taskHistory.json`, `memory/userMemory.json` and `environment/systemInfo.json` are tracked again, **byte-identical to `main`**, so a merge does not touch them. The app no longer writes to any of them: live goals go to `data/runtime/goals.json` (gitignored), seeded once from `data/goals.json` by a copy that can never overwrite. Only `data/goals.json` is read by any live code; the other three are referenced nowhere. A merge simulation with a 100-record dataset kept all 100 records byte-identical in three working-copy states (uncommitted edits, committed edits, unmodified) — see §10.
 - Vector-store loading **refuses** rather than corrupts: a dimension mismatch, row-count mismatch or unreadable file leaves memory untouched and falls back to rebuilding from LowDB.
 - The episode log is append-only and never rewritten from memory, so in-memory pruning cannot delete history already on disk.
 
@@ -133,6 +134,12 @@ The following are implemented and unit-tested but not proven end to end:
 ## 8. Commits
 
 ```
+(this)   docs: correct documentation found inaccurate in validation
+65b22cb  fix: authorize tool calls before validating their arguments
+efa1a48  test: make adminControlTest able to detect a broken command blocklist
+4be9a13  ci: let package.json pin the pnpm version
+a0f2326  fix: stop merges deleting runtime data by never writing live state to tracked files
+8606d36  docs: add the final engineering report
 8cf2ae6  feat: add document RAG — ingestion, chunking, and cited retrieval
 ccf6118  docs: add a README, correct the architecture, stop tracking runtime state
 d31849d  test: add a real test runner and CI
@@ -164,3 +171,40 @@ pnpm dev                      # start JARVIS
 See `README.md` for detail, `IMPLEMENTATION_PLAN.md` for the verification table,
 `docs/BASELINE.md` for the measured starting point, and `_legacy/README.md` for
 what was quarantined.
+
+## 10. Post-validation fixes
+
+A later validation of this branch found seven problems. All are fixed on the
+branch. Each code fix (DATA-01, SEC-01, SEC-02) has a test shown to fail
+without it; CI-01 and the documentation fixes were verified as the table says.
+
+| ID | Problem | Fix | Verified by |
+|---|---|---|---|
+| DATA-01 | Merging deleted `data/goals.json` and three other files (see §5 correction) | Files restored byte-identical to `main`; live goals moved to gitignored `data/runtime/goals.json` with a copy-only migration | `goalRuntimeMigrationTest` 16/16; merge simulation below |
+| CI-01 | CI never ran a test: `pnpm/action-setup` refused both `version: 10` and `packageManager` | Removed `version:`; `package.json` is authoritative | All CI steps pass locally; GitHub Actions run on push |
+| SEC-01 | `adminControlTest` could not fail (`blocked = blocked \|\| true`, and it accepted any "cancel" error) | Asserts the validator's own refusal and that the approval gate is never reached; a spy gate makes the test unable to execute anything | 30/30; against a weakened blocklist it fails 12 assertions, and the original test passed 7/7 |
+| SEC-02 | Schema validation ran before authorization, so unauthorized callers learned argument names | Authorization moved ahead of schema validation | `dispatchAuthzTest` 32/32; 3 assertions fail with the old order |
+| DOC-01 | `ARCHITECTURE.md` said document RAG did not exist | Added a Document RAG section; also corrected the dispatch order, skill count, and an overstated claim that tool output is wrapped as untrusted | Checked against the code |
+| DOC-02/03/04 | README said 31 tools, 24 skills, 112 TypeScript files | 33, 26, 119 — counted from the live registry and `git ls-files` | Counted, not copied |
+| DOC-05 | This report said the untracked files "remain on disk" | Corrected in §5 | Merge simulation |
+
+### Merge simulation (DATA-01)
+
+A clone of GitHub `main` was given a synthetic 100-record `data/goals.json`, then
+the branch was merged in, for each of three working-copy states:
+
+| Working copy | Previous branch head `8606d36` | Fixed branch |
+|---|---|---|
+| Uncommitted edits to `data/goals.json` | merge refused ("would be overwritten") | 100 → 100, identical |
+| Edits committed | modify/delete conflict; other three files deleted | 100 → 100, identical |
+| Unmodified | `data/goals.json` deleted | 100 → 100, identical |
+
+After the merge, starting `goalManager` migrated all 100 records into
+`data/runtime/goals.json`, left `data/goals.json` untouched, and added nothing
+to `git status`.
+
+### Observation, not changed
+
+With the vector service unavailable, `search_documents` reports that nothing
+matched; it cannot yet distinguish "no match" from "search unavailable".
+Recorded in `ARCHITECTURE.md`; behaviour left as is.

@@ -4,7 +4,7 @@ An autonomous desktop assistant for Windows. Voice in, plan, act on the machine,
 speak back. Node.js/TypeScript at the core, with small Python sidecars for
 speech, vision, and embeddings.
 
-Despite the `requirements.txt`, this is **not** a Python application: 112 of the
+Despite the `requirements.txt`, this is **not** a Python application: 119 of the
 live source files are TypeScript and 14 are Python.
 
 ---
@@ -22,7 +22,7 @@ core/taskGraphEngine.ts      runs the plan as a parallel DAG, with retries and r
       ↓
 core/toolRegistryV2.ts       single dispatch point: schema validation, authz, retry, fallback, caching
       ↓
-skills/*  and  control/*     31 tools; the control layer drives Windows
+skills/*  and  control/*     33 tools; the control layer drives Windows
       ↓
 memory/                      LowDB (source of truth) + Redis cache + vector search + optional graph
 ```
@@ -111,9 +111,13 @@ JARVIS to "enable full control" to elevate.
   data inside `<untrusted_context>` tags, never as system-level instruction.
 - **Command validation.** Unknown shell commands are classified HIGH_RISK and
   fail closed.
-- **Your data.** `data/goals.json`, `memory/*.json` and `environment/systemInfo.json`
-  are runtime state and are **not** tracked by git, so pulling never overwrites
-  your real memory. Back them up before upgrading anyway.
+- **Your data.** Live state is written only to gitignored locations:
+  goals to `data/runtime/goals.json`, facts to `memory/jarvis_memory.json`,
+  vectors to `data/vector/`, episodes to `data/episodes.jsonl`. Git never
+  tracks, overwrites or deletes them, so pulling and merging leave them alone.
+  `data/goals.json` is tracked but no longer written: on first start it is
+  copied once into `data/runtime/goals.json` (never overwriting an existing
+  file). Back up `memory/` and `data/` before upgrading anyway.
 
 ## Optional configuration
 
@@ -133,7 +137,7 @@ See `.env.example` for the full list.
 | `jarvis.ts` | Entry point and voice state machine |
 | `core/` | Orchestrator, task graph, tool registry, reflection, goals |
 | `control/` | Windows control: apps, windows, keyboard, mouse, files, processes |
-| `skills/` | 24 dynamically-loaded skills, each a `description.json` + `skill.ts` |
+| `skills/` | 26 dynamically-loaded skills, each a `description.json` + `skill.ts` |
 | `memory/` | LowDB source of truth, Redis cache, vector service, graph memory |
 | `security/` | Permission manager, approval gate, command validator, path policy |
 | `self_healing/` | Process supervision, failure detection, recovery |
