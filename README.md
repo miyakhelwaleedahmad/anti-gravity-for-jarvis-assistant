@@ -76,7 +76,8 @@ start them yourself.
 
 ```bash
 pnpm test                    # full census
-pnpm test -- --ci            # skip anything needing Windows/Redis/venv/network
+pnpm test -- --ci            # skip what this machine lacks (Windows/Redis/venv/network);
+                             # on Windows the Windows-only tests still run
 pnpm test -- --filter=tool   # just the matching files
 pnpm run typecheck           # tsc --noEmit
 python tests/python/test_vector_persistence.py

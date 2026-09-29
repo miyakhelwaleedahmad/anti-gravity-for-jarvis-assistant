@@ -12,12 +12,15 @@
  *
  * Usage:
  *   npm test                  all tests
- *   npm test -- --ci          only tests that do not need Windows/Redis/venv/network
+ *   npm test -- --ci          skips tests whose prerequisite this host lacks
+ *                             (Windows/Redis/venv/network; on Windows the
+ *                             Windows-only tests are not skipped)
  *   npm test -- --filter=tool only tests whose name contains "tool"
  */
 
 import { spawn } from 'child_process';
 import * as fs from 'fs';
+import { createRequire } from 'module';
 import * as path from 'path';
 import { getWorkspaceRoot } from '../core/workspaceRoot.js';
 
@@ -37,6 +40,27 @@ const ENVIRONMENT_DEPENDENT: Record<string, string> = {
   successfulExecutionLifecycleAuditTest: 'a reachable LLM API',
 };
 
+/**
+ * The prerequisites above that Windows itself provides. On a Windows host these
+ * tests run in every mode and a failure counts as real: excusing it there would
+ * hide exactly the failures a Windows run exists to find.
+ */
+const PROVIDED_BY_WINDOWS = new Set(['dashboardHealthSystemTest', 'processControlSafetyTest', 'windowControlTest']);
+
+/** What `name` needs that this host is missing, or undefined if nothing is. */
+function missingPrerequisite(name: string): string | undefined {
+  if (process.platform === 'win32' && PROVIDED_BY_WINDOWS.has(name)) return undefined;
+  return ENVIRONMENT_DEPENDENT[name];
+}
+
+/**
+ * tsx's CLI from this project's own dependencies. Each test is started as
+ * `node <tsx cli> <file>` rather than `npx tsx <file>`: on Windows `npx` is the
+ * `npx.cmd` shim, which spawn() cannot start without a shell, so the runner
+ * died there before running a single test.
+ */
+const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
+
 /** Not a test — a helper imported by other tests. */
 const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll']);
 
@@ -52,7 +76,7 @@ interface Result {
 function runOne(file: string, name: string): Promise<Result> {
   return new Promise((resolve) => {
     const started = Date.now();
-    const child = spawn('npx', ['tsx', file], {
+    const child = spawn(process.execPath, [TSX_CLI, file], {
       cwd: getWorkspaceRoot(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -62,6 +86,13 @@ function runOne(file: string, name: string): Promise<Result> {
     child.stderr?.on('data', (d) => { output += d.toString(); });
 
     const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
+
+    // Without a listener, a process that cannot be started raises an unhandled
+    // 'error' event that kills the runner instead of failing this one test.
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({ name, status: 'fail', ms: Date.now() - started, reason: `could not start: ${err.message}` });
+    });
 
     child.on('close', (code, signal) => {
       clearTimeout(timer);
@@ -100,7 +131,7 @@ async function main(): Promise<void> {
 
   const results: Result[] = [];
   for (const { file, name } of files) {
-    const needs = ENVIRONMENT_DEPENDENT[name];
+    const needs = missingPrerequisite(name);
     if (ciMode && needs) {
       results.push({ name, status: 'skipped', ms: 0, reason: `needs ${needs}` });
       console.log(`  SKIP  ${name.padEnd(44)} needs ${needs}`);
@@ -116,14 +147,14 @@ async function main(): Promise<void> {
   const passed = results.filter((r) => r.status === 'pass');
   const skipped = results.filter((r) => r.status === 'skipped');
   const failed = results.filter((r) => r.status === 'fail' || r.status === 'timeout');
-  const envFailures = failed.filter((r) => ENVIRONMENT_DEPENDENT[r.name]);
-  const realFailures = failed.filter((r) => !ENVIRONMENT_DEPENDENT[r.name]);
+  const envFailures = failed.filter((r) => missingPrerequisite(r.name));
+  const realFailures = failed.filter((r) => !missingPrerequisite(r.name));
 
   console.log(`\n=== ${passed.length} passed · ${realFailures.length} failed · ${envFailures.length} environment · ${skipped.length} skipped ===`);
 
   if (envFailures.length) {
     console.log('\nFailed for a missing prerequisite, not a defect:');
-    for (const r of envFailures) console.log(`  - ${r.name} (needs ${ENVIRONMENT_DEPENDENT[r.name]})`);
+    for (const r of envFailures) console.log(`  - ${r.name} (needs ${missingPrerequisite(r.name)})`);
   }
 
   if (realFailures.length) {

@@ -116,7 +116,7 @@ These cannot be proven here and must not be reported as verified:
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 | ✅ Complete | — | Baseline captured, 3 real defects isolated from 8 environmental failures |
-| V | ✅ Complete | post-validation | 7 fixes from branch validation — DATA-01 (runtime files byte-identical to main; live goals in gitignored `data/runtime/`; merge simulation 100→100), CI-01, SEC-01, SEC-02, DOC-01..05. Suite **69 pass / 8 environment**. See FINAL_REPORT.md §10. |
+| V | ✅ Complete | post-validation | 7 fixes from branch validation — DATA-01 (runtime files byte-identical to main; live goals in gitignored `data/runtime/`; merge simulation 100→100), CI-01, SEC-01, SEC-02, DOC-01..05; plus the test runner made able to run on Windows (not yet run there). Suite **69 pass / 8 environment**. See FINAL_REPORT.md §10. |
 | 13 | ✅ Complete | `phase-13` | JARVIS-026. Document RAG: ingest → parse → chunk → embed → manifest → cited retrieval, plus `ingest_documents` and `search_documents` skills. New `ragPipelineTest` 28/28. |
 | 12 | ✅ Complete | `phase-12` | JARVIS-023/024/021. Repo 46MB → 3.5MB; README + ARCHITECTURE written; 3 factual errors corrected in the old architecture doc. Its untracking of runtime files (`git rm --cached`) deleted them on merge — **reversed** in the post-validation row. |
 | 11 | ✅ Complete | `phase-11` | JARVIS-025. Real `npm test` runner separating defects from missing prerequisites, plus GitHub Actions CI. |

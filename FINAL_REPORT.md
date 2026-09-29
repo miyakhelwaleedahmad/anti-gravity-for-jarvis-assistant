@@ -2,7 +2,7 @@
 
 **Repository:** `miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant`
 **Base commit:** `f429071` — "Initial upload of Jarvis Assistant"
-**Branch:** `claude/jarvis-repair` · 21 commits: 14 repair + 7 post-validation (§8, §10)
+**Branch:** `claude/jarvis-repair` · 22 commits: 14 repair + 8 post-validation (§8, §10)
 **Spec:** `JARVIS_COMPLETE_TECHNICAL_AUDIT.md` (Claude Cowork), verified rather than trusted
 
 ---
@@ -20,7 +20,7 @@ broken working functionality.
 | Real code defects | 3 | **0** |
 | Environment-only failures | 8 | 8 (unchanged, all explained) |
 | `tsc --noEmit` | clean | clean |
-| Live non-test source files | 169 | **112** |
+| Live non-test source files | 169 | **119** (112 after the quarantine; document RAG added 7) |
 | Repository size | 46 MB | **3.7 MB** |
 | Regressions introduced | — | **zero**, verified at every phase |
 
@@ -124,6 +124,12 @@ The following are implemented and unit-tested but not proven end to end:
 7. **Voice latency** wake → STT → plan → tool → TTS, and whether the 12 s SPEAKING watchdog fires mid-utterance.
 8. **MiniFASNet / anti-spoofing** — not part of this repository at all. Unrelated to this work, and still unverified.
 
+Start with `pnpm test` in PowerShell. On Windows it runs the three Windows-only
+tests too and counts their failures as real; the five that need Redis, a
+virtualenv, a bridge token or an LLM API are still listed as "environment"
+until you provide those — run each of them directly with `npx tsx tests\<name>.ts`
+and treat a non-zero exit as a failure.
+
 ## 7. Deliberately not done
 
 - **Hierarchical planning** (audit P3): a capability change, not a repair. The current single-shot planner is functional.
@@ -134,7 +140,8 @@ The following are implemented and unit-tested but not proven end to end:
 ## 8. Commits
 
 ```
-(this)   docs: sync the report with the final commit list
+(this)   test: let the test runner start tests on Windows
+f486d4f  docs: sync the report with the final commit list
 25285ed  fix: restore data/logs/.gitkeep deleted by accident
 77e07b1  docs: correct documentation found inaccurate in validation
 65b22cb  fix: authorize tool calls before validating their arguments
@@ -179,6 +186,8 @@ what was quarantined.
 A later validation of this branch found seven problems. All are fixed on the
 branch. Each code fix (DATA-01, SEC-01, SEC-02) has a test shown to fail
 without it; CI-01 and the documentation fixes were verified as the table says.
+Two more were found while fixing them: the accidental `.gitkeep` deletion and
+a test runner that could not run on Windows (last two rows).
 
 | ID | Problem | Fix | Verified by |
 |---|---|---|---|
@@ -190,6 +199,7 @@ without it; CI-01 and the documentation fixes were verified as the table says.
 | DOC-02/03/04 | README said 31 tools, 24 skills, 112 TypeScript files | 33, 26, 119 — counted from the live registry and `git ls-files` | Counted, not copied |
 | DOC-05 | This report said the untracked files "remain on disk" | Corrected in §5 | Merge simulation |
 | — | `data/logs/.gitkeep` deleted by accident in `4cf5c1a` (a cleanup `rm -rf data/logs` removed the tracked placeholder) | Restored byte-identical to `main` | Net diff against `main` is empty |
+| — | `pnpm test` could not start a single test on Windows: it ran `spawn('npx')` without a shell, and `npx` is a `.cmd` shim there. On Windows it would also have excused failures of the three Windows-only tests as "environment" | Tests start as `node <tsx cli> <file>`; a test that cannot start fails instead of crashing the runner; on Windows the Windows-only tests always run and count | All three reproduced on Linux before the fix (`npx` off `PATH` → runner crash; `process.platform` faked to `win32` → Windows test skipped or excused) and gone after it; Linux results unchanged. **Not yet run on Windows** |
 
 ### Merge simulation (DATA-01)
 
