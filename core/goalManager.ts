@@ -20,10 +20,9 @@
 
 import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
+import * as fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { getWorkspaceRoot } from './workspaceRoot.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,8 +80,42 @@ export class GoalManager {
 
   // ── Initialization ─────────────────────────────────────────────────────────
 
+  /**
+   * One-time, copy-only migration of goals from the tracked legacy location.
+   *
+   * Runs only when the live file does not exist yet. COPYFILE_EXCL makes the
+   * copy fail rather than overwrite, so an existing live file is never touched,
+   * and the source is never modified or removed. Any failure is logged and
+   * startup continues with an empty store — the legacy file is still intact.
+   */
+  static migrateLegacyGoals(legacyPath: string, livePath: string): 'migrated' | 'skipped' | 'failed' {
+    if (fs.existsSync(livePath) || !fs.existsSync(legacyPath)) return 'skipped';
+    try {
+      fs.copyFileSync(legacyPath, livePath, fs.constants.COPYFILE_EXCL);
+      console.log(`[GoalManager] 📦 Migrated goals from ${legacyPath} to ${livePath} (source left untouched).`);
+      return 'migrated';
+    } catch (err) {
+      console.warn(`[GoalManager] ⚠️ Goal migration failed; starting with an empty store. ${legacyPath} is unchanged.`, err);
+      return 'failed';
+    }
+  }
+
   async init(): Promise<void> {
-    const dbPath = path.resolve(__dirname, '..', 'data', 'goals.json');
+    // Live goals are written to data/runtime/goals.json, which is gitignored.
+    //
+    // They used to live at data/goals.json, a file that is tracked in git and
+    // was rewritten on every startup (the unconditional write below). That made
+    // live state part of the repository: untracking it records a deletion that
+    // removes it from every working copy that merges it. data/goals.json now
+    // stays tracked and unchanged, and is read once as the seed for the live file.
+    const root = getWorkspaceRoot();
+    const runtimeDir = path.join(root, 'data', 'runtime');
+    const dbPath = path.join(runtimeDir, 'goals.json');
+    const legacyPath = path.join(root, 'data', 'goals.json');
+
+    fs.mkdirSync(runtimeDir, { recursive: true });
+    GoalManager.migrateLegacyGoals(legacyPath, dbPath);
+
     const adapter = new JSONFile<GoalDB>(dbPath);
 
     this.db = new Low<GoalDB>(adapter, {

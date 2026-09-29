@@ -82,12 +82,14 @@ data/vector/*
 # Episodic memory log — runtime data, never commit.
 data/episodes.jsonl
 
-# Live runtime state — belongs to the machine, not the repository. A checkout
-# must never overwrite the user's real goals, memory or task history.
-data/goals.json
-memory/taskHistory.json
-memory/userMemory.json
-environment/systemInfo.json
+# Live runtime state is written ONLY under data/runtime/, which is ignored.
+#
+# data/goals.json, memory/taskHistory.json, memory/userMemory.json and
+# environment/systemInfo.json stay TRACKED, byte-identical to main. Untracking
+# them (git rm --cached) records a deletion that removes them from every
+# working copy that merges it — including one holding live goals. The app no
+# longer writes to data/goals.json; it migrates it once into data/runtime/.
+data/runtime/
 
 # Stale generated tree dumps (~42 MB of them were committed once).
 project_structure.txt
