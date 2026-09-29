@@ -2,7 +2,7 @@
 
 **Repository:** `miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant`
 **Base commit:** `f429071` — "Initial upload of Jarvis Assistant"
-**Branch:** `claude/jarvis-repair` · 19 commits (14 repair + 5 post-validation fixes, §10)
+**Branch:** `claude/jarvis-repair` · 21 commits: 14 repair + 7 post-validation (§8, §10)
 **Spec:** `JARVIS_COMPLETE_TECHNICAL_AUDIT.md` (Claude Cowork), verified rather than trusted
 
 ---
@@ -134,7 +134,9 @@ The following are implemented and unit-tested but not proven end to end:
 ## 8. Commits
 
 ```
-(this)   docs: correct documentation found inaccurate in validation
+(this)   docs: sync the report with the final commit list
+25285ed  fix: restore data/logs/.gitkeep deleted by accident
+77e07b1  docs: correct documentation found inaccurate in validation
 65b22cb  fix: authorize tool calls before validating their arguments
 efa1a48  test: make adminControlTest able to detect a broken command blocklist
 4be9a13  ci: let package.json pin the pnpm version
@@ -187,6 +189,7 @@ without it; CI-01 and the documentation fixes were verified as the table says.
 | DOC-01 | `ARCHITECTURE.md` said document RAG did not exist | Added a Document RAG section; also corrected the dispatch order, skill count, and an overstated claim that tool output is wrapped as untrusted | Checked against the code |
 | DOC-02/03/04 | README said 31 tools, 24 skills, 112 TypeScript files | 33, 26, 119 — counted from the live registry and `git ls-files` | Counted, not copied |
 | DOC-05 | This report said the untracked files "remain on disk" | Corrected in §5 | Merge simulation |
+| — | `data/logs/.gitkeep` deleted by accident in `4cf5c1a` (a cleanup `rm -rf data/logs` removed the tracked placeholder) | Restored byte-identical to `main` | Net diff against `main` is empty |
 
 ### Merge simulation (DATA-01)
 
