@@ -381,7 +381,33 @@ export class ToolRegistryV2 {
       };
     }
 
-    // 2. Schema validation
+    // 2. Authorization gate (JARVIS-005).
+    // Runs before schema validation, so an unauthorized caller gets
+    // PERMISSION_DENIED rather than learning the tool's argument schema from a
+    // validation error. Also before the cache, so a denied call is never served
+    // a cached result, and before dispatch, so a tool that does not route
+    // through a control/* controller still inherits a gate.
+    if (typeof tool.requiredLevel === 'number' && tool.requiredLevel > 0) {
+      if (!permissionSession.checkPermission(tool.requiredLevel, name)) {
+        securityAuditLogger.denied(
+          name,
+          'HIGH_RISK',
+          `Dispatch denied: requires permission level ${tool.requiredLevel}`,
+          name,
+        );
+        return {
+          success: false,
+          output:
+            `Tool "${name}" requires permission level ${tool.requiredLevel}. ` +
+            'Enable a full-control session first, sir.',
+          error: 'PERMISSION_DENIED',
+          tool: name,
+          durationMs: Date.now() - start,
+        };
+      }
+    }
+
+    // 3. Schema validation
     const validationError = this.validateArgs(tool, args);
     if (validationError) {
       return {
@@ -402,30 +428,6 @@ export class ToolRegistryV2 {
         tool: name,
         durationMs: Date.now() - start,
       };
-    }
-
-    // 3. Authorization gate (JARVIS-005).
-    // Placed before the cache so a denied call can never be served a cached
-    // result, and before dispatch so a tool that does not route through a
-    // control/* controller still inherits a gate.
-    if (typeof tool.requiredLevel === 'number' && tool.requiredLevel > 0) {
-      if (!permissionSession.checkPermission(tool.requiredLevel, name)) {
-        securityAuditLogger.denied(
-          name,
-          'HIGH_RISK',
-          `Dispatch denied: requires permission level ${tool.requiredLevel}`,
-          name,
-        );
-        return {
-          success: false,
-          output:
-            `Tool "${name}" requires permission level ${tool.requiredLevel}. ` +
-            'Enable a full-control session first, sir.',
-          error: 'PERMISSION_DENIED',
-          tool: name,
-          durationMs: Date.now() - start,
-        };
-      }
     }
 
     // 4. Cache lookup (low-risk tools only)

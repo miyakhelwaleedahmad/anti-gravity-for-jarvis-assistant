@@ -135,5 +135,61 @@ console.log('\n--- Declared floors never exceed what the controller enforces ---
   }
 }
 
+console.log('\n--- Authorization runs before schema validation (SEC-02) ---');
+{
+  // A privileged tool with a required argument, so a missing argument would
+  // produce a schema error if validation ran first.
+  const schemaState = { bodyRan: false };
+  toolRegistryV2.register({
+    name: 'test_schema_tool',
+    description: 'Privileged tool with a required argument.',
+    riskLevel: 'high',
+    requiredLevel: 2,
+    inputSchema: { path: { type: 'string', description: 'required path', required: true } },
+    fallbacks: [],
+    async execute() {
+      schemaState.bodyRan = true;
+      return 'ran';
+    },
+  });
+
+  permissionSession.deactivateFullControl('sec02_setup');
+
+  // Unauthorized + invalid arguments: must be denied, and must not leak schema.
+  const denied = await toolRegistryV2.execute('test_schema_tool', {});
+  ok('unauthorized call with missing args returns PERMISSION_DENIED', denied.error === 'PERMISSION_DENIED', denied.error ?? '');
+  ok('the denial does not reveal the argument schema',
+     !/missing required argument|invalid arguments|"path"/i.test(`${denied.output} ${denied.error}`),
+     denied.output.slice(0, 70));
+  ok('the tool body never ran', schemaState.bodyRan === false);
+
+  // The exact case found during validation: control_file at L0 with no `path`
+  // used to answer `Missing required argument: "path"`.
+  const realTool = await toolRegistryV2.execute('control_file', {});
+  ok('control_file at L0 with no args returns PERMISSION_DENIED', realTool.error === 'PERMISSION_DENIED', realTool.error ?? '');
+
+  permissionSession.activateFullControl(30, 'cli');
+  try {
+    // Authorized + invalid arguments: schema validation must still run.
+    const invalid = await toolRegistryV2.execute('test_schema_tool', {});
+    ok('authorized call with missing args still gets the schema error',
+       invalid.success === false && invalid.error !== 'PERMISSION_DENIED' && /path/i.test(invalid.error ?? ''),
+       invalid.error ?? '');
+    ok('schema rejection still stops the body', schemaState.bodyRan === false);
+
+    // Authorized + valid arguments: normal execution.
+    const valid = await toolRegistryV2.execute('test_schema_tool', { path: 'notes.txt' });
+    ok('authorized call with valid args succeeds', valid.success === true && valid.output === 'ran', valid.error ?? '');
+    ok('the tool body ran', schemaState.bodyRan === true);
+  } finally {
+    permissionSession.deactivateFullControl('sec02_teardown');
+  }
+
+  // Tools without a floor are unaffected: schema errors still surface at L0.
+  const openApp = await toolRegistryV2.execute('open_app', {});
+  ok('floor-less tool at L0 still reports its schema error (not PERMISSION_DENIED)',
+     openApp.error !== 'PERMISSION_DENIED' && openApp.success === false, openApp.error ?? '');
+}
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);
