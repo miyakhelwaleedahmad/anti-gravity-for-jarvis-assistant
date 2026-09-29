@@ -11,9 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` here. package.json's "packageManager" field is the single
+      # source of truth; pnpm/action-setup@v4 refuses to run when both are set
+      # ("Multiple versions of pnpm specified"), which failed CI run 36520392513.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
