@@ -127,7 +127,7 @@ query ─► rag/retrieve.ts ─► vector search ─► manifest join ─► ci
 - `.pdf` and Office formats are refused with a clear message; no parser is installed.
 - Every returned passage names its source file and chunk. A hit with no manifest entry is dropped rather than returned uncited.
 - Document chunks and conversational facts share one vector store, distinguished by the `doc:` id prefix.
-- Retrieval depends on the sentence-transformers model. Without it the vector service answers `503`, `searchVector()` returns no hits, and `search_documents` reports that nothing matched — it cannot yet tell "no match" apart from "search unavailable". Conversational fact recall falls back to lexical search.
+- Retrieval depends on the sentence-transformers model. Without it the vector service answers `503`, `searchVector()` returns no hits, and `search_documents` says document search is unavailable (it asks `searchVector()` to rethrow; before, it reported "nothing matched"). Conversational fact recall still falls back to lexical search.
 
 ## What is NOT here
 

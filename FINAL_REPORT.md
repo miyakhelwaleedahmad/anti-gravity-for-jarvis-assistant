@@ -2,7 +2,7 @@
 
 **Repository:** `miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant`
 **Base commit:** `f429071` — "Initial upload of Jarvis Assistant"
-**Branch:** `claude/jarvis-repair` · 22 commits: 14 repair + 8 post-validation (§8, §10)
+**Branch:** `claude/jarvis-repair` · 29 commits: 14 repair + 8 post-validation + 7 Gemini (§8, §10, §11)
 **Spec:** `JARVIS_COMPLETE_TECHNICAL_AUDIT.md` (Claude Cowork), verified rather than trusted
 
 ---
@@ -140,7 +140,14 @@ and treat a non-zero exit as a failure.
 ## 8. Commits
 
 ```
-(this)   test: let the test runner start tests on Windows
+(this)   docs: record the Gemini round in the report
+1d75b18  docs: describe Gemini setup, its free-tier limits and thinking control
+e609146  fix: do not retry tasks that fail on missing configuration
+2b5b6da  fix: say document search is unavailable instead of "nothing matched"
+6c78ea3  fix: refuse the format command, not every command containing "format"
+51b9e83  fix: stop the LLM client wasting rate-limited requests
+2424982  feat: run JARVIS on Gemini as well as Groq
+2b5c1f4  test: let the test runner start tests on Windows
 f486d4f  docs: sync the report with the final commit list
 25285ed  fix: restore data/logs/.gitkeep deleted by accident
 77e07b1  docs: correct documentation found inaccurate in validation
@@ -216,8 +223,49 @@ After the merge, starting `goalManager` migrated all 100 records into
 `data/runtime/goals.json`, left `data/goals.json` untouched, and added nothing
 to `git status`.
 
-### Observation, not changed
+### Observation, since fixed
 
-With the vector service unavailable, `search_documents` reports that nothing
-matched; it cannot yet distinguish "no match" from "search unavailable".
-Recorded in `ARCHITECTURE.md`; behaviour left as is.
+With the vector service unavailable, `search_documents` reported that nothing
+matched. Fixed in §11: it now says document search is unavailable.
+
+## 11. Gemini support and fixes found with it
+
+JARVIS was hard-wired to Groq: `GEMINI_API_KEY`, `GEMINI_API_URL` and even
+`GROQ_API_URL` were read by nothing, and the validator accepted the unused
+`XAI_API_KEY` placeholder, so a `.env` with only a Gemini key started and could
+not reason. Gemini and Groq now share one OpenAI-compatible client; the
+provider is chosen from the keys (`config/llmconfig.ts`).
+
+Measured live against `gemini-3.5-flash` / `gemini-3.5-flash-lite` before
+changing code, and again after:
+
+| Finding (live) | Change |
+|---|---|
+| Default thinking used the token limit: `max_tokens` 1 and 5 returned nothing; 200 returned a sentence cut off mid-word | `reasoning_effort=minimal` by default for Gemini (about 1 s, full replies on both models; `none` is rejected by Flash-Lite) |
+| Health probe (`max_tokens: 1`) and self-heal ping (`5`) therefore always "failed", and spent quota | Both list models instead (no generation, no quota) |
+| Free tier: 5 requests/min and 20/day on `gemini-3.5-flash` | 429 → fast model once, then stop (was 3 calls); a limit longer than a minute (daily quota) skips that model until Google's retry time |
+| All 33 tool schemas, streaming, and the trailing system message JARVIS uses for replies are accepted | No change needed |
+| Tool calls carry Gemini thought signatures | No change needed: JARVIS sends tool results back as text, never as tool messages |
+
+Found while reading the same code: a cut-off reply, a 4xx and a cancelled
+request were retried; streaming retried a 4xx and then re-sent it; every
+failed call left an unhandled promise rejection (it crashed
+`finalIntegrationSuiteTest`, which now passes without an LLM — it checks
+graceful completion, not reasoning); the fallback provider sent the primary's
+model name; a failed stream had no fallback; the validator's `require()` check
+never ran in this ES module; `isDangerousCommand()` refused any command
+containing "format" and missed `Stop-Computer`, `Clear-Disk`,
+`Initialize-Disk`; `search_documents` reported "nothing matched" when search
+was down; a missing API key was retried as transient (~3 s of silence); the
+task log printed "attempt 3/2".
+
+Tests: `llmProviderConfigTest` 37, `llmClientBehaviourTest` 41 (fake server; it
+fails against the previous client), `dangerousCommandMatchTest` 23 (7 failed
+against the previous matcher). Suite: 80 files, 74 passed · 0 failed · 6
+environment; CI mode 72 passed · 8 skipped.
+
+Live end to end through `orchestrator.process()`: "Remember this: my favourite
+colour is blue" → `save_relation` → spoken confirmation in under 1 s, also
+after the daily quota ran out (answered by Flash-Lite). **Not verified:**
+voice (wake word, STT, TTS) with Gemini on Windows.
+
