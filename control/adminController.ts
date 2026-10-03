@@ -20,11 +20,18 @@ export class AdminController {
       'stop-service windefend',
       'sc config windefend',
       'sc stop windefend',
-      'format',
+      'format-volume',
+      'clear-disk',
+      'initialize-disk',
       'shutdown',
-      'restart-computer'
+      'restart-computer',
+      'stop-computer',
     ];
-    return blocks.some(b => lower.includes(b));
+    if (blocks.some(b => lower.includes(b))) return true;
+    // `format` the disk command — as a word on its own, also as format.com or
+    // with a path. A bare substring match also refused harmless commands such
+    // as `Get-Date -Format yyyy` and `Get-Process | Format-Table`.
+    return /(^|[\s;&|()'"`\\/])format(\.com|\.exe)?(?=$|[\s;&|()'"`])/.test(lower);
   }
 
   public async runShellCommand(command: string): Promise<string> {
