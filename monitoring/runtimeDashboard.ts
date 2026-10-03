@@ -114,7 +114,7 @@ class RuntimeDashboard {
     const svcLabels: Record<string, string> = {
       redis:          'Redis Cache       ',
       vector_memory:  'Vector Memory     ',
-      llm:            'LLM (Groq/xAI)    ',
+      llm:            'LLM API           ',
       tool_registry:  'Tool Registry     ',
       stt:            'STT (Whisper)     ',
       tts:            'TTS (Kokoro)      ',

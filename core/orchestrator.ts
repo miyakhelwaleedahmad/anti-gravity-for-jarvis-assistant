@@ -1207,7 +1207,7 @@ export class JarvisOrchestrator {
         // OPT-SYNTH-3: Use fast 8B model for synthesis — it only needs to convert
         // structured tool output into a natural sentence, not call tools or plan.
         // Saves ~400–1500ms vs the 32B planning model.
-        model: process.env.JARVIS_FAST_MODEL ?? 'llama-3.1-8b-instant',
+        model: llmConfig.fastModel,
         messages: synthesisMessages,
         signal: this.currentAbortController?.signal,
         max_tokens: 200,  // OPT-SYNTH-4: cap synthesis at 200 tokens — just a sentence or two

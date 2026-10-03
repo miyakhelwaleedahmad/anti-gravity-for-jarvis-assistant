@@ -183,11 +183,12 @@ class HealthManager {
   private async probeLLM(): Promise<ServiceHealth> {
     try {
       const { llmConfig } = await import('../config/llmconfig.js');
-      const hasKey = !!(process.env.GROQ_API_KEY || process.env.XAI_API_KEY);
+      // The key of the provider in use (XAI_API_KEY is not used by JARVIS).
+      const hasKey = !!llmConfig.apiKey;
       return {
         name: 'llm',
         status: hasKey ? 'online' : 'degraded',
-        detail: hasKey ? `model: ${llmConfig.model ?? 'groq'}` : 'missing API key',
+        detail: hasKey ? `${llmConfig.provider} · model: ${llmConfig.model}` : `missing ${llmConfig.provider === 'gemini' ? 'GEMINI_API_KEY' : 'GROQ_API_KEY'}`,
         checkedAt: Date.now(),
       };
     } catch {

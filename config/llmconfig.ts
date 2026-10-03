@@ -1,22 +1,127 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-export interface LLMConfig {
-  provider: string;
-  model: string;
+// ─── Provider selection ──────────────────────────────────────────────────────
+//
+// Both providers speak the OpenAI chat-completions protocol, so one client
+// (bridge/groqProvider.ts) serves either; only the address, key, model names and
+// thinking control differ.
+
+export type LLMProviderName = "groq" | "gemini";
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high";
+
+const GROQ_DEFAULT_URL = "https://api.groq.com/openai/v1";
+const GEMINI_DEFAULT_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
+const REASONING_EFFORTS: readonly ReasoningEffort[] = ["none", "minimal", "low", "medium", "high"];
+
+export interface ProviderSettings {
+  provider: LLMProviderName;
   apiKey: string;
   baseURL: string;
+  model: string;
+  fastModel: string;
+  /** Sent as `reasoning_effort` when set; undefined means the field is omitted. */
+  reasoningEffort?: ReasoningEffort;
+  /** Adjustments made while resolving, worth showing at startup. */
+  notes: string[];
+}
+
+/** A value left as in .env.example ("your_xai_api_key_here") is not a key. */
+export function isPlaceholderKey(value: string | undefined): boolean {
+  const v = (value ?? "").trim();
+  return v === "" || /^your[_-]/i.test(v) || /_here$/i.test(v) || v.endsWith("...");
+}
+
+export function normalizeBaseURL(url: string): string {
+  return url.trim().replace(/\/+$/, "");
+}
+
+/**
+ * Gemini's OpenAI-compatible endpoint lives under `/openai`. Google's REST docs
+ * show the bare API root (`…/v1beta`), so that form is extended rather than
+ * sending requests to a path that does not exist.
+ */
+export function geminiOpenAIBaseURL(url: string): string {
+  const u = normalizeBaseURL(url);
+  return /\/v1(beta)?$/.test(u) ? `${u}/openai` : u;
+}
+
+export function resolveProviderSettings(env: NodeJS.ProcessEnv = process.env): ProviderSettings {
+  const key = (name: string): string => (isPlaceholderKey(env[name]) ? "" : (env[name] ?? "").trim());
+  const groqKey = key("GROQ_API_KEY");
+  const geminiKey = key("GEMINI_API_KEY");
+  const notes: string[] = [];
+
+  const requested = (env.JARVIS_LLM_PROVIDER ?? "").trim().toLowerCase();
+  let provider: LLMProviderName;
+  if (requested === "groq" || requested === "gemini") {
+    provider = requested;
+  } else {
+    if (requested) notes.push(`JARVIS_LLM_PROVIDER="${requested}" is not groq or gemini; choosing from the keys instead.`);
+    provider = geminiKey && !groqKey ? "gemini" : "groq";
+    if (geminiKey && groqKey) {
+      notes.push("GROQ_API_KEY and GEMINI_API_KEY are both set; using Groq. Set JARVIS_LLM_PROVIDER=gemini to use Gemini.");
+    }
+  }
+
+  const isGemini = provider === "gemini";
+  const rawURL = (isGemini ? env.GEMINI_API_URL : env.GROQ_API_URL)?.trim() || (isGemini ? GEMINI_DEFAULT_URL : GROQ_DEFAULT_URL);
+  const baseURL = isGemini ? geminiOpenAIBaseURL(rawURL) : normalizeBaseURL(rawURL);
+  if (isGemini && baseURL !== normalizeBaseURL(rawURL)) {
+    notes.push(`GEMINI_API_URL extended to its OpenAI-compatible path: ${baseURL}`);
+  }
+
+  // Gemini models think before answering by default, and that thinking is paid
+  // out of max_tokens: a 200-token reply limit returned a sentence cut off
+  // mid-word. "minimal" removes it and works on both 3.5 Flash and Flash-Lite
+  // ("none" is rejected by Flash-Lite). Groq models reject the field unless
+  // asked for, so it is only sent there when configured.
+  const rawEffort = (env.JARVIS_LLM_REASONING_EFFORT ?? "").trim().toLowerCase();
+  let reasoningEffort: ReasoningEffort | undefined = isGemini ? "minimal" : undefined;
+  if (rawEffort === "off") {
+    reasoningEffort = undefined;
+  } else if ((REASONING_EFFORTS as readonly string[]).includes(rawEffort)) {
+    reasoningEffort = rawEffort as ReasoningEffort;
+  } else if (rawEffort) {
+    notes.push(`JARVIS_LLM_REASONING_EFFORT="${rawEffort}" is not one of ${REASONING_EFFORTS.join(", ")} or off; ignored.`);
+  }
+
+  return {
+    provider,
+    apiKey: isGemini ? geminiKey : groqKey,
+    baseURL,
+    model: env.JARVIS_BRAIN_MODEL?.trim() || (isGemini ? "gemini-3.5-flash" : "qwen-2.5-32b"),
+    fastModel: env.JARVIS_FAST_MODEL?.trim() || (isGemini ? "gemini-3.5-flash-lite" : "llama-3.1-8b-instant"),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+    notes,
+  };
+}
+
+export interface LLMConfig {
+  provider: LLMProviderName;
+  model: string;
+  /** Model used for short replies and when the main model is rate-limited. */
+  fastModel: string;
+  apiKey: string;
+  baseURL: string;
+  reasoningEffort?: ReasoningEffort;
+  providerNotes: string[];
   maxTokens: number;
   temperature: number;
   topP?: number;
   systemPrompt: string;
 }
 
+const resolved = resolveProviderSettings();
+
 export const llmConfig: LLMConfig = {
-  provider: "groq",
-  model: process.env.JARVIS_BRAIN_MODEL ?? "qwen-2.5-32b",
-  apiKey: process.env.GROQ_API_KEY ?? "",
-  baseURL: "https://api.groq.com/openai/v1",
+  provider: resolved.provider,
+  model: resolved.model,
+  fastModel: resolved.fastModel,
+  apiKey: resolved.apiKey,
+  baseURL: resolved.baseURL,
+  ...(resolved.reasoningEffort ? { reasoningEffort: resolved.reasoningEffort } : {}),
+  providerNotes: resolved.notes,
   maxTokens: 1500,
   temperature: 0.7,
   topP: 0.9,

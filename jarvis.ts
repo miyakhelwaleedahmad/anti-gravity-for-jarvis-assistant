@@ -15,6 +15,7 @@
 import 'dotenv/config';
 import { wireExecutionTracing } from './monitoring/traceWiring.js';
 import { configValidator } from './config/configValidator.js';
+import { llmConfig } from './config/llmconfig.js';
 import * as readline from 'readline';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -271,6 +272,11 @@ async function startJarvis() {
     // of as a clear message at startup.
     const configReport = configValidator.validate();
     console.log(configReport.summary);
+    // Warnings were counted but never shown, so a wrong model name or provider
+    // was only discovered by the first failing request.
+    for (const issue of configReport.issues.filter(i => i.level === 'WARNING' && !i.field.startsWith('REDIS'))) {
+      console.warn(`   ⚠ [${issue.field}] ${issue.message}\n     → ${issue.fix}`);
+    }
     if (!configReport.canStart) {
       console.error('\n❌ JARVIS cannot start with the current configuration:\n');
       for (const issue of configReport.issues.filter(i => i.level === 'CRITICAL')) {
@@ -301,7 +307,9 @@ async function startJarvis() {
     );
     timings['Vector Memory Supervisor'] = Date.now() - tVector;
 
-    console.log('🔹 Active Brain Model:', process.env.JARVIS_BRAIN_MODEL);
+    console.log(`🔹 LLM: ${llmConfig.provider} at ${llmConfig.baseURL} — brain ${llmConfig.model}, fast ${llmConfig.fastModel}` +
+      (llmConfig.reasoningEffort ? `, reasoning_effort=${llmConfig.reasoningEffort}` : ''));
+    for (const note of llmConfig.providerNotes) console.log(`   ℹ ${note}`);
 
     // 2. WebSocket server & Brain loop
     const tBridge = Date.now();

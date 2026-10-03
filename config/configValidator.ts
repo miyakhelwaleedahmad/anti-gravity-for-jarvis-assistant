@@ -18,6 +18,10 @@
  *   if (!report.canStart) process.exit(1);
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+import { isPlaceholderKey, resolveProviderSettings } from './llmconfig.js';
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type ValidationLevel = 'CRITICAL' | 'WARNING' | 'INFO';
@@ -46,22 +50,46 @@ export class ConfigValidator {
     const issues: ValidationIssue[] = [];
 
     // ── CRITICAL: LLM API key ────────────────────────────────────────────────
-    const groqKey = process.env.GROQ_API_KEY;
-    const xaiKey  = process.env.XAI_API_KEY;
-    if (!groqKey && !xaiKey) {
+    // Checked for the provider JARVIS will actually use. XAI_API_KEY used to
+    // satisfy this check although nothing in JARVIS calls xAI, so a .env with
+    // only the xAI placeholder passed validation and then could not reason.
+    const llm = resolveProviderSettings(process.env);
+    const isGemini = llm.provider === 'gemini';
+    const keyVar = isGemini ? 'GEMINI_API_KEY' : 'GROQ_API_KEY';
+    if (!llm.apiKey) {
+      const xaiNote = isPlaceholderKey(process.env.XAI_API_KEY) ? '' : ' XAI_API_KEY is set, but JARVIS does not use xAI.';
       issues.push({
         level: 'CRITICAL',
-        field: 'GROQ_API_KEY / XAI_API_KEY',
-        message: 'No LLM API key found. JARVIS cannot reason without an LLM provider.',
-        fix: 'Add GROQ_API_KEY=gsk_... to your .env file. Get a free key at https://console.groq.com',
+        field: keyVar,
+        message: `No ${isGemini ? 'Gemini' : 'Groq'} API key found. JARVIS cannot reason without an LLM provider.${xaiNote}`,
+        fix: isGemini
+          ? 'Add GEMINI_API_KEY=<your key from Google AI Studio> to your .env file.'
+          : 'Add GEMINI_API_KEY=<key from Google AI Studio> or GROQ_API_KEY=gsk_... (https://console.groq.com) to your .env file.',
       });
-    } else if (groqKey && groqKey.length < 20) {
+    } else if (llm.apiKey.length < 20) {
       issues.push({
         level: 'CRITICAL',
-        field: 'GROQ_API_KEY',
-        message: `GROQ_API_KEY looks malformed (length: ${groqKey.length}).`,
-        fix: 'Verify the key starts with "gsk_" and is at least 50 characters.',
+        field: keyVar,
+        message: `${keyVar} looks malformed (length: ${llm.apiKey.length}).`,
+        fix: isGemini ? 'Copy the whole key from Google AI Studio.' : 'Verify the key starts with "gsk_" and is at least 50 characters.',
       });
+    }
+
+    for (const note of llm.notes) {
+      issues.push({ level: 'INFO', field: 'JARVIS_LLM_PROVIDER', message: note, fix: 'No action needed unless this is not what you intended.' });
+    }
+
+    // A model left over from the other provider fails on the first request.
+    for (const [field, value] of [['JARVIS_BRAIN_MODEL', llm.model], ['JARVIS_FAST_MODEL', llm.fastModel]] as const) {
+      const looksGemini = /^(models\/)?gemini/i.test(value);
+      if (isGemini !== looksGemini) {
+        issues.push({
+          level: 'WARNING',
+          field,
+          message: `${field}="${value}" does not look like a ${isGemini ? 'Gemini' : 'Groq'} model, but the active provider is ${llm.provider}.`,
+          fix: isGemini ? `Set ${field}=gemini-3.5-flash (or another model your key lists).` : `Set ${field} to a Groq model, or set JARVIS_LLM_PROVIDER=gemini.`,
+        });
+      }
     }
 
     // ── CRITICAL: Bridge port ────────────────────────────────────────────────
@@ -76,9 +104,9 @@ export class ConfigValidator {
     }
 
     // ── CRITICAL: Memory DB path writable ───────────────────────────────────
+    // (This used require(), which does not exist in an ES module: the check
+    // threw, the catch swallowed it, and it never ran.)
     try {
-      const fs = require('fs') as typeof import('fs');
-      const path = require('path') as typeof import('path');
       const dbDir = path.dirname('./memory/jarvis_memory.json');
       // Just check the directory exists or is creatable — non-blocking check
       if (!fs.existsSync(dbDir)) {
@@ -102,25 +130,21 @@ export class ConfigValidator {
       });
     }
 
-    // ── WARNING: LLM model override ──────────────────────────────────────────
-    const model = process.env.JARVIS_BRAIN_MODEL;
-    if (!model) {
+    // ── INFO: LLM model defaults ─────────────────────────────────────────────
+    if (!process.env.JARVIS_BRAIN_MODEL?.trim()) {
       issues.push({
         level: 'INFO',
         field: 'JARVIS_BRAIN_MODEL',
-        message: 'JARVIS_BRAIN_MODEL not set. Using default model: qwen-2.5-32b.',
-        fix: 'Set JARVIS_BRAIN_MODEL in .env to use a different Groq model.',
+        message: `JARVIS_BRAIN_MODEL not set. Using the ${llm.provider} default: ${llm.model}.`,
+        fix: 'Set JARVIS_BRAIN_MODEL in .env to choose a different model.',
       });
     }
-
-    // ── WARNING: Fast model fallback ─────────────────────────────────────────
-    const fastModel = process.env.JARVIS_FAST_MODEL;
-    if (!fastModel) {
+    if (!process.env.JARVIS_FAST_MODEL?.trim()) {
       issues.push({
         level: 'INFO',
         field: 'JARVIS_FAST_MODEL',
-        message: 'JARVIS_FAST_MODEL not set. Rate-limit fallback will use llama-3.1-8b-instant.',
-        fix: 'Set JARVIS_FAST_MODEL=llama-3.1-8b-instant in .env (or any fast Groq model).',
+        message: `JARVIS_FAST_MODEL not set. Short replies and the rate-limit fallback will use ${llm.fastModel}.`,
+        fix: 'Set JARVIS_FAST_MODEL in .env to choose a different fast model.',
       });
     }
 
