@@ -69,7 +69,7 @@ dispatch path.
 | Context assembly | `memory/unifiedContextBuilder.ts` | Token-budgeted, cached |
 | Document RAG | `rag/` + `skills/ingest_documents`, `skills/search_documents` | Ingest → parse → chunk → embed → cited retrieval |
 | Goals | `core/goalManager.ts` | Live store `data/runtime/goals.json` (gitignored) |
-| LLM routing | `bridge/modelRouter.ts` | Groq primary, OpenAI-compatible fallback |
+| LLM routing | `bridge/modelRouter.ts`, `bridge/groqProvider.ts` | Primary is Gemini or Groq (`config/llmconfig.ts` picks from the keys), one OpenAI-compatible client for both; optional OpenAI-compatible fallback; a failed stream is answered once through `chat()` |
 | Process supervision | `self_healing/selfHealingManager.ts` | Spawn, crash-detect, backoff, circuit-break at 3 |
 | Tracing | `monitoring/structuredLogger.ts` + `monitoring/traceWiring.ts` | One correlation id per request |
 | State | `core/agentStateMachine.ts` | `core/stateShim.ts` is a compat proxy over it |

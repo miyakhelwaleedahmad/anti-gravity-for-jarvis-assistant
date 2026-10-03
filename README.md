@@ -36,7 +36,7 @@ leftover that no longer runs — see `_legacy/README.md`.
 - **Node.js 22+** and **pnpm 10+**
 - **Python 3.12** (for voice, vision, and the embedding service)
 - **Windows** for the PC-control features. The rest runs anywhere.
-- A **Groq API key** (or any OpenAI-compatible endpoint — see fallback below)
+- A **Gemini** or **Groq** API key (both work through the same client)
 - *Optional:* Redis for caching, Neo4j for graph memory
 
 ## Setup
@@ -54,8 +54,24 @@ Two values in `.env` are required before anything will start:
 
 | Variable | Why |
 |---|---|
-| `GROQ_API_KEY` | The reasoning model. Startup fails fast without it. |
+| `GEMINI_API_KEY` **or** `GROQ_API_KEY` | The reasoning model. JARVIS uses whichever is set (`JARVIS_LLM_PROVIDER` decides if both are). Startup fails fast without one. `XAI_API_KEY` is not used. |
 | `JARVIS_BRIDGE_TOKEN` | Shared secret for the local voice bridge. Set a strong value, or set `JARVIS_BRIDGE_DEV_MODE=true` for insecure local development only. |
+
+For Gemini, also set the two models; both exist and each has its own free-tier
+limit (at the time of writing: 5 requests a minute and 20 a day on
+`gemini-3.5-flash`, so the main model runs out quickly on the free tier):
+
+```
+GEMINI_API_KEY=...
+JARVIS_BRAIN_MODEL=gemini-3.5-flash
+JARVIS_FAST_MODEL=gemini-3.5-flash-lite
+```
+
+When a model is rate-limited, JARVIS answers with the fast model; when Google
+says the limit lasts longer than a minute (a used-up daily quota), it uses the
+fast model until then. Gemini thinks before answering, and that thinking is
+paid out of the reply's token limit; JARVIS sends `reasoning_effort=minimal`
+so short spoken replies are not cut off (`JARVIS_LLM_REASONING_EFFORT` changes it).
 
 Everything else has a working default. `config/configValidator.ts` runs first at
 startup and tells you exactly what is missing and how to fix it.
@@ -124,7 +140,7 @@ JARVIS to "enable full control" to elevate.
 
 | Variable | Effect |
 |---|---|
-| `JARVIS_FALLBACK_BASE_URL` / `_API_KEY` / `_MODEL` | A second OpenAI-compatible provider, tried when the primary fails. Without it, a Groq outage stops all reasoning. |
+| `JARVIS_FALLBACK_BASE_URL` / `_API_KEY` / `_MODEL` | A second OpenAI-compatible provider, tried when the primary fails; it always sends its own `_MODEL`. Without it, a provider outage stops all reasoning. |
 | `JARVIS_VECTOR_PERSIST` | Vector store durability. On by default. |
 | `JARVIS_NEO4J_ENABLED` + `NEO4J_PASSWORD` | Graph memory. Off by default; refuses to connect without a password. |
 | `JARVIS_MIN_TOOL_GAP_MS` | Minimum spacing between repeat calls to the same tool (default 250). |
