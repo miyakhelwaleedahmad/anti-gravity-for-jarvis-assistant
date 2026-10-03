@@ -58,7 +58,12 @@ export function initRedis(): void {
 
   const c = client; // narrow type to non-null for event registrations
 
-  c.on("connect", () => {
+  // "ready", not "connect": ioredis emits "connect" when the socket opens but
+  // only accepts commands once it is "ready". With enableOfflineQueue off, a
+  // command sent in between is rejected ("Stream isn't writeable and
+  // enableOfflineQueue options is false") — the startup health probe hit
+  // exactly that window.
+  c.on("ready", () => {
     redisAvailable = true;
     console.log(`[Redis] Connected at ${REDIS_HOST}:${REDIS_PORT}`);
   });
