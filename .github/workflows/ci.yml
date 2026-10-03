@@ -52,3 +52,6 @@ jobs:
 
       - name: Vector persistence and fact-id tests
         run: python tests/python/test_vector_persistence.py
+
+      - name: Vector service startup and write-queue tests
+        run: python tests/python/test_vector_service_startup.py

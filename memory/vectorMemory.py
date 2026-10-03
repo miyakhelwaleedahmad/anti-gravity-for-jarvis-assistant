@@ -37,6 +37,10 @@ import numpy as np
 
 logging.basicConfig(level=logging.INFO, format="[VectorMemory] %(message)s")
 log = logging.getLogger(__name__)
+# huggingface_hub logs every HTTP request at INFO through httpx — dozens of
+# "HTTP Request: HEAD https://huggingface.co/..." lines on each startup.
+for _noisy in ("httpx", "httpcore", "huggingface_hub", "urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 _model = None
 _model_ready = False
@@ -79,7 +83,18 @@ def _get_model():
             from sentence_transformers import SentenceTransformer
             model_name = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
             log.info(f"Loading embedding model: {model_name}")
-            _model = SentenceTransformer(model_name)
+            # Cached copy first. Without local_files_only every start made ~25
+            # requests to huggingface.co just to confirm the cached files are
+            # current — minutes on a slow connection, before the server could
+            # answer anything. Download only when the model is not cached yet.
+            try:
+                _model = SentenceTransformer(model_name, local_files_only=True)
+            except TypeError:
+                # sentence-transformers < 2.3 has no local_files_only.
+                _model = SentenceTransformer(model_name)
+            except Exception as exc:
+                log.info(f"Model not in the local cache ({exc.__class__.__name__}); downloading it once.")
+                _model = SentenceTransformer(model_name)
             log.info("Embedding model loaded.")
         except ImportError:
             log.error("sentence-transformers not installed.")
@@ -87,28 +102,45 @@ def _get_model():
     return _model
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Pre-load model at startup so the first /embed is not blocked."""
-    global _model_ready, _startup_time, _queue_worker_running
-    _startup_time = time.time()
-    log.info("[Startup] Pre-loading embedding model...")
+async def _load_model_in_background() -> None:
+    """Load the model off the event loop, then restore the persisted store.
+
+    _model_ready turns true only after the restore, so every endpoint keeps
+    answering 503 ("loading") until searches would see the full store.
+    """
+    global _model_ready
+    log.info("[Startup] Loading embedding model in the background...")
     try:
-        _get_model()
-        _model_ready = True
-        log.info("[Startup] Embedding model ready. JARVIS vector memory is online.")
+        await asyncio.to_thread(_get_model)
     except Exception as e:
         log.error(f"[Startup] FATAL: Could not load embedding model: {e}")
+        return
 
     # Restore any persisted store now that the model (and its dimension) is
     # known. A failure here is never fatal: the store simply stays empty and the
     # TypeScript side rebuilds it from LowDB (JARVIS-002).
-    if _model_ready:
-        try:
-            result = _memory.load()
-            log.info(f"[Startup] Vector store restore: {result}")
-        except Exception as exc:
-            log.error(f"[Startup] Vector store restore failed (continuing empty): {exc}")
+    try:
+        result = _memory.load()
+        log.info(f"[Startup] Vector store restore: {result}")
+    except Exception as exc:
+        log.error(f"[Startup] Vector store restore failed (continuing empty): {exc}")
+
+    _model_ready = True
+    log.info(f"[Startup] Embedding model ready after {time.time() - _startup_time:.1f}s. JARVIS vector memory is online.")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start serving at once; the model loads in the background.
+
+    Loading used to happen here, and uvicorn accepts no connections until
+    startup returns — on a slow PC that was over three minutes of refused
+    connections, which JARVIS counted as a dead service. Now /liveness answers
+    immediately and /health returns 503 until the model is ready.
+    """
+    global _startup_time, _queue_worker_running
+    _startup_time = time.time()
+    loader = asyncio.create_task(_load_model_in_background())
 
     # Start the embedding queue worker
     _queue_worker_running = True
@@ -116,6 +148,8 @@ async def lifespan(app: FastAPI):
     log.info("[Startup] Embedding queue worker started.")
 
     yield
+    if not loader.done():
+        loader.cancel()
     _queue_worker_running = False
     try:
         _memory.save()
@@ -489,13 +523,17 @@ async def _embedding_queue_worker():
     while _queue_worker_running:
         try:
             job, future = await asyncio.wait_for(_embed_queue.get(), timeout=1.0)
+            # The worker runs on the event loop that created the future, so it is
+            # resolved directly. (This called future.get_event_loop(), which
+            # Future does not have: every job raised AttributeError, the future
+            # was never resolved, and every write timed out after 30 s.)
             try:
                 result = job()
                 if not future.done():
-                    future.get_event_loop().call_soon_threadsafe(future.set_result, result)
+                    future.set_result(result)
             except Exception as exc:
                 if not future.done():
-                    future.get_event_loop().call_soon_threadsafe(future.set_exception, exc)
+                    future.set_exception(exc)
             finally:
                 _embed_queue.task_done()
         except asyncio.TimeoutError:
@@ -506,8 +544,7 @@ async def _embedding_queue_worker():
 
 async def _enqueue_write(job) -> any:
     """Enqueue a synchronous write job and await its result."""
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
+    future = asyncio.get_running_loop().create_future()
     await _embed_queue.put((job, future))
     return await future
 
@@ -540,7 +577,7 @@ class EmbedReq(BaseModel):
     fact_id: Optional[str] = None
 
 class BatchEmbedReq(BaseModel):
-    texts: list[str] = Field(..., min_items=1, max_items=64)
+    texts: list[str] = Field(..., min_length=1, max_length=64)
     skip_dedup: bool = False
     fact_ids: Optional[list[Optional[str]]] = None
 

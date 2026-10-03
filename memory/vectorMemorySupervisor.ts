@@ -130,6 +130,8 @@ class VectorMemorySupervisor {
 
   isHealthy(): boolean { return this.healthy; }
   isStartupReady(): boolean { return this._startupReady; }
+  /** True while the supervisor owns the service (started and not stopped). */
+  isRunning(): boolean { return this.running; }
   getRestartCount(): number { return this.restartCount; }
   getRetryQueueDepth(): number { return this._retryQueue.length; }
   getUptimeSeconds(): number {
@@ -427,8 +429,10 @@ class VectorMemorySupervisor {
   // ── Circuit breaker integration ────────────────────────────────────────────
 
   private resetCircuitBreaker(): void {
+    // Also lets the memory manager run a re-sync it had to skip while the
+    // service was still loading.
     import('../memory/memoryManager.js').then(({ memoryManager }) => {
-      memoryManager.resetVectorCircuit();
+      memoryManager.onVectorServiceHealthy();
     }).catch(() => {});
   }
 

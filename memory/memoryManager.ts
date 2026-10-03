@@ -96,7 +96,12 @@ export class MemoryManager {
    * Uses dynamic import to avoid circular dependency (supervisor imports memoryManager).
    * Once resolved, the reference is cached for all subsequent calls.
    */
-  private _supervisorRef: { isStartupReady: () => boolean; waitUntilReady: (ms?: number) => Promise<boolean> } | null = null;
+  private _supervisorRef: {
+    isStartupReady: () => boolean;
+    waitUntilReady: (ms?: number) => Promise<boolean>;
+    isHealthy?: () => boolean;
+    isRunning?: () => boolean;
+  } | null = null;
   private _supervisorLoading: Promise<void> | null = null;
 
   private async getSupervisor(): Promise<typeof this._supervisorRef> {
@@ -196,6 +201,21 @@ export class MemoryManager {
           'Vector API not ready yet (startup synchronisation gate). ' +
           'The supervisor will notify when the service is healthy.'
         );
+      }
+    }
+
+    // After the startup window the supervisor still knows best. While it runs
+    // the service but has not yet seen /health succeed, the model is loading
+    // (minutes on a slow PC) or the process is being restarted. Requests made
+    // then failed with "fetch failed", tripped the circuit breaker every 30 s
+    // and filled the log. Fail fast instead, without counting a failure.
+    // Probes are exempt: they are how readiness is detected.
+    if (!isStartupGrace && !isProbe) {
+      const supervisor = await this.getSupervisor();
+      if (supervisor?.isRunning?.() && supervisor.isHealthy && !supervisor.isHealthy()) {
+        const err = new Error('Vector API not ready yet (the supervisor reports it is still starting).');
+        (err as any).notReady = true;
+        throw err;
       }
     }
 
@@ -334,7 +354,10 @@ export class MemoryManager {
       const res = await this.vectorRequest('search', { query, top_k });
       return res.results || [];
     } catch (err) {
-      console.error("[Memory] Vector DB failed, semantic search bypassed.");
+      // A service that is still loading is expected, not an error worth a line per search.
+      if (!(err as { notReady?: boolean })?.notReady) {
+        console.error("[Memory] Vector DB failed, semantic search bypassed.");
+      }
       if (opts.rethrow) {
         throw new Error(`the vector memory service is unavailable (${err instanceof Error ? err.message : String(err)})`);
       }
@@ -371,7 +394,10 @@ export class MemoryManager {
 
     setTimeout(async () => {
       if (!(await this.isVectorHealthy())) {
-        console.log('[Memory] Vector rebuild skipped: vector service unhealthy.');
+        // Not skipped for good: the supervisor calls onVectorServiceHealthy()
+        // once the service is up. Before, the facts were simply never indexed.
+        this.vectorRebuildPending = true;
+        console.log('[Memory] Vector rebuild deferred: the vector service is not up yet; it will run when it is.');
         return;
       }
 
@@ -396,6 +422,22 @@ export class MemoryManager {
 
   private ensureInit(): void {
     if (!this.initialized) throw new Error("[Memory] Not initialized. Call init() first.");
+  }
+
+  /** A startup re-sync that had to wait for the vector service. */
+  private vectorRebuildPending = false;
+
+  /**
+   * Called by the supervisor on every healthy check: closes the circuit
+   * breaker and runs a re-sync that was deferred while the service loaded.
+   */
+  public onVectorServiceHealthy(): void {
+    this.resetVectorCircuit();
+    if (this.vectorRebuildPending && this.initialized) {
+      this.vectorRebuildPending = false;
+      console.log('[Memory] Vector service is up — running the deferred re-sync.');
+      this.rebuildVectorIndexInBackground();
+    }
   }
 
   /** OPT-VEC-2: Immediately reset the vector API circuit breaker.
