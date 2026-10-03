@@ -482,12 +482,15 @@ export class TaskGraphEngine extends EventEmitter {
         : errLower.includes('timeout') || errLower.includes('timed out')   ? 'timeout'
         : errLower.includes('permission') || errLower.includes('access denied') ? 'permission'
         : errLower.includes('not registered') || errLower.includes('not found') ? 'fatal'
+        // Missing or rejected configuration (e.g. "SERPER_API_KEY is not set")
+        // cannot fix itself; retrying only added ~3 s of silence to the reply.
+        : errLower.includes('is not set') || errLower.includes('api key') || errLower.includes('unauthorized') ? 'fatal'
         : 'transient';
       node.errorType = errorType;
 
       const isFatal = errorType === 'fatal' || errorType === 'abort';
 
-      console.error(`[TaskGraph]   ❌ Node "${node.id}" failed [${errorType}] (attempt ${node.retryCount}/${node.maxRetries}): ${errMsg}`);
+      console.error(`[TaskGraph]   ❌ Node "${node.id}" failed [${errorType}] (attempt ${node.retryCount}/${node.maxRetries + 1}): ${errMsg}`);
 
       // Fatal/abort errors skip retries immediately
       const canRetry = !isFatal
