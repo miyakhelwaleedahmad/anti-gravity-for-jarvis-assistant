@@ -134,7 +134,9 @@ JARVIS to "enable full control" to elevate.
   tracks, overwrites or deletes them, so pulling and merging leave them alone.
   `data/goals.json` is tracked but no longer written: on first start it is
   copied once into `data/runtime/goals.json` (never overwriting an existing
-  file). Back up `memory/` and `data/` before upgrading anyway.
+  file). Back up `memory/` and `data/` before upgrading anyway: `pnpm backup` copies
+  both to `jarvis-backups/<timestamp>/` next to the project folder (any shell —
+  CMD, PowerShell or bash), or to a folder you name: `pnpm backup -- D:\backups`.
 
 ## Optional configuration
 
@@ -144,6 +146,9 @@ JARVIS to "enable full control" to elevate.
 | `JARVIS_VECTOR_PERSIST` | Vector store durability. On by default. |
 | `JARVIS_NEO4J_ENABLED` + `NEO4J_PASSWORD` | Graph memory. Off by default; refuses to connect without a password. |
 | `JARVIS_MIN_TOOL_GAP_MS` | Minimum spacing between repeat calls to the same tool (default 250). |
+| `HF_TOKEN` | Hugging Face read token, used only for the first download of the embedding model (later starts load it from the local cache). |
+| `JARVIS_WAKEWORD_LOG_LEVEL` | `INFO` (default) or `DEBUG` for the wake-word process. |
+| `JARVIS_SPEAKING_WATCHDOG_MS` | Minimum time JARVIS waits for TTS to finish before assuming it crashed (default 12000); it is stretched to fit queued replies. |
 
 See `.env.example` for the full list.
 

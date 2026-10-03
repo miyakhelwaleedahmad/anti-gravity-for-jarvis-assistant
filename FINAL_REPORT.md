@@ -2,7 +2,7 @@
 
 **Repository:** `miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant`
 **Base commit:** `f429071` — "Initial upload of Jarvis Assistant"
-**Branch:** `claude/jarvis-repair` · 29 commits: 14 repair + 8 post-validation + 7 Gemini (§8, §10, §11)
+**Branch:** `claude/jarvis-repair` · 36 commits: 14 repair + 8 post-validation + 7 Gemini + 7 Windows-log (§8, §10–§12)
 **Spec:** `JARVIS_COMPLETE_TECHNICAL_AUDIT.md` (Claude Cowork), verified rather than trusted
 
 ---
@@ -140,7 +140,14 @@ and treat a non-zero exit as a failure.
 ## 8. Commits
 
 ```
-(this)   docs: record the Gemini round in the report
+(this)   docs: record the Windows-log round in the report
+8a5b554  chore: silence the second .env load
+fe54754  feat: add `pnpm backup` for memory/ and data/
+246bf54  fix: Windows state poller never reported a window
+81fab5a  fix: mark Redis available on "ready", not "connect"
+3e28b1c  fix: voice — stop JARVIS answering itself and cutting itself off
+661de0b  fix: vector memory — start serving at once, stop every write hanging
+afbff31  docs: record the Gemini round in the report
 1d75b18  docs: describe Gemini setup, its free-tier limits and thinking control
 e609146  fix: do not retry tasks that fail on missing configuration
 2b5b6da  fix: say document search is unavailable instead of "nothing matched"
@@ -268,4 +275,32 @@ Live end to end through `orchestrator.process()`: "Remember this: my favourite
 colour is blue" → `save_relation` → spoken confirmation in under 1 s, also
 after the daily quota ran out (answered by Flash-Lite). **Not verified:**
 voice (wake word, STT, TTS) with Gemini on Windows.
+
+## 12. Fixes from the first Windows run
+
+The first run on Windows still used the code from before §11 (the local branch
+was 7 commits behind; `git pull` had not been run), which explains the Groq
+401s and unhandled rejections in that log. The rest of the log showed problems
+that no test here had caught:
+
+| From the log | Cause | Fix | Test |
+|---|---|---|---|
+| Vector service unreachable for 3.5 min; "fetch failed", "circuit breaker opened!" | Model loaded inside FastAPI's startup hook (no connections until done); ~25 Hugging Face requests per start; Node kept calling it | Background load (`/health` 503 until ready); cached model first; calls refused while the supervisor sees it loading | `test_vector_service_startup.py` 20, `vectorStartupGateTest` 12 |
+| `Queue worker error: '_asyncio.Future' object has no attribute 'get_event_loop'` | Every write's future was never resolved: all embeds hung 30 s | Resolve the future directly | same Python test (hangs on the old code) |
+| `Vector rebuild skipped`, store restored 0 vectors | Startup re-sync never retried | Deferred, runs on the first healthy check | `vectorStartupGateTest` |
+| JARVIS ran its own reply "opening chrome sir" as a command | Echo window measured from send, not playback end | Window from `speaking_end`; verbatim repeats are echo | `echoWindowFromPlaybackEndTest` 8 |
+| `SPEAKING watchdog fired after 12000ms` mid-sentence | Fixed 12 s vs. a queue of replies | Watchdog sized to queued speech (12 s minimum, 2 min cap) | `speakingWatchdogQueueTest` 9 |
+| `Stream isn't writeable and enableOfflineQueue options is false` | Redis marked available on "connect", before "ready" | Use "ready" | `redisReadyRaceTest` 4 (3 fail on the old code) |
+| `PS query timed out` ×5 | Late output handed to the next query; Add-Type each poll | Per-query markers, busy refusal, compile once, 15 s first query | `windowsStateSessionTest` 8 |
+| (silent) no active window / open apps ever reported | Script assigned read-only `$PID` (verified in PowerShell 7.4) | `$procId` | run in PowerShell 7.4 with a stand-in API: old empty, new correct |
+| `STT tried to release mic` ×7; WebSocket frames incl. the bridge token | Wake-word results released a mic STT never held; DEBUG logging | Release only when STT holds it; INFO logging, websockets frames hidden | — |
+| `'New-Item' is not recognized` | A PowerShell command run in CMD | `pnpm backup` (any shell) | `backupDataTest` 10 |
+| `injected env (0) from .env` | Second, redundant `.env` load logged by dotenv 17 | Second load quiet | — |
+
+Suite: 86 files, 80 passed · 0 failed · 6 environment; CI mode 78 passed · 8
+skipped; Python 23 + 20.
+
+**Not verified on Windows yet:** the poller's live output (run in PowerShell 7
+on Linux with a stand-in API only), the watchdog and echo timings with real
+TTS audio, and the vector service's start time on that PC.
 
