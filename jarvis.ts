@@ -228,6 +228,7 @@ function isEcho(sttText: string, lastTtsText: string): boolean {
     orchestrator,
     nodeBridge.lastTtsTimestamp,
     nodeBridge.ttsStartedMs,
+    nodeBridge.ttsEndedMs,
   );
   const accepted = !decision.isEcho;
   console.log(
@@ -495,8 +496,10 @@ async function startJarvis() {
     // ── Voice Loop Part 2: STT result → orchestrator → TTS ─────────────────
     nodeBridge.on('stt_result', async (msg) => {
       isSttListening = false;
-      // Phase 4: STT is done — release mic ownership
-      releaseMic(MicOwner.STT, 'stt_result_received');
+      // Phase 4: STT is done — release mic ownership. Results also arrive from
+      // the wake-word process (inline "Jarvis, open Chrome" and follow-ups),
+      // when STT never held the mic; releasing then only logged a warning.
+      if (_micOwner === MicOwner.STT) releaseMic(MicOwner.STT, 'stt_result_received');
 
       const rawText = (msg.payload as any).text as string | undefined;
 

@@ -99,6 +99,8 @@ export function evaluateEcho(
   lastTtsTimestampMs?: number,
   /** Phase 4: timestamp when TTS playback STARTED (for barge-in detection) */
   ttsStartedMs?: number,
+  /** When TTS playback ENDED (speaking_end). */
+  ttsEndedMs?: number,
 ): EchoDecision {
   const cleanStt = cleanSpeech(sttText);
   const cleanTts = cleanSpeech(lastTtsText);
@@ -115,11 +117,24 @@ export function evaluateEcho(
   });
 
   // ── Guard 1: TTS expired (Phase 4: 4s window instead of 8s) ─────────────────
+  // The window runs from the later of "text sent to TTS" and "playback ended".
+  // Measured from the send alone, a reply that was queued or took a few seconds
+  // to say had "expired" before the microphone could even pick up its tail: on
+  // Windows, "Opening chrome, sir." came back 6.5 s after it was sent (about 3 s
+  // after playback ended), scored 1.00 similarity, and was run as a command.
   if (lastTtsTimestampMs !== undefined) {
-    const age = Date.now() - lastTtsTimestampMs;
+    const reference = Math.max(lastTtsTimestampMs, ttsEndedMs ?? 0);
+    const age = Date.now() - reference;
     if (age > ECHO_WINDOW_MS) {
       return makeResult(false, `tts_expired (age=${age}ms > ${ECHO_WINDOW_MS}ms)`);
     }
+  }
+
+  // ── Guard 1b: Word-for-word repeat of the last TTS ───────────────────────────
+  // Checked before the command protection below: if JARVIS says "Open Chrome,
+  // sir" and hears exactly that back, it must not run it as a command.
+  if (cleanTts && cleanStt === cleanTts) {
+    return makeResult(true, 'verbatim repeat of last TTS');
   }
 
   // ── Guard 2: Phase 4 — Barge-in detection ────────────────────────────────────

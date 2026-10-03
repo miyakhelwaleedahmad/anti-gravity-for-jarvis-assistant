@@ -5,6 +5,7 @@ import { failureDetector } from "../self_healing/failureDetector.js";
 import { pipelineRegistry } from "../self_healing/pipelineRegistry.js";
 import { conversationBus } from "../core/conversationBus.js";
 import { systemController } from "../core/stateShim.js";
+import { agentStateMachine } from "../core/agentStateMachine.js";
 import http from "http";
 
 const LOCALHOST_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
@@ -68,6 +69,8 @@ export class NodeBridge {
   public lastTtsTimestamp: number = 0;  // when last TTS was sent (for echo filter expiry)
   /** Phase 4: when TTS playback actually started (speaking_start from tts.py) */
   public ttsStartedMs: number = 0;
+  /** When TTS playback finished (speaking_end) — the echo window runs from here. */
+  public ttsEndedMs: number = 0;
 
   private wss: WebSocketServer | null = null;
   private clients: Set<WebSocket> = new Set();
@@ -427,6 +430,8 @@ export class NodeBridge {
     }
 
     console.log("[NodeBridge] RX type=speaking_end role=tts");
+    this.ttsEndedMs = Date.now();
+    agentStateMachine.noteSpeechFinished();
     conversationBus.speakingEnded();
     this._bridgeEvents.emit("speaking_end", payload);
   }
@@ -512,6 +517,7 @@ export class NodeBridge {
     if (role === 'tts' && msg.type === 'command' && msg.payload?.action === 'stop') {
       console.log('[NodeBridge] 🛑 Stop command for TTS received. Clearing pendingTTS queue.');
       this.pendingTTS = [];
+      agentStateMachine.noteSpeechFinished();
     }
 
     let sent = false;
@@ -578,6 +584,8 @@ export class NodeBridge {
 
     this.lastTtsText = cleanText;
     this.lastTtsTimestamp = Date.now();
+    // Lets the SPEAKING watchdog allow for everything queued, not a fixed 12 s.
+    agentStateMachine.noteSpeechQueued(cleanText);
 
     const msg: BridgeMessage = { type: "tts", payload: { text: cleanText } };
     const ttsClient = this.readyClients.get("tts");

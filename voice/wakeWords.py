@@ -56,11 +56,16 @@ try:
 except ImportError:
     _SPHINX_AVAILABLE = False
 
+# INFO by default; JARVIS_WAKEWORD_LOG_LEVEL=DEBUG brings the detail back.
+# With the root logger at DEBUG, the websockets library logged every frame —
+# heartbeats, handshake headers, and the READY message carrying the bridge
+# token — so it stays at WARNING whatever the level.
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=getattr(logging, os.environ.get("JARVIS_WAKEWORD_LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s [WakeWord] %(levelname)-8s %(message)s",
     datefmt="%H:%M:%S",
 )
+logging.getLogger("websockets").setLevel(logging.WARNING)
 log = logging.getLogger("wakeword")
 
 

@@ -30,6 +30,18 @@ const SPEAKING_WATCHDOG_MS = parseInt(
   process.env.JARVIS_SPEAKING_WATCHDOG_MS ?? '12000',
   10
 );
+/** Upper bound for a SPEAKING watchdog stretched to fit queued speech. */
+const MAX_SPEAKING_WATCHDOG_MS = 120_000;
+
+/**
+ * Rough playback time for a TTS utterance: ~0.4 s per word (neural voices
+ * speak 2.5–3 words a second) plus 1 s for synthesis.
+ */
+export function estimateSpeechMs(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return 1_000 + words * 400;
+}
+
 const PLANNING_WATCHDOG_MS = parseInt(
   process.env.JARVIS_PLANNING_WATCHDOG_MS ?? '15000',
   10
@@ -184,24 +196,54 @@ export class AgentStateMachine extends EventEmitter {
 
   // ── Watchdog helpers ──────────────────────────────────────────────────────────
 
+  /** Estimated playback still queued at the TTS process (reset on speaking_end). */
+  private _pendingSpeechMs = 0;
+
+  /**
+   * TTS reports speaking_start once and speaking_end only when its whole queue
+   * is empty, so a fixed 12 s watchdog cut off any reply longer than that, or
+   * several queued ones (seen on Windows: greeting + warning + error message).
+   * The watchdog now allows for the speech actually queued; 12 s stays the
+   * minimum, so a crashed TTS is still caught.
+   */
+  noteSpeechQueued(text: string): void {
+    this._pendingSpeechMs = Math.min(this._pendingSpeechMs + estimateSpeechMs(text), MAX_SPEAKING_WATCHDOG_MS);
+    if (this._state === AgentState.SPEAKING && this._speakingWatchdog !== null) {
+      this._armSpeakingWatchdog(); // stretch the running deadline
+    }
+  }
+
+  /** The TTS queue is empty (speaking_end) or was cleared by a stop command. */
+  noteSpeechFinished(): void {
+    this._pendingSpeechMs = 0;
+  }
+
+  /** Current SPEAKING watchdog allowance in ms. */
+  speakingWatchdogMs(): number {
+    if (this._pendingSpeechMs === 0) return SPEAKING_WATCHDOG_MS;
+    return Math.min(Math.max(SPEAKING_WATCHDOG_MS, this._pendingSpeechMs + 3_000), MAX_SPEAKING_WATCHDOG_MS);
+  }
+
   private _armSpeakingWatchdog(): void {
-    this._clearSpeakingWatchdog();
+    this._clearSpeakingWatchdog(true);
+    const ms = this.speakingWatchdogMs();
     this._speakingWatchdog = setTimeout(() => {
       if (this._state !== AgentState.SPEAKING) return; // already left
       console.warn(
-        `[AgentStateMachine] ⏰ SPEAKING watchdog fired after ${SPEAKING_WATCHDOG_MS}ms. ` +
+        `[AgentStateMachine] ⏰ SPEAKING watchdog fired after ${ms}ms. ` +
         `TTS may have crashed without sending speaking_end. Resetting to IDLE.`
       );
+      this._pendingSpeechMs = 0;
       // Use the validated internal path — never bypass transition table.
       this._watchdogReset(AgentState.SPEAKING, 'speaking_timeout');
-    }, SPEAKING_WATCHDOG_MS);
+    }, ms);
   }
 
-  private _clearSpeakingWatchdog(): void {
+  private _clearSpeakingWatchdog(rearming = false): void {
     if (this._speakingWatchdog !== null) {
       clearTimeout(this._speakingWatchdog);
       this._speakingWatchdog = null;
-      console.log('[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).');
+      if (!rearming) console.log('[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).');
     }
   }
 
