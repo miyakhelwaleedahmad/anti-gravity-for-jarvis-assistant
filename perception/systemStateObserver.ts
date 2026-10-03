@@ -142,7 +142,8 @@ export class SystemStateObserver {
     if (this.windowsProbeLock) return;
     this.windowsProbeLock = true;
     try {
-      const windowsData = await getWindowsState();
+      // A background snapshot: the last state is fine while PowerShell is busy.
+      const windowsData = await getWindowsState({ allowStale: true });
       
       const activeWindowChanged = JSON.stringify(this.state.activeWindow) !== JSON.stringify(windowsData.activeWindow);
       const openAppsChanged = JSON.stringify(this.state.openApps) !== JSON.stringify(windowsData.openApps);

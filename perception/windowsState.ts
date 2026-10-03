@@ -99,7 +99,7 @@ public class FastWinAPI {
   '{"activeWindow":{"title":"","processName":"","pid":0},"openApps":[]}'
 }`;
 
-/** The session is still finishing a query that timed out; skip this poll. */
+/** The session is running another query, or still finishing one that timed out. */
 export class PSBusyError extends Error {}
 
 interface PendingQuery {
@@ -273,6 +273,22 @@ export class PersistentPSSession {
       this.proc!.stdin!.write(`${command}\nWrite-Output '${END_TOKEN}:${id}'\n`, 'utf8');
     });
   }
+
+  /**
+   * query(), but waits up to waitMs while the session is busy instead of
+   * being refused, for callers that need the current state.
+   */
+  async queryWhenFree(command: string, waitMs: number): Promise<string> {
+    const deadline = Date.now() + waitMs;
+    for (;;) {
+      try {
+        return await this.query(command);
+      } catch (err) {
+        if (!(err instanceof PSBusyError) || Date.now() >= deadline) throw err;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+  }
 }
 
 // Singleton persistent session
@@ -283,7 +299,7 @@ psSession.start();
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/** Last successful result, returned while the session finishes a slow query. */
+/** Last successful result, returned to background polls while the session is busy. */
 let lastGood: WindowsStateResult = EMPTY_RESULT;
 let lastLoggedError = '';
 let lastLoggedAt = 0;
@@ -303,14 +319,48 @@ function logPollFailure(message: string): void {
   }
 }
 
-export async function getWindowsState(): Promise<WindowsStateResult> {
+/**
+ * A window handle as "0x" + hex: the form findHwnd() recognises and
+ * win_automate.ps1 expects (it parses -Hwnd as base 16). The persistent
+ * session prints IntPtr.ToString(), which is decimal, so handle 1311204 was
+ * read as 0x1311204 — another handle, usually no window at all — and close or
+ * focus silently did nothing, or hit a different window.
+ */
+export function normalizeHwnd(value: unknown): string {
+  const s = String(value ?? '').trim();
+  let n: number;
+  if (/^0x[0-9a-f]+$/i.test(s)) n = parseInt(s.slice(2), 16);
+  else if (/^\d+$/.test(s)) n = Number(s);
+  else return '';
+  return Number.isSafeInteger(n) ? `0x${n.toString(16).toUpperCase()}` : '';
+}
+
+export interface WindowsStateOptions {
+  /**
+   * Background polling: while the session is busy, return the last result
+   * instead of waiting. Actions leave this off so they never act on an old
+   * window list (closing the window that WAS active, not the one that is).
+   */
+  allowStale?: boolean;
+  /** How long an action waits for a busy session before giving up. */
+  waitMs?: number;
+}
+
+const ACTION_WAIT_MS = 5_000;
+
+export async function getWindowsState(
+  options: WindowsStateOptions = {},
+  session: PersistentPSSession = psSession,
+): Promise<WindowsStateResult> {
   try {
     let stdout: string;
 
-    if (psSession.isAlive()) {
+    if (session.isAlive()) {
       // OPT-PS-1: Use persistent session — no new process spawn
-      // PHASE3-PS-1: timeout handled by psSession.query() adaptive logic
-      stdout = await psSession.query(INLINE_SCRIPT);
+      // PHASE3-PS-1: timeout handled by session.query() adaptive logic
+      stdout = options.allowStale
+        ? await session.query(INLINE_SCRIPT)
+        : await session.queryWhenFree(INLINE_SCRIPT, options.waitMs ?? ACTION_WAIT_MS);
     } else {
       // Fallback: one-shot spawn (original behaviour)
       const scriptPath = path.join(__dirname, 'get_windows_state.ps1');
@@ -344,20 +394,26 @@ export async function getWindowsState(): Promise<WindowsStateResult> {
         title:       parsed.activeWindow?.title       || '',
         processName: parsed.activeWindow?.processName || '',
         pid:         Number(parsed.activeWindow?.pid  || 0),
-        hwnd:        parsed.activeWindow?.hwnd        || '',
+        hwnd:        normalizeHwnd(parsed.activeWindow?.hwnd),
       },
       openApps: openApps.map((app: any) => ({
         name:        app.name        || '',
         pid:         Number(app.pid  || 0),
         windowTitle: app.windowTitle || '',
-        hwnd:        app.hwnd        || '',
+        hwnd:        normalizeHwnd(app.hwnd),
       })),
     };
     return lastGood;
 
   } catch (err: any) {
-    // A busy session is expected right after a slow query; keep the last state.
-    if (err instanceof PSBusyError) return lastGood;
+    if (err instanceof PSBusyError) {
+      // A background poll keeps the last state. An action gets nothing, so it
+      // fails ("no window found") instead of acting on a window list that may
+      // no longer be true.
+      if (options.allowStale) return lastGood;
+      logPollFailure(`no current window list for an action: ${err.message}`);
+      return EMPTY_RESULT;
+    }
     logPollFailure(err.message);
     return EMPTY_RESULT;
   }
