@@ -1,5 +1,8 @@
 import dotenv from "dotenv";
-dotenv.config();
+// jarvis.ts has already loaded .env (import "dotenv/config"); this second load
+// covers entry points that import this module first. quiet: dotenv 17 logs
+// each load, and this one printed a misleading "injected env (0)".
+dotenv.config({ quiet: true });
 
 // ─── Provider selection ──────────────────────────────────────────────────────
 //
