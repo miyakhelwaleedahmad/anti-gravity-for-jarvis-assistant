@@ -324,12 +324,20 @@ export class MemoryManager {
     }
   }
 
-  async searchVector(query: string, top_k: number = 3): Promise<any[]> {
+  /**
+   * @param opts.rethrow — throw instead of returning []. Memory search wants []
+   *   (it falls back to keyword matching); document search must tell "nothing
+   *   matched" apart from "search is down".
+   */
+  async searchVector(query: string, top_k: number = 3, opts: { rethrow?: boolean } = {}): Promise<any[]> {
     try {
       const res = await this.vectorRequest('search', { query, top_k });
       return res.results || [];
     } catch (err) {
       console.error("[Memory] Vector DB failed, semantic search bypassed.");
+      if (opts.rethrow) {
+        throw new Error(`the vector memory service is unavailable (${err instanceof Error ? err.message : String(err)})`);
+      }
       return [];
     }
   }

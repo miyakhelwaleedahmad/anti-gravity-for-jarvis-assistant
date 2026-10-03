@@ -34,7 +34,9 @@ export async function execute(args: Record<string, unknown>): Promise<string> {
 
     return `Found ${passages.length} relevant passage(s):\n\n${rendered}`;
   } catch (err) {
-    return `Error: document search failed — ${(err as Error).message}`;
+    // Typically the vector memory service is not running (it is started and
+    // restarted by the supervisor). Saying "nothing matched" here would be false.
+    return `Error: document search is unavailable right now — ${(err as Error).message}. Try again in a moment, sir.`;
   }
 }
 

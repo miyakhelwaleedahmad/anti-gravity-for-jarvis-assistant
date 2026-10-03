@@ -19,7 +19,8 @@ export interface RetrievedPassage {
 }
 
 export async function retrieveDocuments(query: string, topK = 4, minScore = 0.25): Promise<RetrievedPassage[]> {
-  const hits = await memoryManager.searchVector(query, topK * 3);
+  // rethrow: an unreachable vector service must not read as "nothing matched".
+  const hits = await memoryManager.searchVector(query, topK * 3, { rethrow: true });
   const passages: RetrievedPassage[] = [];
 
   for (const hit of hits ?? []) {
