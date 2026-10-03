@@ -2,7 +2,7 @@
 
 **Repository:** `miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant`
 **Base commit:** `f429071` — "Initial upload of Jarvis Assistant"
-**Branch:** `claude/jarvis-repair` · 36 commits: 14 repair + 8 post-validation + 7 Gemini + 7 Windows-log (§8, §10–§12)
+**Branch:** `claude/jarvis-repair` · 38 commits: 14 repair + 8 post-validation + 7 Gemini + 7 Windows-log + 2 iMac review (§8, §10–§13)
 **Spec:** `JARVIS_COMPLETE_TECHNICAL_AUDIT.md` (Claude Cowork), verified rather than trusted
 
 ---
@@ -140,7 +140,9 @@ and treat a non-zero exit as a failure.
 ## 8. Commits
 
 ```
-(this)   docs: record the Windows-log round in the report
+(this)   docs: record the iMac review in the report
+f96ab30  fix: window and app commands acted on the wrong window, or on none
+ced7e43  docs: record the Windows-log round in the report
 8a5b554  chore: silence the second .env load
 fe54754  feat: add `pnpm backup` for memory/ and data/
 246bf54  fix: Windows state poller never reported a window
@@ -304,3 +306,35 @@ skipped; Python 23 + 20.
 on Linux with a stand-in API only), the watchdog and echo timings with real
 TTS audio, and the vector service's start time on that PC.
 
+## 13. Review for a 2010 iMac
+
+The question: why JARVIS was slow, and often did nothing, on an iMac (mid
+2010) running Windows 10. Causes found in the code, the first Windows log and
+measurements here:
+
+| Cause | Evidence |
+|---|---|
+| Gemini free tier: 5 requests a minute, 20 a day per model | 429 bodies from the owner's key. A tool task uses 2 requests (plan, then wording the answer); failures use more. Brain and fast model were both `gemini-3.5-flash`, so there was no second quota to fall back on; the fast model is now `gemini-3.5-flash-lite`. |
+| CPU without AVX/AVX2 | faster-whisper (CTranslate2 4.8.2) under QEMU emulating a Westmere CPU (no AVX): generic code path, int8, no crash. The same code paths forced natively (`CT2_FORCE_CPU_ISA=GENERIC`, `MKL_ENABLE_INSTRUCTIONS=SSE4_2`) took 0.77–0.80 s instead of 0.23–0.24 s for a Whisper-tiny-sized model on one short command. PyTorch could not be tested here (its package host is blocked); the log shows it loads, slowly. |
+| Heavy start-up | Log: vector service ready about 3 min 40 s after launch (about 25 s for the web stack, 2.5 min importing PyTorch and transformers, 45 s of Hugging Face checks, which 661de0b removed); STT about 1.5 min to its model check; PowerShell queries timing out at 4–6 s. |
+| Fixed time limits | 10 s per LLM request, 15 s for planning. The log shows one request stalled for 10 s. Both are settings (README, Optional configuration). |
+| Room talk and JARVIS's own voice taken as commands | 15 s follow-up window without the wake word. The log shows "opening chrome sir", fragments ("open", "listen me") and side talk sent to the planner. A command queued behind them is dropped after 6 s. Not changed. |
+| Vision service never switched on | Nothing sends `vision_start`; the process loads OpenCV and idles. Not changed. |
+
+Fixed in `f96ab30`:
+
+| Problem | Cause | Fix | Test |
+|---|---|---|---|
+| "Close Notepad" reported success and nothing closed; "close this window" never found its window | The persistent session printed handles in decimal; `win_automate.ps1` parses `-Hwnd` as hex, so 1311204 became 19993092 (checked in PowerShell 7.4). Present since the initial upload | Handles normalised to `0x` + hex | `windowsStateFreshnessTest` 12 (7 fail on the old behaviour) |
+| An action during a background poll got the previous poll's window list | `PSBusyError` returned the last result to every caller (246bf54) | Actions wait up to 5 s for a current reading, else get none and fail; only the observer reuses the last result | same |
+
+Suite: 87 files, 81 passed · 0 failed · 6 environment; CI mode 79 passed · 8
+skipped.
+
+**Not verified on Windows:** window and app commands with hex handles on a
+real desktop (`windowControlTest`, `test:pc-control`), and start-up and
+response times on the iMac itself.
+
+**Proposed, not done:** switches to turn off Vision and the vector service on
+slow PCs, an adjustable follow-up window, a spoken notice when a queued
+command is dropped, and loading the Whisper model from the local cache first.

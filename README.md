@@ -149,6 +149,10 @@ JARVIS to "enable full control" to elevate.
 | `HF_TOKEN` | Hugging Face read token, used only for the first download of the embedding model (later starts load it from the local cache). |
 | `JARVIS_WAKEWORD_LOG_LEVEL` | `INFO` (default) or `DEBUG` for the wake-word process. |
 | `JARVIS_SPEAKING_WATCHDOG_MS` | Minimum time JARVIS waits for TTS to finish before assuming it crashed (default 12000); it is stretched to fit queued replies. |
+| `JARVIS_LLM_TIMEOUT_MS` | How long one LLM request may take before it is cancelled and retried (default 10000). Raise it, e.g. to 20000, on a slow connection. |
+| `JARVIS_PLANNING_WATCHDOG_MS` | How long planning may take in total before JARVIS gives up (default 15000). Keep it above `JARVIS_LLM_TIMEOUT_MS`. |
+| `JARVIS_ACTIVE_WINDOW_POLL_MS`, `JARVIS_CHROME_TABS_POLL_MS`, `JARVIS_SERVICES_POLL_MS` | Background check intervals (defaults 8000, 12000, 20000). Longer intervals use less CPU on an old PC; answers about open windows and tabs can then be that much older. Window and app actions always read the current state. |
+| `PYTHONUNBUFFERED=1` | The Python services print at once, so the log shows their loading times in order. |
 
 See `.env.example` for the full list.
 
