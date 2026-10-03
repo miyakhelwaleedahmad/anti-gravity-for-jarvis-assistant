@@ -56,12 +56,21 @@ const EMPTY_RESULT: WindowsStateResult = {
 const END_TOKEN = '__JARVIS_END__';
 
 /**
- * PowerShell command that outputs window state as JSON then the end token.
- * Kept in-memory so no disk I/O is needed for each poll.
+ * PowerShell that prints the window state as JSON. The session appends its own
+ * end-of-response line, tagged with the query's id.
+ *
+ * Two fixes here:
+ *   - The process-id variable was `$pid`, which is PowerShell's read-only
+ *     automatic variable `$PID`. Assigning it throws "Cannot overwrite variable
+ *     PID because it is read-only or constant", the catch below swallowed it,
+ *     and every poll returned an empty active window and no open apps.
+ *   - Add-Type compiled the C# helper on every poll; it now compiles once per
+ *     session.
  */
 const INLINE_SCRIPT = `
 try {
-  Add-Type @"
+  if (-not ('FastWinAPI' -as [type])) {
+    Add-Type @"
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
@@ -71,14 +80,15 @@ public class FastWinAPI {
     [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr h, StringBuilder sb, int max);
 }
 "@ -ErrorAction SilentlyContinue
+  }
 
   $hwnd = [FastWinAPI]::GetForegroundWindow()
-  $pid = 0; [FastWinAPI]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
+  $procId = 0; [FastWinAPI]::GetWindowThreadProcessId($hwnd, [ref]$procId) | Out-Null
   $sb = New-Object System.Text.StringBuilder 512
   [FastWinAPI]::GetWindowText($hwnd, $sb, 512) | Out-Null
   $title = $sb.ToString()
-  $proc = if ($pid -gt 0) { Get-Process -Id $pid -ErrorAction SilentlyContinue } else { $null }
-  $activeWindow = @{ title=$title; processName=if($proc){$proc.Name}else{''}; pid=$pid; hwnd=$hwnd.ToString() }
+  $proc = if ($procId -gt 0) { Get-Process -Id $procId -ErrorAction SilentlyContinue } else { $null }
+  $activeWindow = @{ title=$title; processName=if($proc){$proc.Name}else{''}; pid=$procId; hwnd=$hwnd.ToString() }
 
   $openApps = @([System.Diagnostics.Process]::GetProcesses() | Where-Object { $_.MainWindowTitle } | Select-Object -First 20 | ForEach-Object {
     @{ name=$_.ProcessName; pid=$_.Id; windowTitle=$_.MainWindowTitle; hwnd=$_.MainWindowHandle.ToString() }
@@ -87,53 +97,78 @@ public class FastWinAPI {
   @{ activeWindow=$activeWindow; openApps=$openApps } | ConvertTo-Json -Depth 3 -Compress
 } catch {
   '{"activeWindow":{"title":"","processName":"","pid":0},"openApps":[]}'
-}
-Write-Output '${END_TOKEN}'
-`.replace('${END_TOKEN}', END_TOKEN);
+}`;
 
-class PersistentPSSession {
+/** The session is still finishing a query that timed out; skip this poll. */
+export class PSBusyError extends Error {}
+
+interface PendingQuery {
+  id: string;
+  resolve: (v: string) => void;
+  reject: (e: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+export class PersistentPSSession {
   private proc: ChildProcess | null = null;
   private buffer = '';
-  private pendingResolve: ((v: string) => void) | null = null;
-  private pendingReject: ((e: Error) => void) | null = null;
+  private current: PendingQuery | null = null;
+  /**
+   * Queries that timed out but are still running inside PowerShell (it runs
+   * stdin commands one after another). Their output is discarded when it
+   * arrives. Before, the late output was handed to the NEXT query, and new
+   * queries queued up behind the slow one, so one slow poll became a run of
+   * timeouts.
+   */
+  private stale = new Map<string, number>();
+  private seq = 0;
   private restarting = false;
   private restartCount = 0;
   private readonly MAX_RESTARTS = 5;
-  // PHASE3-PS-1: Track first query — Add-Type C# compilation takes 3-5s
-  // on first run. Use a longer timeout for the first call only.
+  // The first query compiles the C# helper; on a busy PC (models loading at
+  // startup) that took longer than the old 6 s allowance.
   private _firstQueryDone = false;
+
+  constructor(
+    private readonly exe = 'powershell',
+    private readonly args: string[] = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', '-'],
+    private readonly firstQueryTimeoutMs = 15_000,
+    private readonly queryTimeoutMs = 4_000,
+    /** A slow query still unfinished after this long means PowerShell is stuck. */
+    private readonly staleLimitMs = 30_000,
+  ) {}
 
   start(): void {
     if (this.proc) return;
+    this.restarting = false; // a fresh start re-enables crash recovery after stop()
     if (this.restartCount >= this.MAX_RESTARTS) {
       console.warn('[windowsState] Max PS restarts reached — falling back to one-shot mode.');
       return;
     }
 
     try {
-      this.proc = spawn('powershell', [
-        '-NoProfile',
-        '-NonInteractive',
-        '-ExecutionPolicy', 'Bypass',
-        '-Command', '-',   // read commands from stdin
-      ], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      this.proc = spawn(this.exe, this.args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
       this.proc.unref();   // don't block Node.js exit
       this.buffer = '';
+      this.stale.clear();
+      this._firstQueryDone = false;
 
       this.proc.stdout?.on('data', (chunk: Buffer) => {
         this.buffer += chunk.toString();
-        const endIdx = this.buffer.indexOf(END_TOKEN);
-        if (endIdx !== -1) {
-          const result = this.buffer.substring(0, endIdx).trim();
-          this.buffer = this.buffer.substring(endIdx + END_TOKEN.length);
-          if (this.pendingResolve) {
-            const resolve = this.pendingResolve;
-            this.pendingResolve = null;
-            this.pendingReject = null;
-            resolve(result);
+        const token = new RegExp(`${END_TOKEN}:(\\d+)`);
+        let m: RegExpExecArray | null;
+        while ((m = token.exec(this.buffer)) !== null) {
+          const text = this.buffer.substring(0, m.index).trim();
+          this.buffer = this.buffer.substring(m.index + m[0].length);
+          const id = m[1]!;
+          if (this.current && this.current.id === id) {
+            const { resolve, timer } = this.current;
+            clearTimeout(timer);
+            this.current = null;
+            resolve(text);
+          } else {
+            this.stale.delete(id); // late output of a query that timed out
           }
         }
       });
@@ -149,10 +184,11 @@ class PersistentPSSession {
       this.proc.on('exit', () => {
         this.proc = null;
         this.buffer = '';
-        if (this.pendingReject) {
-          const reject = this.pendingReject;
-          this.pendingResolve = null;
-          this.pendingReject = null;
+        this.stale.clear();
+        if (this.current) {
+          const { reject, timer } = this.current;
+          clearTimeout(timer);
+          this.current = null;
           reject(new Error('PowerShell session exited unexpectedly.'));
         }
         if (!this.restarting) {
@@ -162,7 +198,7 @@ class PersistentPSSession {
             this.restarting = false;
             console.warn(`[windowsState] PS session restarting (attempt ${this.restartCount}/${this.MAX_RESTARTS})...`);
             this.start();
-          }, 2000);
+          }, 2000).unref?.();
         }
       });
 
@@ -170,6 +206,13 @@ class PersistentPSSession {
         console.warn('[windowsState] PS spawn error:', err.message);
         this.proc = null;
         this.buffer = '';
+        // Fail a query already sent rather than letting it wait out its timeout.
+        if (this.current) {
+          const { reject, timer } = this.current;
+          clearTimeout(timer);
+          this.current = null;
+          reject(new Error(`PowerShell could not be started: ${err.message}`));
+        }
       });
 
       console.log('[windowsState] OPT-PS-1: Persistent PowerShell session started.');
@@ -182,6 +225,7 @@ class PersistentPSSession {
 
   stop(): void {
     if (this.proc) {
+      this.restarting = true; // a deliberate stop is not a crash to recover from
       this.proc.stdin?.end();
       this.proc.kill('SIGTERM');
       this.proc = null;
@@ -194,40 +238,39 @@ class PersistentPSSession {
   }
 
   /**
-   * Run a query in the persistent session and return stdout as a string.
-   * Rejects after timeoutMs if no END_TOKEN is received.
+   * Run a query in the persistent session and return its stdout.
+   * Rejects after the timeout if the query's end line has not arrived, and with
+   * PSBusyError while an earlier query that timed out is still running.
    */
   query(command: string, timeoutMs?: number): Promise<string> {
     if (!this.isAlive()) {
       return Promise.reject(new Error('PS session not alive'));
     }
-    if (this.pendingResolve) {
-      return Promise.reject(new Error('PS session busy'));
+    if (this.current) {
+      return Promise.reject(new PSBusyError('PS session busy'));
+    }
+    if (this.stale.size > 0) {
+      const oldest = Math.min(...this.stale.values());
+      if (Date.now() - oldest > this.staleLimitMs) {
+        console.warn(`[windowsState] PowerShell has not finished a query in ${this.staleLimitMs / 1000}s — restarting the session.`);
+        this.proc?.kill('SIGTERM'); // the exit handler restarts it
+      }
+      return Promise.reject(new PSBusyError('PS session still finishing a slow query'));
     }
 
-    // Adaptively set query timeout: 6000ms for first C# compilation, 4000ms thereafter
-    const effectiveTimeout = timeoutMs ?? (this._firstQueryDone ? 4000 : 6000);
-    if (!this._firstQueryDone) this._firstQueryDone = true;
+    const id = String(++this.seq);
+    const effectiveTimeout = timeoutMs ?? (this._firstQueryDone ? this.queryTimeoutMs : this.firstQueryTimeoutMs);
+    this._firstQueryDone = true;
 
     return new Promise<string>((resolve, reject) => {
-      this.pendingResolve = resolve;
-      this.pendingReject = reject;
-
       const timer = setTimeout(() => {
-        this.pendingResolve = null;
-        this.pendingReject = null;
-        this.buffer = ''; // clear stale buffer on timeout
+        if (this.current?.id !== id) return;
+        this.current = null;
+        this.stale.set(id, Date.now());
         reject(new Error(`PS query timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
-
-      // Wrap so timer is cleared on resolution
-      const origResolve = resolve;
-      this.pendingResolve = (v: string) => {
-        clearTimeout(timer);
-        origResolve(v);
-      };
-
-      this.proc!.stdin!.write(command + '\n', 'utf8');
+      this.current = { id, resolve, reject, timer };
+      this.proc!.stdin!.write(`${command}\nWrite-Output '${END_TOKEN}:${id}'\n`, 'utf8');
     });
   }
 }
@@ -239,6 +282,26 @@ export const psSession = new PersistentPSSession();
 psSession.start();
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+/** Last successful result, returned while the session finishes a slow query. */
+let lastGood: WindowsStateResult = EMPTY_RESULT;
+let lastLoggedError = '';
+let lastLoggedAt = 0;
+let suppressedErrors = 0;
+
+/** One line per distinct failure, then at most once a minute — not every poll. */
+function logPollFailure(message: string): void {
+  const now = Date.now();
+  if (message !== lastLoggedError || now - lastLoggedAt > 60_000) {
+    const repeats = suppressedErrors > 0 ? ` (${suppressedErrors} more since the last report)` : '';
+    console.warn(`[windowsState] Poll failed (non-fatal): ${message}${repeats}`);
+    lastLoggedError = message;
+    lastLoggedAt = now;
+    suppressedErrors = 0;
+  } else {
+    suppressedErrors++;
+  }
+}
 
 export async function getWindowsState(): Promise<WindowsStateResult> {
   try {
@@ -276,7 +339,7 @@ export async function getWindowsState(): Promise<WindowsStateResult> {
         ? [parsed.openApps]
         : [];
 
-    return {
+    lastGood = {
       activeWindow: {
         title:       parsed.activeWindow?.title       || '',
         processName: parsed.activeWindow?.processName || '',
@@ -290,9 +353,12 @@ export async function getWindowsState(): Promise<WindowsStateResult> {
         hwnd:        app.hwnd        || '',
       })),
     };
+    return lastGood;
 
   } catch (err: any) {
-    console.warn('[windowsState] Poll failed (non-fatal):', err.message);
+    // A busy session is expected right after a slow query; keep the last state.
+    if (err instanceof PSBusyError) return lastGood;
+    logPollFailure(err.message);
     return EMPTY_RESULT;
   }
 }
