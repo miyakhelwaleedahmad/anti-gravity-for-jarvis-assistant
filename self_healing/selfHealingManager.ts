@@ -222,10 +222,12 @@ export class SelfHealingManager extends EventEmitter {
 
     try {
       if (actionPlan.action === "retry_connection" && actionPlan.target === "groq") {
-        console.log(`[SelfHeal] Pinging Groq API...`);
-        await groqProvider.chat({ messages: [{ role: "user", content: "ping" }], max_tokens: 5 });
+        // A model listing, not a generated reply: no quota spent, and it cannot
+        // come back empty because a thinking model used its token budget.
+        console.log(`[SelfHeal] Checking the LLM API...`);
+        await groqProvider.ping();
         pipelineRegistry.recordSuccess(pipeline);
-        console.log(`[SelfHeal] Groq ping successful, pipeline '${pipeline}' healed.`);
+        console.log(`[SelfHeal] LLM API reachable, pipeline '${pipeline}' healed.`);
       } 
       else if (actionPlan.action === "reinit_memory" && actionPlan.target === "memoryManager") {
         console.log(`[SelfHeal] Re-initializing memoryManager...`);

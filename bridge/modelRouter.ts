@@ -15,9 +15,14 @@ import type { ILLMProvider, ILLMRequest, ILLMResponse } from "./llmTypes.js";
 export class ModelRouter {
   private providers: Map<string, ILLMProvider> = new Map();
 
-  constructor() {
-    // Register default providers mapped to their names
-    this.providers.set("groq", groqProvider);
+  /**
+   * @param primary name the primary client is registered under — the active
+   *   provider ("groq" or "gemini"). Tests pass it explicitly so a key in the
+   *   developer's .env cannot turn a unit test into a live API call.
+   */
+  constructor(private readonly primary: string = llmConfig.provider) {
+    // One OpenAI-compatible client serves Groq or Gemini; see config/llmconfig.ts.
+    this.providers.set(primary, groqProvider);
     this.providers.set("openai", openaiProvider);
   }
 
@@ -30,7 +35,7 @@ export class ModelRouter {
    * first, then any other registered provider that reports itself configured.
    */
   private failoverOrder(providerName?: string): string[] {
-    const primary = providerName || llmConfig.provider;
+    const primary = providerName || this.primary;
     const order = [primary];
 
     // An explicitly requested provider is honoured exactly — a caller asking
@@ -78,20 +83,39 @@ export class ModelRouter {
       : new Error(`All LLM providers failed: ${order.join(", ")}`);
   }
 
-  // ✅ FIXED: Added streaming support to router
+  /**
+   * Streams from the primary provider. If the stream fails before producing
+   * anything, the request is answered once more through chat(), which applies
+   * the normal failover order — previously a failed stream had no fallback, so
+   * voice replies went silent whenever the primary was down.
+   */
   async *streamChat(request: ILLMRequest, providerName?: string): AsyncGenerator<string, void, unknown> {
-    const selectedProviderName = providerName || llmConfig.provider;
+    const selectedProviderName = providerName || this.primary;
     const provider = this.providers.get(selectedProviderName);
 
     if (!provider) {
       throw new Error(`LLM Provider '${selectedProviderName}' is not registered or supported.`);
     }
 
-    if (!(provider as any).streamChat) {
+    const stream = (provider as { streamChat?: (r: ILLMRequest) => AsyncGenerator<string, void, unknown> }).streamChat;
+    if (!stream) {
       throw new Error(`Provider '${selectedProviderName}' does not support streaming.`);
     }
 
-    yield* (provider as any).streamChat(request);
+    let yielded = false;
+    try {
+      for await (const chunk of stream.call(provider, request)) {
+        yielded = true;
+        yield chunk;
+      }
+    } catch (err) {
+      // Mid-reply failures and cancellations are not retried: the caller has
+      // already spoken part of the answer, or asked for it to stop.
+      if (yielded || request.signal?.aborted) throw err;
+      console.warn(`[ModelRouter] Stream from "${selectedProviderName}" failed (${(err as Error)?.message}); answering without streaming.`);
+      const response = await this.chat(request, providerName);
+      if (response.content) yield response.content;
+    }
   }
 }
 

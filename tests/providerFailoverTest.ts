@@ -45,7 +45,7 @@ console.log('\n=== Provider Failover Test ===\n');
 
 console.log('--- A failing primary falls through to the fallback ---');
 {
-  const router = new ModelRouter();
+  const router = new ModelRouter('groq');
   const down = provider('groq', 'throw');
   const up = provider('openai', 'ok');
   router.registerProvider('groq', down);
@@ -59,7 +59,7 @@ console.log('--- A failing primary falls through to the fallback ---');
 
 console.log('\n--- A healthy primary is not bypassed ---');
 {
-  const router = new ModelRouter();
+  const router = new ModelRouter('groq');
   const up = provider('groq', 'ok');
   const spare = provider('openai', 'ok');
   router.registerProvider('groq', up);
@@ -72,7 +72,7 @@ console.log('\n--- A healthy primary is not bypassed ---');
 
 console.log('\n--- All providers down surfaces the error ---');
 {
-  const router = new ModelRouter();
+  const router = new ModelRouter('groq');
   router.registerProvider('groq', provider('groq', 'throw'));
   router.registerProvider('openai', provider('openai', 'throw'));
   let threw = false;
@@ -82,7 +82,7 @@ console.log('\n--- All providers down surfaces the error ---');
 
 console.log('\n--- An explicitly requested provider is honoured exactly ---');
 {
-  const router = new ModelRouter();
+  const router = new ModelRouter('groq');
   const down = provider('groq', 'throw');
   const spare = provider('openai', 'ok');
   router.registerProvider('groq', down);

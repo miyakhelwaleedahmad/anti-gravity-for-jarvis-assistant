@@ -59,7 +59,10 @@ export class OpenAICompatibleProvider implements ILLMProvider {
     }
 
     const body: Record<string, unknown> = {
-      model: request.model ?? this.model,
+      // Always this provider's own model. request.model names a model of the
+      // primary provider ("gemini-3.5-flash", "qwen/qwen3-32b"), which this
+      // endpoint does not serve — sending it made every failover fail.
+      model: this.model,
       messages: request.messages,
       temperature: request.temperature ?? 0.7,
       max_tokens: request.max_tokens ?? 1500,

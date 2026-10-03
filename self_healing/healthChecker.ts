@@ -8,7 +8,7 @@
  * a pipeline completely collapses.
  *
  * Probed subsystems:
- *   - Groq API          — lightweight chat ping (max_tokens: 1)
+ *   - LLM API (Groq or Gemini) — lists models; costs no generation quota
  *   - Redis             — PING command via ioredis
  *   - Vector Memory     — checks if the supervisor process is alive
  *   - Memory Manager    — verifies in-memory DB is initialized
@@ -144,28 +144,32 @@ export class HealthChecker {
 
   // ── Individual Probes ──────────────────────────────────────────────────────
 
+  /**
+   * LLM reachability. Lists the provider's models instead of generating a
+   * reply: a generation probe spent rate-limited quota every round, and with a
+   * thinking model (Gemini) a 1-token reply always came back empty, so the probe
+   * reported a healthy API as down.
+   */
   private async _probeGroq(): Promise<ProbeResult> {
     const t0 = Date.now();
+    const { llmConfig } = await import('../config/llmconfig.js');
+    const subsystem = `LLM API (${llmConfig.provider})`;
     try {
       const { groqProvider } = await import('../bridge/groqProvider.js');
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
       try {
-        await groqProvider.chat({
-          messages: [{ role: 'user', content: 'ping' }],
-          max_tokens: 1,
-          signal: ctrl.signal,
-        });
+        await groqProvider.ping(ctrl.signal);
       } finally {
         clearTimeout(timer);
       }
-      return { subsystem: 'Groq API', pipeline: 'brain_to_groq', ok: true, latencyMs: Date.now() - t0 };
+      return { subsystem, pipeline: 'brain_to_groq', ok: true, latencyMs: Date.now() - t0 };
     } catch (err) {
       const e = err instanceof Error ? err.message : String(err);
-      // Rate-limit errors are not a health failure — Groq is reachable
-      const ok = e.includes('rate-limited') || e.includes('circuit broken');
+      // Rate-limit errors are not a health failure — the API is reachable
+      const ok = e.includes('rate-limited') || e.includes('circuit broken') || e.includes('(429)');
       return {
-        subsystem: 'Groq API',
+        subsystem,
         pipeline: 'brain_to_groq',
         ok,
         latencyMs: Date.now() - t0,
