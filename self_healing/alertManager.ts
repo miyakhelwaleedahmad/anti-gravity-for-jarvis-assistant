@@ -19,10 +19,11 @@
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ALERT_LOG_PATH = path.join(__dirname, '..', 'data', 'logs', 'alerts.jsonl');
+const ALERT_LOG_PATH = path.join(dataRoot(path.resolve(__dirname, '..')), 'data', 'logs', 'alerts.jsonl');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

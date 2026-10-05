@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import * as os from 'os';
 import { fileURLToPath } from 'url';
 import { getWindowsState } from './windowsState.js';
@@ -51,7 +52,7 @@ export class SystemStateObserver {
 
   constructor(config: Partial<SystemStateObserverConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.stateFilePath = path.resolve(__dirname, '..', 'data', 'runtime', 'system_state.json');
+    this.stateFilePath = path.join(dataRoot(path.resolve(__dirname, '..')), 'data', 'runtime', 'system_state.json');
     this.state = {
       timestamp: new Date().toISOString(),
       activeWindow: { title: '', processName: '', pid: 0 },

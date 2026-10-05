@@ -45,6 +45,21 @@ export function getWorkspaceRoot(): string {
   return path.resolve(__dirname, '..');
 }
 
+// ─── Data root ───────────────────────────────────────────────────────────────
+
+/**
+ * Where a module keeps its data files (memory, goals, permission session,
+ * audit logs), given the location it has always used.
+ *
+ * `JARVIS_DATA_ROOT` moves all of them at once: the test runner points it at
+ * a temporary folder, so a test run never writes into the real memory, goals
+ * or permission files. Unset, every module keeps its own location.
+ */
+export function dataRoot(defaultRoot: string): string {
+  const override = process.env['JARVIS_DATA_ROOT']?.trim();
+  return override ? path.resolve(override) : defaultRoot;
+}
+
 // ─── Host-independent path predicates ────────────────────────────────────────
 
 /** `C:\foo`, `c:/foo`, or a bare drive root `D:\` / `D:`. */

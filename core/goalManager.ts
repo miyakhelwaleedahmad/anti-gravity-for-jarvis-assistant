@@ -22,7 +22,7 @@ import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
 import * as fs from 'fs';
 import path from 'path';
-import { getWorkspaceRoot } from './workspaceRoot.js';
+import { dataRoot, getWorkspaceRoot } from './workspaceRoot.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,7 +108,7 @@ export class GoalManager {
     // live state part of the repository: untracking it records a deletion that
     // removes it from every working copy that merges it. data/goals.json now
     // stays tracked and unchanged, and is read once as the seed for the live file.
-    const root = getWorkspaceRoot();
+    const root = dataRoot(getWorkspaceRoot());
     const runtimeDir = path.join(root, 'data', 'runtime');
     const dbPath = path.join(runtimeDir, 'goals.json');
     const legacyPath = path.join(root, 'data', 'goals.json');

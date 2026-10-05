@@ -33,6 +33,7 @@ const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-honesty-'));
 for (const dir of ['memory', 'data']) fs.mkdirSync(path.join(workspace, dir), { recursive: true });
 process.env['JARVIS_WORKSPACE_ROOT'] = workspace;
+process.env['JARVIS_DATA_ROOT'] = workspace;
 process.chdir(workspace);
 
 const { registerAllTools } = await import('../core/tools/index.js');

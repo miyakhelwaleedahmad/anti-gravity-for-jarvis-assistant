@@ -33,11 +33,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from './workspaceRoot.js';
 import { fileURLToPath } from 'url';
 import type { AgentTool, RiskLevel } from './toolRegistryV2.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const AUDIT_LOG_PATH = path.join(__dirname, '..', 'data', 'logs', 'tool_audit.log');
+const AUDIT_LOG_PATH = path.join(dataRoot(path.resolve(__dirname, '..')), 'data', 'logs', 'tool_audit.log');
 
 // ─── Concurrency limits per risk level ────────────────────────────────────────
 

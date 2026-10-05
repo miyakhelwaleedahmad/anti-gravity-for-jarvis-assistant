@@ -15,7 +15,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getWorkspaceRoot } from '../core/workspaceRoot.js';
+import { dataRoot, getWorkspaceRoot } from '../core/workspaceRoot.js';
 
 export interface ChunkRecord {
   factId: string;
@@ -31,7 +31,7 @@ interface Manifest {
 }
 
 function manifestPath(): string {
-  return path.join(getWorkspaceRoot(), 'data', 'rag', 'manifest.json');
+  return path.join(dataRoot(getWorkspaceRoot()), 'data', 'rag', 'manifest.json');
 }
 
 export function sourceHash(relativeSource: string): string {

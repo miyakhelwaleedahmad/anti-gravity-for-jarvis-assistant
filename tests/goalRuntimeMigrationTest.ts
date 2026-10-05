@@ -63,6 +63,7 @@ function workspace(): { root: string; legacy: string; live: string } {
 }
 
 const originalRoot = process.env['JARVIS_WORKSPACE_ROOT'];
+const originalData = process.env['JARVIS_DATA_ROOT'];
 const cleanup: string[] = [];
 
 console.log('\n=== Goal Runtime Migration Test ===\n');
@@ -74,6 +75,7 @@ try {
     fs.writeFileSync(ws.legacy, syntheticGoals(100, 'legacy'));
     const legacyBefore = sha(ws.legacy);
     process.env['JARVIS_WORKSPACE_ROOT'] = ws.root;
+    process.env['JARVIS_DATA_ROOT'] = ws.root;
 
     const gm = new GoalManager();
     await gm.init();
@@ -107,6 +109,7 @@ try {
     ok('runtime file untouched by the migration', sha(ws.live) === liveBefore);
 
     process.env['JARVIS_WORKSPACE_ROOT'] = ws.root;
+    process.env['JARVIS_DATA_ROOT'] = ws.root;
     const gm = new GoalManager();
     await gm.init();
     ok('GoalManager loads the 7 live records, not the 100 legacy', gm.getStats().total === 7, `${gm.getStats().total}`);
@@ -116,6 +119,7 @@ try {
   {
     const ws = workspace(); cleanup.push(ws.root);
     process.env['JARVIS_WORKSPACE_ROOT'] = ws.root;
+    process.env['JARVIS_DATA_ROOT'] = ws.root;
     ok('migration reports skipped', GoalManager.migrateLegacyGoals(ws.legacy, ws.live) === 'skipped');
     const gm = new GoalManager();
     await gm.init();
@@ -133,6 +137,8 @@ try {
 } finally {
   if (originalRoot === undefined) delete process.env['JARVIS_WORKSPACE_ROOT'];
   else process.env['JARVIS_WORKSPACE_ROOT'] = originalRoot;
+  if (originalData === undefined) delete process.env['JARVIS_DATA_ROOT'];
+  else process.env['JARVIS_DATA_ROOT'] = originalData;
   for (const dir of cleanup) fs.rmSync(dir, { recursive: true, force: true });
 }
 

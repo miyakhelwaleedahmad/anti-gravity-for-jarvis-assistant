@@ -15,7 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { memoryManager } from './memoryManager.js';
-import { getWorkspaceRoot } from '../core/workspaceRoot.js';
+import { dataRoot, getWorkspaceRoot } from '../core/workspaceRoot.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ export class AgentMemory {
    * pruning cannot delete history that is already on disk.
    */
   private episodesLoaded = false;
-  private readonly EPISODE_LOG = path.join(getWorkspaceRoot(), 'data', 'episodes.jsonl');
+  private readonly EPISODE_LOG = path.join(dataRoot(getWorkspaceRoot()), 'data', 'episodes.jsonl');
   private readonly EPISODE_RELOAD_COUNT = 200;
 
   /** Load recent episodes from disk once, lazily. Never throws. */

@@ -27,18 +27,20 @@
 
 import * as fs   from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..');
+// Backups, and the files they copy and restore, live under the data root.
+const DATA_ROOT = dataRoot(path.resolve(__dirname, '..'));
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BACKUP_DIR         = path.join(PROJECT_ROOT, 'data', 'backups');
+const BACKUP_DIR         = path.join(DATA_ROOT, 'data', 'backups');
 const BACKUP_INTERVAL_MS = 6 * 60 * 60 * 1000;  // 6 hours
 const MAX_BACKUPS        = 5;
 
-/** Files to back up: relative to PROJECT_ROOT → display label */
+/** Files to back up: relative to DATA_ROOT → display label */
 const BACKUP_TARGETS: Array<{ src: string; label: string }> = [
   { src: 'memory/jarvis_memory.json',          label: 'Memory DB' },
   { src: 'memory/graphMemory.json',             label: 'Graph Memory' },
@@ -114,12 +116,12 @@ export class BackupRestore {
     const files: BackupManifest['files'] = [];
 
     for (const target of BACKUP_TARGETS) {
-      const srcAbs  = path.join(PROJECT_ROOT, target.src);
+      const srcAbs  = path.join(DATA_ROOT, target.src);
       const destAbs = path.join(snapDir, path.basename(target.src));
       const entry: BackupManifest['files'][0] = {
         label: target.label,
         src:   target.src,
-        dest:  path.relative(PROJECT_ROOT, destAbs),
+        dest:  path.relative(DATA_ROOT, destAbs),
         sizeBytes: 0,
         ok: false,
       };
@@ -186,7 +188,7 @@ export class BackupRestore {
     for (const file of manifest.files) {
       if (!file.ok) continue;
       const srcAbs  = path.join(snapDir, path.basename(file.src));
-      const destAbs = path.join(PROJECT_ROOT, file.src);
+      const destAbs = path.join(DATA_ROOT, file.src);
 
       try {
         if (!fs.existsSync(srcAbs)) {

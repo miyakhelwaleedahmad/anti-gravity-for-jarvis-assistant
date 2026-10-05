@@ -22,13 +22,14 @@
 
 import * as fs   from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const LOG_DIR          = path.join(__dirname, '..', 'data', 'logs');
+const LOG_DIR          = path.join(dataRoot(path.resolve(__dirname, '..')), 'data', 'logs');
 const LOG_FILE_BASE    = 'jarvis';
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILES        = 5;

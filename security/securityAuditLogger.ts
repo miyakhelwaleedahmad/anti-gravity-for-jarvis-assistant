@@ -8,12 +8,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
 
 // Resolve project root (two levels up from security/)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..');
-const AUDIT_LOG_PATH = path.join(PROJECT_ROOT, 'data', 'logs', 'security_audit.log');
+const DATA_ROOT = dataRoot(path.resolve(__dirname, '..'));
+const AUDIT_LOG_PATH = path.join(DATA_ROOT, 'data', 'logs', 'security_audit.log');
 
 export type SecurityEventType =
   | 'COMMAND_ALLOWED'

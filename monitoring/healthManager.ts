@@ -19,6 +19,7 @@
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -334,7 +335,7 @@ class HealthManager {
 
   // ── JSON Lines log output ──────────────────────────────────────────────────
 
-  async writeLog(logPath = 'logs/jarvis-health.jsonl'): Promise<void> {
+  async writeLog(logPath = path.join(dataRoot(process.cwd()), 'logs', 'jarvis-health.jsonl')): Promise<void> {
     try {
       const dir = path.dirname(logPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

@@ -18,6 +18,7 @@
 import { Low } from "lowdb";
 import { JSONFile } from "lowdb/node";
 import path from "path";
+import { dataRoot } from "../core/workspaceRoot.js";
 import { memoryConfig } from "../config/llmconfig.js";
 import { pipelineRegistry } from "../self_healing/pipelineRegistry.js";
 import { spawn, ChildProcess } from "child_process";
@@ -132,7 +133,7 @@ export class MemoryManager {
       return;
     }
 
-    const dbPath = path.resolve(memoryConfig.dbPath);
+    const dbPath = path.resolve(dataRoot(process.cwd()), memoryConfig.dbPath);
     const adapter = new JSONFile<MemoryDB>(dbPath);
 
     this.db = new Low<MemoryDB>(adapter, {

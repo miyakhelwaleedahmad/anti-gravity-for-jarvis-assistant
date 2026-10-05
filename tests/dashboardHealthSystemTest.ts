@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { systemStateObserver } from '../perception/systemStateObserver.js';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { getWindowsState } from '../perception/windowsState.js';
 import { healthManager } from '../monitoring/healthManager.js';
 import { runtimeDashboard } from '../monitoring/runtimeDashboard.js';
@@ -36,7 +37,7 @@ async function runTest() {
   systemStateObserver.start();
   assert(true, 'SystemStateObserver started without throwing');
 
-  const stateFilePath = path.resolve(process.cwd(), 'data', 'runtime', 'system_state.json');
+  const stateFilePath = path.join(dataRoot(process.cwd()), 'data', 'runtime', 'system_state.json');
   const dirPath = path.dirname(stateFilePath);
   assert(fs.existsSync(dirPath), 'Runtime data directory exists');
 

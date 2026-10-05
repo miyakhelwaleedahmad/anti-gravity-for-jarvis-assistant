@@ -43,7 +43,9 @@ async function importFreshAgentMemory(version: number): Promise<{
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-episodes-'));
 const original = process.env['JARVIS_WORKSPACE_ROOT'];
+const originalData = process.env['JARVIS_DATA_ROOT'];
 process.env['JARVIS_WORKSPACE_ROOT'] = root;
+process.env['JARVIS_DATA_ROOT'] = root;
 const logPath = path.join(root, 'data', 'episodes.jsonl');
 
 console.log('\n=== Episodic Persistence Test ===\n');
@@ -90,6 +92,8 @@ try {
 } finally {
   if (original === undefined) delete process.env['JARVIS_WORKSPACE_ROOT'];
   else process.env['JARVIS_WORKSPACE_ROOT'] = original;
+  if (originalData === undefined) delete process.env['JARVIS_DATA_ROOT'];
+  else process.env['JARVIS_DATA_ROOT'] = originalData;
   fs.rmSync(root, { recursive: true, force: true });
 }
 

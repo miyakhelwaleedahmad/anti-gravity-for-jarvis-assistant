@@ -21,6 +21,7 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import { createRequire } from 'module';
+import * as os from 'os';
 import * as path from 'path';
 import { getWorkspaceRoot } from '../core/workspaceRoot.js';
 
@@ -73,11 +74,31 @@ interface Result {
   reason?: string;
 }
 
+/**
+ * Each test gets its own empty data folder (JARVIS_DATA_ROOT, and the vector
+ * store), removed afterwards. Tests used to write into the real
+ * memory/jarvis_memory.json, data/runtime/goals.json, the saved permission
+ * session and the audit logs.
+ */
+function makeDataRoot(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-test-data-'));
+  for (const dir of ['memory', path.join('data', 'logs'), 'logs']) {
+    fs.mkdirSync(path.join(root, dir), { recursive: true });
+  }
+  return root;
+}
+
+function removeDataRoot(root: string): void {
+  try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* a file still open on Windows */ }
+}
+
 function runOne(file: string, name: string): Promise<Result> {
   return new Promise((resolve) => {
     const started = Date.now();
+    const dataRoot = makeDataRoot();
     const child = spawn(process.execPath, [TSX_CLI, file], {
       cwd: getWorkspaceRoot(),
+      env: { ...process.env, JARVIS_DATA_ROOT: dataRoot, JARVIS_VECTOR_STORE_DIR: path.join(dataRoot, 'data', 'vector') },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -91,11 +112,13 @@ function runOne(file: string, name: string): Promise<Result> {
     // 'error' event that kills the runner instead of failing this one test.
     child.on('error', (err) => {
       clearTimeout(timer);
+      removeDataRoot(dataRoot);
       resolve({ name, status: 'fail', ms: Date.now() - started, reason: `could not start: ${err.message}` });
     });
 
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      removeDataRoot(dataRoot);
       const ms = Date.now() - started;
       if (signal === 'SIGKILL') {
         resolve({ name, status: 'timeout', ms });

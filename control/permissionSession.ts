@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
 import { securityAuditLogger } from '../security/securityAuditLogger.js';
 
@@ -57,10 +58,10 @@ export interface PermissionCacheEntry {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..');
+const DATA_ROOT = dataRoot(path.resolve(__dirname, '..'));
 
-const SESSION_PERSIST_PATH = path.join(PROJECT_ROOT, 'data', 'security', 'permission_session.json');
-const SESSION_LOG_PATH     = path.join(PROJECT_ROOT, 'data', 'logs', 'permission_session_log.json');
+const SESSION_PERSIST_PATH = path.join(DATA_ROOT, 'data', 'security', 'permission_session.json');
+const SESSION_LOG_PATH     = path.join(DATA_ROOT, 'data', 'logs', 'permission_session_log.json');
 
 /** How often the auto-revoke interval ticks (ms) */
 const REVOKE_CHECK_INTERVAL_MS = 10_000;
