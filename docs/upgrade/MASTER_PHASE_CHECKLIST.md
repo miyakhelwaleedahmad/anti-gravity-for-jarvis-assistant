@@ -1,0 +1,166 @@
+# Master phase checklist
+
+`[ ]` not started · `[~]` in progress · `[x]` complete · `[!]` blocked · `[-]` skipped
+
+A phase is marked complete only when its gate in [JARVIS_PHASES.md](JARVIS_PHASES.md)
+passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
+
+| Phase | Status |
+|---|---|
+| P0 Discovery and architecture | [x] |
+| P1 Tool registry | [ ] |
+| P2 Risk engine | [ ] |
+| P3 Approval gate | [ ] |
+| P4 Redaction | [ ] |
+| P5 Observe → act → verify | [ ] |
+| P6 System and development observation | [ ] |
+| P7 World state | [ ] |
+| P8 Browser observation | [ ] |
+| P9 Browser control | [ ] |
+| P10 Files and development actions | [ ] |
+| P11 Error recovery | [ ] |
+| P12 Voice | [ ] |
+| P13 Integration and scenarios | [ ] |
+| P14 Windows observation and control | [ ] |
+| P15 Final verification | [ ] |
+
+## P0 — Discovery and architecture
+- [x] Repository, orchestrator, state machine, loop, tools, memory, voice, bridge inspected
+- [x] Browser, control, Windows, files, terminal, security, permissions inspected
+- [x] Tests, CI, configuration, dependencies inspected
+- [x] Has / missing / reuse / improve / do-not-touch written (roadmap §1)
+- [x] Phase plan, task list, design documents, phase prompts written
+- [x] PHASE COMPLETE
+
+## P1 — Tool registry
+- [ ] Architecture inspected
+- [ ] Metadata model designed (category, risk per action, approval, reversible, external, output)
+- [ ] Metadata filled for every registered tool
+- [ ] Registry discovery API (by category, by risk, capability summary)
+- [ ] `list_capabilities` tool
+- [ ] Planner and "what can you do" use the registry
+- [ ] Unit tests created
+- [ ] Tests passing (and failing on the old code where they test new behaviour)
+- [ ] Integration test passing (real orchestrator)
+- [ ] Full suite: no new failures
+- [ ] Documentation updated
+- [ ] Acceptance criteria verified
+- [ ] PHASE COMPLETE
+
+## P2 — Risk engine
+- [ ] Risk assessment for a concrete call (tool, action, arguments, session)
+- [ ] Argument classifiers (commands, paths, deletes, services, URLs)
+- [ ] Policies for levels 0–4, level 2 configurable
+- [ ] Wired into registry dispatch, after every existing check
+- [ ] Default session level per the specification (level 1 actions automatic)
+- [ ] Unit tests, integration tests, full suite
+- [ ] Existing permission, injection and blocklist tests still pass
+- [ ] Documentation updated
+- [ ] PHASE COMPLETE
+
+## P3 — Approval gate
+- [ ] Approval request model (action, why, target, effect, risk, reversibility)
+- [ ] Console and spoken presentation, "Do you approve this action?"
+- [ ] Answer accepted only for the displayed pending request; level 4 typed code
+- [ ] Decision recorded on the task node, goal and audit log
+- [ ] No second prompt inside the controller for an approved call
+- [ ] Tests (console, voice simulated, timeout, vague yes, level 4), full suite
+- [ ] Documentation updated
+- [ ] PHASE COMPLETE
+
+## P4 — Redaction
+- [ ] Redactor for keys, tokens, passwords, private keys, cookies
+- [ ] Applied before the LLM, memory and logs
+- [ ] Observations kept out of long-term memory by default
+- [ ] Per-tool rate limits; external-send policy
+- [ ] Action history tool
+- [ ] Leak tests over all sinks, full suite
+- [ ] Documentation updated
+- [ ] PHASE COMPLETE
+
+## P5 — Observe → act → verify
+- [ ] Verifier hook in the registry; unverified counts as failure
+- [ ] Verifiers for file, memory and document actions
+- [ ] Replies distinguish checked from unchecked
+- [ ] Tests (real files, a silent failure caught), full suite
+- [ ] Documentation updated
+- [ ] PHASE COMPLETE
+
+## P6 — System and development observation
+- [ ] System snapshot (OS, CPU, memory, disks, network)
+- [ ] Listening development ports and servers
+- [ ] Git repositories, status, branches, diff summary
+- [ ] Routes for common questions without an LLM request
+- [ ] Tests with real servers and a real repository, full suite
+- [ ] Documentation updated
+- [ ] PHASE COMPLETE
+
+## P7 — World state
+- [ ] Model with timestamps and freshness
+- [ ] Refresh on demand
+- [ ] Task state including pending approvals
+- [ ] Planning summary (relevant, capped, redacted)
+- [ ] Not stored in long-term memory
+- [ ] Tests, full suite, documentation
+- [ ] PHASE COMPLETE
+
+## P8 — Browser observation
+- [ ] DevTools protocol client (WebSocket, timeouts)
+- [ ] Browser, tabs, active tab, title, URL
+- [ ] Page text and structure; password values never read
+- [ ] Page content passed as untrusted data
+- [ ] Tests against real Chromium, full suite, documentation
+- [ ] PHASE COMPLETE
+
+## P9 — Browser control
+- [ ] Navigation and tab actions
+- [ ] Click, type, select, scroll by element
+- [ ] Observe before, verify after
+- [ ] Screenshot, download, upload
+- [ ] Risk levels per action, approvals
+- [ ] Tests against real Chromium, full suite, documentation
+- [ ] PHASE COMPLETE
+
+## P10 — Files and development actions
+- [ ] File tools (list, search, compare, create, modify, rename, move, delete)
+- [ ] Git tools (status, diff, branches, log, commit, push)
+- [ ] Test, build and dev-server tools
+- [ ] Verifiers for each action
+- [ ] Tests with real files, repository, scripts, servers; full suite; documentation
+- [ ] PHASE COMPLETE
+
+## P11 — Error recovery
+- [ ] Diagnosis uses fresh observation
+- [ ] Repair steps pass the risk engine
+- [ ] Risky repair stops and asks
+- [ ] Verification after repair
+- [ ] Tests, full suite, documentation
+- [ ] PHASE COMPLETE
+
+## P12 — Voice
+- [ ] Spoken approval request and answer rules
+- [ ] Spoken summaries for observations
+- [ ] New capabilities reachable by voice through the same pipeline
+- [ ] JARVIS's own speech cannot approve
+- [ ] Tests (simulated speech), full suite, documentation
+- [ ] PHASE COMPLETE
+
+## P13 — Integration and scenarios
+- [ ] Browser, backend, application, "continue", website, dangerous-request scenarios
+- [ ] LLM request count per scenario recorded
+- [ ] Tests, full suite, documentation
+- [ ] PHASE COMPLETE
+
+## P14 — Windows observation and control
+- [ ] Windows observation (GPU, displays, audio, cameras, installed apps, services, ports, clipboard)
+- [ ] UI Automation, screenshots, dialogs
+- [ ] Checks for window and app actions
+- [ ] `pnpm verify:windows`
+- [ ] Unit tests here
+- [ ] Verification report from the owner's Windows PC
+- [ ] PHASE COMPLETE
+
+## P15 — Final verification
+- [ ] Unit, integration, end-to-end, browser, Windows, permission, security, recovery, regression, performance
+- [ ] FINAL_JARVIS_IMPLEMENTATION_REPORT.md
+- [ ] PHASE COMPLETE

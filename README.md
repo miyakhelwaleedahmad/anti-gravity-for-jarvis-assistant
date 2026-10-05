@@ -160,6 +160,13 @@ JARVIS to "enable full control" to elevate.
 
 See `.env.example` for the full list.
 
+## Upgrade plan
+
+JARVIS is being extended, phase by phase, into a PC-aware assistant with a tool
+registry, a risk engine and approval gate, system and browser observation and
+control, and checks after every action. Plan, tasks and status:
+[`docs/upgrade/IMPLEMENTATION_ROADMAP.md`](docs/upgrade/IMPLEMENTATION_ROADMAP.md).
+
 ## Repository layout
 
 | Path | Contents |
