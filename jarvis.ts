@@ -30,6 +30,7 @@ import { conversationBus } from './core/conversationBus.js';
 import { agentStateMachine, AgentState } from './core/agentStateMachine.js';
 import { evaluateEcho }    from './core/voiceEchoFilter.js';
 import { mergePendingVoiceContinuation, shouldUseContinuationContext, accumulateContinuationFragment } from './core/voiceContinuation.js';
+import { queuedCommandMaxAgeMs, DROPPED_COMMAND_NOTICE, followUpSeconds, visionEnabled } from './core/voiceSettings.js';
 
 // Compat shim — unchanged API surface
 import { systemController, SystemState } from './core/stateShim.js';
@@ -183,11 +184,13 @@ function drainVoiceInputQueue(): void {
   _isDraining = false;
   if (!item) return;
 
-  // PHASE2-QUEUE-1: Reduced stale threshold 10s → 6s. Voice commands older
-  // than 6s have lost conversational context and should be discarded.
-  if (now - item.timestamp > 6000) {
+  // PHASE2-QUEUE-1: commands that waited too long are discarded. The limit
+  // was a fixed 6 s, shorter than one request on a slow PC, so a command
+  // JARVIS had promised to "get to right after this" was dropped in silence.
+  if (now - item.timestamp > queuedCommandMaxAgeMs()) {
     console.log(`[JARVIS] Dropped stale queued command: "${item.text}" (age: ${((now - item.timestamp) / 1000).toFixed(1)}s)`);
     sttJsLog('STT_QUEUE_STALE_DROPPED', item.text, `age=${((now - item.timestamp) / 1000).toFixed(1)}s`);
+    nodeBridge.speakToClients(DROPPED_COMMAND_NOTICE);
     drainVoiceInputQueue();
     return;
   }
@@ -348,7 +351,11 @@ async function startJarvis() {
     launchPythonServiceStaggered('tts.py', 'TTS', 0);
     launchPythonServiceStaggered('stt.py', 'STT', 0);
     launchPythonServiceStaggered('wakeWords.py', 'WakeWord', 500);
-    launchPythonServiceStaggered('../vision/screen_capture.py', 'Vision', 5000);
+    if (visionEnabled()) {
+      launchPythonServiceStaggered('../vision/screen_capture.py', 'Vision', 5000);
+    } else {
+      console.log('[Startup] Vision service not started (JARVIS_VISION=off).');
+    }
     timings['Python Services Launch'] = Date.now() - tServices;
 
     // ── Voice Loop Part 1: Wake word → trigger STT listen ──────────────────
@@ -663,11 +670,14 @@ async function startJarvis() {
       if (!agentStateMachine.is(AgentState.IDLE)) {
         agentStateMachine.transition(AgentState.IDLE);
       }
-      console.log('[JARVIS] ⏱️  Context active for follow-ups (15s)...');
-      nodeBridge.sendToRole('wakeword', {
-        type: 'command',
-        payload: { action: 'context_active', duration: 15 },
-      });
+      const followUp = followUpSeconds();
+      if (followUp > 0) {
+        console.log(`[JARVIS] ⏱️  Context active for follow-ups (${followUp}s)...`);
+        nodeBridge.sendToRole('wakeword', {
+          type: 'command',
+          payload: { action: 'context_active', duration: followUp },
+        });
+      }
     });
 
     // ── Voice Loop Part 5: Echo Prevention ────────────────────────────────
