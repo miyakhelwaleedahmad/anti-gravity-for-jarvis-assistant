@@ -3,6 +3,7 @@
   "name": "Deep Search",
   "description": "Perform a deep multi-query web search and summarize findings. Use this when a single search isn't enough — it runs multiple related queries and merges results for comprehensive research.",
   "riskLevel": "low",
+  "cacheable": true,
   "parameters": {
     "topic": {
       "type": "string",

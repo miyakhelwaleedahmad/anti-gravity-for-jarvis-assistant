@@ -3,6 +3,7 @@
   "name": "Control System",
   "description": "Performs system operations (network status, disk status, settings, service controls, shell commands).",
   "riskLevel": "high",
+  "requiredLevel": 0,
   "parameters": {
     "action": {
       "type": "string",

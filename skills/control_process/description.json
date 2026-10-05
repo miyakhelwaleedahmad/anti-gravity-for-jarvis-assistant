@@ -3,6 +3,7 @@
   "name": "Control Process",
   "description": "Inspects and kills running OS processes.",
   "riskLevel": "high",
+  "requiredLevel": 0,
   "parameters": {
     "action": {
       "type": "string",

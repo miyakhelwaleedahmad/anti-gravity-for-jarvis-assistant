@@ -164,6 +164,9 @@ export const runCommandTool: AgentTool = {
   description:
     'Use to execute safe Windows shell/terminal commands (CMD or PowerShell). DO NOT use for opening desktop apps, searching the web, or reading files directly. Required parameter: command (string shell command). Optional parameter: workingDir (string). Returns string containing exit code and terminal output.',
   riskLevel: 'high',
+  // No dispatch floor: allow-listed developer commands run at level 0, and
+  // every command is checked by the allowlist and CommandValidator below.
+  requiredLevel: 0,
   inputSchema: {
     command: {
       type: 'string',

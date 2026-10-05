@@ -487,6 +487,11 @@ export class TaskGraphEngine extends EventEmitter {
         : isPermissionDenial(errMsg) || errLower.includes('allowlist') || errLower.includes('policy') || errLower.includes('no open application') ? 'fatal'
         : errLower.includes('permission') || errLower.includes('access denied') ? 'permission'
         : errLower.includes('not registered') || errLower.includes('not found') ? 'fatal'
+        // Bad arguments or a tool/action that does not exist fail the same way
+        // every time; they were retried as 'transient' (~3 s of silence).
+        : errLower.includes('missing required argument') || errLower.includes('expects type')
+          || errLower.includes('must be one of') || errLower.includes('invalid arguments for tool')
+          || errLower.includes('unknown tool') || /unknown \w+ action/.test(errLower) ? 'fatal'
         // Missing or rejected configuration (e.g. "SERPER_API_KEY is not set")
         // cannot fix itself; retrying only added ~3 s of silence to the reply.
         : errLower.includes('is not set') || errLower.includes('api key') || errLower.includes('unauthorized') ? 'fatal'

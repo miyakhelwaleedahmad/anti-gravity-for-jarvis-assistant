@@ -3,6 +3,7 @@
   "name": "Control Browser",
   "description": "Manages browser tabs (list, focus, close, close_current, open_url, refresh).",
   "riskLevel": "high",
+  "requiredLevel": 0,
   "parameters": {
     "action": {
       "type": "string",

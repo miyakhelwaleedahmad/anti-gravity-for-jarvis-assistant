@@ -83,6 +83,13 @@ export interface AgentTool {
   requiredLevel?: number;
   inputSchema: Record<string, ToolSchemaProperty>;
   fallbacks: string[];
+  /**
+   * Low-risk tools only: identical calls within 30 s reuse the last result.
+   * Opt-in, because most low-risk tools read state that changes ("is notepad
+   * open?") or act ("disable full control"), and a cached answer is wrong
+   * for them.
+   */
+  cacheable?: boolean;
   /** Phase 5: optional per-tool retry policy (overrides registry default) */
   retryPolicy?: Partial<RetryPolicy>;
   /**
@@ -340,7 +347,8 @@ export class ToolRegistryV2 {
         if (actualType !== schema.type) {
           return `Argument "${key}" expects type "${schema.type}" but got "${actualType}"`;
         }
-        if (schema.enum && typeof val === 'string' && !schema.enum.includes(val)) {
+        // Skills lower-case the value themselves, so "Close" is accepted as "close".
+        if (schema.enum && typeof val === 'string' && !schema.enum.some((e) => e.toLowerCase() === val.toLowerCase())) {
           return `Argument "${key}" must be one of: ${schema.enum.join(', ')}`;
         }
       }
@@ -349,6 +357,10 @@ export class ToolRegistryV2 {
   }
 
   // ── Cache ─────────────────────────────────────────────────────────────────
+
+  private isCacheable(tool: AgentTool): boolean {
+    return tool.cacheable === true && tool.riskLevel === 'low';
+  }
 
   private getCacheKey(name: string, args: Record<string, unknown>): string {
     return `${name}::${JSON.stringify(args)}`;
@@ -450,8 +462,8 @@ export class ToolRegistryV2 {
       };
     }
 
-    // 4. Cache lookup (low-risk tools only)
-    if (tool.riskLevel === 'low') {
+    // 4. Cache lookup (cacheable low-risk tools only)
+    if (this.isCacheable(tool)) {
       const cached = this.getFromCache(name, args);
       if (cached !== null) {
         return {
@@ -468,8 +480,8 @@ export class ToolRegistryV2 {
       // 4. Execute with timeout + abort signal
       const result = await this.executeWithFallbacks(tool, args, externalSignal, start);
 
-      // 5. Cache successful low-risk results
-      if (result.success && tool.riskLevel === 'low') {
+      // 5. Cache successful results of cacheable tools
+      if (result.success && this.isCacheable(tool)) {
         this.setCache(name, args, result.output);
       }
       return result;

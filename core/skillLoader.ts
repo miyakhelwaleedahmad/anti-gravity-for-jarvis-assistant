@@ -28,10 +28,13 @@ export interface SkillDescription {
   riskLevel?: 'low' | 'medium' | 'high';
   /** Minimum permission level to dispatch this skill (JARVIS-005). Omitted = 0. */
   requiredLevel?: number;
+  /** Low-risk skills only: reuse an identical call's result for 30 s. */
+  cacheable?: boolean;
   parameters?: Record<string, {
     type: 'string' | 'number' | 'boolean' | 'object' | 'array';
     description: string;
     required?: boolean;
+    enum?: string[];
   }>;
   fallbacks?: string[];
 }
@@ -161,6 +164,7 @@ export class SkillLoader {
       description: desc.description || desc.name,
       riskLevel: desc.riskLevel ?? 'medium',
       ...(typeof desc.requiredLevel === 'number' ? { requiredLevel: desc.requiredLevel } : {}),
+      ...(desc.cacheable === true ? { cacheable: true } : {}),
       inputSchema: Object.fromEntries(
         Object.entries(desc.parameters ?? {}).map(([key, p]) => [
           key,
@@ -168,6 +172,9 @@ export class SkillLoader {
             type: p.type,
             description: p.description,
             required: p.required ?? false,
+            // The allowed actions: without them the model saw only free text
+            // and guessed action names the skill does not have.
+            ...(Array.isArray(p.enum) && p.enum.length > 0 ? { enum: p.enum } : {}),
           },
         ])
       ),

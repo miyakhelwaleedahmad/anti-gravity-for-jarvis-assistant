@@ -78,6 +78,13 @@ export class JarvisOrchestrator {
   // current request — ensures the finally block can always pair it with
   // conversationEnded() even on very early exceptions.
   private _conversationStarted = false;
+  /**
+   * How the last planPhase() call ended when it returned no graph: it spoke a
+   * direct answer, spoke an apology for an LLM failure, or was interrupted.
+   * The callers used to guess, and a replan that answered directly was
+   * followed by "I was unable to recover from the error, sir."
+   */
+  private lastPlanOutcome: 'graph' | 'answered' | 'failed' | 'interrupted' = 'graph';
   public onBargeIn: (() => void)[] = [];
 
   constructor(config: Partial<OrchestratorConfig> = {}) {
@@ -183,9 +190,6 @@ export class JarvisOrchestrator {
     // One correlation id per request, so the plan, every tool call and the
     // outcome can be joined back together in the trace log (JARVIS-015).
     beginTrace();
-    // Abort any in-flight request from a previous process() call.
-    this.currentAbortController?.abort();
-    this.currentAbortController = new AbortController();
     this.isConversationEndDeferred = false;
     this._conversationEndHandled = false;
 
@@ -193,6 +197,13 @@ export class JarvisOrchestrator {
     if (curState === AgentState.SPEAKING || curState === AgentState.INTERRUPTED) {
       this.handleBargeInBeforeProcessing(input, source);
     }
+
+    // Abort any in-flight request from a previous process() call. Done after
+    // the barge-in handling, which aborts the current controller: created
+    // before it, this request's own LLM call was cancelled before it started,
+    // and a command typed while JARVIS was speaking was silently dropped.
+    this.currentAbortController?.abort();
+    this.currentAbortController = new AbortController();
 
     if (agentStateMachine.is(AgentState.INTERRUPTED)) {
       console.log('[Orchestrator] ⚠️  System interrupted — ignoring new input until reset.');
@@ -561,8 +572,9 @@ export class JarvisOrchestrator {
     if (!planResult) {
       const isActionRequest = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i.test(input);
       const isAborted = this.isInterrupted() || this.currentAbortController?.signal.aborted;
+      const noAnswer = this.lastPlanOutcome !== 'answered';
 
-      if (isAborted || isActionRequest) {
+      if (isAborted || isActionRequest || noAnswer) {
         console.warn(`[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "${input}". Goal marked FAILED.`);
         if (goal) {
           await goalManager.failGoal(
@@ -639,7 +651,8 @@ export class JarvisOrchestrator {
 
       const replanned = await this.repairPhase('replan', { context: replanRequest.reason }, activePlan, input);
       if (!replanned) {
-        // The replan produced a direct answer rather than a graph.
+        // A direct answer finishes the request; an LLM failure or interrupt does not.
+        if (this.lastPlanOutcome !== 'answered') return 'failed';
         if (goal) await goalManager.completeGoal(goal.id).catch(() => {});
         return 'success';
       }
@@ -774,8 +787,13 @@ export class JarvisOrchestrator {
       if (!repaired) {
         // Repair produced no actionable plan
         console.log('[Orchestrator] ⛔ Repair failed — no recovery possible.');
-        const msg = reflection.voiceMessage ?? 'I was unable to recover from the error, sir.';
-        this.speak(msg);
+        // A replan that ended without a graph has already spoken (its answer, or
+        // the LLM-failure apology) or was interrupted; a second message here
+        // contradicted it ("<answer>. I was unable to recover from the error").
+        const replanSpoke = reflection.repairStrategy === 'replan' && this.lastPlanOutcome !== 'graph';
+        if (!replanSpoke) {
+          this.speak(reflection.voiceMessage ?? 'I was unable to recover from the error, sir.');
+        }
         return 'failed';
       }
 
@@ -809,6 +827,7 @@ export class JarvisOrchestrator {
 
   private async planPhase(input: string): Promise<TaskGraph | null> {
     console.log('[Orchestrator] 🧠 PLANNING — calling LLM...');
+    this.lastPlanOutcome = 'interrupted';
     const planPrepStart = performance.now();
 
     // ── 1. Fast Pre-Warmed System Prompt ──────────────────────────────────────
@@ -963,7 +982,7 @@ export class JarvisOrchestrator {
 
       // ── Tool call extraction fallback & handling ──────────────────────────
       if (!response.tool_calls || response.tool_calls.length === 0) {
-        const extracted = this.extractToolCallsFromContent(reply);
+        const extracted = this.extractToolCallsFromContent(reply, selectedToolNames);
         if (extracted.length > 0) {
           console.log(`[Orchestrator] 🔧 Extracted ${extracted.length} tool call(s) from LLM text response.`);
           response.tool_calls = extracted;
@@ -975,6 +994,7 @@ export class JarvisOrchestrator {
 
           agentStateMachine.transition(AgentState.SPEAKING);
           this.speak(reply);
+          this.lastPlanOutcome = 'answered';
           return null;
         }
       }
@@ -994,7 +1014,9 @@ export class JarvisOrchestrator {
       }, 5);
 
       const graph = TaskGraphBuilder.fromToolCalls(input, toolCalls);
+      limitRetriesToReadOnlyTools(graph);
       console.log(`[Orchestrator] 📊 Task graph built: ${graph.nodes.size} node(s)`);
+      this.lastPlanOutcome = 'graph';
       return graph;
 
     } catch (err) {
@@ -1013,7 +1035,9 @@ export class JarvisOrchestrator {
       console.log('[Orchestrator] ⚠️ Attempting rule-based fallback recovery...');
       
       try {
-          const lowerInput = input.toLowerCase();
+          // A replan appends "[SYSTEM NOTE: ...]" (with failed tool names such as
+          // search_memory); matching on it always picked the "system" graph.
+          const lowerInput = input.replace(/\n\n\[SYSTEM NOTE:[\s\S]*$/, '').toLowerCase();
           if (lowerInput.includes('search') || lowerInput.includes('lookup') || lowerInput.includes('find')) {
               console.log('[Orchestrator] Fallback: Engaging emergency web search task graph.');
               const graph = new TaskGraphBuilder(input);
@@ -1022,15 +1046,18 @@ export class JarvisOrchestrator {
                   args: { query: input },
                   description: 'Emergency fallback search'
               });
+              this.lastPlanOutcome = 'graph';
               return graph.build();
           } else if (lowerInput.includes('system') || lowerInput.includes('status')) {
               console.log('[Orchestrator] Fallback: Engaging emergency system tool graph.');
               const graph = new TaskGraphBuilder(input);
               graph.addTask({
-                  tool: 'system_info',
+                  // Was 'system_info', which is not a registered tool.
+                  tool: 'get_system_info',
                   args: {},
                   description: 'Emergency fallback system status'
               });
+              this.lastPlanOutcome = 'graph';
               return graph.build();
           }
       } catch (fallbackErr) {
@@ -1045,6 +1072,7 @@ export class JarvisOrchestrator {
       if (fallback) {
         this.speak(fallback);
         await agentMemory.addConversationMessage('assistant', fallback);
+        this.lastPlanOutcome = 'failed';
       }
       return null;
     }
@@ -1137,6 +1165,9 @@ export class JarvisOrchestrator {
       if (firstNode && firstNode.tool === 'open_app') {
         const target = String(firstNode.args?.target ?? '');
         reply = `Opening ${this.formatTargetName(target)}, sir.`;
+      } else if (firstNode && firstNode.tool === 'run_command' && firstNode.result) {
+        console.log(`[Orchestrator] run_command output:\n${firstNode.result}`);
+        reply = describeCommandResult(firstNode.result);
       } else if (firstNode && firstNode.result) {
         try {
           const parsed = JSON.parse(firstNode.result);
@@ -1842,46 +1873,45 @@ export class JarvisOrchestrator {
     return [...requested].slice(0, 8);
   }
 
-  private extractToolCallsFromContent(content: string): ILLMToolCall[] {
+  /**
+   * Tool calls written as text by models without native tool calling. Only a
+   * reply that is nothing but JSON (bare, or one fenced block) counts, and only
+   * for tools offered in this planning call: an answer that merely contained
+   * an example call, or JSON echoed from a web page or the screen, used to be
+   * executed as a command, with any registered tool.
+   */
+  private extractToolCallsFromContent(content: string, allowedTools?: string[]): ILLMToolCall[] {
     if (!content || !content.trim()) return [];
 
-    const jsonMatches: string[] = [];
-    const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
-    let match;
-    while ((match = codeBlockRegex.exec(content)) !== null) {
-      if (match[1]) jsonMatches.push(match[1].trim());
-    }
-
-    if (jsonMatches.length === 0 && (content.includes('{') || content.includes('['))) {
-      jsonMatches.push(content.trim());
-    }
+    const trimmed = content.trim();
+    const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+    const body = fenced ? fenced[1]!.trim() : trimmed;
+    if (!/^[\[{]/.test(body) || body.includes('```')) return [];
 
     const toolCalls: ILLMToolCall[] = [];
+    try {
+      const parsed = JSON.parse(body);
+      const items = Array.isArray(parsed) ? parsed : (parsed.tool_calls || [parsed]);
 
-    for (const jsonStr of jsonMatches) {
-      try {
-        const parsed = JSON.parse(jsonStr);
-        const items = Array.isArray(parsed) ? parsed : (parsed.tool_calls || [parsed]);
+      for (const item of items) {
+        const toolName = item.tool || item.name || item.function?.name;
+        const rawArgs = item.args || item.arguments || item.parameters || item.function?.arguments || {};
+        const offered = !allowedTools || allowedTools.includes(toolName);
 
-        for (const item of items) {
-          const toolName = item.tool || item.name || item.function?.name;
-          const rawArgs = item.args || item.arguments || item.parameters || item.function?.arguments || {};
-
-          if (toolName && toolRegistryV2.has(toolName)) {
-            const argsString = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs);
-            toolCalls.push({
-              id: item.id || `extracted_${Date.now()}_${toolCalls.length}`,
-              type: 'function',
-              function: {
-                name: toolName,
-                arguments: argsString,
-              },
-            });
-          }
+        if (toolName && toolRegistryV2.has(toolName) && offered) {
+          const argsString = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs);
+          toolCalls.push({
+            id: item.id || `extracted_${Date.now()}_${toolCalls.length}`,
+            type: 'function',
+            function: {
+              name: toolName,
+              arguments: argsString,
+            },
+          });
         }
-      } catch {
-        // Ignore non-JSON or invalid snippets
       }
+    } catch {
+      // Not JSON after all: a plain answer.
     }
 
     return toolCalls;
@@ -2018,6 +2048,39 @@ export class JarvisOrchestrator {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Steps that change something on the PC (click, type, close, write, kill, run)
+ * are not re-run automatically: the task graph retried any failure it did not
+ * recognise twice, so a partial failure could type the text three times or
+ * close more windows. Read-only steps keep their retries.
+ */
+export function limitRetriesToReadOnlyTools(graph: TaskGraph): void {
+  for (const node of graph.nodes.values()) {
+    const tool = toolRegistryV2.get(node.tool);
+    if (tool && tool.riskLevel !== 'low') node.maxRetries = 0;
+  }
+}
+
+/**
+ * What to say after run_command. Its output starts "Exit code: N"; a failed
+ * command with long output used to be reported as "Task completed, sir."
+ */
+export function describeCommandResult(result: string): string {
+  const match = /^Exit code: (-?\d+|null)(?:\s*Output:)?([\s\S]*)$/.exec(result.trim());
+  if (!match) return result.length < 150 ? result : 'Done, sir. The output is in the console.';
+  const [, code, rest = ''] = match;
+  const output = rest.trim();
+  const firstLine = output.split('\n').map((l) => l.trim()).find((l) => l && l !== '(no output)') ?? '';
+  if (code === '0') {
+    if (!firstLine) return 'Done, sir.';
+    return output.length < 150 ? `Done, sir. ${firstLine}` : 'Done, sir. The output is in the console.';
+  }
+  const why = firstLine && firstLine.length <= 120 ? ` ${firstLine}` : ' The output is in the console.';
+  return code === 'null'
+    ? `The command did not finish normally, sir.${why}`
+    : `The command failed with exit code ${code}, sir.${why}`;
 }
 
 // ─── Singleton ────────────────────────────────────────────────────────────────

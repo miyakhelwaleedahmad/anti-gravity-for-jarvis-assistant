@@ -3,6 +3,7 @@
   "name": "Get Weather",
   "description": "Get the current weather and forecast for any city or location. Returns temperature, conditions, humidity, and wind speed.",
   "riskLevel": "low",
+  "cacheable": true,
   "parameters": {
     "location": {
       "type": "string",

@@ -119,6 +119,7 @@ const FAILURE_PATTERNS: FailurePattern[] = [
   { pattern: /parse/i,               class: 'plan_error',    strategy: 'replan' },
   { pattern: /JSON/i,                class: 'plan_error',    strategy: 'replan' },
   { pattern: /expects type/i,        class: 'plan_error',    strategy: 'replan' },
+  { pattern: /must be one of/i,      class: 'plan_error',    strategy: 'replan' },
 
   // Context / filesystem / safety errors
   { pattern: /PERMISSION_DENIED|permission level \d/i, class: 'context_error', strategy: 'abort' },
@@ -137,6 +138,13 @@ const FAILURE_PATTERNS: FailurePattern[] = [
   { pattern: /threw an error/i,      class: 'tool_error',    strategy: 'fallback_tool' },
   { pattern: /failed:/i,             class: 'tool_error',    strategy: 'fallback_tool' },
 ];
+
+/**
+ * The registry refused the call before running the tool (bad arguments,
+ * unknown tool). Nothing happened on the PC, so a new plan is safe even for a
+ * step that is never retried.
+ */
+const REFUSED_BEFORE_RUNNING = /missing required argument|expects type|must be one of|unknown tool|not registered/i;
 
 function classifyError(errorMsg: string): { class: FailureClass; strategy: RepairStrategy } {
   for (const fp of FAILURE_PATTERNS) {
@@ -493,8 +501,12 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     let dominantStrategy = this.getDominantStrategy(classifications, dominantClass);
     let llmContext = '';
 
-    // If ALL retries exhausted for all failed nodes, force abort
-    const allExhausted = failedNodes.every(n => n.retryCount >= n.maxRetries);
+    // If ALL retries exhausted for all failed nodes, force abort. Steps that
+    // change something have no retries, so one failure exhausts them; a call
+    // refused before it ran is not counted, so it can still be replanned.
+    const allExhausted = failedNodes.every(
+      n => n.retryCount >= n.maxRetries && !REFUSED_BEFORE_RUNNING.test(n.error ?? ''),
+    );
 
     // ── LLM FALLBACK: diagnose unknown failures intelligently ──────────────
     // Not once retries are spent: the strategy is forced to abort then, so the
@@ -545,7 +557,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
       summary,
       shouldSpeak: effectiveStrategy === 'abort',
       voiceMessage: effectiveStrategy === 'abort'
-        ? this.refusalVoiceMessage(failedNodes) ?? this.buildFailureVoiceMessage(graph.goal, dominantClass)
+        ? this.refusalVoiceMessage(failedNodes) ?? this.buildFailureVoiceMessage(graph.goal, dominantClass, failedNodes)
         : undefined,
     });
 
@@ -689,20 +701,28 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
   private refusalVoiceMessage(failedNodes: TaskNode[]): string | undefined {
     const reasons = failedNodes.map(n => n.error ?? '');
     if (reasons.some(isPermissionDenial)) return FULL_CONTROL_HINT;
-    const reason = reasons.find(r => /allowlist|policy|no open application|window matching .* not found|no active window/i.test(r));
+    const reason = reasons.find(r => /allowlist|policy|no open application|no process found|window matching .* not found|no active window/i.test(r));
     return reason && reason.length <= 160 ? `I couldn't do that, sir. ${reason}` : undefined;
   }
 
-  private buildFailureVoiceMessage(goal: string, failureClass: FailureClass): string {
+  /**
+   * Spoken when the task is abandoned. The old wording promised a retry or "an
+   * alternative approach" that never came; this says it stopped, and why when
+   * the reason is short enough to say.
+   */
+  private buildFailureVoiceMessage(goal: string, failureClass: FailureClass, failedNodes: TaskNode[] = []): string {
     const messages: Record<FailureClass, string> = {
-      network_error:  `I'm experiencing connectivity issues, sir. I'll retry when the connection is restored.`,
-      plan_error:     `My plan was flawed. I'll re-approach this differently, sir.`,
-      tool_error:     `One of my tools encountered an error. I'm attempting an alternative approach.`,
-      context_error:  `I'm missing some required context to complete that task, sir.`,
+      network_error:  `I couldn't reach a service I needed, sir.`,
+      plan_error:     `I couldn't work out how to do that, sir.`,
+      tool_error:     `One of my tools failed, sir.`,
+      context_error:  `I'm missing something I need to do that, sir.`,
       abort_error:    `Task aborted as requested, sir.`,
       unknown:        `I encountered an unexpected error and have been unable to complete the task, sir.`,
     };
-    return messages[failureClass] ?? messages.unknown;
+    const base = messages[failureClass] ?? messages.unknown;
+    if (failureClass === 'abort_error') return base;
+    const reason = (failedNodes[0]?.error ?? '').split('\n')[0]!.replace(/^Error:\s*/i, '').trim();
+    return reason && reason.length <= 120 ? `${base} ${reason}` : base;
   }
 
   private recordEpisode(
