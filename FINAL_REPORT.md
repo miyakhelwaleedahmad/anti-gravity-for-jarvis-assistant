@@ -2,7 +2,7 @@
 
 **Repository:** `miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant`
 **Base commit:** `f429071` — "Initial upload of Jarvis Assistant"
-**Branch:** `claude/jarvis-repair` · 38 commits: 14 repair + 8 post-validation + 7 Gemini + 7 Windows-log + 2 iMac review (§8, §10–§13)
+**Branch:** `claude/jarvis-repair` · 40 commits: 14 repair + 8 post-validation + 7 Gemini + 7 Windows-log + 2 iMac review + 2 task review (§8, §10–§14)
 **Spec:** `JARVIS_COMPLETE_TECHNICAL_AUDIT.md` (Claude Cowork), verified rather than trusted
 
 ---
@@ -140,7 +140,9 @@ and treat a non-zero exit as a failure.
 ## 8. Commits
 
 ```
-(this)   docs: record the iMac review in the report
+(this)   docs: record the task review in the report
+e776a58  fix: JARVIS reported failed tasks as done and could not close apps
+e519c43  docs: record the iMac review in the report
 f96ab30  fix: window and app commands acted on the wrong window, or on none
 ced7e43  docs: record the Windows-log round in the report
 8a5b554  chore: silence the second .env load
@@ -338,3 +340,48 @@ response times on the iMac itself.
 **Proposed, not done:** switches to turn off Vision and the vector service on
 slow PCs, an adjustable follow-up window, a spoken notice when a queued
 command is dropped, and loading the Whisper model from the local cache first.
+
+## 14. Why tasks failed or were misreported
+
+The question: why JARVIS often did not perform tasks. Each case was reproduced
+by driving the real orchestrator with a scripted model through requests from
+the owner's log, then fixed in `e776a58`:
+
+| You said | Before | After |
+|---|---|---|
+| "open paint" | "Opening paint, sir." although open_app had refused | "I couldn't do that, sir. Target is not in the open_app allowlist." |
+| "close notepad" (full control on, Notepad not open) | "Closing Notepad, sir." | "…No open application matches "notepad"." |
+| "close chrome" | the model was offered only read-only state tools | offered control_app and control_window |
+| "open spotify / firefox / edge" | always refused: not on open_app's allow-list | allowed (`spotify:`, `firefox.exe`, `msedge.exe`) |
+| "close notepad" (full control off) | "encountered an issue" | "That needs full control mode, sir. Say 'enable full control mode', then ask again." |
+| "minimize the chrome window" (full control off) | 3.0 s, 2 LLM requests, "unexpected error" | 8 ms, 1 request, the same hint |
+
+Causes: the tool registry ignored the `"success": false` that open_app and the
+control_* skills return; the tool picker added control_app only for launch
+requests; the router's app list and open_app's allow-list had drifted apart;
+permission refusals were classed as transient (retried) and not recognised by
+reflection; reflection asked the LLM for a strategy after retries were spent,
+when the strategy is forced to abort.
+
+Test: `taskFailureHonestyTest` 42 checks, 14 fail on the old code. Two tests
+that passed only because of the registry bug are corrected
+(`deterministicCommandRouteTest`: a dry run of `cmd`, which needs approval;
+`fullSystemIntegrationTest`: a dry run of opening an app named "what time is
+it").
+
+Suite: 88 files, 82 passed · 0 failed · 6 environment; CI mode 80 passed · 8
+skipped.
+
+**Found, not fixed:**
+- Older tests (`latencySmokeTest`, `noThinkMemoryTest`, `planningPerformanceTest`,
+  `memoryPerformanceTest`, `adaptiveRamOptimizationTest`,
+  `fullSystemIntegrationTest`) write to `memory/jarvis_memory.json` and
+  `data/runtime/goals.json` in the folder they run in. In the real JARVIS
+  folder they add test conversations and goals to the owner's data. Run
+  `pnpm backup` before `pnpm test` until they use a throwaway workspace, as
+  `taskFailureHonestyTest` does.
+- No safe way to search YouTube: open_app takes fixed targets only, and
+  control_browser `open_url` needs full control and Chrome's debugging port.
+
+**Not verified on Windows:** launching Spotify, Firefox and Edge through
+`start`, and the new replies against real windows.
