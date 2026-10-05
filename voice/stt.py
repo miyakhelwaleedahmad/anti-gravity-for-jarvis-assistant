@@ -151,6 +151,10 @@ _calibrated_energy: float = 300.0  # fallback if calibration hasn't run yet
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format="[STT] %(message)s")
 log = logging.getLogger(__name__)
+# huggingface_hub logs every HTTP request at INFO through httpx ("HTTP Request:
+# GET https://huggingface.co/..." on each start), as memory/vectorMemory.py does.
+for _noisy in ("httpx", "httpcore", "huggingface_hub", "urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 stt_lock = threading.Lock()
 

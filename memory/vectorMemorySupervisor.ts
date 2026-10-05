@@ -50,6 +50,17 @@ const MAX_RETRY_QUEUE_SIZE  = 200;
 /** Batch size for retry flush (matches /batch_embed max) */
 const RETRY_BATCH_SIZE      = 32;
 
+/**
+ * Python logging, uvicorn and progress bars all write to stderr, so every
+ * stderr line used to print as "[VectorAPI:ERR]", including "VectorMemory
+ * initialized" and "Started server process". Only lines that report a problem
+ * are errors.
+ */
+export function isVectorErrorLine(line: string): boolean {
+  // "Error\b" without a leading boundary also catches ModuleNotFoundError: etc.
+  return /ERROR|CRITICAL|Traceback|Exception\b|Error\b|\b[Ff]ailed\b/.test(line);
+}
+
 // ─── Supervisor ───────────────────────────────────────────────────────────────
 
 interface RetryQueueEntry {
@@ -279,7 +290,8 @@ class VectorMemorySupervisor {
           return;
         }
         if (!isPortConflict) {
-          console.error(`[VectorAPI:ERR] ${msg}`);
+          if (isVectorErrorLine(msg)) console.error(`[VectorAPI:ERR] ${msg}`);
+          else console.log(`[VectorAPI] ${msg}`);
         }
         if (msg.includes('ModuleNotFoundError') || msg.includes('ImportError')) {
           isDependencyError = true;
