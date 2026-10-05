@@ -44,6 +44,12 @@ const APP_ALLOWLIST: Record<string, string> = {
   'visual studio code': 'code',
   'settings': 'ms-settings:',
   'downloads': 'shell:Downloads',
+  // The voice router and this tool's description have always offered these;
+  // without entries here every "open spotify / firefox / edge" was refused.
+  'spotify': 'spotify:',
+  'firefox': 'firefox.exe',
+  'edge': 'msedge.exe',
+  'microsoft edge': 'msedge.exe',
 };
 
 const APPROVAL_REQUIRED_APPS: Record<string, string> = {

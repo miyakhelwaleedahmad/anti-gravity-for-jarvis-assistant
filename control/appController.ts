@@ -98,7 +98,9 @@ export class AppController {
     );
 
     if (matches.length === 0) {
-      return `No open application matches "${target}".`;
+      // Thrown, not returned: a returned message counted as success, and the
+      // "close notepad" route answered "Closing Notepad, sir." with nothing open.
+      throw new Error(`No open application matches "${target}".`);
     }
 
     let closedCount = 0;
@@ -168,8 +170,13 @@ export class AppController {
   }
 
   public async restartApp(target: string): Promise<string> {
-    await this.closeApp(target);
-    await new Promise(r => setTimeout(r, 1000));
+    try {
+      await this.closeApp(target);
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+      // Not running: restarting it is just opening it, as before closeApp threw.
+      if (!/No open application matches/.test((err as Error).message)) throw err;
+    }
     return this.openApp(target);
   }
 }

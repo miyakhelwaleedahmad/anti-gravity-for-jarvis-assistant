@@ -25,6 +25,7 @@ import type { TaskGraph, TaskNode } from './taskGraphEngine.js';
 import type { AgentMemory } from '../memory/agentMemory.js';
 import type { ILLMMessage } from '../bridge/llmTypes.js';
 import { toolRegistryV2 } from './toolRegistryV2.js';
+import { FULL_CONTROL_HINT, isPermissionDenial } from '../control/permissionDenial.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,6 +121,9 @@ const FAILURE_PATTERNS: FailurePattern[] = [
   { pattern: /expects type/i,        class: 'plan_error',    strategy: 'replan' },
 
   // Context / filesystem / safety errors
+  { pattern: /PERMISSION_DENIED|permission level \d/i, class: 'context_error', strategy: 'abort' },
+  { pattern: /allowlist|policy/i,    class: 'context_error', strategy: 'abort' },
+  { pattern: /no open application/i, class: 'context_error', strategy: 'abort' },
   { pattern: /ENOENT/i,              class: 'context_error', strategy: 'retry_same' },
   { pattern: /Permission denied/i,   class: 'context_error', strategy: 'abort' },
   { pattern: /blocked by safety/i,   class: 'context_error', strategy: 'abort' },
@@ -489,8 +493,13 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     let dominantStrategy = this.getDominantStrategy(classifications, dominantClass);
     let llmContext = '';
 
+    // If ALL retries exhausted for all failed nodes, force abort
+    const allExhausted = failedNodes.every(n => n.retryCount >= n.maxRetries);
+
     // ── LLM FALLBACK: diagnose unknown failures intelligently ──────────────
-    if (dominantClass === 'unknown') {
+    // Not once retries are spent: the strategy is forced to abort then, so the
+    // diagnosis cost an LLM request (and seconds) for an answer thrown away.
+    if (dominantClass === 'unknown' && !allExhausted) {
       console.log('[Reflection] 🤔 Unknown failure class — invoking LLM diagnosis...');
       const diagnosis = await llmDiagnoseFailure(failedNodes, graph.goal);
       dominantClass = diagnosis.class;
@@ -505,8 +514,6 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
 
     // ── ANALYZE + DECIDE ───────────────────────────────────────────────────
 
-    // If ALL retries exhausted for all failed nodes, force abort
-    const allExhausted = failedNodes.every(n => n.retryCount >= n.maxRetries);
     const effectiveStrategy = allExhausted ? 'abort' : dominantStrategy;
 
     // Build human-readable summary
@@ -538,7 +545,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
       summary,
       shouldSpeak: effectiveStrategy === 'abort',
       voiceMessage: effectiveStrategy === 'abort'
-        ? this.buildFailureVoiceMessage(graph.goal, dominantClass)
+        ? this.refusalVoiceMessage(failedNodes) ?? this.buildFailureVoiceMessage(graph.goal, dominantClass)
         : undefined,
     });
 
@@ -672,6 +679,18 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
       return outputs;
     }
     return `I have completed the task successfully, sir.`;
+  }
+
+  /**
+   * A refusal the user can act on, said plainly: a permission level ("needs
+   * full control mode") or a tool's own reason (not on the open_app
+   * allow-list, nothing open to close, no such window). Undefined otherwise.
+   */
+  private refusalVoiceMessage(failedNodes: TaskNode[]): string | undefined {
+    const reasons = failedNodes.map(n => n.error ?? '');
+    if (reasons.some(isPermissionDenial)) return FULL_CONTROL_HINT;
+    const reason = reasons.find(r => /allowlist|policy|no open application|window matching .* not found|no active window/i.test(r));
+    return reason && reason.length <= 160 ? `I couldn't do that, sir. ${reason}` : undefined;
   }
 
   private buildFailureVoiceMessage(goal: string, failureClass: FailureClass): string {

@@ -14,6 +14,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { isPermissionDenial } from '../control/permissionDenial.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -480,6 +481,10 @@ export class TaskGraphEngine extends EventEmitter {
       const errorType: TaskNode['errorType'] =
         errLower.includes('abort') || errLower.includes('cancelled')      ? 'abort'
         : errLower.includes('timeout') || errLower.includes('timed out')   ? 'timeout'
+        // Refused by JARVIS's permission levels, or by a tool's policy (allow-list,
+        // safety block), or nothing to act on: the same call fails the same way,
+        // so retrying only added ~3 s before the reply.
+        : isPermissionDenial(errMsg) || errLower.includes('allowlist') || errLower.includes('policy') || errLower.includes('no open application') ? 'fatal'
         : errLower.includes('permission') || errLower.includes('access denied') ? 'permission'
         : errLower.includes('not registered') || errLower.includes('not found') ? 'fatal'
         // Missing or rejected configuration (e.g. "SERPER_API_KEY is not set")

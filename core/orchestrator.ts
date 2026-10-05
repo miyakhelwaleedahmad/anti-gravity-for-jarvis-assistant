@@ -17,6 +17,7 @@ import { agentStateMachine, AgentState } from './agentStateMachine.js';
 import { beginTrace } from './traceContext.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import { toolRegistryV2 } from './toolRegistryV2.js';
+import { FULL_CONTROL_HINT, isPermissionDenial } from '../control/permissionDenial.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
 import { agentMemory } from '../memory/agentMemory.js';
 import { modelRouter } from '../bridge/modelRouter.js';
@@ -461,36 +462,43 @@ export class JarvisOrchestrator {
         if (!result?.success) routeSucceeded = false;
         return result;
       };
+      // A failed route says why. A permission refusal used to come out as
+      // "encountered an issue", with no hint that full control mode was needed.
+      const failureReply = (result: { error?: string; output?: string } | undefined, fallback: string): string => {
+        const reason = result?.error ?? '';
+        if (isPermissionDenial(reason) || isPermissionDenial(result?.output ?? '')) return FULL_CONTROL_HINT;
+        return reason && reason.length <= 120 ? `${fallback} ${reason}` : fallback;
+      };
       try {
         if (route.type === 'open_app' && route.target) {
           const result = await runRoutedTool('open_app', { target: route.target, source });
           const reply = result?.success
             ? route.reply
-            : `I tried to open ${route.target} but encountered an issue, sir.`;
+            : failureReply(result, `I tried to open ${route.target} but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_browser_tab' && route.target) {
           const result = await runRoutedTool('control_browser', { action: 'close', target: route.target });
           const reply = result?.success
             ? route.reply
-            : `I tried to close the tab "${route.target}" but encountered an issue, sir.`;
+            : failureReply(result, `I tried to close the tab "${route.target}" but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_current_tab') {
           const result = await runRoutedTool('control_browser', { action: 'close_current' });
           const reply = result?.success
             ? route.reply
-            : `I tried to close the current tab but encountered an issue, sir.`;
+            : failureReply(result, `I tried to close the current tab but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_app' && route.target) {
           const result = await runRoutedTool('control_app', { action: 'close', target: route.target });
           const reply = result?.success
             ? route.reply
-            : `I tried to close the application "${route.target}" but encountered an issue, sir.`;
+            : failureReply(result, `I tried to close the application "${route.target}" but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_current_window') {
           const result = await runRoutedTool('control_window', { action: 'close_current' });
           const reply = result?.success
             ? route.reply
-            : `I tried to close the active window but encountered an issue, sir.`;
+            : failureReply(result, `I tried to close the active window but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'get_system_state') {
           const result = await runRoutedTool('get_system_state', {});
@@ -1063,7 +1071,9 @@ export class JarvisOrchestrator {
       );
 
       if (!result.success) {
-        throw new Error(result.error ?? result.output);
+        // Keep the dispatch gate's explanation with its code, so the reply can
+        // say that full control mode is needed.
+        throw new Error(result.error === 'PERMISSION_DENIED' ? `${result.error}: ${result.output}` : (result.error ?? result.output));
       }
 
       // ── Phase 1: Mid-execution check after each settled node ──────────────
@@ -1745,6 +1755,13 @@ export class JarvisOrchestrator {
     // 1. App / Desktop launch requests: ALWAYS include open_app & control_app at top priority
     if (isLaunchIntent) {
       addIfRegistered('open_app', 'control_app');
+    }
+
+    // Close / minimize requests need the tools that can do them, first so the
+    // 8-tool cap below never drops them. "close chrome" used to offer only
+    // read-only state tools, so the model had no way to close anything.
+    if (isKillOrClose) {
+      addIfRegistered('control_app', 'control_window');
     }
 
     // 2. Web search: ONLY if explicit search intent or not a pure app launch request

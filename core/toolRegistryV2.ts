@@ -138,6 +138,26 @@ export interface LLMToolDefinition {
   };
 }
 
+/**
+ * open_app and the control_* skills answer with JSON carrying their own
+ * "success" field. Only "Error:"-prefixed text used to count as a failure, so
+ * a refused or failed action was reported as done ("Opening paint, sir.").
+ */
+export function reportedFailure(output: string): { failed: boolean; reason?: string } {
+  const text = output.trimStart();
+  if (!text.startsWith('{')) return { failed: false };
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && parsed.success === false) {
+      const reason = typeof parsed.error === 'string' && parsed.error.trim() ? parsed.error.trim() : undefined;
+      return reason ? { failed: true, reason } : { failed: true };
+    }
+  } catch {
+    // Not JSON: judged by the text prefix as before.
+  }
+  return { failed: false };
+}
+
 // ─── Tool Registry V2 ─────────────────────────────────────────────────────────
 
 export class ToolRegistryV2 {
@@ -539,8 +559,10 @@ export class ToolRegistryV2 {
           }
           const durationMs = Date.now() - attemptStart;
 
+          const reported = reportedFailure(output);
           const isError = output.toLowerCase().startsWith('error:') ||
-                          output.toLowerCase().startsWith('tool "');
+                          output.toLowerCase().startsWith('tool "') ||
+                          reported.failed;
 
           // Record metrics and history
           this._recordMetric(toolName, !isError, durationMs, isError ? output : undefined);
@@ -550,6 +572,7 @@ export class ToolRegistryV2 {
             return {
               success: !isError,
               output,
+              ...(reported.reason ? { error: reported.reason } : {}),
               tool: toolName,
               durationMs: Date.now() - startTime,
               attemptNumber,

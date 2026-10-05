@@ -103,7 +103,14 @@ async function runTests() {
       const t0 = performance.now();
       const result = await toolRegistryV2.execute('open_app', { target, dryRun: true });
       const ms = performance.now() - t0;
-      assert(result.success === true, `open_app("${target}") succeeded`);
+      // cmd always needs explicit approval, so its dry run is a refusal. This
+      // passed before only because the registry ignored open_app's own
+      // {"success": false}.
+      if (target === 'cmd') {
+        assert(result.success === false && /approval/i.test(result.error ?? ''), `open_app("cmd") dry run is refused pending approval`);
+      } else {
+        assert(result.success === true, `open_app("${target}") succeeded`);
+      }
       assert(ms < 2000, `open_app("${target}") completed in ${ms.toFixed(0)}ms (< 2000ms)`);
       
       const parsedOutput = JSON.parse(result.output);
