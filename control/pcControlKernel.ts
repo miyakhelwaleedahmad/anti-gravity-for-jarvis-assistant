@@ -18,7 +18,7 @@ import { mouseController } from './mouseController.js';
 import { fileController } from './fileController.js';
 import { processController } from './processController.js';
 import { systemController } from './systemController.js';
-import { adminController } from './adminController.js';
+import { adminController, checkServiceName } from './adminController.js';
 import { getChromeState } from '../perception/chromeState.js';
 import { getWindowsState } from '../perception/windowsState.js';
 import { getJarvisServiceState } from '../perception/jarvisServiceState.js';
@@ -381,7 +381,8 @@ export class PcControlKernel {
 
   public async checkService(serviceName: string): Promise<KernelResult> {
     return this.executeAction('checkService', serviceName, true, async () => {
-      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', `Get-Service -Name ${serviceName} | Select-Object Status | ConvertTo-Json`], { reject: false });
+      const name = checkServiceName(serviceName);
+      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', `Get-Service -Name '${name}' | Select-Object Status | ConvertTo-Json`], { reject: false });
       return stdout.trim();
     });
   }

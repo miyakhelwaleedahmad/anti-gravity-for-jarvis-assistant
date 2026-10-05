@@ -9,6 +9,33 @@ import { execa } from 'execa';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 
+/**
+ * Service names were pasted into a PowerShell command line, so a "name" such
+ * as `spooler; Remove-Item ...` ran a second command, and none of these paths
+ * went through the command blocklist. Allow only what a service name can
+ * contain; the name is also single-quoted, which quotes cannot escape here.
+ */
+const SERVICE_NAME_RE = /^[A-Za-z0-9_.\- ]{1,100}$/;
+
+/** Security services never stopped or restarted (as the blocklist's 'stop-service windefend'). */
+const PROTECTED_SERVICES = new Set(['windefend', 'mpssvc', 'wscsvc', 'securityhealthservice', 'sense', 'wdnissvc']);
+
+export function checkServiceName(serviceName: string): string {
+  const name = String(serviceName ?? '').trim();
+  if (!SERVICE_NAME_RE.test(name)) {
+    throw new Error(
+      `Service name "${name.slice(0, 60)}" rejected by policy: only letters, digits, spaces, '.', '_' and '-' are allowed.`,
+    );
+  }
+  return name;
+}
+
+function checkNotSecurityService(name: string): void {
+  if (PROTECTED_SERVICES.has(name.toLowerCase())) {
+    throw new Error(`Blocked by safety policy: JARVIS does not stop or restart the security service "${name}".`);
+  }
+}
+
 export class AdminController {
   private isDangerousCommand(command: string): boolean {
     const lower = command.toLowerCase();
@@ -71,45 +98,50 @@ export class AdminController {
   }
 
   public async startService(serviceName: string): Promise<string> {
-    if (!permissionSession.checkPermission(2, `Start service ${serviceName}`)) {
+    const name = checkServiceName(serviceName);
+    if (!permissionSession.checkPermission(2, `Start service ${name}`)) {
       throw new Error('Permission Level 2 required.');
     }
 
-    const approved = await approvalGate.requestApproval('Start Windows Service', `Service: ${serviceName}`);
+    const approved = await approvalGate.requestApproval('Start Windows Service', `Service: ${name}`);
     if (!approved) {
       throw new Error('Action cancelled by user.');
     }
 
-    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Start-Service -Name ${serviceName}`], { reject: false });
-    return `Service "${serviceName}" started. Output: ${stdout} ${stderr}`;
+    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Start-Service -Name '${name}'`], { reject: false });
+    return `Service "${name}" started. Output: ${stdout} ${stderr}`;
   }
 
   public async stopService(serviceName: string): Promise<string> {
-    if (!permissionSession.checkPermission(2, `Stop service ${serviceName}`)) {
+    const name = checkServiceName(serviceName);
+    checkNotSecurityService(name);
+    if (!permissionSession.checkPermission(2, `Stop service ${name}`)) {
       throw new Error('Permission Level 2 required.');
     }
 
-    const approved = await approvalGate.requestApproval('Stop Windows Service', `Service: ${serviceName}`);
+    const approved = await approvalGate.requestApproval('Stop Windows Service', `Service: ${name}`);
     if (!approved) {
       throw new Error('Action cancelled by user.');
     }
 
-    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Stop-Service -Name ${serviceName}`], { reject: false });
-    return `Service "${serviceName}" stopped. Output: ${stdout} ${stderr}`;
+    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Stop-Service -Name '${name}'`], { reject: false });
+    return `Service "${name}" stopped. Output: ${stdout} ${stderr}`;
   }
 
   public async restartService(serviceName: string): Promise<string> {
-    if (!permissionSession.checkPermission(2, `Restart service ${serviceName}`)) {
+    const name = checkServiceName(serviceName);
+    checkNotSecurityService(name);
+    if (!permissionSession.checkPermission(2, `Restart service ${name}`)) {
       throw new Error('Permission Level 2 required.');
     }
 
-    const approved = await approvalGate.requestApproval('Restart Windows Service', `Service: ${serviceName}`);
+    const approved = await approvalGate.requestApproval('Restart Windows Service', `Service: ${name}`);
     if (!approved) {
       throw new Error('Action cancelled by user.');
     }
 
-    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Restart-Service -Name ${serviceName}`], { reject: false });
-    return `Service "${serviceName}" restarted. Output: ${stdout} ${stderr}`;
+    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Restart-Service -Name '${name}'`], { reject: false });
+    return `Service "${name}" restarted. Output: ${stdout} ${stderr}`;
   }
 }
 

@@ -60,20 +60,22 @@ export class ProcessController {
 
     const matches = await this.findProcess(target);
     if (matches.length === 0) {
-      return `No process found matching "${target}".`;
+      // Thrown, not returned: a returned message was reported as a success.
+      throw new Error(`No process found matching "${target}".`);
     }
 
     const match = matches[0];
     const isProtected = PROTECTED_PROCESSES.some(p => match.name.toLowerCase().includes(p));
 
+    // Refuse before asking: the user used to approve a kill that was then blocked.
+    if (isProtected && match.name.toLowerCase() !== 'antigravity') {
+      throw new Error(`Execution Blocked: Terminating critical system process "${match.name}" is forbidden.`);
+    }
+
     // Terminating processes ALWAYS requires Level 3 confirmation
     const approved = await approvalGate.requestApproval('Terminate Process', `Kill process: ${match.name} (PID: ${match.pid})`);
     if (!approved) {
       throw new Error(`Process termination cancelled by user: ${match.name}`);
-    }
-
-    if (isProtected && match.name.toLowerCase() !== 'antigravity') {
-      throw new Error(`Execution Blocked: Terminating critical system process "${match.name}" is forbidden.`);
     }
 
     await execa('powershell', ['-NoProfile', '-Command', `Stop-Process -Id ${match.pid} -Force`], { reject: false });
