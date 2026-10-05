@@ -153,6 +153,10 @@ JARVIS to "enable full control" to elevate.
 | `JARVIS_PLANNING_WATCHDOG_MS` | How long planning may take in total before JARVIS gives up (default 15000). Keep it above `JARVIS_LLM_TIMEOUT_MS`. |
 | `JARVIS_ACTIVE_WINDOW_POLL_MS`, `JARVIS_CHROME_TABS_POLL_MS`, `JARVIS_SERVICES_POLL_MS` | Background check intervals (defaults 8000, 12000, 20000). Longer intervals use less CPU on an old PC; answers about open windows and tabs can then be that much older. Window and app actions always read the current state. |
 | `PYTHONUNBUFFERED=1` | The Python services print at once, so the log shows their loading times in order. |
+| `JARVIS_QUEUED_COMMAND_MAX_AGE_MS` | How long a command heard while JARVIS is busy may wait before it is skipped (default 30000). JARVIS says so when it skips one. |
+| `JARVIS_FOLLOWUP_SECONDS` | Seconds after a reply in which a follow-up needs no wake word (default 15; 0 turns it off). |
+| `JARVIS_VISION=off` | Do not start the screen-capture service. Nothing in JARVIS switches it on yet, so on a low-memory PC it only holds memory (OpenCV, NumPy). |
+| `JARVIS_DATA_ROOT` | Folder that holds JARVIS's data (memory, goals, permission session, logs, backups). Leave it unset; `npm test` sets it to a new temporary folder for each test, so tests never write into your real data. |
 
 See `.env.example` for the full list.
 

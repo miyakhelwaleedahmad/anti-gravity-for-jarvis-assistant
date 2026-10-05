@@ -121,6 +121,7 @@ These cannot be proven here and must not be reported as verified:
 | G | ✅ Complete | gemini | Gemini as a provider (verified live), rate-limit-aware client, 5 bug fixes. Suite **74 pass / 6 environment**. See FINAL_REPORT.md §11. |
 | I | ✅ Complete | imac-review | Why JARVIS is slow on a 2010 iMac (Gemini quota, no AVX, heavy start-up, fixed time limits, room talk taken as commands); 2 fixes: window handles decimal→hex, and actions no longer use the previous poll's window list. Suite **81 pass / 6 environment**. See FINAL_REPORT.md §13. |
 | T | ✅ Complete | task-review | Why tasks failed or were misreported: the registry ignored `"success": false`; close requests had no close tool; Spotify/Firefox/Edge were off open_app's allow-list; permission refusals were retried with no hint; reflection spent an LLM request for nothing. Suite **82 pass / 6 environment**. See FINAL_REPORT.md §14. |
+| R | ✅ Complete | registry-review | Tool registry, repair loop and more: results of state readers and actions cached for 30 s; skill action lists dropped; side-effecting steps retried; contradictory or false failure messages; JSON in replies executed; a missing tool in the LLM-down fallback; failed commands reported done; a command given while speaking cancelled; service names passed into PowerShell; queued voice commands dropped in silence; tests writing into real data. Suite **86 pass / 6 environment**; Windows behaviour not verified. See FINAL_REPORT.md §15. |
 | 13 | ✅ Complete | `phase-13` | JARVIS-026. Document RAG: ingest → parse → chunk → embed → manifest → cited retrieval, plus `ingest_documents` and `search_documents` skills. New `ragPipelineTest` 28/28. |
 | 12 | ✅ Complete | `phase-12` | JARVIS-023/024/021. Repo 46MB → 3.5MB; README + ARCHITECTURE written; 3 factual errors corrected in the old architecture doc. Its untracking of runtime files (`git rm --cached`) deleted them on merge — **reversed** in the post-validation row. |
 | 11 | ✅ Complete | `phase-11` | JARVIS-025. Real `npm test` runner separating defects from missing prerequisites, plus GitHub Actions CI. |
@@ -167,15 +168,16 @@ a ceiling, so nothing that works today is refused:
 | `control_mouse` | L2 only | 2 |
 | `control_app` | L1, L2 | 1 |
 | `control_window` | L1, L2 | 1 |
-| `control_browser` | L0, L1 | — (has level-0 operations) |
-| `control_process` | L0, L2 | — (has level-0 operations) |
-| `control_system` | L0, L2 | — (has level-0 operations) |
+| `control_browser` | L0, L1 | 0, declared (has level-0 operations) |
+| `control_process` | L0, L2 | 0, declared (has level-0 operations) |
+| `control_system` | L0, L2 | 0, declared (has level-0 operations) |
 
 To keep the audit's real concern visible — *"a new tool that bypasses `control/*`
 inherits no gate"* — the registry now logs a warning at registration for any
-high-risk tool that declares no floor. Five do today: `run_command`,
-`control_browser`, `control_process`, `control_system`,
-`enable_full_control_session`. Each is intentional and documented above.
+high-risk tool that declares no floor. The five with level-0 operations —
+`run_command`, `control_browser`, `control_process`, `control_system`,
+`enable_full_control_session` — now declare `requiredLevel: 0` explicitly, so
+the warning is left for a new tool that declares nothing.
 
 > **NOT VERIFIED:** `test:pc-control` on Windows, which the audit requires before
 > and after this change. It cannot run in this container. The mitigating evidence

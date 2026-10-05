@@ -2,7 +2,7 @@
 
 **Repository:** `miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant`
 **Base commit:** `f429071` — "Initial upload of Jarvis Assistant"
-**Branch:** `claude/jarvis-repair` · 40 commits: 14 repair + 8 post-validation + 7 Gemini + 7 Windows-log + 2 iMac review + 2 task review (§8, §10–§14)
+**Branch:** `claude/jarvis-repair` · 46 commits: 14 repair + 8 post-validation + 7 Gemini + 7 Windows-log + 2 iMac review + 2 task review + 6 registry review (§8, §10–§15)
 **Spec:** `JARVIS_COMPLETE_TECHNICAL_AUDIT.md` (Claude Cowork), verified rather than trusted
 
 ---
@@ -140,7 +140,13 @@ and treat a non-zero exit as a failure.
 ## 8. Commits
 
 ```
-(this)   docs: record the task review in the report
+(this)   docs: record the registry and repair round in the report
+b27a18f  test: keep the test suite out of the real memory, goals and logs
+4d9f02f  fix: startup logs no longer look like failures
+837602a  fix: voice — a queued command is no longer dropped in silence
+4ac604c  fix: tool registry and repair loop — stale results, repeated actions, false messages
+6f8a2c9  fix: check service names before PowerShell; refuse a protected kill before asking
+b8eb992  docs: record the task review in the report
 e776a58  fix: JARVIS reported failed tasks as done and could not close apps
 e519c43  docs: record the iMac review in the report
 f96ab30  fix: window and app commands acted on the wrong window, or on none
@@ -385,3 +391,50 @@ skipped.
 
 **Not verified on Windows:** launching Spotify, Firefox and Edge through
 `start`, and the new replies against real windows.
+
+## 15. Tool registry, repair loop and the rest
+
+The request: fix the problems in the tool registry and the orchestrator, and
+the rest, so JARVIS works without errors. Each item was reproduced with the
+real orchestrator and a scripted model, then fixed in `6f8a2c9`–`b27a18f`:
+
+| Where | Before | After |
+|---|---|---|
+| Registry cache | every low-risk tool's result reused for 30 s: "is notepad open?" repeated the old answer; "disable full control" said twice within 30 s did not run the second time | only `web_search`, `deep_search`, `get_weather` (marked `cacheable`) reuse results |
+| Skill loader | dropped each skill's list of allowed actions; the model guessed ("launch"), and the skill ran with it | the model sees the list; an invented action is refused before the skill runs and the model is asked again |
+| Startup | five "declares no requiredLevel" warnings | the five declare level 0; their controllers still refuse what needs full control |
+| Failed action | any unrecognised failure retried twice, including typing, clicking, closing: a failed "type hello" ran 3 times in 3.0 s | steps that change something run once (14 ms); read-only steps keep their retries |
+| Bad arguments | retried as transient, 3.0 s | fail at once |
+| Replan that answers | the answer, then "I was unable to recover from the error, sir." | the answer only |
+| Giving up | promised a retry or "an alternative approach" that never came | says it stopped, and why |
+| JSON in a reply | an answer containing an example tool call ran it, with any registered tool | only a reply that is just a call, for a tool offered in that request |
+| LLM down | the "system" fallback called `system_info`, which does not exist; on a replan it matched JARVIS's own "[SYSTEM NOTE" | `get_system_info`, matched on the user's words |
+| Failed command | "Task completed, sir." when the output was long | "The command failed with exit code 1, sir." and the first line |
+| Command while JARVIS speaks | its LLM request was cancelled before it started (typed commands were dropped; voice takes another path) | the old request is cancelled, not the new one |
+| Service commands | the name went into PowerShell unchecked (`spooler; …` ran a second command); stopping Windows Defender skipped the blocklist | names checked and quoted; security services refused |
+| Protected process | approval asked, then refused | refused first; "not running" is a failure, not "done" |
+| Queued voice command | "One moment, sir. I will get to that right after this.", then dropped in silence after 6 s | waits up to 30 s; a skipped one is announced |
+| Settings | follow-up window fixed at 15 s; Vision always started, though nothing activates it | `JARVIS_FOLLOWUP_SECONDS`, `JARVIS_VISION=off` |
+| Logs | normal vector-service lines printed as `[VectorAPI:ERR]`; STT logged every HuggingFace request | labelled by content; quiet |
+| Tests and your data | the suite wrote into the real memory, goals, permission session, audit logs and backups | each test gets its own temporary folder (`JARVIS_DATA_ROOT`) |
+
+Tests, each run on the old code as well:
+
+| Test | Checks | Fail on old code |
+|---|---|---|
+| `registryRepairHonestyTest` | 34 | 27 |
+| `voiceSettingsTest` | 16 | 5 of 5 that can run (the module is new) |
+| `serviceLogLabelTest` | 14 | 2 of 2 that can run |
+| `dataRootIsolationTest` | 18 | 16 |
+
+Suite: 92 files, 86 passed · 0 failed · 6 environment; CI mode 84 passed · 8
+skipped. All 59 files under `data/`, `memory/` and `logs/` were byte-identical
+before and after the full suite. This closes the first "found, not fixed"
+item of §14.
+
+**Not verified on Windows:** the service commands against real services; the
+skipped-command notice through TTS; `JARVIS_FOLLOWUP_SECONDS` with the real
+wake-word process; `JARVIS_VISION=off` at start-up; the log labels against a
+live vector service (checked with lines from the owner's log).
+
+**Found, not fixed:** no safe way to search YouTube yet (see §14).
