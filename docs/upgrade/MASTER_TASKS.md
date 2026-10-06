@@ -409,24 +409,34 @@ whatever window had the keyboard. Repaired and checked in the browser.
 
 ## P10 — Files and development actions
 
-### T10.1 — File tools · High · [ ] · depends on: T9.6
+### T10.1 — File tools · High · [x] · depends on: T9.6
 list, search, compare, create, modify, rename, move, delete (to a JARVIS trash
 for undo), inside approved folders.
 Files: `tools/fsTools.ts` (new), `control/fileController.ts`.
+(One tool, `files`, with an action argument; also restore, trash, empty_trash.)
+Found in P10: `control_file` compared paths as text, so a link inside an
+approved folder led outside it (it read `/etc/hostname` through a link in
+temp). Containment now compares real paths in both.
 
-### T10.2 — Git tools · High · [ ] · depends on: T10.1
+### T10.2 — Git tools · High · [x] · depends on: T10.1
 status/diff/branches/log (0), add/commit (2), switch branch (2), push (3; to
 `main`/`master` 4); force push refused.
 Files: `tools/gitTools.ts` (new).
+(`git` and a separate `git_push`, whose metadata says it changes something
+outside the PC. Commits refuse key files and credentials before staging.)
 
-### T10.3 — Test, build, dev server · High · [ ] · depends on: T10.1
+### T10.3 — Test, build, dev server · High · [x] · depends on: T10.1
 Package scripts on an allowlist; start a dev server and verify its port; stop
 only servers JARVIS started.
 Files: `tools/devTools.ts` (new).
 
-### T10.4 — Verifiers · Critical · [ ] · depends on: T10.1–T10.3
+### T10.4 — Verifiers · Critical · [x] · depends on: T10.1–T10.3
+(Each tool checks its own effect; the registry's verify step takes it.)
 
-### T10.5 — Tests and documents · High · [ ] · depends on: T10.4
+### T10.5 — Tests and documents · High · [x] · depends on: T10.4
+Found in P10: `data/` was not git-ignored, so P9's browser screenshots
+(`data/screenshots/`) could have been committed; it and the new trash are
+ignored now.
 
 ---
 

@@ -12,6 +12,7 @@ import {
   isForeignWindowsAbsolute,
   isPathInside,
   isProtectedSystemPath,
+  realPathOf,
 } from '../core/workspaceRoot.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
@@ -68,8 +69,13 @@ export class FileController {
     if (isProtectedSystemPath(resolved)) return false;
 
     // Boundary-aware containment. The previous `startsWith` prefix test also
-    // accepted sibling directories such as `<home>/Desktop-evil`.
-    return this.getApprovedFolders().some((folder) => isPathInside(folder, resolved));
+    // accepted sibling directories such as `<home>/Desktop-evil`. Compared by
+    // real path too: a link inside an approved folder (a symlink or junction
+    // in temp pointing at /etc or C:\Windows) no longer leads out of it.
+    const real = realPathOf(resolved);
+    if (isProtectedSystemPath(real)) return false;
+    return this.getApprovedFolders().some((folder) => isPathInside(folder, resolved))
+      && this.getApprovedFolders().some((folder) => isPathInside(realPathOf(folder), real));
   }
 
   private ensureApproved(filePath: string, action: string): void {

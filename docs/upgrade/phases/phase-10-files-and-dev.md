@@ -65,3 +65,13 @@ Any write outside approved folders; an unverified action; a force push possible.
 
 ## Completion requirements
 Gate; checklist; PHASE_STATUS; commit `phase-10-files-and-dev`; CI green.
+
+## As built (alignment note)
+- Four tools rather than one file per area: `files` (actions), `git`
+  (actions), `git_push` (its own tool, because its metadata marks a change
+  outside the PC), `dev` (actions). Details: [FILES_AND_DEV.md](../FILES_AND_DEV.md).
+- Modify keeps the previous version in the trash (restorable), besides delete.
+- Commits refuse key files and credentials before anything is staged.
+- Also fixed: `control_file` containment by real path; `data/screenshots/` and
+  `data/trash/` git-ignored.
+

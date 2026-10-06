@@ -35,6 +35,9 @@ Thumbs.db
 # Runtime and logs
 
 data/runtime/*.json
+# Browser screenshots (P9) and the file tools' trash and backups (P10): user data
+data/screenshots/
+data/trash/
 logs/*.jsonl
 logs/*.log
 

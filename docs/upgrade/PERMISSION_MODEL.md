@@ -111,8 +111,19 @@ If the risk check itself fails, the call is refused (fail closed).
      - `browser_tab close` 2; `browser_download` 2; `browser_upload` 3, only
        from the approved folders, never keys or credential files (`.env`,
        `id_rsa`, `.pem`, `.key`, `.kdbx`, anything in `.ssh`, `.aws`…).
-3. Planned for later phases: git push 3, push to `main`/`master` 4, force push
-   refused (P10).
+   - Files, git and development (P10, `security/fsPolicy.ts`,
+     [FILES_AND_DEV.md](FILES_AND_DEV.md)):
+     - `files`: list, search, compare and trash 0; create and modify 2 — a
+       `.txt` in the temp folder 1 *(sets)*, source, configuration and key
+       files 3; rename, move and restore 2; delete 3 (to the JARVIS trash);
+       empty_trash 3. Paths outside the approved folders (by real path),
+       files that run when opened, and a whole approved folder are refused.
+     - `git`: status, diff, branches, log 0; commit and switch 2.
+       `git_push` 3; to `main` or `master` 4; any `force` argument refused;
+       repositories outside the project folders refused.
+     - `dev`: scripts and servers 0; run (test, build, lint, typecheck,
+       check) and start_server (dev, start, serve, preview) 1; other scripts
+       refused; stop_server 2, only for servers JARVIS started.
 
 ## Approval request (P3, `security/approvalRequest.ts`, `security/approvalGate.ts`)
 

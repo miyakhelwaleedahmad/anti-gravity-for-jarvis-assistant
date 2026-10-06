@@ -102,6 +102,20 @@ the PC (`external: change`) is at least risk 2.
 - Screenshots stay on the PC (`data/screenshots`); they are not sent to the
   model.
 
+## Files and development (P10)
+
+- File tools only inside the approved folders, compared by real path. The
+  older `control_file` compared paths as text and read `/etc/hostname`
+  through a link placed in the temp folder; it now compares real paths too.
+- Deleting is recoverable (the JARVIS trash); emptying the trash is level 3.
+- No shell: git and package managers run with fixed arguments; script names
+  must be in `package.json` and on the allowlist.
+- A commit never takes key files or changes holding a credential; there is
+  no force push; pushes are approved each time, to `main`/`master` with a
+  typed code.
+- Only servers JARVIS started can be stopped by it.
+- `data/screenshots/` and `data/trash/` are git-ignored (user data).
+
 ## Data minimisation
 
 - Nothing is observed in the background for the new features; each tool reads

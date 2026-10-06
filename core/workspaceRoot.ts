@@ -22,6 +22,7 @@
  * absolute paths on every host.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -146,4 +147,23 @@ export function isPathInside(parent: string, child: string): boolean {
   if (rel === '') return true;
   if (path.isAbsolute(rel)) return false;
   return !rel.split(/[\\/]/).includes('..');
+}
+
+/**
+ * The real path of `p` (links followed), or of its nearest existing parent with
+ * the rest added — so containment can be checked for a file not yet created.
+ */
+export function realPathOf(p: string): string {
+  const rest: string[] = [];
+  let current = p;
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(current), ...rest.reverse());
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return p;
+      rest.push(path.basename(current));
+      current = parent;
+    }
+  }
 }

@@ -97,6 +97,10 @@ Risk per action where a tool has several. "R" = reversible.
 | browser_screenshot (new, P9) | BROWSER | 1 | yes | none |
 | browser_download (new, P9) | BROWSER | 2 | yes | query |
 | browser_upload (new, P9) | BROWSER | 3 | partial | change |
+| files (new, P10) | FILESYSTEM | list 0 · search 0 · compare 0 · trash 0 · create 2 · modify 2 · rename 2 · move 2 · restore 2 · delete 3 · empty_trash 3 | delete: yes (trash); empty_trash: no | none |
+| git (new, P10) | DEVELOPMENT | status 0 · diff 0 · branches 0 · log 0 · commit 2 · switch 2 | yes | none |
+| git_push (new, P10) | DEVELOPMENT | 3 (main/master 4) | partial | change |
+| dev (new, P10) | DEVELOPMENT | scripts 0 · servers 0 · run 1 · start_server 1 · stop_server 2 | yes | none |
 
 Notes:
 - P2's argument rules can raise a call's risk (a recursive delete, deleting a

@@ -1885,6 +1885,14 @@ export class JarvisOrchestrator {
       }
     }
 
+    // Files, git and project scripts (P10).
+    if (FILE_ACTION.test(clean)) addIfRegistered('files');
+    if (GIT_ACTION.test(clean)) {
+      addIfRegistered('git');
+      if (/\bpush\b/.test(clean)) addIfRegistered('git_push');
+    }
+    if (DEV_ACTION.test(clean)) addIfRegistered('dev');
+
     // The read-only observation tools (P6, P8) come after the launch and close
     // tools, so "open chrome" still offers open_app first, and before the
     // generic lists below, so the 8-tool cap does not drop them.
@@ -2197,6 +2205,9 @@ const SYSTEM_QUESTION = /\b(cpu|processor|memory|ram|disk|storage|free space|upt
 const DEV_QUESTION = /\b(port|ports|localhost|backend|frontend|dev server|server running|servers running)\b/;
 const GIT_QUESTION = /\b(git|commit|commits|branch|uncommitted|repository|repo|diff)\b/;
 const BROWSER_QUESTION = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button)\b/;
+const FILE_ACTION = /\b(files?|folders?|directory|rename|move|delete|trash|restore|compare)\b/;
+const GIT_ACTION = /\b(git|commit|commits|branch|branches|push|repo|repository)\b/;
+const DEV_ACTION = /\b(tests?|build|lint|typecheck|type check|dev server|start (?:the )?server|stop (?:the )?server|npm|pnpm|script|scripts)\b/;
 const BROWSER_CONTEXT = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button|field|box|url|address)\b/;
 const BROWSER_ACTIONS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(click|press|tap|tick|check|uncheck)\b/, 'browser_click'],

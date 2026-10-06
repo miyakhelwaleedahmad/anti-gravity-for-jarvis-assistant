@@ -22,6 +22,9 @@ import { isForeignWindowsAbsolute, isPathInside, isProtectedSystemPath } from '.
 import { isEnvFile } from './workspacePathPolicy.js';
 import { describeElement, lookupRef } from '../perception/browserRefs.js';
 import { NOT_OBSERVED, NO_CREDENTIALS, normalizeUrl, uploadPathProblem, urlProblem, wordsLevel } from './browserPolicy.js';
+import { changeLevel, checkFilePath, isApprovedRoot, isExecutable } from './fsPolicy.js';
+import { pushTargetSync, repoProblem } from '../tools/gitTools.js';
+import { isJarvisServer, projectProblem, scriptProblem } from '../tools/devTools.js';
 
 export interface RiskAssessment {
   tool: string;
@@ -247,6 +250,63 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
         target = `${text(args, 'path') || 'a file'} into the ${target}`;
         refused = element.type === 'file' ? uploadPathProblem(text(args, 'path')) : 'That is not a file field.';
       }
+      break;
+    }
+    // Files, git and development (P10): containment, then the level of the change.
+    case 'files': {
+      if (action === 'restore' || action === 'empty_trash' || action === 'trash') break;
+      const checked = checkFilePath(text(args, 'path'));
+      if (!checked.ok) { refused = checked.reason; break; }
+      target = checked.path;
+      if (action === 'compare') {
+        const other = checkFilePath(text(args, 'other'));
+        if (!other.ok) refused = other.reason;
+      } else if (action === 'create' || action === 'modify') {
+        if (isExecutable(checked.path) && args['folder'] !== true) {
+          refused = 'JARVIS does not create or change files that run when opened.';
+        } else {
+          const change = changeLevel(checked.path, os.tmpdir());
+          if (change === 1 && args['folder'] !== true) set(1, 'a text file in the temp folder');
+          if (change === 3) raise(3, 'a source, configuration or key file');
+        }
+      } else if (action === 'delete' || action === 'move' || action === 'rename') {
+        if (isApprovedRoot(checked.real)) refused = 'JARVIS does not delete, move or rename a whole approved folder.';
+        if (action === 'move' && text(args, 'to')) {
+          const to = checkFilePath(text(args, 'to'));
+          if (!to.ok) refused = to.reason;
+        }
+      }
+      break;
+    }
+    case 'git': {
+      const { repo, refused: why } = repoProblem(args['repo']);
+      if (why) refused = why;
+      else target = repo;
+      break;
+    }
+    case 'git_push': {
+      if (Object.keys(args).some((key) => /force/i.test(key))) {
+        refused = 'JARVIS never force-pushes.';
+        break;
+      }
+      const { repo, refused: why } = repoProblem(args['repo']);
+      if (why || !repo) { refused = why; break; }
+      const pushTo = pushTargetSync(repo);
+      target = `${repo} → ${pushTo}`;
+      if (/(^|\/)(main|master)$/.test(pushTo)) raise(4, 'it pushes to main or master');
+      break;
+    }
+    case 'dev': {
+      if (action === 'servers') break;
+      if (action === 'stop_server' && typeof args['pid'] === 'number') {
+        if (!isJarvisServer(args['pid'])) refused = 'JARVIS stops only servers it started.';
+        break;
+      }
+      const { project, refused: why } = projectProblem(args['project']);
+      if (why || !project) { refused = why; break; }
+      target = project;
+      if (action === 'run') refused = scriptProblem(project, args['script'], 'run');
+      if (action === 'start_server') refused = scriptProblem(project, text(args, 'script') || 'dev', 'server');
       break;
     }
   }

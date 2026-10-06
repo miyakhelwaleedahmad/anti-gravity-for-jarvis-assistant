@@ -17,7 +17,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P7 World state | [x] |
 | P8 Browser observation | [x] |
 | P9 Browser control | [x] |
-| P10 Files and development actions | [ ] |
+| P10 Files and development actions | [x] |
 | P11 Error recovery | [ ] |
 | P12 Voice | [ ] |
 | P13 Integration and scenarios | [ ] |
@@ -122,12 +122,12 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P10 — Files and development actions
-- [ ] File tools (list, search, compare, create, modify, rename, move, delete)
-- [ ] Git tools (status, diff, branches, log, commit, push)
-- [ ] Test, build and dev-server tools
-- [ ] Verifiers for each action
-- [ ] Tests with real files, repository, scripts, servers; full suite; documentation
-- [ ] PHASE COMPLETE
+- [x] File tools (list, search, compare, create, modify, rename, move, delete)
+- [x] Git tools (status, diff, branches, log, commit, push)
+- [x] Test, build and dev-server tools
+- [x] Verifiers for each action
+- [x] Tests with real files, repository, scripts, servers; full suite; documentation
+- [x] PHASE COMPLETE
 
 ## P11 — Error recovery
 - [ ] Diagnosis uses fresh observation

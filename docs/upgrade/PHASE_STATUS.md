@@ -473,3 +473,63 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   "Leave site?" dialog during navigation is not handled specially (not tested).
 - **Next:** P10 — files and development actions.
 
+## P10 — Files and development actions — COMPLETE
+
+- **Implemented** ([FILES_AND_DEV.md](FILES_AND_DEV.md)):
+  - `files` (`tools/fsTools.ts`): list, search (recursive, bounded; key files
+    by name only), compare (unified diff), create, modify (one or every
+    occurrence, or the whole text; the previous version kept), rename, move,
+    delete into the JARVIS trash, restore, trash, empty_trash — only in the
+    approved folders, compared by real path; executables and whole approved
+    folders refused.
+  - `git` (status, diff, branches, log, commit, switch) and `git_push`
+    (`tools/gitTools.ts`): fixed arguments, no shell, no pager, no password
+    prompt; commits refuse key files and credentials before staging; no force
+    push; push to main/master needs a typed code.
+  - `dev` (`tools/devTools.ts`): list scripts; run test, build, lint,
+    typecheck, check scripts and report the exit code; start dev, start,
+    serve, preview scripts and confirm a port answers; stop only servers
+    JARVIS started.
+  - Rules in `security/fsPolicy.ts` and the risk engine; catalogue entries;
+    approval titles; the planner offers the tools by request words. Each tool
+    checks its own effect and hands the check to the registry's verify step.
+- **Found and fixed:**
+  - `control_file` compared paths as text: it read `/etc/hostname` through a
+    link placed in the temp folder (shown on the P9 code). Containment now
+    also compares real paths (`core/workspaceRoot.ts` `realPathOf`).
+  - `data/` was not git-ignored: P9's browser screenshots (`data/screenshots/`)
+    could have been committed with a `git add -A`. It and the new trash are
+    ignored now.
+- **Tested:** `tests/filesAndDevToolsTest.ts`, real folders, a real git
+  repository with a real local remote, real processes, through the registry,
+  52 checks, all pass — list; search by name three folders down and by text
+  with the line number (node_modules skipped, .env content not searched);
+  compare; create a temp .txt (level 1, no approval) and a file in the JARVIS
+  folder (level 2, asked); create over an existing file refused; modify with
+  two matches refused without `all`, then both replaced, the previous version
+  restored; rename; move; delete (level 3, asked) into the trash, listed,
+  restored; empty_trash (level 3, asked) and checked empty; a folder outside
+  the approved folders, a link leading out of one (also for control_file), a
+  .bat, a whole approved folder, a rename with a folder in it and a move out
+  — all refused; levels 1/2/3 by file kind. Git: status (a file name with a
+  space), diff, log, branches; a commit holding a .env file or an AWS key
+  refused with nothing staged; a commit asked at level 2 and checked; switch
+  to a new branch, an option-like branch name refused; push of a feature
+  branch asked at level 3 and checked on the remote; push to main level 4,
+  typed code, denied → remote unchanged; force refused; a repository outside
+  the project folders refused. Dev: scripts listed; a test script's exit
+  code 0 and output, a failing one's code 3; `deploy` refused; a dev server
+  answering on its port, checked; a server that exits at once reported as
+  not started; stopping this test's own process refused; the server stopped
+  (level 2, asked), process gone and port closed. Planner offers the tools.
+  On the P9 code: 3 of 52 pass (the tools do not exist; control_file read the
+  outside file through the link).
+  Full suite: 103 files, 97 passed · 0 failed · 6 environment; CI mode 95
+  passed · 8 skipped.
+- **Not verified here (Windows, P14):** package managers started through
+  `cmd.exe /d /s /c`, `taskkill /T` for stopping a server, junctions as links,
+  a Desktop redirected to OneDrive.
+- **Known limits:** the list of servers JARVIS started is kept in memory;
+  compare handles files up to 2 000 lines; scripts are allowed by name.
+- **Next:** P11 — error recovery.
+
