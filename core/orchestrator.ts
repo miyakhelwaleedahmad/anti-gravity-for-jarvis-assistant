@@ -749,7 +749,8 @@ export class JarvisOrchestrator {
         'read_file', 'explain_code',
       ]);
       const allSucceeded = allNodes.every(n => n.status === 'done');
-      const allLowRisk   = allNodes.every(n => LOW_RISK_TOOLS.has(n.tool));
+      // Any step whose metadata says it only reads (risk 0) counts too (P8).
+      const allLowRisk   = allNodes.every(n => LOW_RISK_TOOLS.has(n.tool) || toolRegistryV2.riskOf(n.tool, n.args) === 0);
 
       if (allSucceeded && allLowRisk) {
         console.log(`[Orchestrator] ⚡ OPT-3: Skipping full reflection for low-risk successful graph.`);
@@ -1860,16 +1861,6 @@ export class JarvisOrchestrator {
     if (HISTORY_QUESTION.test(clean)) {
       addIfRegistered('action_history');
     }
-    if (SYSTEM_QUESTION.test(clean)) {
-      addIfRegistered('system_overview');
-    }
-    if (DEV_QUESTION.test(clean)) {
-      addIfRegistered('dev_status');
-    }
-    if (GIT_QUESTION.test(clean)) {
-      addIfRegistered('git_overview');
-    }
-
     const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimize|maximize)\b/i.test(clean);
     const isLaunchIntent = !isKillOrClose && /\b(open|launch|start|run|app|application|desktop|whatsapp|youtube|chrome|calculator|vscode|code|notepad|spotify|browser|gmail|github)\b/i.test(clean);
     const isExplicitSearch = /\b(search|lookup|find|internet|online|research)\b/i.test(clean);
@@ -1884,6 +1875,22 @@ export class JarvisOrchestrator {
     // read-only state tools, so the model had no way to close anything.
     if (isKillOrClose) {
       addIfRegistered('control_app', 'control_window');
+    }
+
+    // The read-only observation tools (P6, P8) come after the launch and close
+    // tools, so "open chrome" still offers open_app first, and before the
+    // generic lists below, so the 8-tool cap does not drop them.
+    if (SYSTEM_QUESTION.test(clean)) {
+      addIfRegistered('system_overview');
+    }
+    if (DEV_QUESTION.test(clean)) {
+      addIfRegistered('dev_status');
+    }
+    if (GIT_QUESTION.test(clean)) {
+      addIfRegistered('git_overview');
+    }
+    if (BROWSER_QUESTION.test(clean)) {
+      addIfRegistered('browser_state', 'browser_read_page', 'browser_page_structure');
     }
 
     // 2. Web search: ONLY if explicit search intent or not a pure app launch request
@@ -2178,9 +2185,10 @@ const DEV_STATUS_QUESTION =
   /^(is|are) (my|the) (backend|frontend|api|server|servers|dev server|development server|local server|app server) (still )?(running|up|on)$|^(what|which) (local |dev |development )?servers are running$|^check (my|the) (dev |local )?servers$/;
 
 /** Questions the planner should get system, server or git tools for. */
-const SYSTEM_QUESTION = /(cpu|processor|memory|ram|disk|storage|free space|uptime|ip address|network address)/;
-const DEV_QUESTION = /(port|ports|localhost|backend|frontend|dev server|server running|servers running)/;
-const GIT_QUESTION = /(git|commit|commits|branch|uncommitted|repository|repo|diff)/;
+const SYSTEM_QUESTION = /\b(cpu|processor|memory|ram|disk|storage|free space|uptime|ip address|network address)\b/;
+const DEV_QUESTION = /\b(port|ports|localhost|backend|frontend|dev server|server running|servers running)\b/;
+const GIT_QUESTION = /\b(git|commit|commits|branch|uncommitted|repository|repo|diff)\b/;
+const BROWSER_QUESTION = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button)\b/;
 
 /** The spoken summary of a system_overview result. */
 export function systemStatusReply(output: string): string {

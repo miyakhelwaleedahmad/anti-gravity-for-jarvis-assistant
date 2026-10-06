@@ -85,6 +85,9 @@ Risk per action where a tool has several. "R" = reversible.
 | system_overview (new, P6) | OBSERVATION | 0 | yes | none |
 | dev_status (new, P6) | DEVELOPMENT | 0 | yes | none |
 | git_overview (new, P6) | DEVELOPMENT | 0 | yes | none |
+| browser_state (new, P8) | BROWSER | 0 | yes | none |
+| browser_read_page (new, P8) | BROWSER | 0 | yes | none |
+| browser_page_structure (new, P8) | BROWSER | 0 | yes | none |
 
 Notes:
 - P2's argument rules can raise a call's risk (a recursive delete, deleting a

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { execa } from 'execa';
+import { cdpPort } from './cdpClient.js';
 
 export interface ChromeTab {
   title: string;
@@ -30,7 +31,7 @@ async function isChromeProcessRunning(): Promise<boolean> {
 }
 
 export async function getChromeState(): Promise<ChromeState> {
-  const debugPort = 9222;
+  const debugPort = cdpPort();
   const endpoint = `http://127.0.0.1:${debugPort}/json`;
   
   try {
@@ -66,7 +67,7 @@ export async function getChromeState(): Promise<ChromeState> {
       running,
       debugPort,
       tabs: [],
-      error: 'Chrome DevTools endpoint unavailable. Suggest starting Chrome with: start chrome.exe --remote-debugging-port=9222 --user-data-dir="W:\\jarvis-chrome-profile"'
+      error: `Chrome DevTools endpoint unavailable. Suggest starting Chrome with: start chrome.exe --remote-debugging-port=${debugPort} --user-data-dir="W:\\jarvis-chrome-profile"`
     };
   }
 }

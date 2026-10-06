@@ -15,7 +15,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P5 Observe → act → verify | [x] |
 | P6 System and development observation | [x] |
 | P7 World state | [x] |
-| P8 Browser observation | [ ] |
+| P8 Browser observation | [x] |
 | P9 Browser control | [ ] |
 | P10 Files and development actions | [ ] |
 | P11 Error recovery | [ ] |
@@ -105,12 +105,12 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P8 — Browser observation
-- [ ] DevTools protocol client (WebSocket, timeouts)
-- [ ] Browser, tabs, active tab, title, URL
-- [ ] Page text and structure; password values never read
-- [ ] Page content passed as untrusted data
-- [ ] Tests against real Chromium, full suite, documentation
-- [ ] PHASE COMPLETE
+- [x] DevTools protocol client (WebSocket, timeouts)
+- [x] Browser, tabs, active tab, title, URL
+- [x] Page text and structure; password values never read
+- [x] Page content passed as untrusted data
+- [x] Tests against real Chromium, full suite, documentation
+- [x] PHASE COMPLETE
 
 ## P9 — Browser control
 - [ ] Navigation and tab actions

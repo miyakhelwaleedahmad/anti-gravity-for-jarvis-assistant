@@ -9,7 +9,7 @@ Windows-only observation: P14 ([prompt](phases/phase-14-windows.md)).
 | Fact | How | Tool |
 |---|---|---|
 | Active window, open apps with window titles | persistent PowerShell session | get_active_window, get_open_apps, is_app_open |
-| Chrome tabs (debugging profile only) | DevTools HTTP API on 127.0.0.1:9222 | get_browser_tabs, is_tab_open |
+| Chrome tabs (debugging profile only) | DevTools HTTP API on 127.0.0.1 (`JARVIS_CDP_PORT`, default 9222) | get_browser_tabs, is_tab_open |
 | JARVIS's own services | bridge client list | get_jarvis_service_status |
 | OS, CPU count, memory, uptime | Node `os` | get_system_info |
 | Network interfaces, disk volumes | `os.networkInterfaces`, PowerShell `Get-Volume` | control_system network_status / disk_status |
@@ -18,6 +18,7 @@ Windows-only observation: P14 ([prompt](phases/phase-14-windows.md)).
 | OS, CPU load, memory, disks, network (no MAC) — P6 | `perception/systemProbe.ts`: Node `os`, `fs.statfs` | system_overview |
 | Development servers on local ports — P6 | `perception/devProbe.ts`: TCP connect, HTTP GET of `/` | dev_status |
 | Git repositories in the project folders — P6 | `perception/gitProbe.ts`: `git` with fixed arguments, no shell | git_overview |
+| Browser, windows, tabs, the tab on screen; a page's text and structure — P8 | `perception/browserState.ts`: DevTools protocol on 127.0.0.1 (`JARVIS_CDP_PORT`, default 9222), fixed read-only scripts | browser_state, browser_read_page, browser_page_structure |
 
 Since P6, "status" / "system status" ("how is my PC doing") read the machine
 and answer in one sentence ("CPU at 3 percent, 15 of 15.7 GB memory free, 29

@@ -13,6 +13,8 @@
  *  4. No shell: a folder named like a shell command is passed to git as a
  *     name; a repository's own config cannot run a program (fsmonitor); a path
  *     with ";" or outside the project folders is refused.
+ *  4b. The planner is offered these tools, and P8's browser tools, from a
+ *     request's words.
  *  5. "system status" and "is my backend running" are answered from real
  *     readings with no LLM request.
  */
@@ -192,6 +194,23 @@ const semi = await run('git_overview', { path: `${repo};rm -rf /` });
 ok('a path with ";" is refused', !semi.success && /refused/.test(semi.output), semi.output);
 const outside = await run('git_overview', { path: '/etc' });
 ok('a path outside the project folders is refused', !outside.success && /outside the project folders/.test(outside.output), outside.output);
+
+console.log('\n--- 4b. The planner is offered these tools ---');
+{
+  const offered = (q: string): string[] => (orchestrator as any).selectPlanningToolNames(q);
+  const cases: Array<[string, string]> = [
+    ['how much memory and disk space is free', 'system_overview'],
+    ['why is port 3000 not answering on localhost', 'dev_status'],
+    ['which branch am I on and what did I commit', 'git_overview'],
+    ['what does this page say', 'browser_read_page'],
+    ['which tabs are open in my browser', 'browser_state'],
+    ['list the form fields on this website', 'browser_page_structure'],
+  ];
+  for (const [q, tool] of cases) {
+    const got = offered(q);
+    ok(`"${q}" offers ${tool}`, got.includes(tool), got.join(', '));
+  }
+}
 
 console.log('\n--- 5. Spoken answers from real readings, no LLM request ---');
 llmCalls = 0; spoken = [];

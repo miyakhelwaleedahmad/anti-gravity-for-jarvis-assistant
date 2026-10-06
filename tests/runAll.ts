@@ -24,6 +24,7 @@ import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
 import { getWorkspaceRoot } from '../core/workspaceRoot.js';
+import { findChromium } from './chromeHelper.js';
 
 /**
  * Tests that need something this repository cannot provide on its own.
@@ -48,10 +49,15 @@ const ENVIRONMENT_DEPENDENT: Record<string, string> = {
  */
 const PROVIDED_BY_WINDOWS = new Set(['dashboardHealthSystemTest', 'processControlSafetyTest', 'windowControlTest']);
 
+/** Tests that need something only some hosts have: checked on this host. */
+const HOST_DEPENDENT: Record<string, () => string | undefined> = {
+  browserObservationTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
+};
+
 /** What `name` needs that this host is missing, or undefined if nothing is. */
 function missingPrerequisite(name: string): string | undefined {
   if (process.platform === 'win32' && PROVIDED_BY_WINDOWS.has(name)) return undefined;
-  return ENVIRONMENT_DEPENDENT[name];
+  return ENVIRONMENT_DEPENDENT[name] ?? HOST_DEPENDENT[name]?.();
 }
 
 /**
@@ -63,7 +69,7 @@ function missingPrerequisite(name: string): string | undefined {
 const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
 
 /** Not a test — a helper imported by other tests. */
-const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll']);
+const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll', 'chromeHelper']);
 
 const TIMEOUT_MS = Number(process.env['JARVIS_TEST_TIMEOUT_MS'] ?? 120_000);
 

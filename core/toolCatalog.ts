@@ -256,6 +256,12 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     { format: 'json', description: 'ports[]: port, open, http {status, server, title (untrusted)}' }, 'DEVELOPMENT'),
   git_overview: observation('Reads branch, changes and recent commits of the git repositories in the project folders.',
     { format: 'json', description: 'repositories[]: path, branch, ahead, behind, changed, untracked, files, lastCommits, diffSummary' }, 'DEVELOPMENT'),
+  browser_state: observation('Reads the browser JARVIS can reach: version, windows, tabs, the tab on screen.',
+    { format: 'json', description: 'Untrusted page text: browser, windows[], tabs[] (title, url, visible), visibleTab' }, 'BROWSER'),
+  browser_read_page: observation("Reads a tab's title, address and visible text.",
+    { format: 'json', description: 'Untrusted page text: title, url, text (≤ 4000 chars)' }, 'BROWSER'),
+  browser_page_structure: observation("Reads a tab's headings, links, buttons, forms (no password values) and tables.",
+    { format: 'json', description: 'Untrusted page text: headings, links, buttons, forms, tables, each with a CSS ref' }, 'BROWSER'),
   action_history: observation('Lists JARVIS\'s last tool calls and approval decisions, without credentials.',
     { format: 'json', description: 'calls (tool, args, success, error, at) and approvals (action, target, approved, by, at)' }, 'SYSTEM'),
 };

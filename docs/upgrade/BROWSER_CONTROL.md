@@ -5,11 +5,17 @@ Control: P9 ([prompt](phases/phase-09-browser-control.md)).
 
 ## Today
 
-`control/browserController.ts` and `perception/chromeState.ts` use only the
-DevTools **HTTP** endpoints on `127.0.0.1:9222`: list tabs, activate, open,
-close. Refresh presses Ctrl+R. Nothing reads a page, clicks inside it or types
-into it. `tools/browserTool.py` is a placeholder that returns fake text and is
-not used.
+Since P8 JARVIS reads the browser through the DevTools protocol: the tools in
+"Observation" below. Control is still what it was before P9:
+`control/browserController.ts` uses the DevTools **HTTP** endpoints (list tabs,
+activate, open, close); refresh presses Ctrl+R; nothing clicks inside a page or
+types into it. `tools/browserTool.py` is a placeholder that returns fake text
+and is not used.
+
+Found in P8, for P9: current Chrome answers 405 to the GET that
+`browserController.openUrl` sends to `/json/new`; it needs PUT (checked on
+Chromium 141), so "open a URL" always falls back to `start`. `browserController` still uses port
+9222 directly; `perception/chromeState.ts` reads `JARVIS_CDP_PORT` since P8.
 
 ## Requirement on the owner's PC
 
@@ -21,6 +27,9 @@ JARVIS already tells the user to start:
 ```
 start chrome.exe --remote-debugging-port=9222 --user-data-dir="W:\jarvis-chrome-profile"
 ```
+
+The port is `JARVIS_CDP_PORT` (default 9222); when Chrome is not reachable the
+browser tools answer with the line to start it with, including that port.
 
 So JARVIS sees and controls that Chrome window, not the owner's everyday Chrome
 profile. This is also the safer arrangement: the everyday profile's logins and
@@ -43,13 +52,54 @@ read only window titles (P14).
   `<untrusted_context>` tags; instructions in a page are never followed.
 - **Never read or typed:** password field values, cookies, local storage.
 
-## Observation (level 0)
+## Observation (level 0) — built in P8
 
 | Tool | Returns |
 |---|---|
-| browser_state | browser version, windows, tabs (title, URL), the visible tab per window |
-| browser_read_page | page text, capped at 4 000 characters |
-| browser_page_structure | headings, links, buttons, forms (label, type, required; value only for non-sensitive fields), tables (header and first rows), each with a reference |
+| browser_state | browser version, windows, tabs (title, URL, on screen or not), the tab on screen |
+| browser_read_page | title, URL, page text capped at 4 000 characters |
+| browser_page_structure | headings (h1–h3, ≤ 30), links (≤ 50), buttons (≤ 40), forms (≤ 10; fields ≤ 30 with label, name, type, required; a value only for text, search and select fields), tables (≤ 5; caption, header, first 5 rows, total rows), each with a CSS reference |
+
+`browser_read_page` and `browser_page_structure` take an optional `tab`: its
+id, or words from its title or address; without it, the tab on screen. Output
+is JSON inside `<untrusted_context source="web-page">`, with `<` and `>`
+escaped (`\u003c`, `\u003e`) so the page cannot close the wrapper; the JSON
+stays valid. Secrets in page text are redacted (P4).
+
+As built (`perception/cdpClient.ts`, `cdpScripts.ts`, `browserState.ts`,
+`core/tools/browserTools.ts`):
+
+- **127.0.0.1 only.** A tab's WebSocket address must be `ws://127.0.0.1` (or
+  `localhost`) on the configured port with a `/devtools/` path; anything else
+  is refused before connecting.
+- **Fixed scripts only.** `Runtime.evaluate` is sent from one function,
+  `evaluateFixed`, and every caller passes one of the three constants in
+  `cdpScripts.ts`. The tools take no script parameter. (The test checks both
+  by reading the source.)
+- **Isolated world.** The scripts run in an isolated world of the tab's main
+  frame: the page's DOM, not its JavaScript. A page that replaces
+  `String.prototype.slice`, `Array.from`, `JSON.stringify` or the `innerText`
+  getter does not change what JARVIS reads (tested; in the page's own world
+  the same page made the read hang until the time limit).
+- **Named elements cannot shadow what is read.** `<img name="title">` makes
+  `document.title` return the image, and an input named `action` hides
+  `form.action`; the scripts read DOM properties through the prototypes' own
+  getters, so such pages are read correctly (tested).
+- **Never read:** password, hidden, email and textarea values; cookies;
+  storage. Page text never includes field values.
+- **Time limits:** 2 s per tab for the tab list; 5 s for a page read, for the
+  whole call. A frozen page fails with "The page did not answer within … ms;
+  it may be busy or frozen."; the tab list still answers and shows that tab
+  without "on screen". One DevTools connection per tab at a time.
+- **Not reachable:** "Chrome is not reachable for JARVIS on 127.0.0.1:<port>.
+  Start it with chrome.exe --remote-debugging-port=<port>
+  --user-data-dir=<a separate profile folder> (Chrome 136 and later ignore the
+  port for the everyday profile)."
+
+`get_browser_tabs` and `is_tab_open` are unchanged: they answer from the
+background observer's last reading, which uses `JARVIS_CDP_PORT` since P8.
+The planner is offered the three tools when a request mentions the browser,
+a tab, a page, a site, a link, a form or a button.
 
 ## Actions
 

@@ -13,6 +13,7 @@ import { saveRelationTool, searchMemoryTool } from './memoryTool.js';
 import { listCapabilitiesTool } from './capabilityTool.js';
 import { actionHistoryTool } from './historyTool.js';
 import { devStatusTool, gitOverviewTool, systemOverviewTool } from './observationTools.js';
+import { browserPageStructureTool, browserReadPageTool, browserStateTool } from './browserTools.js';
 
 export function registerAllTools(): void {
   toolRegistryV2.registerMany([
@@ -28,6 +29,9 @@ export function registerAllTools(): void {
     systemOverviewTool,
     devStatusTool,
     gitOverviewTool,
+    browserStateTool,
+    browserReadPageTool,
+    browserPageStructureTool,
   ]);
 
   console.log(`[ToolRegistry] All built-in tools registered. Total: ${toolRegistryV2.names().length}`);

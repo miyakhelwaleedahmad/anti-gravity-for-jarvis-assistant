@@ -336,24 +336,36 @@ Stale refresh; size cap; long-term memory unchanged.
 
 ## P8 — Browser observation
 
-### T8.1 — DevTools client · Critical · [ ] · depends on: T7.5
+### T8.1 — DevTools client · Critical · [x] · depends on: T7.5
 WebSocket client on the existing `ws` package; command ids; time limits; fixed
 in-page scripts only (no model-written JavaScript).
 Files: `perception/cdpClient.ts` (new).
+(Done, with two additions: the scripts run in an isolated world, so a page
+that replaces built-ins cannot change them; only this PC's DevTools addresses
+are accepted.)
 
-### T8.2 — Browser state · High · [ ] · depends on: T8.1
+### T8.2 — Browser state · High · [x] · depends on: T8.1
 Version, windows, tabs, active (visible) tab, title, URL.
 Files: `perception/browserState.ts` (new), `perception/chromeState.ts`.
+(`chromeState.ts` now reads `JARVIS_CDP_PORT`; `get_browser_tabs` is unchanged.)
 
-### T8.3 — Page reader · High · [ ] · depends on: T8.1
+### T8.3 — Page reader · High · [x] · depends on: T8.1
 Text (capped), headings, links, buttons, forms (labels, types; password values
 never), tables (first rows), stable element references.
+Found in P8: elements named like DOM properties (`<img name="title">`, an
+input named `action`) shadow those properties; the scripts read through the
+prototypes' getters.
 
-### T8.4 — Tools · High · [ ] · depends on: T8.2, T8.3
+### T8.4 — Tools · High · [x] · depends on: T8.2, T8.3
 `browser_state`, `browser_read_page`, `browser_page_structure` (level 0); page
 content wrapped as untrusted data.
+Found in P8: the three P6 planner patterns in `core/orchestrator.ts` held a
+backspace character where `\b` was meant, so the planner was never offered
+`system_overview`, `dev_status` or `git_overview` from a request's words (the
+direct "system status" and "is my backend running" routes use other patterns
+and worked). Fixed, with planner checks in `tests/systemObservationTest.ts`.
 
-### T8.5 — Tests and documents · High · [ ] · depends on: T8.4
+### T8.5 — Tests and documents · High · [x] · depends on: T8.4
 Real Chromium and a local test site.
 
 ---
