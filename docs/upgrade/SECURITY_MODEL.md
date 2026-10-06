@@ -36,7 +36,10 @@
 | Repairs pass the risk engine | P11 |
 | JARVIS's own speech cannot approve | P12 |
 
-## Secret redaction (P4)
+## Secret redaction (P4; the redactor itself from P3)
+
+`security/redactor.ts` exists from P3, where approval requests and their audit
+entries pass through it. P4 applies it to tool output.
 
 Masked wherever text leaves a tool for the LLM, memory or a log:
 API keys of known shapes (Google, OpenAI-style, Groq, GitHub, AWS, Slack),

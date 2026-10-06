@@ -43,6 +43,7 @@ import { fsWatcher }          from './self_healing/fsWatcher.js';
 
 // NEW: Phase 1 — shutdown hook imports
 import { goalManager }           from './core/goalManager.js';
+import { approvalGate }          from './security/approvalGate.js';
 // NEW: Phase 2 — Runtime health dashboard
 import { runtimeDashboard }      from './monitoring/runtimeDashboard.js';
 // NEW: Phase 3 — Vector memory supervisor
@@ -519,6 +520,16 @@ async function startJarvis() {
         return;
       }
 
+      // An answer to the approval JARVIS is waiting for is not a new command.
+      // Checked before the echo filter: the request itself says "approve or
+      // confirm", so the filter would drop the user's answer as an echo; the
+      // gate ignores what it hears while JARVIS is still asking.
+      if (approvalGate.offerVoiceAnswer(rawText)) {
+        sttJsLog('STT_APPROVAL_ANSWER', rawText, 'taken as the answer to the pending approval');
+        nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
+        return;
+      }
+
       // Voice Input Normalization (Requirement 2)
       let text = normalizeVoiceInput(rawText);
       text = applyPendingVoicePrefix(text);
@@ -798,9 +809,14 @@ function startCLI() {
     prompt: 'You: ',
   });
 
+  // Typed approval answers come through this loop, the only reader of stdin.
+  approvalGate.attachConsole();
   rl.prompt();
 
   rl.on('line', async (line) => {
+    // The answer to a displayed approval request, not a command.
+    if (approvalGate.offerConsoleAnswer(line)) return;
+
     const input = line.trim();
     if (!input) { rl.prompt(); return; }
 

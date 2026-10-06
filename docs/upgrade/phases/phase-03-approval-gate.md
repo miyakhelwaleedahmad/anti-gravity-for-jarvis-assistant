@@ -21,8 +21,8 @@ accepts only an explicit answer to that displayed request, and records it.
 
 ## Implementation steps
 1. `security/approvalRequest.ts`: `{ id, tool, action, why, target,
-   expectedEffect, risk, reversibility, source, strong, code?, displayedAt,
-   expiresAt }`; `buildApprovalRequest(assessment, meta, context)` — WHY from
+   expectedEffect, risk, reversibility, source, strong, code?, createdAt }`
+   (as built; the display window lives in the gate's pending request); `buildApprovalRequest(assessment, meta, context)` — WHY from
    the user's request text (trimmed, redacted), TARGET from arguments, EFFECT
    and REVERSIBILITY from metadata (action level first).
 2. `approvalGate.requestStructured(request)`: prints the six-line block and the
@@ -33,7 +33,10 @@ accepts only an explicit answer to that displayed request, and records it.
    when nothing is pending are ignored and logged.
 4. Accepted answers: console `APPROVE`, `YES`, `CONFIRM`; voice `approve`,
    `confirm`, and `yes` only within the window; level 4: console
-   `APPROVE <code>` only. Everything else denies.
+   `APPROVE <code>` only. Everything else denies. (As built: the voice window
+   starts when JARVIS has finished speaking; answers are consumed so they do
+   not also run as commands — the CLI loop and the speech handler in
+   `jarvis.ts` pass them to the gate first.)
 5. Record `{ requestId, decision, by, at, risk }` on the `TaskNode`
    (`node.approval`), on the goal (`goalManager` metadata) and in
    `securityAuditLogger` (with the six fields, redacted).

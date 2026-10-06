@@ -156,19 +156,19 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 ## P3 — Approval gate
 
 ### T3.1 — Approval request model
-- Critical · [ ] · depends on: T2.5
+- Critical · [x] · depends on: T2.5
 - id, action, why, target, expected effect, risk, reversibility, source,
   displayed-at, expires-at; built from the risk assessment and tool metadata.
 - Files: `security/approvalRequest.ts` (new).
 
 ### T3.2 — Presentation
-- Critical · [ ] · depends on: T3.1
+- Critical · [x] · depends on: T3.1
 - Console block with the six fields and "Do you approve this action?"; a short
   spoken version.
 - Files: `security/approvalGate.ts`.
 
 ### T3.3 — Answer rules
-- Critical · [ ] · depends on: T3.2
+- Critical · [x] · depends on: T3.2
 - Accept APPROVE / YES / CONFIRM only while that request is the displayed
   pending one and within its window; level 4 needs `APPROVE <code>` typed;
   anything else denies.
@@ -176,20 +176,33 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 - Tests: answer before display, after expiry, for another request — all denied.
 
 ### T3.4 — Recording
-- High · [ ] · depends on: T3.3
+- High · [x] · depends on: T3.3
 - Decision on the task node, the goal and the security audit log, with the request id.
 - Files: `core/taskGraphEngine.ts`, `core/orchestrator.ts`, `security/securityAuditLogger.ts`.
 
 ### T3.5 — Tests and documents
-- High · [ ] · depends on: T3.1–T3.4
+- High · [x] · depends on: T3.1–T3.4
 - Files: `tests/approvalGateStructuredTest.ts`, `PERMISSION_MODEL.md`.
+
+### T3.6 — Found in P3: fixed in the same phase
+- Critical · [x] · depends on: T3.3
+- An answer was also run as a command: the approval prompt and the command
+  prompt both read the typed line; a spoken answer reached the command path
+  too (where the echo filter happened to drop it). Answers are now consumed.
+- Spoken answers were taken from the moment JARVIS began speaking, so its own
+  "say confirm" could approve, and part of the 10 s went by while it spoke.
+  The window now starts when it has finished.
+- "proceed" and "do it" approved by voice; now approve, confirm or yes.
+- The request's words and source stayed set after a request ended (endTrace
+  was never called), so a later approval could show an old request as WHY.
+- Files: `security/approvalGate.ts`, `jarvis.ts`, `core/orchestrator.ts`.
 
 ---
 
 ## P4 — Redaction and data minimisation
 
 ### T4.1 — Redactor
-- Critical · [ ] · depends on: T3.5
+- Critical · [x] (built in P3, which needed it for approval requests) · depends on: T3.5
 - Patterns for API keys (Google, OpenAI-style, Groq, GitHub, AWS, Slack), JWTs,
   bearer headers, cookies, private-key blocks, `password=` / `token=` pairs,
   connection strings with passwords, sensitive `.env` names.
@@ -290,6 +303,9 @@ Files: `core/worldState.ts` (new).
 
 ### T7.3 — Task state · High · [ ] · depends on: T7.1, T3.4
 Goal, plan, current step, done, failed, pending approvals.
+Found in P3: `runAgentLoop` always receives `goal = null` (the goal is created
+in the background and not resolved yet), so a goal's planning/executing
+status, plan summary and task-graph id are never recorded. Fix here.
 
 ### T7.4 — Planning summary · High · [ ] · depends on: T7.2
 Only sections relevant to the request; capped; redacted; marked as data.

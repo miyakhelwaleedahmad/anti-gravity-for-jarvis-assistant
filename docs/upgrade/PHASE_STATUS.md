@@ -127,3 +127,54 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   - `git show HEAD:<file>` prints any tracked file; secrets in tool output are
     P4's subject.
 - **Next:** P3 — approval gate.
+
+## P3 — Approval gate — COMPLETE
+
+- **Implemented:**
+  - `security/approvalRequest.ts`: the request (ACTION, WHY, TARGET, EXPECTED
+    EFFECT, RISK, REVERSIBILITY, id, level-4 code), its console block, its
+    spoken version, and the answer rules.
+  - `security/approvalGate.ts`: one request displayed at a time; typed answers
+    through the CLI loop (`offerConsoleAnswer`), spoken ones through the speech
+    handler (`offerVoiceAnswer`), both consumed so they do not run as commands;
+    the voice window starts when JARVIS has finished speaking; level 4 only
+    with the typed code. The older `requestApproval(action, command, …)` calls
+    build a request the same way, and ask by voice when the request was spoken.
+  - Decisions on the task step (`core/taskContext.ts` gives the gate the node
+    it runs for), on the goal and in the audit log; the last 50 in memory.
+  - Registry: builds the request from the tool's metadata and the user's words
+    (the trace now carries them, and is ended when the request ends).
+  - `security/redactor.ts` (P4's first task, needed here): every field is
+    redacted before it is shown or logged.
+- **Found and fixed:**
+  - An answer was also run as a command: the approval prompt and the command
+    prompt each read the typed line (found by reading the code; reproducing it
+    needs a real terminal). A spoken answer also went down the command path,
+    where the echo filter happened to drop it.
+  - The voice window began when JARVIS started speaking: its own "say confirm"
+    could approve, and the user had about half the 10 s left.
+  - "proceed" and "do it" approved by voice.
+  - The trace (request text and source) was never ended.
+- **Found, scheduled:** `runAgentLoop` always gets `goal = null`, so goal
+  status, plan summary and graph id are never stored (T7.3).
+- **Tested:**
+  - `tests/approvalGateStructuredTest.ts`: 60 checks, all pass — the six
+    fields; 7 typed answers; an answer before display; spoken answers before,
+    during and after the window, JARVIS's own words, another reply still
+    playing, an unrelated sentence, "yes" with nothing pending; level 4 (code,
+    wrong code, voice refused); one request at a time; recording through the
+    orchestrator on the step, goal and audit log; redaction; older callers.
+    On the code before P3: 11 of 12 runnable checks fail.
+  - `tests/redactionTest.ts`: 29 checks, all pass (18 kinds, private-key block,
+    plain text unchanged); before P3 the module did not exist.
+  - Full suite: 96 files, 90 passed · 0 failed · 6 environment.
+- **Not verified here:** a real microphone and speaker (timings simulated:
+  speaking start/end as the TTS client reports them); a real Windows console.
+  The wiring in `jarvis.ts` (CLI loop and speech handler) is not covered by an
+  automated test — it needs the whole app running (P12 voice phase).
+- **Known limits:** spoken answers depend on the TTS client reporting
+  speaking start and end; without a speaker connected, listening starts 2 s
+  after the request. From 0.3 s after JARVIS stops speaking, what the
+  microphone hears is taken as the user's; a longer echo is not detected.
+- **Next:** P4 — redaction at the sinks, memory policy, rate limits, action history.
+

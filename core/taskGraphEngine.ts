@@ -15,6 +15,8 @@
 
 import { EventEmitter } from 'events';
 import { isPermissionDenial } from '../control/permissionDenial.js';
+import { runInTaskNode } from './taskContext.js';
+import type { ApprovalDecision } from '../security/approvalRequest.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,8 @@ export interface TaskNode {
   description: string;
   /** Phase 5: error classification for smarter retry decisions */
   errorType?: 'timeout' | 'abort' | 'permission' | 'transient' | 'fatal';
+  /** Approval decisions made while this node ran (security/approvalGate.ts). */
+  approvals?: ApprovalDecision[];
 }
 
 export interface TaskGraph {
@@ -447,7 +451,7 @@ export class TaskGraphEngine extends EventEmitter {
         if (wait > 0) await sleep(wait);
         this.lastToolInvocation.set(node.tool, Date.now());
         if (graph.status === 'interrupted') throw new Error('interrupted');
-        return executor(node.tool, node.args, ac.signal);
+        return runInTaskNode(node, () => executor(node.tool, node.args, ac.signal));
       }).catch(err => {
          // Pass the error down to the node retry logic, don't break the queue chain
          throw err;

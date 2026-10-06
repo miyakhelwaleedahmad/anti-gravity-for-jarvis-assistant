@@ -26,6 +26,8 @@ export interface ApprovedCall {
    */
   grantsLevel: number;
   approvedAt: number;
+  /** The approval request the user answered. */
+  requestId?: string;
 }
 
 const store = new AsyncLocalStorage<ApprovedCall>();

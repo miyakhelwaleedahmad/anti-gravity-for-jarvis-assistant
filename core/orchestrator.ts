@@ -14,8 +14,9 @@
  */
 
 import { agentStateMachine, AgentState } from './agentStateMachine.js';
-import { beginTrace } from './traceContext.js';
+import { beginTrace, endTrace } from './traceContext.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
+import type { ApprovalDecision } from '../security/approvalRequest.js';
 import { toolRegistryV2, type ToolCategory } from './toolRegistryV2.js';
 import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, isPermissionDenial } from '../control/permissionDenial.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
@@ -189,7 +190,7 @@ export class JarvisOrchestrator {
     this.currentProcessCallId = callId;
     // One correlation id per request, so the plan, every tool call and the
     // outcome can be joined back together in the trace log (JARVIS-015).
-    beginTrace(source);
+    beginTrace(source, input);
     this.isConversationEndDeferred = false;
     this._conversationEndHandled = false;
 
@@ -256,9 +257,11 @@ export class JarvisOrchestrator {
     }
 
     let loopOutcome: 'success' | 'failed' | 'blocked' = 'success';
+    // Approval decisions made for this request, stored on its goal.
+    const approvals: ApprovalDecision[] = [];
     try {
       // Agent loop starts IMMEDIATELY — goal creation runs in background
-      loopOutcome = await this.runAgentLoop(input, source, goal);
+      loopOutcome = await this.runAgentLoop(input, source, goal, approvals);
 
       // ── Phase 1: Resolve Goal based on actual outcome ──────────────────────
       // PIPELINE-OPT: Resolve the background goal promise now (it ran concurrently
@@ -267,6 +270,7 @@ export class JarvisOrchestrator {
         goal = await goalPromise;
       }
       if (goal) {
+        if (approvals.length) goal.metadata = { ...goal.metadata, approvals };
         if (loopOutcome === 'success') {
           await goalManager.completeGoal(goal.id);
         } else {
@@ -309,6 +313,7 @@ export class JarvisOrchestrator {
       // ── Phase 1: Fail Goal on unhandled error ──────────────────────────────
       if (goalPromise) { goal = await goalPromise; }
       if (goal) {
+        if (approvals.length) goal.metadata = { ...goal.metadata, approvals };
         await goalManager.failGoal(goal.id, errStr).catch(() => {});
         this.activeGoal = null;
       }
@@ -316,6 +321,9 @@ export class JarvisOrchestrator {
       this._loopExecuting = false;
       if (this.currentProcessCallId === callId) {
         this.currentAbortController = null;
+        // The request is over: an approval asked later must not show its
+        // words as WHY, nor be asked by voice because it was spoken.
+        endTrace();
         agentMemory.clearWorkingContext();
         if (agentStateMachine.currentState !== AgentState.SPEAKING) {
           // ── Conversation recovery guarantee ─────────────────────────────────
@@ -445,7 +453,12 @@ export class JarvisOrchestrator {
   /**
    * The core PLAN → EXECUTE → OBSERVE → REFLECT → REPAIR cycle.
    */
-  private async runAgentLoop(input: string, source: 'cli' | 'voice', goal: Goal | null = null): Promise<'success' | 'failed' | 'blocked'> {
+  private async runAgentLoop(
+    input: string,
+    source: 'cli' | 'voice',
+    goal: Goal | null = null,
+    approvals: ApprovalDecision[] = [],
+  ): Promise<'success' | 'failed' | 'blocked'> {
     this._loopExecuting = true;
 
     // ── ⚡ Deterministic Pre-Router: known open/launch commands ───────────────
@@ -687,6 +700,7 @@ export class JarvisOrchestrator {
       agentStateMachine.transition(AgentState.EXECUTING);
 
       graph = await taskGraphEngine.execute(graph, this.makeMidMonitoredExecutor(graph));
+      collectApprovals(graph, approvals);
 
       if (this.isInterrupted()) return 'failed';
 
@@ -2103,6 +2117,15 @@ function joinWords(items: string[]): string {
 }
 
 /** "what can you do" / "who are you", from the registry's metadata. */
+/** The approval decisions made in `graph`, each added once. */
+function collectApprovals(graph: TaskGraph, into: ApprovalDecision[]): void {
+  for (const node of graph.nodes.values()) {
+    for (const decision of node.approvals ?? []) {
+      if (!into.some((d) => d.requestId === decision.requestId)) into.push(decision);
+    }
+  }
+}
+
 export function capabilitiesReply(withIdentity = false): string {
   const groups = toolRegistryV2.describeCapabilities();
   const count = groups.reduce((n, g) => n + g.tools.length, 0);

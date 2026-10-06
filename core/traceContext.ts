@@ -16,17 +16,27 @@
 
 let currentTraceId: string | null = null;
 let currentSource: 'voice' | 'cli' | undefined;
+let currentRequest: string | undefined;
 
-/** Start a new trace and return its id. `source`: how the request arrived. */
-export function beginTrace(source?: 'voice' | 'cli'): string {
+/**
+ * Start a new trace and return its id. `source`: how the request arrived;
+ * `request`: the user's words (an approval request shows them as WHY).
+ */
+export function beginTrace(source?: 'voice' | 'cli', request?: string): string {
   currentTraceId = `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   currentSource = source;
+  currentRequest = request;
   return currentTraceId;
 }
 
 /** Whether the active request was spoken or typed (approvals are asked the same way). */
 export function getRequestSource(): 'voice' | 'cli' | undefined {
   return currentSource;
+}
+
+/** The user's words for the active request. */
+export function getRequestText(): string | undefined {
+  return currentRequest;
 }
 
 /** The active trace id, or undefined outside a request. */
@@ -38,4 +48,5 @@ export function getTraceId(): string | undefined {
 export function endTrace(): void {
   currentTraceId = null;
   currentSource = undefined;
+  currentRequest = undefined;
 }

@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
+import type { ApprovalDecision, ApprovalRequest } from './approvalRequest.js';
 
 // Resolve project root (two levels up from security/)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,14 @@ export interface SecurityEvent {
   allowed?: boolean;
   source?: string;
   expiresAt?: string;
+  /** Approval requests and decisions (security/approvalGate.ts). */
+  requestId?: string;
+  why?: string;
+  target?: string;
+  expectedEffect?: string;
+  reversibility?: string;
+  decidedBy?: string;
+  partOf?: string;
 }
 
 function sanitize(value: string | undefined): string {
@@ -92,6 +101,38 @@ class SecurityAuditLogger {
       riskLevel,
       reason,
       toolName,
+    });
+  }
+
+  /** The six fields shown to the user (already redacted by the request builder). */
+  public approvalRequest(request: ApprovalRequest): void {
+    this.log({
+      eventType: 'APPROVAL_REQUESTED',
+      timestamp: new Date(request.createdAt).toISOString(),
+      requestId: request.id,
+      toolName: request.tool,
+      action: request.action,
+      why: request.why,
+      target: request.target,
+      expectedEffect: request.expectedEffect,
+      riskLevel: `LEVEL_${request.risk}`,
+      reversibility: request.reversibility,
+      source: request.source,
+    });
+  }
+
+  public approvalDecision(request: ApprovalRequest, decision: ApprovalDecision): void {
+    this.log({
+      eventType: decision.approved ? 'APPROVAL_GRANTED' : decision.by === 'timeout' ? 'APPROVAL_TIMEOUT' : 'APPROVAL_DENIED',
+      timestamp: new Date(decision.at).toISOString(),
+      requestId: request.id,
+      toolName: request.tool,
+      action: request.action,
+      target: request.target,
+      riskLevel: `LEVEL_${request.risk}`,
+      approved: decision.approved,
+      decidedBy: decision.by,
+      ...(decision.partOf ? { partOf: decision.partOf } : {}),
     });
   }
 

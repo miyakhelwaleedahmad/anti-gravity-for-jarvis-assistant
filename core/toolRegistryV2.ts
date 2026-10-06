@@ -29,7 +29,8 @@ import { TOOL_CATALOG, deriveMeta } from './toolCatalog.js';
 import { assessRisk, callLabel, decide, level2Policy, type RiskAssessment, type RiskDecision } from '../security/riskEngine.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { runApproved, type ApprovedCall } from '../security/approvalScope.js';
-import { getRequestSource } from './traceContext.js';
+import { getRequestSource, getRequestText } from './traceContext.js';
+import { buildApprovalRequest } from '../security/approvalRequest.js';
 
 /** Execution risk: drives sandboxing, caching and queueing (not permissions). */
 export type RiskLevel = 'low' | 'medium' | 'high';
@@ -647,13 +648,23 @@ export class ToolRegistryV2 {
     let approvedCall: ApprovedCall | undefined;
     if (decision.outcome === 'approve') {
       const label = callLabel(name, assessment.action);
-      const approved = await approvalGate.requestApproval(
-        label,
-        assessment.target ?? label,
-        `LEVEL_${assessment.level}`,
-        assessment.reasons.join('; '),
-        getRequestSource() ?? 'cli',
-      );
+      const actionMeta = assessment.action ? tool.meta?.actions?.[assessment.action] : undefined;
+      const effect = actionMeta?.effect ?? tool.meta?.effect;
+      const reversible = actionMeta?.reversible ?? tool.meta?.reversible;
+      const request = buildApprovalRequest({
+        tool: name,
+        ...(assessment.action ? { action: assessment.action } : {}),
+        target: assessment.target ?? JSON.stringify(args),
+        request: getRequestText(),
+        reason: assessment.reasons[0],
+        risk: assessment.level,
+        // The rule that set the level, when it was an argument and not the metadata.
+        ...(assessment.reasons.length > 1 ? { riskDetail: assessment.reasons[assessment.reasons.length - 1] } : {}),
+        ...(effect ? { effect } : {}),
+        ...(reversible ? { reversible } : {}),
+        source: getRequestSource() ?? 'cli',
+      });
+      const approved = await approvalGate.requestApproval(request);
       if (!approved) {
         return {
           success: false,
@@ -663,7 +674,10 @@ export class ToolRegistryV2 {
           durationMs: Date.now() - start,
         };
       }
-      approvedCall = { tool: name, args, level: assessment.level, grantsLevel: decision.grantsLevel, approvedAt: Date.now() };
+      approvedCall = {
+        tool: name, args, level: assessment.level, grantsLevel: decision.grantsLevel,
+        approvedAt: Date.now(), requestId: request.id,
+      };
     }
 
     const dispatch = (): Promise<ToolResult> => this.dispatch(tool, args, externalSignal, start);

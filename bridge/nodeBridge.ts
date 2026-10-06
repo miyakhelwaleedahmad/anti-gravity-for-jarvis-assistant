@@ -561,7 +561,8 @@ export class NodeBridge {
     }
   }
 
-  speakToClients(text: string): void {
+  /** `allowRepeat`: say it even if it is the same as the last phrase (a second approval request). */
+  speakToClients(text: string, opts: { allowRepeat?: boolean } = {}): void {
     if (!systemController.can("tts_output")) {
       console.log("[NodeBridge] 🛑 TTS blocked due to active interrupt.");
       return;
@@ -576,7 +577,7 @@ export class NodeBridge {
     if (!cleanText) return;
 
     // Phase 4: Dedup — do not queue identical text twice in a row
-    if (cleanText === this._lastQueuedTts) {
+    if (cleanText === this._lastQueuedTts && !opts.allowRepeat) {
       console.log(`[NodeBridge] TTS dedup: identical phrase already queued — skipping: "${cleanText.slice(0, 60)}"`);
       return;
     }

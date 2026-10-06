@@ -10,7 +10,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P0 Discovery and architecture | [x] |
 | P1 Tool registry | [x] |
 | P2 Risk engine | [x] |
-| P3 Approval gate | [ ] |
+| P3 Approval gate | [x] |
 | P4 Redaction | [ ] |
 | P5 Observe → act → verify | [ ] |
 | P6 System and development observation | [ ] |
@@ -59,17 +59,17 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P3 — Approval gate
-- [ ] Approval request model (action, why, target, effect, risk, reversibility)
-- [ ] Console and spoken presentation, "Do you approve this action?"
-- [ ] Answer accepted only for the displayed pending request; level 4 typed code
-- [ ] Decision recorded on the task node, goal and audit log
-- [ ] No second prompt inside the controller for an approved call
-- [ ] Tests (console, voice simulated, timeout, vague yes, level 4), full suite
-- [ ] Documentation updated
-- [ ] PHASE COMPLETE
+- [x] Approval request model (action, why, target, effect, risk, reversibility)
+- [x] Console and spoken presentation, "Do you approve this action?"
+- [x] Answer accepted only for the displayed pending request; level 4 typed code
+- [x] Decision recorded on the task node, goal and audit log
+- [x] No second prompt inside the controller for an approved call
+- [x] Tests (console, voice simulated, timeout, vague yes, level 4), full suite
+- [x] Documentation updated
+- [x] PHASE COMPLETE
 
 ## P4 — Redaction
-- [ ] Redactor for keys, tokens, passwords, private keys, cookies
+- [x] Redactor for keys, tokens, passwords, private keys, cookies (built in P3)
 - [ ] Applied before the LLM, memory and logs
 - [ ] Observations kept out of long-term memory by default
 - [ ] Per-tool rate limits; external-send policy

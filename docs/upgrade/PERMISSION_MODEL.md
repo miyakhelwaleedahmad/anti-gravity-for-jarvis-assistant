@@ -58,8 +58,7 @@ need 2). Two calls need no session level, only approval: open_app targets
 that always needed approval (Command Prompt; targets outside open_app's
 allow-list stay refused) and turning full control mode on.
 
-P2 asks for level 4 with the same approval as level 3; the typed code arrives
-with the approval gate (P3).
+Level 4 is approved only with a code typed in the console (P3, below).
 
 If the risk check itself fails, the call is refused (fail closed).
 
@@ -97,30 +96,65 @@ If the risk check itself fails, the call is refused (fail closed).
    refused (P10); browser form submission 2, upload 3, typing into a password
    field refused (P9).
 
-## Approval request (P3)
+## Approval request (P3, `security/approvalRequest.ts`, `security/approvalGate.ts`)
 
-When a call needs approval JARVIS stops and shows:
+When a call needs approval JARVIS stops and shows (console) and says (voice):
 
 ```
-ACTION:           Kill process
-WHY:              You asked to stop the frozen Notepad.
-TARGET:           notepad.exe (PID 4120)
-EXPECTED EFFECT:  The process ends; unsaved text in it is lost.
-RISK:             Level 3 — high
-REVERSIBILITY:    No
-Do you approve this action?
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_muw8a4kv_dibk)
+-----------------------------------------------------------------
+  ACTION:           End process
+  WHY:              You asked: "end the frozen notepad process"
+  TARGET:           notepad
+  EXPECTED EFFECT:  Ends a process; its unsaved work is lost.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    No
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s.
+  Anything else, or no answer, cancels it.
+=================================================================
 ```
+
+Spoken: "Sir, I need your approval to end process on notepad. Risk level 3. It
+cannot be undone. Do you approve this action? Say approve or confirm."
+
+Where the fields come from: ACTION from a title per tool action; WHY from the
+user's words for this request (or, with none, the reason approval is needed);
+TARGET from the arguments; EXPECTED EFFECT and REVERSIBILITY from the tool's
+metadata (P1); RISK from the risk engine, with the argument rule that set it
+when there is one. Every field passes through the redactor first
+(`security/redactor.ts`), so a key in a command is shown as
+`[REDACTED:openai-key]`.
 
 Answer rules:
-- Console: `APPROVE`, `YES` or `CONFIRM`, typed while this request is the one
-  displayed and before it expires (30 s). Anything else, or silence, denies.
-- Voice: "approve" or "confirm" within 10 s of JARVIS speaking the request;
-  "yes" only in that window. Words matching JARVIS's own last speech are ignored.
-- Level 4: typed `APPROVE <code>`, where the code is shown in the request.
-  Voice cannot approve level 4.
-- One answer approves one call. A second call needs a second request.
-- The decision, with the request id, is stored on the task step, the goal and
-  the security audit log.
+- Typed: `APPROVE`, `YES` or `CONFIRM`, while this request is displayed and
+  before it expires (30 s). Anything else, an empty line, or silence denies. A
+  line typed when nothing is displayed is not an answer to anything.
+- Spoken: "approve", "confirm" or "yes" (also "yes sir", "I approve"), counted
+  only from the moment JARVIS has finished saying the request — and anything
+  else it was saying before it — until 10 s later. Words heard while JARVIS is
+  speaking are its own voice and are ignored, so its "say approve or confirm"
+  cannot approve anything. "no", "cancel", "stop" deny. Any other sentence
+  denies the request and is then handled as a new command.
+- An answer is consumed: it is not also run as a command. (Before, the typed
+  answer went to the command prompt as well, and the spoken one to the echo
+  filter.)
+- Level 4: only `APPROVE <code>` typed, with the 4-character code shown in the
+  request (new for each request). `APPROVE` or `YES` alone denies; a spoken
+  "approve" is refused with "Voice cannot approve this one".
+- One request is displayed at a time; parallel steps wait their turn. One
+  answer approves one call.
+- A controller's own question (closing a protected app, a dangerous keyboard
+  shortcut) is asked the same way, by voice when the request was spoken.
+
+Each decision — request id, approved or not, by whom (`console`, `voice`,
+`timeout`, `unavailable`, or `scope` for a controller check covered by the
+call's approval), the answer, the time — is stored on the task step
+(`node.approvals`), on the goal (`metadata.approvals`) and in the security
+audit log (with the six fields); the last 50 are kept in memory
+(`approvalGate.recentDecisions()`, for P4's action history).
 
 An approved call runs in an "approved" scope (P2, `security/approvalScope.ts`),
 so the controller's own approval prompt (process kill, service control,

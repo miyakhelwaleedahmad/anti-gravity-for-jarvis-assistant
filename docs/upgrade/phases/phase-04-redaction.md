@@ -21,7 +21,8 @@ are at least level 2; recent actions can be listed.
 5. `action_history` tool.
 
 ## Implementation steps
-1. `redactSecrets(text): { text, count, kinds }` with patterns for:
+1. *(Done in P3, which needed it for approval requests; `tests/redactionTest.ts`
+   covers the patterns.)* `redactSecrets(text): { text, count, kinds }` with patterns for:
    Google keys (`AIza…`, `AQ.…`), OpenAI-style `sk-…`, Groq `gsk_…`, GitHub
    `ghp_/gho_/ghs_/github_pat_…`, AWS `AKIA…`, Slack `xox…`, JWT
    (`eyJ….….…`), `Authorization: Bearer …`, `Cookie:` / `Set-Cookie:` values,
