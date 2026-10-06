@@ -16,6 +16,11 @@ is a failure, reported honestly.
 4. Replies say when a result was checked.
 
 ## Implementation steps
+(As built: the checks live in one table, `core/verifiers.ts`, so that every
+action tool's check — or the reason it has none — is in one place; a tool may
+still declare its own `verify`. The registry turns a failed check into
+`success: false, error: 'VERIFICATION_FAILED'`, so deterministic routes report
+it too.)
 1. `AgentTool.verify?(args, output): Promise<{ status: 'verified' | 'failed' |
    'unverifiable'; evidence: string }>`. Registry: after a successful run, call
    it with a 5 s limit; attach `verification` to `ToolResult`; exceptions →

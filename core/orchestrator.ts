@@ -17,6 +17,8 @@ import { agentStateMachine, AgentState } from './agentStateMachine.js';
 import { beginTrace, endTrace } from './traceContext.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import type { ApprovalDecision } from '../security/approvalRequest.js';
+import { verificationFailedReply, withCheck } from './verifiers.js';
+import { currentTaskNode } from './taskContext.js';
 import { toolRegistryV2, type ToolCategory } from './toolRegistryV2.js';
 import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
@@ -492,6 +494,7 @@ export class JarvisOrchestrator {
         const reason = result?.error ?? '';
         if (reason === 'APPROVAL_DENIED') return APPROVAL_DENIED_REPLY;
         if (reason === 'RATE_LIMITED') return RATE_LIMITED_REPLY;
+        if (reason === 'VERIFICATION_FAILED') return verificationFailedReply(result?.output ?? '');
         if (reason === 'RISK_REFUSED') return `I couldn't do that, sir. ${(result?.output ?? '').replace(/^Refused by safety policy:\s*/, '')}`;
         if (isPermissionDenial(reason) || isPermissionDenial(result?.output ?? '')) return FULL_CONTROL_HINT;
         return reason && reason.length <= 120 ? `${fallback} ${reason}` : fallback;
@@ -1114,6 +1117,8 @@ export class JarvisOrchestrator {
   private makeMidMonitoredExecutor(graph: TaskGraph) {
     return async (tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string> => {
       const result = await toolRegistryV2.execute(tool, args, signal);
+      const node = currentTaskNode();
+      if (node && result.verification) node.verification = result.verification;
 
       // Record in working context
       agentMemory.addObservation(
@@ -1129,7 +1134,7 @@ export class JarvisOrchestrator {
       if (!result.success) {
         // Keep the dispatch gate's explanation with its code, so the reply can
         // say that full control mode is needed.
-        const explained = ['PERMISSION_DENIED', 'APPROVAL_DENIED', 'RISK_REFUSED', 'RATE_LIMITED'].includes(result.error ?? '');
+        const explained = ['PERMISSION_DENIED', 'APPROVAL_DENIED', 'RISK_REFUSED', 'RATE_LIMITED', 'VERIFICATION_FAILED'].includes(result.error ?? '');
         throw new Error(explained ? `${result.error}: ${result.output}` : (result.error ?? result.output));
       }
 
@@ -1216,6 +1221,7 @@ export class JarvisOrchestrator {
         }
       }
 
+      reply = withCheck(reply, firstNode?.verification);
       console.log(`\n🤖 JARVIS: ${reply}\n`);
       await agentMemory.addConversationMessage('assistant', reply);
       this.speak(reply);
@@ -1224,7 +1230,7 @@ export class JarvisOrchestrator {
 
     const toolOutputs = nodes
       .filter(n => n.status === 'done' && n.result)
-      .map(n => `[${n.tool}]: ${n.result}`)
+      .map(n => `[${n.tool}]: ${n.result}${n.verification?.status === 'verified' ? ` (checked: ${n.verification.evidence})` : ''}`)
       .join('\n');
 
     // OPT-SYNTH-2: Smart short-output bypass.
@@ -1244,11 +1250,12 @@ export class JarvisOrchestrator {
       );
       if (looksNatural) {
         console.log('[Orchestrator] OPT-SYNTH-2: Short natural output — bypassing synthesis LLM.');
-        console.log(`\n🤖 JARVIS: ${singleResult}\n`);
-        await agentMemory.addConversationMessage('assistant', singleResult);
+        const reply = withCheck(singleResult, completedNodes[0].verification);
+        console.log(`\n🤖 JARVIS: ${reply}\n`);
+        await agentMemory.addConversationMessage('assistant', reply);
         // speak() calls safeTransitionToSpeaking() internally — do NOT also
         // call transition(SPEAKING) here or we get a double-transition crash.
-        this.speak(singleResult);
+        this.speak(reply);
         return;
       }
     }

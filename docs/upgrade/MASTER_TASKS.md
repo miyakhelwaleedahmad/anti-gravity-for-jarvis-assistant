@@ -244,26 +244,33 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 ## P5 — Observe → act → verify
 
 ### T5.1 — Verifier hook
-- Critical · [ ] · depends on: T1.5
+- Critical · [x] · depends on: T1.5
 - `verify(args, output)` on a tool; the registry runs it after success with a
   time limit; result `verified` / `failed` / `unverifiable` with evidence.
 - Files: `core/toolRegistryV2.ts`.
 
 ### T5.2 — Failed check is a failure
-- Critical · [ ] · depends on: T5.1
+- Critical · [x] · depends on: T5.1
 - The executor fails the node with `VERIFICATION_FAILED: <evidence>`;
   reflection reports it honestly.
 - Files: `core/orchestrator.ts`, `core/reflectionEngine.ts`.
 
 ### T5.3 — Verifiers for existing actions
-- High · [ ] · depends on: T5.1
+- High · [x] · depends on: T5.1
 - write_file (read back), control_file (exists / absent / contents),
   save_relation (memory finds it), ingest_documents (manifest).
-- Files: `tools/fileTool.ts`, `skills/control_file/skill.ts`, `core/tools/memoryTool.ts`.
+- Files (as built): `core/verifiers.ts` — one table, a check or a reason per
+  action tool; `core/tools/memoryTool.ts`.
 
 ### T5.4 — Replies and documents
-- High · [ ] · depends on: T5.2, T5.3
+- High · [x] · depends on: T5.2, T5.3
 - Replies say when a result was checked.
+
+### T5.5 — Found in P5: fixed in the same phase
+- High · [x] · depends on: T5.3
+- save_relation saved nothing with graph memory off (the default) and still
+  said "Saved relation"; with it on, search_memory (which reads facts, not
+  the graph) could not find it. The relation is now also a long-term fact.
 
 ---
 

@@ -12,7 +12,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P2 Risk engine | [x] |
 | P3 Approval gate | [x] |
 | P4 Redaction | [x] |
-| P5 Observe → act → verify | [ ] |
+| P5 Observe → act → verify | [x] |
 | P6 System and development observation | [ ] |
 | P7 World state | [ ] |
 | P8 Browser observation | [ ] |
@@ -79,12 +79,12 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P5 — Observe → act → verify
-- [ ] Verifier hook in the registry; unverified counts as failure
-- [ ] Verifiers for file, memory and document actions
-- [ ] Replies distinguish checked from unchecked
-- [ ] Tests (real files, a silent failure caught), full suite
-- [ ] Documentation updated
-- [ ] PHASE COMPLETE
+- [x] Verifier hook in the registry; unverified counts as failure
+- [x] Verifiers for file, memory and document actions
+- [x] Replies distinguish checked from unchecked
+- [x] Tests (real files, a silent failure caught), full suite
+- [x] Documentation updated
+- [x] PHASE COMPLETE
 
 ## P6 — System and development observation
 - [ ] System snapshot (OS, CPU, memory, disks, network)

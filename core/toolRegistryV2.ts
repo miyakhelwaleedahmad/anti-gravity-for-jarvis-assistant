@@ -32,6 +32,7 @@ import { runApproved, type ApprovedCall } from '../security/approvalScope.js';
 import { getRequestSource, getRequestText } from './traceContext.js';
 import { buildApprovalRequest } from '../security/approvalRequest.js';
 import { redact, redactDeep } from '../security/redactor.js';
+import { verifyCall, type Verification, type Verifier } from './verifiers.js';
 
 /** Execution risk: drives sandboxing, caching and queueing (not permissions). */
 export type RiskLevel = 'low' | 'medium' | 'high';
@@ -112,6 +113,8 @@ export interface ToolResult {
   fromCache?: boolean;
   /** Phase 5: which retry attempt produced this result (0 = first attempt) */
   attemptNumber?: number;
+  /** P5: the check of the call's real effect (core/verifiers.ts). */
+  verification?: Verification;
 }
 
 /**
@@ -164,6 +167,11 @@ export interface AgentTool {
    * from core/toolCatalog.ts at registration unless the tool declares it.
    */
   meta?: ToolMeta;
+  /**
+   * P5: a check of the call's real effect, run after a reported success.
+   * Without one, core/verifiers.ts has the check or the reason there is none.
+   */
+  verify?: Verifier;
   /**
    * Phase 5: optional rollback hook.
    * Called when the tool succeeded but a downstream step failed and
@@ -742,7 +750,9 @@ export class ToolRegistryV2 {
     const runUnderLock = async () => {
       // 4. Execute with timeout + abort signal. What a tool returns goes on to
       // the LLM, memory and logs, so credentials in it are replaced here.
-      const result = redactResult(await this.executeWithFallbacks(tool, args, externalSignal, start));
+      const ran = redactResult(await this.executeWithFallbacks(tool, args, externalSignal, start));
+      // A reported success counts once its effect has been checked.
+      const result = ran.success ? await this.verifyResult(tool, args, ran) : ran;
 
       // 5. Cache successful results of cacheable tools
       if (result.success && this.isCacheable(tool)) {
@@ -1009,6 +1019,30 @@ export class ToolRegistryV2 {
       return m ? [m] : [];
     }
     return [...this._metrics.values()];
+  }
+
+  /** P5: check the effect of a successful call; a failed check fails the call. */
+  private async verifyResult(tool: AgentTool, args: Record<string, unknown>, result: ToolResult): Promise<ToolResult> {
+    const ran = (result.fromFallback ? this.tools.get(result.fromFallback) : undefined) ?? tool;
+    const verification = await verifyCall(ran.name, args, result.output, ran.verify);
+    if (!verification) return result;
+    if (verification.status !== 'failed') {
+      if (verification.status === 'verified') console.log(`[ToolRegistry] ✓ ${ran.name}: checked — ${verification.evidence}.`);
+      return { ...result, verification };
+    }
+    const evidence = redact(verification.evidence);
+    console.warn(`[ToolRegistry] ✗ ${ran.name} reported success, but ${evidence}.`);
+    this._pushHistory({
+      tool: ran.name, args, success: false, durationMs: 0, error: `VERIFICATION_FAILED: ${evidence}`,
+      attemptNumber: result.attemptNumber ?? 0, timestamp: Date.now(),
+    });
+    return {
+      ...result,
+      success: false,
+      output: `${ran.name} reported success, but the check found that ${evidence}.`,
+      error: 'VERIFICATION_FAILED',
+      verification: { status: 'failed', evidence },
+    };
   }
 
   /** The limit message when `name` has run as often as its limit allows this minute. */

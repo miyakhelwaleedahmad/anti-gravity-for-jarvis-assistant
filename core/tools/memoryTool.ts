@@ -9,6 +9,7 @@ import type { AgentTool } from '../toolRegistryV2.js';
 import { graphMemory } from '../../memory/graphMemory.js';
 import { memoryManager } from '../../memory/memoryManager.js';
 import { hasSecret } from '../../security/redactor.js';
+import { relationFact } from '../verifiers.js';
 
 // ─── Save Graph Relation ──────────────────────────────────────────────────────
 
@@ -51,8 +52,13 @@ export const saveRelationTool: AgentTool = {
     if (signal?.aborted) throw new Error('ABORTED');
 
     try {
+      // Also a long-term fact: search_memory reads facts, not the graph, and
+      // with graph memory off (the default) the graph write does nothing — the
+      // relation was reported saved and could never be recalled.
+      await memoryManager.rememberFact(relationFact(args), 'relation', 6);
       await graphMemory.saveRelation(entity1, relation, entity2);
-      return `Saved relation: (${entity1})-[${relation.toUpperCase()}]->(${entity2})`;
+      const where = graphMemory.isAvailable() ? 'long-term memory and the graph' : 'long-term memory';
+      return `Saved relation: (${entity1})-[${relation.toUpperCase()}]->(${entity2}) in ${where}.`;
     } catch (err) {
       throw new Error(`save_relation failed: ${String(err)}`);
     }

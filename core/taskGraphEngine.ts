@@ -17,6 +17,7 @@ import { EventEmitter } from 'events';
 import { isPermissionDenial } from '../control/permissionDenial.js';
 import { runInTaskNode } from './taskContext.js';
 import type { ApprovalDecision } from '../security/approvalRequest.js';
+import type { Verification } from './verifiers.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,8 @@ export interface TaskNode {
   errorType?: 'timeout' | 'abort' | 'permission' | 'transient' | 'fatal';
   /** Approval decisions made while this node ran (security/approvalGate.ts). */
   approvals?: ApprovalDecision[];
+  /** The check of the call's real effect (core/verifiers.ts). */
+  verification?: Verification;
 }
 
 export interface TaskGraph {
@@ -483,7 +486,10 @@ export class TaskGraphEngine extends EventEmitter {
       // Phase 5: Classify error type for smarter retry decisions
       const errLower = errMsg.toLowerCase();
       const errorType: TaskNode['errorType'] =
-        errLower.includes('abort') || errLower.includes('cancelled')      ? 'abort'
+        // The action reported success but its effect is not there: repeating
+        // it blind is not a repair. First, whatever words the evidence uses.
+        errLower.startsWith('verification_failed')                        ? 'fatal'
+        : errLower.includes('abort') || errLower.includes('cancelled')    ? 'abort'
         : errLower.includes('timeout') || errLower.includes('timed out')   ? 'timeout'
         // Refused by JARVIS's permission levels, or by a tool's policy (allow-list,
         // safety block), or nothing to act on: the same call fails the same way,

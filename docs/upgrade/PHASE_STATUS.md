@@ -219,3 +219,36 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   redacted); the limits count per process (a restart starts them again).
 - **Next:** P5 — observe → act → verify.
 
+## P5 — Observe → act → verify — COMPLETE
+
+- **Implemented:**
+  - `core/verifiers.ts`: for every action tool, a check of its real effect or
+    the reason there is none (Windows actions: P14; browser: P8; commands:
+    their effect cannot be checked in general). Checks only read, and only
+    what the action touched.
+  - Registry: after a reported success the check runs, cut off at 5 s. A
+    failed check makes the call a failure (`VERIFICATION_FAILED`, with what
+    was found); a check that throws or runs out of time makes no claim.
+  - Replies: "I checked: todo.txt holds the 8 characters written." when the
+    check passed; "I tried, sir, but I could not confirm it worked:
+    ghost.txt is not there." when it failed. A failed check is not retried.
+  - Checks: write_file and control_file write (read back), copy, move/rename,
+    create_folder, delete/delete_folder; save_relation (in long-term memory);
+    ingest_documents (the index lists it); full control on/off.
+- **Found and fixed:** with graph memory off (the default) save_relation saved
+  nothing and said "Saved relation"; with it on, search_memory could not find
+  it (it reads facts, not the graph). The relation is now also a fact.
+- **Tested:** `tests/verifyAfterActTest.ts`, 23 checks, all pass — real files
+  in a throwaway folder; a write that reports success without writing and one
+  that writes something else; a delete that deletes nothing; a check that
+  throws and one that hangs (cut off at 5 s); save_relation recalled by
+  search_memory; ingest checked against the real index; every action tool has
+  a check or a reason. On the code before P5: 18 of 21 fail. Full suite: 98
+  files, 92 passed · 0 failed · 6 environment.
+- **Not verified here:** checks of Windows actions (window closed, app open) —
+  they need the PC (P14).
+- **Known limits:** a check proves the effect was there when it ran, not that
+  it lasts; a file written again by something else in the same moment could
+  pass or fail the check by chance.
+- **Next:** P6 — system and development observation.
+
