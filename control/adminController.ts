@@ -30,8 +30,12 @@ export function checkServiceName(serviceName: string): string {
   return name;
 }
 
+export function isSecurityService(name: string): boolean {
+  return PROTECTED_SERVICES.has(String(name ?? '').trim().toLowerCase());
+}
+
 function checkNotSecurityService(name: string): void {
-  if (PROTECTED_SERVICES.has(name.toLowerCase())) {
+  if (isSecurityService(name)) {
     throw new Error(`Blocked by safety policy: JARVIS does not stop or restart the security service "${name}".`);
   }
 }

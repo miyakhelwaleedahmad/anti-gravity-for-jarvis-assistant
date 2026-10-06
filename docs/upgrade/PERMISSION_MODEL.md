@@ -26,28 +26,76 @@ engine adds a decision on top and can only make a call harder to run.
 
 Level 2 policy, `JARVIS_LEVEL2_POLICY`:
 - `session` (default): allowed while full control mode is on, refused otherwise
-  with "Say 'enable full control mode'" — today's behaviour.
-- `ask`: approval for each call, full control mode or not.
+  with "Say 'enable full control mode'" — the behaviour before P2.
+- `ask`: approval for each call, full control mode or not. Without full
+  control mode the approval stands in for it during that one call, so a
+  level-3 call is also asked once instead of refused.
 
-Level 1 needs session level 1 ("safe control"). That level is defined today but
-never granted (the session is 0 or 2), so focus and open-URL are refused unless
-full control mode is on. P2 makes the default session level 1, as the
-specification asks ("normally allowed automatically");
-`JARVIS_DEFAULT_PERMISSION_LEVEL=0` restores the read-only default.
+The default session level is 1 ("safe control"), as the specification asks
+for level 1 ("normally allowed automatically"). Before P2 the level was 0 or 2,
+so focus and the other level-1 actions of control_app and control_window were
+refused unless full control mode was on. `JARVIS_DEFAULT_PERMISSION_LEVEL=0`
+restores that previous default.
+
+## Decisions (P2, `security/riskEngine.ts`)
+
+`assessRisk` gives one call a level, reasons and, where a rule forbids it, a
+refusal; `decide` turns that into run, ask or refuse. The registry calls both
+after its own checks (tool floor, argument validation), and the controllers
+keep theirs, so nothing they refuse is let through.
+
+| Call | Session below what it needs | Session has it |
+|---|---|---|
+| refused by a rule | refused, no prompt ("Refused by safety policy: …") | refused, no prompt |
+| level 0–1 | — | runs |
+| level 2 | `session`: refused with the full-control hint · `ask`: asked | runs |
+| level 3–4 | `session`: refused with the full-control hint · `ask`: asked | asked every time |
+
+What a call needs: level 2 and above need full control mode (session 2);
+levels 0–1 need nothing, beyond the tool's own floor (control_app and
+control_window need session 1, control_file, control_keyboard and control_mouse
+need 2). Two calls need no session level, only approval: open_app targets
+that always needed approval (Command Prompt; targets outside open_app's
+allow-list stay refused) and turning full control mode on.
+
+P2 asks for level 4 with the same approval as level 3; the typed code arrives
+with the approval gate (P3).
+
+If the risk check itself fails, the call is refused (fail closed).
 
 ## How a call's level is found
 
-1. Start from the tool's risk, or the risk of the requested `action`.
-2. Raise it from the arguments:
-   - commands (`run_command`, `control_system` shell/powershell): the existing
-     command classes — SAFE_READ_ONLY 0, LOW 1, MEDIUM 2, HIGH 3, CRITICAL 4;
-   - file deletes 3; a folder delete covering many files 4;
-   - writes outside the temp folder at least 2;
-   - process kill and service start/stop/restart 3; security services 4 (refused);
-   - open_app targets that need approval (Command Prompt) 3;
-   - git push 3, push to `main`/`master` 4, force push refused (P10);
-   - browser form submission 2, upload 3, typing into a password field refused (P9).
-3. Unknown action or argument → the tool's highest action risk, never lower.
+1. Start from the tool's risk, or the risk of the requested `action` (P1
+   catalogue). An unknown action gets the tool's highest action risk.
+2. Apply the argument rules. Most only raise the level; three set it from the
+   arguments because the controller already treats those calls that way:
+   - `run_command`: commands the developer allow-list refuses are refused
+     (shell metacharacters, `rm -r`, `git push`, `git branch -D`,
+     `git diff --output=…`); read-only git 0; other allow-listed commands
+     (`npm run test`, `pnpm build`) 1. *(sets)*
+   - `control_system` shell/powershell: the blocklist refuses (`format c:`,
+     `diskpart`, firewall off); otherwise the command class can raise it
+     (risk 3 in the catalogue); commands that cannot be undone are level 4:
+     deleting a folder tree, system-wide registry changes, `bcdedit`, deleting
+     shadow copies or backups, erasing a disk, `cipher /w`, ownership or
+     permission changes, `Set-ExecutionPolicy`, scheduled tasks, user accounts.
+     Deleting a drive, a user profile or a Windows system folder is refused.
+   - `control_system` services: security services (Defender, firewall) are
+     refused; others are 3.
+   - `control_file` write: a `.txt` file in the temp folder 1 *(sets; the same
+     exemption FileController makes)*; source or configuration files (`.ts`,
+     `.js`, `.json`, `.py`, `.env`, `tsconfig`) 3, because FileController asks
+     to approve them; other writes 2.
+   - `control_file` delete and delete_folder 3; deleting a whole approved folder
+     (the JARVIS folder, Desktop, Documents, Downloads, temp) 4.
+   - `write_file` to a `.env` file 3.
+   - `open_app`: targets that need approval (Command Prompt) 3; a dry run 0,
+     because it opens nothing.
+   - `control_browser` close: a YouTube or blank tab 1 *(sets; the browser
+     controller's existing exemption)*; other tabs 2.
+3. Planned for later phases: git push 3, push to `main`/`master` 4, force push
+   refused (P10); browser form submission 2, upload 3, typing into a password
+   field refused (P9).
 
 ## Approval request (P3)
 
@@ -74,8 +122,12 @@ Answer rules:
 - The decision, with the request id, is stored on the task step, the goal and
   the security audit log.
 
-An approved call runs in an "approved" scope, so the controller's own approval
-prompt (process kill, service control, protected app) does not ask again.
+An approved call runs in an "approved" scope (P2, `security/approvalScope.ts`),
+so the controller's own approval prompt (process kill, service control,
+protected app, sensitive file write) does not ask again. The scope belongs to
+that one call: a call running at the same time, or waiting behind it in the
+action queue, is not approved by it (both tested). A refused or cancelled
+action is not retried by the action queue, so the user is not asked twice.
 
 ## What never changes
 

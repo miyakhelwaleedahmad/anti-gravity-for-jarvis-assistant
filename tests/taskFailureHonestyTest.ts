@@ -89,13 +89,20 @@ async function say(input: string, calls: typeof script = []): Promise<{ reply: s
   return { reply: spoken.join(' | '), ms: Date.now() - t0 };
 }
 
-/** Swap a registered tool's behaviour and level for one check, then restore. */
+/**
+ * Swap a registered tool's behaviour and level for one check, then restore.
+ * `level` sets both the tool's floor and its risk, so that neither permission
+ * check is what the check is about.
+ */
 async function withTool<T>(name: string, patch: { level?: number; output?: string }, fn: () => Promise<T>): Promise<T> {
   const tool = toolRegistryV2.get(name)! as any;
-  const saved = { execute: tool.execute, requiredLevel: tool.requiredLevel };
-  if (patch.level !== undefined) tool.requiredLevel = patch.level;
+  const saved = { execute: tool.execute, requiredLevel: tool.requiredLevel, meta: tool.meta };
+  if (patch.level !== undefined) {
+    tool.requiredLevel = patch.level;
+    tool.meta = { ...tool.meta, risk: patch.level, actions: undefined };
+  }
   if (patch.output !== undefined) tool.execute = async () => patch.output;
-  try { return await fn(); } finally { tool.execute = saved.execute; tool.requiredLevel = saved.requiredLevel; }
+  try { return await fn(); } finally { tool.execute = saved.execute; tool.requiredLevel = saved.requiredLevel; tool.meta = saved.meta; }
 }
 
 console.log('\n=== Task Failure Honesty Test ===\n');

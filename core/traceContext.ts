@@ -15,11 +15,18 @@
  */
 
 let currentTraceId: string | null = null;
+let currentSource: 'voice' | 'cli' | undefined;
 
-/** Start a new trace and return its id. */
-export function beginTrace(): string {
+/** Start a new trace and return its id. `source`: how the request arrived. */
+export function beginTrace(source?: 'voice' | 'cli'): string {
   currentTraceId = `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  currentSource = source;
   return currentTraceId;
+}
+
+/** Whether the active request was spoken or typed (approvals are asked the same way). */
+export function getRequestSource(): 'voice' | 'cli' | undefined {
+  return currentSource;
 }
 
 /** The active trace id, or undefined outside a request. */
@@ -30,4 +37,5 @@ export function getTraceId(): string | undefined {
 /** Clear the trace once a request settles. */
 export function endTrace(): void {
   currentTraceId = null;
+  currentSource = undefined;
 }

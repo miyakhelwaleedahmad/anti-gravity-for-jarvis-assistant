@@ -5,6 +5,12 @@
  * handles transient retries, and supports emergency pause/stop.
  */
 
+/**
+ * Failures a second attempt cannot fix. A cancelled approval in particular:
+ * retrying it asked the user the same question again.
+ */
+const FINAL_FAILURE = /safety policy|blocked|ABORTED|User did not confirm|cancelled by user|denied|not approved|Permission Level \d required/i;
+
 export class ActionQueue {
   private queue: Promise<any> = Promise.resolve();
   private isPaused: boolean = false;
@@ -53,8 +59,8 @@ export class ActionQueue {
             } catch (err: any) {
               lastError = err;
               
-              // Do NOT retry safety blocks or abort errors
-              if (err.message.includes('safety policy') || err.message.includes('blocked') || err.message.includes('ABORTED') || err.message.includes('User did not confirm')) {
+              // Do NOT retry safety blocks, refusals, cancellations or aborts
+              if (FINAL_FAILURE.test(String(err?.message ?? err))) {
                 break;
               }
               

@@ -17,7 +17,7 @@ import { agentStateMachine, AgentState } from './agentStateMachine.js';
 import { beginTrace } from './traceContext.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import { toolRegistryV2, type ToolCategory } from './toolRegistryV2.js';
-import { FULL_CONTROL_HINT, isPermissionDenial } from '../control/permissionDenial.js';
+import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, isPermissionDenial } from '../control/permissionDenial.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
 import { agentMemory } from '../memory/agentMemory.js';
 import { modelRouter } from '../bridge/modelRouter.js';
@@ -189,7 +189,7 @@ export class JarvisOrchestrator {
     this.currentProcessCallId = callId;
     // One correlation id per request, so the plan, every tool call and the
     // outcome can be joined back together in the trace log (JARVIS-015).
-    beginTrace();
+    beginTrace(source);
     this.isConversationEndDeferred = false;
     this._conversationEndHandled = false;
 
@@ -477,6 +477,8 @@ export class JarvisOrchestrator {
       // "encountered an issue", with no hint that full control mode was needed.
       const failureReply = (result: { error?: string; output?: string } | undefined, fallback: string): string => {
         const reason = result?.error ?? '';
+        if (reason === 'APPROVAL_DENIED') return APPROVAL_DENIED_REPLY;
+        if (reason === 'RISK_REFUSED') return `I couldn't do that, sir. ${(result?.output ?? '').replace(/^Refused by safety policy:\s*/, '')}`;
         if (isPermissionDenial(reason) || isPermissionDenial(result?.output ?? '')) return FULL_CONTROL_HINT;
         return reason && reason.length <= 120 ? `${fallback} ${reason}` : fallback;
       };
@@ -1112,7 +1114,8 @@ export class JarvisOrchestrator {
       if (!result.success) {
         // Keep the dispatch gate's explanation with its code, so the reply can
         // say that full control mode is needed.
-        throw new Error(result.error === 'PERMISSION_DENIED' ? `${result.error}: ${result.output}` : (result.error ?? result.output));
+        const explained = ['PERMISSION_DENIED', 'APPROVAL_DENIED', 'RISK_REFUSED'].includes(result.error ?? '');
+        throw new Error(explained ? `${result.error}: ${result.output}` : (result.error ?? result.output));
       }
 
       // ── Phase 1: Mid-execution check after each settled node ──────────────

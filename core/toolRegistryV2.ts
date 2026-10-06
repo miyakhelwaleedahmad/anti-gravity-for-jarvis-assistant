@@ -26,6 +26,10 @@ import { toolExecutionSandbox } from './toolExecutionSandbox.js';
 import { permissionSession } from '../control/permissionSession.js';
 import { securityAuditLogger } from '../security/securityAuditLogger.js';
 import { TOOL_CATALOG, deriveMeta } from './toolCatalog.js';
+import { assessRisk, callLabel, decide, level2Policy, type RiskAssessment, type RiskDecision } from '../security/riskEngine.js';
+import { approvalGate } from '../security/approvalGate.js';
+import { runApproved, type ApprovedCall } from '../security/approvalScope.js';
+import { getRequestSource } from './traceContext.js';
 
 /** Execution risk: drives sandboxing, caching and queueing (not permissions). */
 export type RiskLevel = 'low' | 'medium' | 'high';
@@ -566,23 +570,30 @@ export class ToolRegistryV2 {
     // validation error. Also before the cache, so a denied call is never served
     // a cached result, and before dispatch, so a tool that does not route
     // through a control/* controller still inherits a gate.
+    let belowFloor = false;
     if (typeof tool.requiredLevel === 'number' && tool.requiredLevel > 0) {
       if (!permissionSession.checkPermission(tool.requiredLevel, name)) {
-        securityAuditLogger.denied(
-          name,
-          'HIGH_RISK',
-          `Dispatch denied: requires permission level ${tool.requiredLevel}`,
-          name,
-        );
-        return {
-          success: false,
-          output:
-            `Tool "${name}" requires permission level ${tool.requiredLevel}. ` +
-            'Enable a full-control session first, sir.',
-          error: 'PERMISSION_DENIED',
-          tool: name,
-          durationMs: Date.now() - start,
-        };
+        // Policy `ask`: an approval can stand in for full control mode, so the
+        // risk engine below decides — still before anything runs.
+        if (level2Policy() === 'ask' && tool.requiredLevel <= 2) {
+          belowFloor = true;
+        } else {
+          securityAuditLogger.denied(
+            name,
+            'HIGH_RISK',
+            `Dispatch denied: requires permission level ${tool.requiredLevel}`,
+            name,
+          );
+          return {
+            success: false,
+            output:
+              `Tool "${name}" requires permission level ${tool.requiredLevel}. ` +
+              'Enable a full-control session first, sir.',
+            error: 'PERMISSION_DENIED',
+            tool: name,
+            durationMs: Date.now() - start,
+          };
+        }
       }
     }
 
@@ -608,6 +619,65 @@ export class ToolRegistryV2 {
         durationMs: Date.now() - start,
       };
     }
+
+    // 3b. Risk engine (docs/upgrade/PERMISSION_MODEL.md): run, ask, or refuse
+    // this concrete call. It runs after the checks above and never lets
+    // through what they refuse.
+    let assessment: RiskAssessment;
+    let decision: RiskDecision;
+    try {
+      assessment = assessRisk({ tool: name, args, baseRisk: this.riskOf(name, args) });
+      decision = decide(assessment, {
+        sessionLevel: permissionSession.getCurrentLevel(),
+        policy: level2Policy(),
+        floor: belowFloor ? tool.requiredLevel : 0,
+      });
+    } catch (err) {
+      // Fail closed: a call whose risk cannot be assessed does not run.
+      const message = `Refused by safety policy: the risk check failed (${err instanceof Error ? err.message : String(err)}).`;
+      console.error(`[ToolRegistry] ⛔ ${message}`);
+      securityAuditLogger.denied(name, 'LEVEL_4', message, name);
+      return { success: false, output: message, error: 'RISK_REFUSED', tool: name, durationMs: Date.now() - start };
+    }
+    if (decision.outcome === 'deny') {
+      console.warn(`[ToolRegistry] ⛔ ${decision.message}`);
+      securityAuditLogger.denied(name, `LEVEL_${assessment.level}`, decision.message, name);
+      return { success: false, output: decision.message, error: decision.code, tool: name, durationMs: Date.now() - start };
+    }
+    let approvedCall: ApprovedCall | undefined;
+    if (decision.outcome === 'approve') {
+      const label = callLabel(name, assessment.action);
+      const approved = await approvalGate.requestApproval(
+        label,
+        assessment.target ?? label,
+        `LEVEL_${assessment.level}`,
+        assessment.reasons.join('; '),
+        getRequestSource() ?? 'cli',
+      );
+      if (!approved) {
+        return {
+          success: false,
+          output: `Action cancelled by user: ${label} was not approved.`,
+          error: 'APPROVAL_DENIED',
+          tool: name,
+          durationMs: Date.now() - start,
+        };
+      }
+      approvedCall = { tool: name, args, level: assessment.level, grantsLevel: decision.grantsLevel, approvedAt: Date.now() };
+    }
+
+    const dispatch = (): Promise<ToolResult> => this.dispatch(tool, args, externalSignal, start);
+    return approvedCall ? runApproved(approvedCall, dispatch) : dispatch();
+  }
+
+  /** Cache lookup, then execution: low-risk tools directly, others one at a time. */
+  private async dispatch(
+    tool: AgentTool,
+    args: Record<string, unknown>,
+    externalSignal: AbortSignal | undefined,
+    start: number,
+  ): Promise<ToolResult> {
+    const name = tool.name;
 
     // 4. Cache lookup (cacheable low-risk tools only)
     if (this.isCacheable(tool)) {

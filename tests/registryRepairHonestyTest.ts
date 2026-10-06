@@ -109,13 +109,20 @@ async function say(input: string, script: typeof plans = []): Promise<{ reply: s
   return { reply: spoken.join(' | '), ms: Date.now() - t0 };
 }
 
-/** Swap a registered tool's behaviour (and level) for one check, then restore. */
+/**
+ * Swap a registered tool's behaviour (and level) for one check, then restore.
+ * `level` sets both the tool's floor and its risk, so that neither permission
+ * check is what the check is about.
+ */
 async function withTool<T>(name: string, patch: { level?: number; execute?: (args: any) => Promise<string> }, fn: () => Promise<T>): Promise<T> {
   const tool = toolRegistryV2.get(name)! as any;
-  const saved = { execute: tool.execute, requiredLevel: tool.requiredLevel };
-  if (patch.level !== undefined) tool.requiredLevel = patch.level;
+  const saved = { execute: tool.execute, requiredLevel: tool.requiredLevel, meta: tool.meta };
+  if (patch.level !== undefined) {
+    tool.requiredLevel = patch.level;
+    tool.meta = { ...tool.meta, risk: patch.level, actions: undefined };
+  }
   if (patch.execute) tool.execute = patch.execute;
-  try { return await fn(); } finally { tool.execute = saved.execute; tool.requiredLevel = saved.requiredLevel; }
+  try { return await fn(); } finally { tool.execute = saved.execute; tool.requiredLevel = saved.requiredLevel; tool.meta = saved.meta; }
 }
 
 console.log('\n=== Registry and Repair Honesty Test ===\n');
@@ -206,11 +213,13 @@ console.log('\n--- 3. Skills show their allowed actions; invented ones are refus
 }
 
 console.log('\n--- 4. Level-0 tools still refuse what needs full control ---');
-if (permissionSession.getCurrentLevel() === 0) {
+if (permissionSession.getCurrentLevel() < 2) {
+  const needsFullControl = (r: { success: boolean; error?: string; output: string }) =>
+    !r.success && r.error === 'PERMISSION_DENIED' && /full control/i.test(r.output);
   const stop = await toolRegistryV2.execute('control_system', { action: 'stop_service', target: 'Spooler' });
-  ok('control_system: stopping a service is refused at level 0', !stop.success && /level 2/i.test(stop.error ?? ''), stop.error);
+  ok('control_system: stopping a service needs full control', needsFullControl(stop), stop.output);
   const kill = await toolRegistryV2.execute('control_process', { action: 'kill', target: 'jarvis-no-such-process' });
-  ok('control_process: killing is refused at level 0', !kill.success && /level 2/i.test(kill.error ?? ''), kill.error);
+  ok('control_process: killing needs full control', needsFullControl(kill), kill.output);
 } else {
   console.log('  SKIP: full control is active in this environment');
 }
@@ -250,7 +259,7 @@ console.log('\n--- 8. A failed command is not "Task completed" ---');
 {
   const output = 'Exit code: 1\nOutput:\nnpm ERR! Missing script: "test"\n' + 'npm ERR! more detail about the failure here\n'.repeat(5);
   const r = await withTool('run_command', { level: 0, execute: async () => output },
-    () => say('run the tests', [[{ name: 'run_command', args: { command: 'npm test' } }]]));
+    () => say('run the tests', [[{ name: 'run_command', args: { command: 'npm run test' } }]]));
   ok('says it failed, with the exit code and first line', r.reply === 'The command failed with exit code 1, sir. npm ERR! Missing script: "test"', r.reply);
   const describe = orchestratorModule.describeCommandResult;
   ok('a successful command says done', typeof describe === 'function' && describe('Exit code: 0\nOutput:\nall good') === 'Done, sir. all good');

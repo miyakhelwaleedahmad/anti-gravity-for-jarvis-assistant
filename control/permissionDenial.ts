@@ -10,6 +10,9 @@
 export const FULL_CONTROL_HINT =
   "That needs full control mode, sir. Say 'enable full control mode', then ask again.";
 
+/** What JARVIS says when the user did not approve an action. */
+export const APPROVAL_DENIED_REPLY = 'Cancelled, sir. You did not approve it, so nothing was done.';
+
 /**
  * True for a refusal by the dispatch gate (PERMISSION_DENIED) or a
  * controller's level check. Retrying cannot raise the level, so callers stop

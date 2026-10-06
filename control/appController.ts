@@ -23,6 +23,14 @@ const APP_ALIASES: Record<string, string> = {
 
 const PROTECTED_APPS = ['antigravity', 'code', 'windowsterminal', 'powershell', 'cmd'];
 
+/**
+ * The target is handed to `cmd /c start`, which treats `&`, `|`, `^`, `<`, `>`
+ * and `%` as command syntax: "notepad&calc" also ran calc. Such targets are
+ * refused. This includes control_browser's fallback when Chrome's DevTools
+ * endpoint is not reachable; through that endpoint such URLs still open.
+ */
+const CMD_METACHARACTERS = /[&|^<>%"\r\n]/;
+
 export class AppController {
   private resolveTarget(target: string): string {
     const lower = target.toLowerCase().trim();
@@ -39,6 +47,9 @@ export class AppController {
     }
 
     const resolved = this.resolveTarget(target);
+    if (CMD_METACHARACTERS.test(resolved)) {
+      throw new Error(`Refused by safety policy: "${target}" contains characters Command Prompt would run as a command.`);
+    }
     const isUrl = /^https?:\/\//i.test(resolved) || /^www\./i.test(resolved);
     const finalTarget = isUrl && !resolved.startsWith('http') ? `https://${resolved}` : resolved;
 

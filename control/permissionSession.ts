@@ -4,6 +4,7 @@ import * as path from 'path';
 import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
 import { securityAuditLogger } from '../security/securityAuditLogger.js';
+import { currentApproval } from '../security/approvalScope.js';
 
 /**
  * control/permissionSession.ts
@@ -63,6 +64,17 @@ const DATA_ROOT = dataRoot(path.resolve(__dirname, '..'));
 const SESSION_PERSIST_PATH = path.join(DATA_ROOT, 'data', 'security', 'permission_session.json');
 const SESSION_LOG_PATH     = path.join(DATA_ROOT, 'data', 'logs', 'permission_session_log.json');
 
+/**
+ * The level JARVIS runs at outside full control mode. Level 1 ("safe
+ * control": open, focus, navigate) is the default, as the permission model
+ * asks for level-1 actions to run without approval. It was defined but never
+ * granted, so those actions were refused unless full control mode was on.
+ * JARVIS_DEFAULT_PERMISSION_LEVEL=0 restores that previous default.
+ */
+export function basePermissionLevel(env: Record<string, string | undefined> = process.env): number {
+  return env['JARVIS_DEFAULT_PERMISSION_LEVEL']?.trim() === '0' ? 0 : 1;
+}
+
 /** How often the auto-revoke interval ticks (ms) */
 const REVOKE_CHECK_INTERVAL_MS = 10_000;
 
@@ -79,7 +91,8 @@ const MAX_LOG_ENTRIES = 500;
 
 export class PermissionSession extends EventEmitter {
   // ── Core state ────────────────────────────────────────────────────────────
-  private currentLevel: number = 0;
+  private readonly baseLevel = basePermissionLevel();
+  private currentLevel: number = this.baseLevel;
   private fullControlExpiresAt: number | null = null;
   private activatedAt: number | null = null;
   private activatedBy: SessionState['activatedBy'] = null;
@@ -238,14 +251,14 @@ export class PermissionSession extends EventEmitter {
   }
 
   /**
-   * Disable Level 2 Full Control — returns to Level 0 (Read Only).
-   * Always safe to call; no-op if already at level 0.
+   * Disable Level 2 Full Control — returns to the base level (1, or 0 when
+   * JARVIS_DEFAULT_PERMISSION_LEVEL=0). Always safe to call.
    */
   deactivateFullControl(reason = 'manual'): void {
-    if (this.currentLevel === 0 && this.fullControlExpiresAt === null) return;
+    if (this.currentLevel === this.baseLevel && this.fullControlExpiresAt === null) return;
 
     const prevSessionId = this.sessionId ?? 'unknown';
-    this.currentLevel = 0;
+    this.currentLevel = this.baseLevel;
     this.fullControlExpiresAt = null;
     this.activatedAt = null;
     this.activatedBy = null;
@@ -306,6 +319,11 @@ export class PermissionSession extends EventEmitter {
       console.warn(`[PermissionSession] ⚠️  Action "${actionName}" requires Level 3 explicit confirmation.`);
       return false;
     }
+
+    // A call the user approved one by one (JARVIS_LEVEL2_POLICY=ask) carries
+    // the level its approval stands in for, for that call only.
+    const approved = currentApproval();
+    if (approved && approved.grantsLevel >= requiredLevel) return true;
 
     // Check expiry first (updates level if expired)
     this._checkExpiry();
@@ -407,7 +425,7 @@ export class PermissionSession extends EventEmitter {
       console.log('[PermissionSession] ⏱️ Full Control session expired. Auto-revoking.');
       const expiredSessionId = this.sessionId ?? 'unknown';
 
-      this.currentLevel = 0;
+      this.currentLevel = this.baseLevel;
       this.fullControlExpiresAt = null;
       this.activatedAt = null;
       this.activatedBy = null;
@@ -517,11 +535,11 @@ export class PermissionSession extends EventEmitter {
         );
       } else if (state.level === 2) {
         // Persisted session is stale — clear the file
-        console.log('[PermissionSession] ℹ️  Persisted session was expired — starting at Level 0.');
-        this._persistSession(); // writes level=0 state
+        console.log(`[PermissionSession] ℹ️  Persisted session was expired — starting at Level ${this.baseLevel}.`);
+        this._persistSession(); // writes the base-level state
       }
     } catch {
-      // Corrupt file — ignore, start at level 0
+      // Corrupt file — ignore, start at the base level
     }
   }
 

@@ -9,6 +9,7 @@
 
 import * as readline from 'readline';
 import { securityAuditLogger } from './securityAuditLogger.js';
+import { currentApproval } from './approvalScope.js';
 
 type ApprovalSource = 'cli' | 'voice' | 'text' | 'llm';
 
@@ -24,6 +25,15 @@ export class ApprovalGate {
     sourceOrTimeout: ApprovalSource | number = 'cli',
     timeoutSecs?: number,
   ): Promise<boolean> {
+    // The registry already asked for this call; the controller it reached
+    // (process kill, services, shell) used to ask a second time.
+    const approvedCall = currentApproval();
+    if (approvedCall) {
+      console.log(`[ApprovalGate] "${action}" is part of the approved ${approvedCall.tool} call — not asking again.`);
+      securityAuditLogger.approvalGranted(action, `${command} (approved with ${approvedCall.tool})`);
+      return true;
+    }
+
     const source: ApprovalSource = typeof sourceOrTimeout === 'number' ? 'cli' : sourceOrTimeout;
     const effectiveTimeoutSecs = timeoutSecs ?? (typeof sourceOrTimeout === 'number'
       ? sourceOrTimeout

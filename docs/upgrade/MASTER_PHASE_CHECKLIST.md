@@ -9,7 +9,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 |---|---|
 | P0 Discovery and architecture | [x] |
 | P1 Tool registry | [x] |
-| P2 Risk engine | [ ] |
+| P2 Risk engine | [x] |
 | P3 Approval gate | [ ] |
 | P4 Redaction | [ ] |
 | P5 Observe → act → verify | [ ] |
@@ -48,15 +48,15 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P2 — Risk engine
-- [ ] Risk assessment for a concrete call (tool, action, arguments, session)
-- [ ] Argument classifiers (commands, paths, deletes, services, URLs)
-- [ ] Policies for levels 0–4, level 2 configurable
-- [ ] Wired into registry dispatch, after every existing check
-- [ ] Default session level per the specification (level 1 actions automatic)
-- [ ] Unit tests, integration tests, full suite
-- [ ] Existing permission, injection and blocklist tests still pass
-- [ ] Documentation updated
-- [ ] PHASE COMPLETE
+- [x] Risk assessment for a concrete call (tool, action, arguments, session)
+- [x] Argument classifiers (commands, paths, deletes, services, URLs)
+- [x] Policies for levels 0–4, level 2 configurable
+- [x] Wired into registry dispatch, after every existing check
+- [x] Default session level per the specification (level 1 actions automatic)
+- [x] Unit tests, integration tests, full suite
+- [x] Existing permission, injection and blocklist tests still pass
+- [x] Documentation updated
+- [x] PHASE COMPLETE
 
 ## P3 — Approval gate
 - [ ] Approval request model (action, why, target, effect, risk, reversibility)

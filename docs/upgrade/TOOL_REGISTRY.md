@@ -59,7 +59,7 @@ Risk per action where a tool has several. "R" = reversible.
 | control_browser | BROWSER | list 0 · focus 1 · open_url 1 · refresh 1 · close 2 · close_current 2 | close: partial | query |
 | open_app | COMPUTER | 1 (cmd: 3, P2) | yes | none |
 | control_app | COMPUTER | open 1 · focus 1 · close 2 · restart 2 | close: partial | none |
-| control_window | COMPUTER | focus 1 · minimize 1 · maximize 1 · move 1 · resize 1 · close 2 · close_current 2 | close: partial | none |
+| control_window | COMPUTER | focus 1 · minimize 1 · maximize 1 · move 2 · resize 2 · close 2 · close_current 2 | close: partial | none |
 | control_keyboard | COMPUTER | type 2 · press_key 2 · press_hotkey 2 | no | none |
 | control_mouse | COMPUTER | move 1 · scroll 1 · click 2 · right_click 2 · double_click 2 · drag 2 | no | none |
 | read_file | FILESYSTEM | 0 | yes | none |
@@ -75,7 +75,7 @@ Risk per action where a tool has several. "R" = reversible.
 | save_relation | MEMORY | 1 | partial | none |
 | ingest_documents | MEMORY | 1 | partial | none |
 | control_process | SYSTEM | list 0 · find 0 · kill 3 · restart 3 | no | none |
-| control_system | SYSTEM | network_status 0 · disk_status 0 · settings 1 · restart_jarvis 2 · shell 3 · powershell 3 · start/stop/restart_service 3 | no | none |
+| control_system | SYSTEM | network_status 0 · disk_status 0 · settings 2 · restart_jarvis 3 · shell 3 · powershell 3 · start/stop/restart_service 3 | no | none |
 | get_permission_status | SYSTEM | 0 | yes | none |
 | enable_full_control_session | SYSTEM | 3 | yes | none |
 | disable_full_control_session | SYSTEM | 1 | partial | none |
@@ -83,8 +83,12 @@ Risk per action where a tool has several. "R" = reversible.
 | list_capabilities (new) | SYSTEM | 0 | yes | none |
 
 Notes:
-- Risk is a floor for the tool's metadata; P2's argument checks can raise it
-  (a `git push` through run_command, deleting a large folder), never lower it.
+- P2's argument rules can raise a call's risk (a recursive delete, deleting a
+  whole folder); three set it from the arguments the way the controllers
+  already do (PERMISSION_MODEL.md).
+- Where a controller checks a stricter level than first catalogued, the
+  catalogue follows the controller (P2): window move and resize 2, Settings
+  page 2, restarting JARVIS 3.
 - control_mouse `move`/`scroll` are level 1 by risk, but the tool keeps its
   dispatch floor of session level 2: the stricter check wins.
 - No COMMUNICATION or SCHEDULING tools exist yet.

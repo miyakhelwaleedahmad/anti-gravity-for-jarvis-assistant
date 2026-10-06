@@ -75,7 +75,19 @@ function tokenizeCommand(command: string): string[] | null {
   return matches.map((token) => token.replace(/^["']|["']$/g, ''));
 }
 
-function validateDeveloperCommand(command: string): { allowed: boolean; reason: string } {
+/** True when `git branch <args>` only lists branches. */
+function isBranchListing(args: string[]): boolean {
+  const changes = args.some((a) =>
+    /^--(delete|move|copy|force|set-upstream|unset-upstream|edit-description|track|no-track|create-reflog)\b/i.test(a)
+    || (/^-[a-z]+$/i.test(a) && /[dDmMcCfut]/.test(a.slice(1))));
+  if (changes) return false;
+  // A bare name creates a branch; with these flags names are patterns or commits.
+  const names = args.filter((a) => !a.startsWith('-'));
+  return names.length === 0
+    || args.some((a) => /^(-l|--list|--contains|--no-contains|--merged|--no-merged|--points-at)\b/i.test(a));
+}
+
+export function validateDeveloperCommand(command: string): { allowed: boolean; reason: string } {
   const normalized = command.trim().replace(/\s+/g, ' ');
 
   if (SHELL_METACHAR_PATTERN.test(normalized)) {
@@ -99,8 +111,12 @@ function validateDeveloperCommand(command: string): { allowed: boolean; reason: 
 
   if (exe === 'git') {
     const safeGit = new Set(['status', 'diff', 'log', 'show', 'branch']);
+    const rest = args.slice(1);
+    // `--output=<file>` makes diff/log/show write a file; `git branch` also
+    // deletes, renames, copies and creates branches.
+    const writes = rest.some((a) => /^--output\b/i.test(a)) || (arg0 === 'branch' && !isBranchListing(rest));
     return {
-      allowed: !!arg0 && safeGit.has(arg0),
+      allowed: !!arg0 && safeGit.has(arg0) && !writes,
       reason: 'Only read-only git developer commands are allowed.',
     };
   }

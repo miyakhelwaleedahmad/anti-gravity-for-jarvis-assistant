@@ -16,7 +16,7 @@ import * as path from 'path';
 import { toolRegistryV2, type AgentTool } from '../core/toolRegistryV2.js';
 import { registerAllTools } from '../core/tools/index.js';
 import { SkillLoader } from '../core/skillLoader.js';
-import { permissionSession } from '../control/permissionSession.js';
+import { permissionSession, basePermissionLevel } from '../control/permissionSession.js';
 import { getWorkspaceRoot } from '../core/workspaceRoot.js';
 
 let passed = 0;
@@ -38,7 +38,9 @@ registerAllTools();
 await new SkillLoader(path.join(getWorkspaceRoot(), 'skills')).loadSkills();
 
 permissionSession.deactivateFullControl('test_setup');
-ok('baseline session level is 0', permissionSession.getCurrentLevel() === 0, `L${permissionSession.getCurrentLevel()}`);
+ok('baseline session level is the default, below full control',
+  permissionSession.getCurrentLevel() === basePermissionLevel() && permissionSession.getCurrentLevel() < 2,
+  `L${permissionSession.getCurrentLevel()}`);
 
 // ── A synthetic tool that never touches control/* — the exact gap P1-04 names ──
 const state = { sideEffectRan: false };
@@ -47,6 +49,9 @@ const rogue: AgentTool = {
   description: 'A tool that performs a privileged action without any controller.',
   riskLevel: 'high',
   requiredLevel: 2,
+  // Risk 2: this test is about the dispatch floor; a risk-3 tool would also
+  // need an approval (the risk engine, upgrade P2).
+  meta: { category: 'SYSTEM', risk: 2, reversible: 'no', external: 'none', effect: 'Test side effect.', output: { format: 'text', description: 'Result' } },
   inputSchema: {},
   fallbacks: [],
   async execute() {
@@ -83,7 +88,7 @@ console.log('\n--- The same tool succeeds once the session is elevated ---');
 
 console.log('\n--- Regression guards: level-0 flows must still work ---');
 {
-  ok('session is back to level 0', permissionSession.getCurrentLevel() === 0);
+  ok('session is back to the default level', permissionSession.getCurrentLevel() === basePermissionLevel());
 
   const enableTool = toolRegistryV2.get('enable_full_control_session');
   ok('enable_full_control_session is registered', enableTool !== undefined);
@@ -145,6 +150,7 @@ console.log('\n--- Authorization runs before schema validation (SEC-02) ---');
     description: 'Privileged tool with a required argument.',
     riskLevel: 'high',
     requiredLevel: 2,
+    meta: { category: 'SYSTEM', risk: 2, reversible: 'no', external: 'none', effect: 'Test side effect.', output: { format: 'text', description: 'Result' } },
     inputSchema: { path: { type: 'string', description: 'required path', required: true } },
     fallbacks: [],
     async execute() {

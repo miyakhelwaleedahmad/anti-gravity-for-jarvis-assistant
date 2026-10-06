@@ -45,11 +45,12 @@ user's settings, enforced in the registry after all existing checks.
 3. `decide`: level 0–1 → allow (session ≥ 1 assumed by default);
    2 → `session`: allow if full control active else deny with the hint,
    `ask`: approve; 3 → approve (and the existing controller checks still run);
-   4 → approve with `strong: true` (typed code, P3) unless a classifier marked
-   it `refused` (blocklist) → deny.
+   4 → approve unless a classifier marked it `refused` (blocklist) → deny. (As
+   built, level 4 is asked like level 3; P3 adds the typed code.)
 4. Registry (`execute`): after `requiredLevel` gate and validation:
    `assessment = assessRisk(...)`, `decision = decide(...)`; deny → result
-   `{ success: false, error: 'RISK_DENIED', output: reason }`; approve →
+   `{ success: false, error: 'RISK_REFUSED' | 'PERMISSION_DENIED', output: reason }`
+   (as built: refused by a rule, or needs full control mode); approve →
    `approvalGate.requestApproval(...)` (current presentation; P3 replaces it);
    refused → `APPROVAL_DENIED`; approved → run inside
    `approvalScope.run({ tool, args }, ...)` (AsyncLocalStorage).
@@ -57,7 +58,7 @@ user's settings, enforced in the registry after all existing checks.
    same tool call → return true, log "already approved", record it.
 6. `permissionSession`: base level from `JARVIS_DEFAULT_PERMISSION_LEVEL`
    (0 or 1, default 1); `deactivateFullControl` returns to the base level.
-7. `isPermissionDenial` and reflection patterns recognise `RISK_DENIED` /
+7. `isPermissionDenial` and reflection patterns recognise `RISK_REFUSED` /
    `APPROVAL_DENIED` (fatal, no retry, honest reply).
 
 ## Files to inspect
@@ -93,8 +94,10 @@ becomes allowed except level-1 actions the specification marks automatic;
 one approval prompt per call.
 
 ## Security requirements
-Classifiers only raise; unknown → highest action risk; engine errors deny
-(fail closed); approval scope is bound to one call and ends with it.
+Classifiers only raise (as built, three set the level from the arguments the
+way the controllers already treat those calls — PERMISSION_MODEL.md); unknown
+→ highest action risk; engine errors deny (fail closed); approval scope is
+bound to one call and ends with it.
 
 ## Failure conditions
 A blocklisted command reachable; a double prompt; a denied call executing; any

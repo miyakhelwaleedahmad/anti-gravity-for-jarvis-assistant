@@ -92,8 +92,9 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
       focus: { risk: 1, reversible: 'yes', effect: 'Brings the window to the front.' },
       minimize: { risk: 1, reversible: 'yes', effect: 'Minimises the window.' },
       maximize: { risk: 1, reversible: 'yes', effect: 'Maximises the window.' },
-      move: { risk: 1, reversible: 'yes', effect: 'Moves the window.' },
-      resize: { risk: 1, reversible: 'yes', effect: 'Resizes the window.' },
+      // WindowController checks level 2 for these two.
+      move: { risk: 2, reversible: 'yes', effect: 'Moves the window.' },
+      resize: { risk: 2, reversible: 'yes', effect: 'Resizes the window.' },
       close: { risk: 2, reversible: 'partial', effect: 'Closes the window; unsaved work may be lost.' },
       close_current: { risk: 2, reversible: 'partial', effect: 'Closes the active window; unsaved work may be lost.' },
     },
@@ -220,8 +221,9 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     {
       network_status: { risk: 0, reversible: 'yes', effect: 'Reads network interfaces.' },
       disk_status: { risk: 0, reversible: 'yes', effect: 'Reads disk volumes.' },
-      settings: { risk: 1, reversible: 'yes', effect: 'Opens a Windows Settings page.' },
-      restart_jarvis: { risk: 2, reversible: 'partial', effect: "Restarts JARVIS's own services." },
+      // The controllers' own checks: settings needs level 2, a restart always asks.
+      settings: { risk: 2, reversible: 'yes', effect: 'Opens a Windows Settings page.' },
+      restart_jarvis: { risk: 3, reversible: 'partial', effect: "Restarts JARVIS's own services." },
       shell: { risk: 3, reversible: 'no', effect: 'Runs a Command Prompt command.' },
       powershell: { risk: 3, reversible: 'no', effect: 'Runs a PowerShell command.' },
       start_service: { risk: 3, reversible: 'yes', effect: 'Starts a Windows service.' },

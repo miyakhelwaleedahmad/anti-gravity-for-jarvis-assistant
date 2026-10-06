@@ -84,29 +84,32 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 ## P2 — Risk engine
 
 ### T2.1 — Risk assessment
-- Critical · [ ] · depends on: T1.5
+- Critical · [x] · depends on: T1.5
 - `assessRisk({ tool, args, source })` → level 0–4, reasons, action, target.
 - Files: `security/riskEngine.ts` (new).
 - Tests: table of tool calls → expected level.
 
 ### T2.2 — Argument classifiers
-- Critical · [ ] · depends on: T2.1
+- Critical · [x] · depends on: T2.1
 - Commands through `permissionManager` (SAFE_READ_ONLY→0 … CRITICAL→4); file
   deletes → 3; writes outside temp → 2; service stop/restart → 3; process kill →
   3; open_app targets that need approval (cmd) → 3; anything the blocklist
-  refuses → 4. A classifier may raise the level, never lower it.
+  refuses → 4. A classifier may raise the level, never lower it — except three
+  that set it from the arguments the way the controllers already do
+  (run_command, temp `.txt` writes, YouTube/blank tab close); see
+  PERMISSION_MODEL.md.
 - Tests: each classifier, including injection strings.
 
 ### T2.3 — Policies
-- Critical · [ ] · depends on: T2.1
+- Critical · [x] · depends on: T2.1
 - 0–1 allow; 2 per `JARVIS_LEVEL2_POLICY` (`session`, default: needs full
   control mode as today · `ask`: approval each time); 3 approval, also in full
-  control mode; 4 never automatic — approval with a typed code, and denied
-  outright where the blocklist denies today.
+  control mode; 4 never automatic — approval (the typed code is T3.3), and
+  denied outright where the blocklist denies today.
 - Tests: every level × session × setting combination.
 
 ### T2.4 — Dispatch integration
-- Critical · [ ] · depends on: T2.2, T2.3
+- Critical · [x] · depends on: T2.2, T2.3
 - `toolRegistryV2.execute` asks the engine after its existing checks; deny →
   refused with the reason; approve → existing approval gate, and the approved
   call runs inside an "approved" scope so a controller does not ask again.
@@ -114,22 +117,39 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 - Tests: through the real registry and orchestrator; one prompt per call.
 
 ### T2.5 — Default session level, documents
-- High · [ ] · depends on: T2.4
-- Default session level 1 (`JARVIS_DEFAULT_PERMISSION_LEVEL`, `0` keeps the old
-  read-only default), so level-1 actions (open, focus, navigate) run without
+- High · [x] · depends on: T2.4
+- Default session level 1 (`JARVIS_DEFAULT_PERMISSION_LEVEL`, `0` restores the
+  previous default), so level-1 actions (open, focus, navigate) run without
   full control mode, as the specification requires.
 - Files: `control/permissionSession.ts`, `.env.example`, `docs/upgrade/PERMISSION_MODEL.md`.
 - Tests: level-1 actions allowed by default; level-2 still refused without full control.
 
 
 ### T2.6 — explain_code reads any file
-- Critical · [ ] · depends on: T2.1
+- Critical · [x] · depends on: T2.1
 - Found in P1: `skills/coding/skill.ts` accepts any absolute path, so
   "explain C:\Users\…\.ssh\id_rsa" or the project's `.env` sends the file
   to the LLM. Apply read_file's containment (workspace root, system paths
-  refused); the risk engine refuses paths outside it.
-- Files: `skills/coding/skill.ts`, `security/riskEngine.ts`.
-- Tests: absolute path outside the project, `..` escape, Windows system path → refused.
+  refused) in the skill itself, where every caller passes through it.
+- Files: `skills/coding/skill.ts`.
+- Tests: absolute path outside the project, `..` escape, `.env` → refused.
+
+### T2.7 — Found in P2: fixed in the same phase
+- Critical · [x] · depends on: T2.4
+- Command Prompt injection: at the new default level, `control_app open`
+  passed its target to `cmd /c start`, so "notepad&calc" started a second
+  program. Targets with `& | ^ < > % "` are refused (`control/appController.ts`).
+- The action queue retried an action the user had just refused, asking the
+  same question twice. Refusals, cancellations and permission errors are no
+  longer retried (`control/actionQueue.ts`).
+- The developer allow-list called itself read-only git but accepted
+  `git branch -D`, `git branch -m` and `git diff --output=<file>`
+  (`tools/terminalTool.ts`).
+- The command classes rated `rd /s /q C:\`, `Clear-Disk`, `bcdedit` and
+  deleting restore points as HIGH_RISK, the same as `echo`; the risk engine
+  makes them level 4 and refuses deleting a drive, a user profile or a Windows
+  system folder.
+- Tests: `riskEngineTest`, `actionQueueRecoveryTest`.
 
 ---
 
