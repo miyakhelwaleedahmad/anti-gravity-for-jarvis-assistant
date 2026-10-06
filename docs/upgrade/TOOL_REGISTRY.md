@@ -82,6 +82,9 @@ Risk per action where a tool has several. "R" = reversible.
 | cancel_current_action | SYSTEM | 1 | no | none |
 | list_capabilities (new) | SYSTEM | 0 | yes | none |
 | action_history (new, P4) | SYSTEM | 0 | yes | none |
+| system_overview (new, P6) | OBSERVATION | 0 | yes | none |
+| dev_status (new, P6) | DEVELOPMENT | 0 | yes | none |
+| git_overview (new, P6) | DEVELOPMENT | 0 | yes | none |
 
 Notes:
 - P2's argument rules can raise a call's risk (a recursive delete, deleting a

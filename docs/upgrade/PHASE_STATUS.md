@@ -252,3 +252,36 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   pass or fail the check by chance.
 - **Next:** P6 — system and development observation.
 
+## P6 — System and development observation — COMPLETE
+
+- **Implemented:**
+  - `perception/systemProbe.ts`, `devProbe.ts`, `gitProbe.ts` and the level-0
+    tools `system_overview`, `dev_status`, `git_overview`
+    ([SYSTEM_AWARENESS.md](SYSTEM_AWARENESS.md)). Node APIs and `git` only —
+    the same code on Windows and Linux; no shell; no MAC address, no host name.
+  - Routes, with no LLM request: "status", "system status", "how is my PC
+    doing" → "CPU at 3 percent, 15 of 15.7 GB memory free, 29 GB free on the
+    system disk, sir."; "is my backend running", "what servers are running" →
+    "One local server is running, sir: port 3000 answers 200."
+  - The planner is offered these tools for questions about CPU, memory, disks,
+    ports, servers and git.
+  - `JARVIS_DEV_PORTS`, `JARVIS_PROJECT_DIRS` in `.env.example`.
+- **Found and fixed:** "status" answered "All systems are operational, sir."
+  without looking at anything; "is my backend running" went to the LLM, which
+  had no way to know and answered "Done, sir.".
+- **Tested:** `tests/systemObservationTest.ts`, 28 checks, all pass — values
+  against the OS's own readings; a real HTTP server on a real port (status,
+  server, title kept as untrusted data), a closed port, a port that never
+  answers, a redirect reported and not followed, one request per server; a
+  database port only connected to; a real git repository (branch, changed and
+  untracked files, last commit with a planted token redacted, diff summary); a
+  folder named `$(touch pwned)` stays a name; a planted `core.fsmonitor`
+  program that a plain `git status` ran did not run from the probe; `;` and
+  outside paths refused; both routes with 0 LLM requests. On the code before
+  P6: 23 of 27 fail. Full suite: 99 files, 93 passed · 0 failed · 6 environment.
+- **Not verified here:** drive letters and `statfs` on Windows (the Windows
+  branch of `driveRoots` runs only there — P14 check list).
+- **Known limits:** a server on a port outside the list is not seen (add it to
+  `JARVIS_DEV_PORTS`); which process owns a port is Windows work (P14).
+- **Next:** P7 — world state.
+

@@ -250,6 +250,12 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
   },
   list_capabilities: observation('Lists the tools JARVIS has, grouped, with their risk.',
     { format: 'json', description: 'Groups of tools: name, summary, risk range, approval, reversible, external' }, 'SYSTEM'),
+  system_overview: observation('Reads OS, CPU load, memory, uptime, disk space and network addresses (no MAC).',
+    { format: 'json', description: 'platform, cpu {model, cores, usagePercent}, memory, uptimeHours, disks[], network[]' }),
+  dev_status: observation('Checks local development ports (127.0.0.1) and what answers on them.',
+    { format: 'json', description: 'ports[]: port, open, http {status, server, title (untrusted)}' }, 'DEVELOPMENT'),
+  git_overview: observation('Reads branch, changes and recent commits of the git repositories in the project folders.',
+    { format: 'json', description: 'repositories[]: path, branch, ahead, behind, changed, untracked, files, lastCommits, diffSummary' }, 'DEVELOPMENT'),
   action_history: observation('Lists JARVIS\'s last tool calls and approval decisions, without credentials.',
     { format: 'json', description: 'calls (tool, args, success, error, at) and approvals (action, target, approved, by, at)' }, 'SYSTEM'),
 };

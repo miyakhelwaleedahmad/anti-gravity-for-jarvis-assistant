@@ -277,32 +277,32 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 ## P6 — System and development observation
 
 ### T6.1 — System snapshot
-- High · [ ] · depends on: T4.5
+- High · [x] · depends on: T4.5
 - OS, CPU model/cores/usage, memory, uptime, disks, network interfaces (no MAC
   addresses) — Node APIs only, so the same code runs on Windows.
 - Files: `perception/systemProbe.ts` (new).
 
 ### T6.2 — Ports and development servers
-- High · [ ] · depends on: T6.1
+- High · [x] · depends on: T6.1
 - Probe a configurable list of local ports; for open ones, an HTTP request for
   status, server header and page title.
 - Files: `perception/devProbe.ts` (new).
 
 ### T6.3 — Git
-- High · [ ] · depends on: T6.1
+- High · [x] · depends on: T6.1
 - Repositories under configured roots; branch, ahead/behind, changes, last
   commits, diff summary — `git` with fixed arguments, no shell.
 - Files: `perception/gitProbe.ts` (new).
 
 ### T6.4 — Tools and routes
-- High · [ ] · depends on: T6.1–T6.3
+- High · [x] · depends on: T6.1–T6.3
 - `system_overview`, `dev_status`, `git_overview` (level 0); "is my backend
   running?" and "system status" answered from real observation (the current
   "status" reply says "All systems are operational" without checking anything).
 - Files: `core/tools/observationTools.ts` (new), `core/orchestrator.ts`.
 
 ### T6.5 — Tests and documents
-- High · [ ] · depends on: T6.4
+- High · [x] · depends on: T6.4
 - Real server on a real port; real temporary git repository; injection refused.
 
 ---

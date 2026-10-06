@@ -13,7 +13,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P3 Approval gate | [x] |
 | P4 Redaction | [x] |
 | P5 Observe → act → verify | [x] |
-| P6 System and development observation | [ ] |
+| P6 System and development observation | [x] |
 | P7 World state | [ ] |
 | P8 Browser observation | [ ] |
 | P9 Browser control | [ ] |
@@ -87,13 +87,13 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P6 — System and development observation
-- [ ] System snapshot (OS, CPU, memory, disks, network)
-- [ ] Listening development ports and servers
-- [ ] Git repositories, status, branches, diff summary
-- [ ] Routes for common questions without an LLM request
-- [ ] Tests with real servers and a real repository, full suite
-- [ ] Documentation updated
-- [ ] PHASE COMPLETE
+- [x] System snapshot (OS, CPU, memory, disks, network)
+- [x] Listening development ports and servers
+- [x] Git repositories, status, branches, diff summary
+- [x] Routes for common questions without an LLM request
+- [x] Tests with real servers and a real repository, full suite
+- [x] Documentation updated
+- [x] PHASE COMPLETE
 
 ## P7 — World state
 - [ ] Model with timestamps and freshness

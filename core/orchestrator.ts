@@ -18,6 +18,8 @@ import { beginTrace, endTrace } from './traceContext.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import type { ApprovalDecision } from '../security/approvalRequest.js';
 import { verificationFailedReply, withCheck } from './verifiers.js';
+import { describeSnapshot } from '../perception/systemProbe.js';
+import { describeServers } from '../perception/devProbe.js';
 import { currentTaskNode } from './taskContext.js';
 import { toolRegistryV2, type ToolCategory } from './toolRegistryV2.js';
 import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
@@ -542,6 +544,13 @@ export class JarvisOrchestrator {
         } else if (route.type === 'enable_full_control_session') {
           const result = await runRoutedTool('enable_full_control_session', { source });
           this.speak(result?.success ? `Full control mode enabled, sir.` : 'Failed to enable full control, sir.');
+        } else if (route.type === 'status') {
+          // One sentence from a real reading; no LLM request.
+          const result = await runRoutedTool('system_overview', {});
+          this.speak(result?.success ? systemStatusReply(result.output) : 'I could not read the system state, sir.');
+        } else if (route.type === 'dev_status') {
+          const result = await runRoutedTool('dev_status', {});
+          this.speak(result?.success ? devStatusReply(result.output) : 'I could not check the local servers, sir.');
         } else if (route.type === 'list_capabilities') {
           // Through the registry like any tool call; the full list goes to the console.
           const result = await runRoutedTool('list_capabilities', {});
@@ -1584,9 +1593,13 @@ export class JarvisOrchestrator {
       return { type: 'time', reply: `It is ${timeStr}, sir.` };
     }
 
-    // 5. System Status
-    if (clean === 'status' || clean === 'system status') {
-      return { type: 'status', reply: 'All systems are operational, sir.' };
+    // 5. System status, read from the machine. It used to answer "All systems
+    //    are operational" without looking at anything.
+    if (SYSTEM_STATUS_PHRASES.has(clean)) {
+      return { type: 'status', reply: '' };
+    }
+    if (DEV_STATUS_QUESTION.test(clean)) {
+      return { type: 'dev_status', reply: '' };
     }
 
     // 6. Help
@@ -1824,6 +1837,15 @@ export class JarvisOrchestrator {
     }
     if (HISTORY_QUESTION.test(clean)) {
       addIfRegistered('action_history');
+    }
+    if (SYSTEM_QUESTION.test(clean)) {
+      addIfRegistered('system_overview');
+    }
+    if (DEV_QUESTION.test(clean)) {
+      addIfRegistered('dev_status');
+    }
+    if (GIT_QUESTION.test(clean)) {
+      addIfRegistered('git_overview');
     }
 
     const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimize|maximize)\b/i.test(clean);
@@ -2121,6 +2143,40 @@ const CAPABILITY_LIST_PHRASES = new Set([
 /** A question about what JARVIS can do, rather than a request to do something. */
 const CAPABILITY_QUESTION =
   /\b(what|which) (tools|capabilities)\b|\bwhat can you do\b|\byour (tools|capabilities|abilities)\b|\blist (your |all )?(tools|capabilities)\b/;
+
+/** "status" and its plain variants: answered from system_overview. */
+const SYSTEM_STATUS_PHRASES = new Set([
+  'status', 'system status', 'pc status', 'computer status', 'system check',
+  'how is my pc', 'how is my computer', 'how is my pc doing', 'how is my computer doing',
+  'how is my system doing', 'how is the system doing',
+]);
+
+/** "Is my backend running?" and the like: answered from dev_status. */
+const DEV_STATUS_QUESTION =
+  /^(is|are) (my|the) (backend|frontend|api|server|servers|dev server|development server|local server|app server) (still )?(running|up|on)$|^(what|which) (local |dev |development )?servers are running$|^check (my|the) (dev |local )?servers$/;
+
+/** Questions the planner should get system, server or git tools for. */
+const SYSTEM_QUESTION = /(cpu|processor|memory|ram|disk|storage|free space|uptime|ip address|network address)/;
+const DEV_QUESTION = /(port|ports|localhost|backend|frontend|dev server|server running|servers running)/;
+const GIT_QUESTION = /(git|commit|commits|branch|uncommitted|repository|repo|diff)/;
+
+/** The spoken summary of a system_overview result. */
+export function systemStatusReply(output: string): string {
+  try {
+    return describeSnapshot(JSON.parse(output));
+  } catch {
+    return 'I could not read the system state, sir.';
+  }
+}
+
+/** The spoken summary of a dev_status result. */
+export function devStatusReply(output: string): string {
+  try {
+    return describeServers(JSON.parse(output).ports ?? []);
+  } catch {
+    return 'I could not check the local servers, sir.';
+  }
+}
 
 /** A question about what JARVIS has just done. */
 const HISTORY_QUESTION =

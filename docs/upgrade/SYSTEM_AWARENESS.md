@@ -15,11 +15,18 @@ Windows-only observation: P14 ([prompt](phases/phase-14-windows.md)).
 | Network interfaces, disk volumes | `os.networkInterfaces`, PowerShell `Get-Volume` | control_system network_status / disk_status |
 | Process list | PowerShell `Get-Process` | control_process list |
 | Combined snapshot | background observer every 8–20 s → `data/runtime/system_state.json` | get_system_state, get_pc_state |
+| OS, CPU load, memory, disks, network (no MAC) — P6 | `perception/systemProbe.ts`: Node `os`, `fs.statfs` | system_overview |
+| Development servers on local ports — P6 | `perception/devProbe.ts`: TCP connect, HTTP GET of `/` | dev_status |
+| Git repositories in the project folders — P6 | `perception/gitProbe.ts`: `git` with fixed arguments, no shell | git_overview |
 
-Gaps: GPU, displays, audio devices, cameras/microphones, installed apps,
-services, listening ports, development servers, git repositories, clipboard.
-"system status" is answered with a fixed sentence ("All systems are
-operational") without looking at anything.
+Since P6, "status" / "system status" ("how is my PC doing") read the machine
+and answer in one sentence ("CPU at 3 percent, 15 of 15.7 GB memory free, 29
+GB free on the system disk, sir."); "is my backend running" / "what servers
+are running" check the ports. Neither sends a request to the LLM. Before P6,
+"status" answered "All systems are operational" without looking at anything.
+
+Gaps (P14, Windows): GPU, displays, audio devices, cameras/microphones,
+installed apps, services, the process that owns a port, clipboard.
 
 ## Target
 
@@ -31,8 +38,17 @@ operational") without looking at anything.
 | `devProbe` | Which local ports from a list accept connections; for HTTP ones the status, `Server` header and page title | TCP connect, HTTP GET with 1 s limit |
 | `gitProbe` | Repositories under configured roots; branch, ahead/behind, changed files, last commits, diff summary | `git` with fixed arguments, no shell |
 
-Configuration: `JARVIS_DEV_PORTS` (default: 3000, 3001, 4200, 5000, 5173, 5432,
-6379, 8000, 8080, 8888, 9000), `JARVIS_PROJECT_DIRS` (default: the JARVIS folder).
+Configuration (as built): `JARVIS_DEV_PORTS` (default: 3000, 3001, 4200,
+5000, 5173, 8000, 8080, 8081, 8888 — 9000 is JARVIS's own bridge and is left
+out; database ports such as 5432 or 6379 can be added and are then only
+connected to, never sent an HTTP request), `JARVIS_PROJECT_DIRS` (`;`-separated;
+default: the JARVIS folder; repositories at each folder and one level below).
+
+Limits: system 200 ms CPU sample; each port 300 ms to connect and 1 s for
+HTTP, all in parallel; each git call 3 s. Git runs with `core.fsmonitor`
+switched off and no external diff driver, so a repository's own settings
+cannot run a program (tested: a plain `git status` ran a planted fsmonitor
+program; the probe did not).
 
 ### Windows probes (P14)
 

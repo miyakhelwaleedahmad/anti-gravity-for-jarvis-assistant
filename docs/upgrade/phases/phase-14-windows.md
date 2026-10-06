@@ -21,6 +21,9 @@ dialogs, checks for window and app actions), plus `pnpm verify:windows`.
 4. Clipboard read (1, redacted) / write (2); dialogs through UI Automation.
 5. Verifiers for window and app actions (P5 hook).
 6. `scripts/verifyWindows.ts`, `pnpm verify:windows` → `data/logs/verify-windows.json`.
+   It also checks what earlier phases could only check on Linux: P6's drive
+   letters and free space (`systemProbe.driveRoots` / `statfs` on C:\ and the
+   other drives), and P3's console approval in a real CMD window.
 
 ## Implementation steps
 1. Observation commands (read-only, fixed text, no user input in the script):
