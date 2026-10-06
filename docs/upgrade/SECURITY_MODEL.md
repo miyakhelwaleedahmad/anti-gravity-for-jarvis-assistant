@@ -36,24 +36,59 @@
 | Repairs pass the risk engine | P11 |
 | JARVIS's own speech cannot approve | P12 |
 
-## Secret redaction (P4; the redactor itself from P3)
+## Secret redaction (P4, `security/redactor.ts`)
 
-`security/redactor.ts` exists from P3, where approval requests and their audit
-entries pass through it. P4 applies it to tool output.
+Replaced with a marker that keeps the kind (`[REDACTED:github-token]`): API
+keys of known shapes (Google `AIza…`/`AQ.…`, OpenAI-style `sk-…`, Groq `gsk_…`,
+GitHub, AWS, Slack), JWTs, `Authorization: Bearer …`, `Cookie` / `Set-Cookie`
+values, private-key blocks, `password` / `token` / `secret` / `api_key` pairs
+(`:` or `=`, quoted or not; quoted values keep their quotes so JSON stays
+valid), "my password is …", URLs with a password, `.env` lines whose name
+contains KEY, TOKEN, SECRET or PASSWORD, and what is left of a known key
+prefix when text was cut short before it got here.
 
-Masked wherever text leaves a tool for the LLM, memory or a log:
-API keys of known shapes (Google, OpenAI-style, Groq, GitHub, AWS, Slack),
-JWTs, `Authorization: Bearer …`, cookies and `Set-Cookie`, private-key blocks,
-`password=` / `token=` / `secret=` pairs, connection strings with a password,
-`.env` lines whose name contains KEY, TOKEN, SECRET or PASSWORD.
+Where it is applied:
 
+| Sink | Where |
+|---|---|
+| Every tool result (output and error), before the graph, synthesis, memory and the cache | `toolRegistryV2` dispatch |
+| Every message sent to the LLM — tool output, memory, context, the user's own words | `modelRouter.chat` / `streamChat` |
+| Registry call history (arguments, errors), shown by `action_history` | `toolRegistryV2._pushHistory` |
+| Conversation memory and long-term facts | `memoryManager.addMessage`, `rememberFact` |
+| Episodes (`data/episodes.jsonl`) | `agentMemory.pushEpisode` |
+| Goals on disk (`data/runtime/goals.json`; the copy in memory is unchanged) | `goalManager` file adapter |
+| Security audit, structured, tool audit and action logs; JARVIS's own speech-to-text log | the four loggers, `jarvis.ts` |
+| Approval requests and their audit entries | `security/approvalRequest.ts` (P3) |
+
+If redaction itself fails, the text is replaced by `[REDACTED]` (fail closed).
 The original stays only where the tool itself needs it (a file JARVIS was asked
 to edit is edited as it is); only what is shown to the model or stored is masked.
+
+`save_relation` refuses a credential ("I don't store passwords, keys or
+tokens"); other facts are stored with it replaced.
+
+Not covered: a password with no label ("login with hunter2") cannot be told
+from an ordinary word; the Python speech service writes its own transcript
+log (`data/logs/stt_debug.log`, from `voice/stt.py`); documents the user
+ingests for search are stored as they are, and only what reaches the LLM from
+them is redacted.
+
+## Rate limits and outside effects (P4)
+
+Each tool may run at most 120 / 60 / 20 / 10 / 10 times a minute at risk level
+0 / 1 / 2 / 3 / 4 (the level of the call, so a dry run counts as level 0).
+`JARVIS_TOOL_RATE_LIMITS="120,60,20,10,10"` overrides; 0 means no limit. Over
+the limit the call is refused before any approval is asked, is not retried,
+and JARVIS says so. A tool whose metadata says it changes something outside
+the PC (`external: change`) is at least risk 2.
 
 ## Data minimisation
 
 - Nothing is observed in the background for the new features; each tool reads
   what the current request needs.
+- Tool results stay in the request's working context; they become long-term
+  facts only through `rememberFact` (a failed task's one-line summary) or
+  `save_relation`, both without credentials (P4).
 - World state (P7) lives in memory for the session and is never written to
   long-term memory.
 - Not captured unless a user-approved operation needs it: passwords, cookies,

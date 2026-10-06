@@ -35,6 +35,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { dataRoot } from './workspaceRoot.js';
 import { fileURLToPath } from 'url';
+import { redact, redactDeep } from '../security/redactor.js';
 import type { AgentTool, RiskLevel } from './toolRegistryV2.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -143,7 +144,8 @@ export class ToolExecutionSandbox {
 
   private _summariseArgs(args: Record<string, unknown>): string {
     try {
-      const summary = JSON.stringify(args);
+      // Redacted before it is cut: half a key no longer looks like one.
+      const summary = redact(JSON.stringify(args));
       return summary.length > 200 ? summary.slice(0, 200) + '…' : summary;
     } catch {
       return '[unserializable]';
@@ -151,7 +153,7 @@ export class ToolExecutionSandbox {
   }
 
   private _writeAuditLog(entry: Record<string, unknown>): void {
-    const line = JSON.stringify(entry) + '\n';
+    const line = JSON.stringify(redactDeep(entry)) + '\n';
     void this._auditReady?.then(() =>
       fs.promises.appendFile(AUDIT_LOG_PATH, line, 'utf8').catch(() => {})
     );

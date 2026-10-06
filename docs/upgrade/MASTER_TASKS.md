@@ -210,7 +210,7 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 - Tests: synthetic secrets of each shape are masked; ordinary text untouched.
 
 ### T4.2 — Apply at the sinks
-- Critical · [ ] · depends on: T4.1
+- Critical · [x] · depends on: T4.1
 - Tool results before the planner, synthesis and memory; conversation and
   episode memory; audit and tool logs.
 - Files: `core/orchestrator.ts`, `memory/agentMemory.ts`, `memory/memoryManager.ts`,
@@ -218,18 +218,26 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 - Tests: planted secrets absent from every LLM request, memory file and log.
 
 ### T4.3 — Memory policy
-- High · [ ] · depends on: T4.2
+- High · [x] · depends on: T4.2
 - Observations are not saved as long-term facts; `save_relation` refuses
   content that the redactor flags.
 
 ### T4.4 — Rate limits and external sends
-- High · [ ] · depends on: T4.2
+- High · [x] · depends on: T4.2
 - Calls per minute per tool by risk; tools with `external: writes` are at
   least level 2.
 
 ### T4.5 — Action history
-- Normal · [ ] · depends on: T4.2
+- Normal · [x] · depends on: T4.2
 - `action_history` (level 0): recent calls and approvals, redacted.
+
+### T4.6 — Found in P4: fixed in the same phase
+- High · [x] · depends on: T4.2
+- The goal file (`data/runtime/goals.json`) stored each request's words as
+  they were, so a token said or typed in a request stayed on disk.
+- Text cut short before it was logged could leave half a key that no longer
+  matched its pattern (tool audit argument summary, episode summaries): the
+  audit redacts before cutting, and the redactor hides a cut-off key prefix.
 
 ---
 

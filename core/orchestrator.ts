@@ -18,7 +18,7 @@ import { beginTrace, endTrace } from './traceContext.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import type { ApprovalDecision } from '../security/approvalRequest.js';
 import { toolRegistryV2, type ToolCategory } from './toolRegistryV2.js';
-import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, isPermissionDenial } from '../control/permissionDenial.js';
+import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
 import { agentMemory } from '../memory/agentMemory.js';
 import { modelRouter } from '../bridge/modelRouter.js';
@@ -491,6 +491,7 @@ export class JarvisOrchestrator {
       const failureReply = (result: { error?: string; output?: string } | undefined, fallback: string): string => {
         const reason = result?.error ?? '';
         if (reason === 'APPROVAL_DENIED') return APPROVAL_DENIED_REPLY;
+        if (reason === 'RATE_LIMITED') return RATE_LIMITED_REPLY;
         if (reason === 'RISK_REFUSED') return `I couldn't do that, sir. ${(result?.output ?? '').replace(/^Refused by safety policy:\s*/, '')}`;
         if (isPermissionDenial(reason) || isPermissionDenial(result?.output ?? '')) return FULL_CONTROL_HINT;
         return reason && reason.length <= 120 ? `${fallback} ${reason}` : fallback;
@@ -1128,7 +1129,7 @@ export class JarvisOrchestrator {
       if (!result.success) {
         // Keep the dispatch gate's explanation with its code, so the reply can
         // say that full control mode is needed.
-        const explained = ['PERMISSION_DENIED', 'APPROVAL_DENIED', 'RISK_REFUSED'].includes(result.error ?? '');
+        const explained = ['PERMISSION_DENIED', 'APPROVAL_DENIED', 'RISK_REFUSED', 'RATE_LIMITED'].includes(result.error ?? '');
         throw new Error(explained ? `${result.error}: ${result.output}` : (result.error ?? result.output));
       }
 
@@ -1814,6 +1815,9 @@ export class JarvisOrchestrator {
     if (CAPABILITY_QUESTION.test(clean)) {
       addIfRegistered('list_capabilities');
     }
+    if (HISTORY_QUESTION.test(clean)) {
+      addIfRegistered('action_history');
+    }
 
     const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimize|maximize)\b/i.test(clean);
     const isLaunchIntent = !isKillOrClose && /\b(open|launch|start|run|app|application|desktop|whatsapp|youtube|chrome|calculator|vscode|code|notepad|spotify|browser|gmail|github)\b/i.test(clean);
@@ -2110,6 +2114,10 @@ const CAPABILITY_LIST_PHRASES = new Set([
 /** A question about what JARVIS can do, rather than a request to do something. */
 const CAPABILITY_QUESTION =
   /\b(what|which) (tools|capabilities)\b|\bwhat can you do\b|\byour (tools|capabilities|abilities)\b|\blist (your |all )?(tools|capabilities)\b/;
+
+/** A question about what JARVIS has just done. */
+const HISTORY_QUESTION =
+  /\bwhat (did|have) you (just )?(do|done|run|change|changed)\b|\b(recent|last|your) (actions|commands|tool calls)\b|\baction history\b/;
 
 function joinWords(items: string[]): string {
   if (items.length <= 1) return items.join('');

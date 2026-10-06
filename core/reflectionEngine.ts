@@ -25,7 +25,7 @@ import type { TaskGraph, TaskNode } from './taskGraphEngine.js';
 import type { AgentMemory } from '../memory/agentMemory.js';
 import type { ILLMMessage } from '../bridge/llmTypes.js';
 import { toolRegistryV2 } from './toolRegistryV2.js';
-import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, isPermissionDenial } from '../control/permissionDenial.js';
+import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -699,8 +699,9 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
    * allow-list, nothing open to close, no such window). Undefined otherwise.
    */
   private refusalVoiceMessage(failedNodes: TaskNode[]): string | undefined {
-    const reasons = failedNodes.map(n => (n.error ?? '').replace(/^(RISK_REFUSED|APPROVAL_DENIED):\s*/, ''));
+    const reasons = failedNodes.map(n => (n.error ?? '').replace(/^(RISK_REFUSED|APPROVAL_DENIED|RATE_LIMITED):\s*/, ''));
     if (failedNodes.some(n => (n.error ?? '').startsWith('APPROVAL_DENIED'))) return APPROVAL_DENIED_REPLY;
+    if (failedNodes.some(n => (n.error ?? '').startsWith('RATE_LIMITED'))) return RATE_LIMITED_REPLY;
     if (reasons.some(isPermissionDenial)) return FULL_CONTROL_HINT;
     const reason = reasons.find(r => /allowlist|policy|no open application|no process found|window matching .* not found|no active window/i.test(r));
     return reason && reason.length <= 160 ? `I couldn't do that, sir. ${reason.replace(/^Refused by safety policy:\s*/, '')}` : undefined;

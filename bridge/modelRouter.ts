@@ -1,7 +1,29 @@
 import { llmConfig } from "../config/llmconfig.js";
 import { groqProvider } from "./groqProvider.js";
 import { openaiProvider } from "./openaiProvider.js";
-import type { ILLMProvider, ILLMRequest, ILLMResponse } from "./llmTypes.js";
+import type { ILLMMessage, ILLMProvider, ILLMRequest, ILLMResponse } from "./llmTypes.js";
+import { redact } from "../security/redactor.js";
+
+/**
+ * The request with credentials replaced in every message: tool output, memory,
+ * context and the user's own words all reach the model through here
+ * (docs/upgrade/SECURITY_MODEL.md).
+ */
+export function redactRequest(request: ILLMRequest): ILLMRequest {
+  const messages = request.messages.map((m): ILLMMessage => {
+    const content = typeof m.content === "string"
+      ? redact(m.content)
+      : Array.isArray(m.content)
+        ? m.content.map((part) => (part && typeof part.text === "string" ? { ...part, text: redact(part.text) } : part))
+        : m.content;
+    const tool_calls = m.tool_calls?.map((call) => ({
+      ...call,
+      function: { ...call.function, arguments: redact(call.function.arguments) },
+    }));
+    return { ...m, content, ...(tool_calls ? { tool_calls } : {}) };
+  });
+  return { ...request, messages };
+}
 
 /**
  * Routes LLM calls to a provider, with ordered failover.
@@ -52,6 +74,7 @@ export class ModelRouter {
   }
 
   async chat(request: ILLMRequest, providerName?: string): Promise<ILLMResponse> {
+    request = redactRequest(request);
     const order = this.failoverOrder(providerName);
     let lastError: unknown;
 
@@ -90,6 +113,7 @@ export class ModelRouter {
    * voice replies went silent whenever the primary was down.
    */
   async *streamChat(request: ILLMRequest, providerName?: string): AsyncGenerator<string, void, unknown> {
+    request = redactRequest(request);
     const selectedProviderName = providerName || this.primary;
     const provider = this.providers.get(selectedProviderName);
 

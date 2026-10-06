@@ -8,6 +8,7 @@
 import type { AgentTool } from '../toolRegistryV2.js';
 import { graphMemory } from '../../memory/graphMemory.js';
 import { memoryManager } from '../../memory/memoryManager.js';
+import { hasSecret } from '../../security/redactor.js';
 
 // ─── Save Graph Relation ──────────────────────────────────────────────────────
 
@@ -42,6 +43,9 @@ export const saveRelationTool: AgentTool = {
 
     if (!entity1 || !relation || !entity2) {
       return 'Error: save_relation requires entity1, relation, and entity2.';
+    }
+    if ([entity1, relation, entity2].some(hasSecret)) {
+      return "Error: save_relation refused - I don't store passwords, keys or tokens, sir.";
     }
 
     if (signal?.aborted) throw new Error('ABORTED');

@@ -19,7 +19,8 @@
  */
 
 import { Low } from 'lowdb';
-import { JSONFile } from 'lowdb/node';
+import { DataFile } from 'lowdb/node';
+import { redactDeep } from '../security/redactor.js';
 import * as fs from 'fs';
 import path from 'path';
 import { dataRoot, getWorkspaceRoot } from './workspaceRoot.js';
@@ -116,7 +117,12 @@ export class GoalManager {
     fs.mkdirSync(runtimeDir, { recursive: true });
     GoalManager.migrateLegacyGoals(legacyPath, dbPath);
 
-    const adapter = new JSONFile<GoalDB>(dbPath);
+    // A goal holds the user's words; on disk they are kept without credentials
+    // (the copy in memory is unchanged for this session's retries).
+    const adapter = new DataFile<GoalDB>(dbPath, {
+      parse: JSON.parse,
+      stringify: (data) => JSON.stringify(redactDeep(data), null, 2),
+    });
 
     this.db = new Low<GoalDB>(adapter, {
       goals: [],

@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { memoryManager } from './memoryManager.js';
 import { dataRoot, getWorkspaceRoot } from '../core/workspaceRoot.js';
+import { redact, redactDeep } from '../security/redactor.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -157,12 +158,13 @@ export class AgentMemory {
     data?: Record<string, unknown>,
     importance = 5
   ): Episode {
+    // Episodes are written to disk (data/episodes.jsonl): without credentials.
     const episode: Episode = {
       id: `ep_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: Date.now(),
       type,
-      summary,
-      data,
+      summary: redact(summary),
+      data: data === undefined ? undefined : redactDeep(data),
       importance,
     };
 

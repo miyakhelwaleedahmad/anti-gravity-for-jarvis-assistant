@@ -11,6 +11,7 @@ import * as path from 'path';
 import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
 import type { ApprovalDecision, ApprovalRequest } from './approvalRequest.js';
+import { redact, redactDeep } from './redactor.js';
 
 // Resolve project root (two levels up from security/)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -54,11 +55,7 @@ export interface SecurityEvent {
 
 function sanitize(value: string | undefined): string {
   if (!value) return '';
-  // Strip anything that looks like a secret/key (basic heuristic)
-  return value
-    .replace(/sk-[A-Za-z0-9\-_]{10,}/g, '[REDACTED_KEY]')
-    .replace(/Bearer\s+[A-Za-z0-9\-._~+/=]{10,}/g, 'Bearer [REDACTED]')
-    .replace(/api[_\-]?key[=:]\s*["']?[A-Za-z0-9\-._~+/=]{8,}["']?/gi, 'api_key=[REDACTED]');
+  return redact(value);
 }
 
 class SecurityAuditLogger {
@@ -72,11 +69,13 @@ class SecurityAuditLogger {
   public log(event: SecurityEvent): void {
     try {
       this.ensureLogDir();
-      const line = JSON.stringify({
+      // Every field, not only the command and reason: targets and actions
+      // can carry a token too.
+      const line = JSON.stringify(redactDeep({
         ...event,
         command: sanitize(event.command),
         reason: sanitize(event.reason),
-      });
+      }));
       fs.appendFileSync(AUDIT_LOG_PATH, line + '\n', 'utf8');
     } catch {
       // Audit logging must never crash the application

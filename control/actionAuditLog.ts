@@ -5,6 +5,7 @@
  */
 
 import * as fs from 'fs';
+import { redactDeep } from '../security/redactor.js';
 import * as path from 'path';
 import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
@@ -47,7 +48,7 @@ export class ActionAuditLog {
     };
 
     try {
-      await fs.promises.appendFile(this.logPath, JSON.stringify(fullEntry) + '\n', 'utf-8');
+      await fs.promises.appendFile(this.logPath, JSON.stringify(redactDeep(fullEntry)) + '\n', 'utf-8');
     } catch (err) {
       console.error('[ActionAuditLog] Failed to write to audit log:', err);
     }

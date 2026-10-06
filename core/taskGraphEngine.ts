@@ -499,6 +499,8 @@ export class TaskGraphEngine extends EventEmitter {
         // Missing or rejected configuration (e.g. "SERPER_API_KEY is not set")
         // cannot fix itself; retrying only added ~3 s of silence to the reply.
         : errLower.includes('is not set') || errLower.includes('api key') || errLower.includes('unauthorized') ? 'fatal'
+        // A per-minute limit: retrying in a second hits it again.
+        : errLower.includes('rate_limited') || errLower.includes('rate limit') ? 'fatal'
         : 'transient';
       node.errorType = errorType;
 

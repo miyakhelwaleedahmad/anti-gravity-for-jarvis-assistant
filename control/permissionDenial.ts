@@ -13,6 +13,9 @@ export const FULL_CONTROL_HINT =
 /** What JARVIS says when the user did not approve an action. */
 export const APPROVAL_DENIED_REPLY = 'Cancelled, sir. You did not approve it, so nothing was done.';
 
+/** What JARVIS says when a tool hit its per-minute limit. */
+export const RATE_LIMITED_REPLY = "I've done that too many times in the last minute, sir. Try again in a minute.";
+
 /**
  * True for a refusal by the dispatch gate (PERMISSION_DENIED) or a
  * controller's level check. Retrying cannot raise the level, so callers stop

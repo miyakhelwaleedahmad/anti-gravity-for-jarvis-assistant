@@ -250,6 +250,8 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
   },
   list_capabilities: observation('Lists the tools JARVIS has, grouped, with their risk.',
     { format: 'json', description: 'Groups of tools: name, summary, risk range, approval, reversible, external' }, 'SYSTEM'),
+  action_history: observation('Lists JARVIS\'s last tool calls and approval decisions, without credentials.',
+    { format: 'json', description: 'calls (tool, args, success, error, at) and approvals (action, target, approved, by, at)' }, 'SYSTEM'),
 };
 
 /**

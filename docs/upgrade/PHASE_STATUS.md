@@ -178,3 +178,44 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   microphone hears is taken as the user's; a longer echo is not detected.
 - **Next:** P4 — redaction at the sinks, memory policy, rate limits, action history.
 
+## P4 — Redaction — COMPLETE
+
+- **Implemented:**
+  - Redaction at every sink (table in [SECURITY_MODEL.md](SECURITY_MODEL.md)):
+    each tool result in the registry, each message to the LLM in the model
+    router, the call history, conversation memory, long-term facts, episodes,
+    the goal file, the four log writers and JARVIS's speech-to-text log.
+  - `save_relation` refuses a credential; facts are stored with it replaced.
+  - Rate limits per tool per minute by the call's risk (120/60/20/10/10,
+    `JARVIS_TOOL_RATE_LIMITS`); over the limit: refused before any approval,
+    not retried, "I've done that too many times in the last minute, sir."
+  - Tools with `external: change` are at least risk 2.
+  - `action_history` (level 0): the last calls and approval decisions,
+    redacted; offered to the planner for "what did you just do?".
+  - The redactor (from P3) also: JSON stays valid, "my password is …", a key
+    cut short, whole objects (`redactDeep`), fail closed.
+- **Found and fixed:**
+  - The goal file stored each request's words as given, a token included.
+  - Text cut short before it was logged could leave half a key that no longer
+    matched (the tool audit's argument summary, episode summaries).
+- **Found, scheduled:** when graph memory is off (the default),
+  `save_relation` saves nothing and still says "Saved relation" — a silent
+  no-op, the subject of P5.
+- **Tested:**
+  - `tests/secretSinksTest.ts`: 23 checks, all pass — five synthetic secrets
+    planted in a tool's output and in the user's own words, through the real
+    registry, orchestrator and model router (a fake provider records every
+    request): none in any LLM request or in any of the 7 files written; memory,
+    episodes, goals and logs keep their entries without them; save_relation;
+    rate limit with an honest reply and no retry; the external-change floor;
+    action_history. On the code before P4: 16 of 23 fail.
+  - `tests/redactionTest.ts`: 38 checks (P3's 29 plus JSON, said-aloud,
+    cut-short, objects, depth).
+  - Full suite: 97 files, 91 passed · 0 failed · 6 environment — no ordinary
+    tool output broken by redaction.
+- **Known limits:** a password with no label cannot be recognised; the Python
+  speech service's own transcript log is not redacted; documents ingested for
+  search are stored as they are (only what reaches the LLM from them is
+  redacted); the limits count per process (a restart starts them again).
+- **Next:** P5 — observe → act → verify.
+

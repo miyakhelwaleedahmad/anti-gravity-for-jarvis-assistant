@@ -11,7 +11,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P1 Tool registry | [x] |
 | P2 Risk engine | [x] |
 | P3 Approval gate | [x] |
-| P4 Redaction | [ ] |
+| P4 Redaction | [x] |
 | P5 Observe → act → verify | [ ] |
 | P6 System and development observation | [ ] |
 | P7 World state | [ ] |
@@ -70,13 +70,13 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 
 ## P4 — Redaction
 - [x] Redactor for keys, tokens, passwords, private keys, cookies (built in P3)
-- [ ] Applied before the LLM, memory and logs
-- [ ] Observations kept out of long-term memory by default
-- [ ] Per-tool rate limits; external-send policy
-- [ ] Action history tool
-- [ ] Leak tests over all sinks, full suite
-- [ ] Documentation updated
-- [ ] PHASE COMPLETE
+- [x] Applied before the LLM, memory and logs
+- [x] Observations kept out of long-term memory by default
+- [x] Per-tool rate limits; external-send policy
+- [x] Action history tool
+- [x] Leak tests over all sinks, full suite
+- [x] Documentation updated
+- [x] PHASE COMPLETE
 
 ## P5 — Observe → act → verify
 - [ ] Verifier hook in the registry; unverified counts as failure

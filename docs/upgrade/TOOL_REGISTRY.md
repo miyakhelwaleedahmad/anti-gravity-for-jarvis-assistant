@@ -81,6 +81,7 @@ Risk per action where a tool has several. "R" = reversible.
 | disable_full_control_session | SYSTEM | 1 | partial | none |
 | cancel_current_action | SYSTEM | 1 | no | none |
 | list_capabilities (new) | SYSTEM | 0 | yes | none |
+| action_history (new, P4) | SYSTEM | 0 | yes | none |
 
 Notes:
 - P2's argument rules can raise a call's risk (a recursive delete, deleting a
@@ -105,5 +106,7 @@ Notes:
   each has (196 characters), so the model knows what exists beyond the few
   tools offered with that request.
 - `list_capabilities` — the grouped list through a tool, so the model can ask.
+- `action_history` (P4) — the last tool calls and approval decisions, redacted;
+  offered to the planner for "what did you just do?".
 - "what can you do" / "who are you" / "list your tools" — answered from the
   registry, no LLM request.

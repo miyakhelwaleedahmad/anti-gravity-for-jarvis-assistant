@@ -24,6 +24,7 @@ import * as fs   from 'fs';
 import * as path from 'path';
 import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
+import { redactDeep } from '../security/redactor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -194,7 +195,7 @@ export class StructuredLogger {
 
   private _writeToFile(entry: LogEntry): void {
     if (!this.writeStream) return;
-    const line = JSON.stringify(entry) + '\n';
+    const line = JSON.stringify(redactDeep(entry)) + '\n';
     const bytes = Buffer.byteLength(line, 'utf8');
 
     // Rotate if over size limit

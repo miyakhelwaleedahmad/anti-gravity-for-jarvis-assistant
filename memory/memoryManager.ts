@@ -24,6 +24,7 @@ import { pipelineRegistry } from "../self_healing/pipelineRegistry.js";
 import { spawn, ChildProcess } from "child_process";
 import * as readline from "readline";
 import { graphMemory } from "./graphMemory.js";
+import { redact } from "../security/redactor.js";
 import {
   initRedis,
   cacheVectorResult,
@@ -495,7 +496,8 @@ export class MemoryManager {
     const entry: MemoryEntry = {
       id: this.generateId(),
       role,
-      content,
+      // Never stored with a credential in it, whoever said it.
+      content: redact(content),
       timestamp: Date.now(),
       tags,
     };
@@ -571,7 +573,8 @@ export class MemoryManager {
   async rememberFact(fact: string, source = "conversation", importance = 5, confidence = 0.8): Promise<void> {
     this.ensureInit();
 
-    const cleanFact = fact.trim();
+    // A fact is kept for good: a credential in it is replaced, not stored.
+    const cleanFact = redact(fact.trim());
     if (!cleanFact) {
       throw new Error("[Memory] rememberFact requires a non-empty fact.");
     }

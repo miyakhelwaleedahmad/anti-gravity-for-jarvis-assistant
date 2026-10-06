@@ -54,6 +54,8 @@ The above plus `security/redactor.ts` (new), `core/tools/historyTool.ts` (new),
 P1, P2 (P3 for the approval-history part).
 
 ## Tests
+(As built: the patterns in `tests/redactionTest.ts`, the sinks in
+`tests/secretSinksTest.ts`.)
 `tests/redactionTest.ts`: each pattern with synthetic secrets (never real
 keys); plain text unchanged; end-to-end: a stubbed tool returns text with
 planted secrets → no LLM request (spy on `modelRouter`), memory file, episode

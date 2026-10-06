@@ -44,6 +44,7 @@ if (!redactSecrets) {
     ['password in prose', `the password: ${fill(10)} works`, 'secret'],
     ['api_key in a command', `curl --data api_key=${fill(16)}`, 'secret'],
     ['JSON secret', `{"client_secret": "${fill(20)}"}`, 'secret'],
+    ['a password said in words', `my wifi password is ${fill(10)} thanks`, 'secret'],
   ];
   for (const [label, input, kind] of cases) {
     const r = redactSecrets(input);
@@ -74,6 +75,32 @@ if (!redactSecrets) {
     ok(`unchanged: "${plain.slice(0, 40)}"`, r.text === plain && r.count === 0, r.text);
   }
   ok('empty text', redactSecrets('').text === '' && redactSecrets('').count === 0);
+
+  // Text shortened before redaction: what is left of a key is still hidden.
+  for (const cut of [`User [voice]: my key is gsk_${fill(9, 'xY7')}`, `token prefix AIza${fill(12)}…`, `line one\nsk-proj-${fill(8)}\nline three`]) {
+    const r = redactSecrets(cut);
+    ok(`a key cut short is hidden: "${cut.slice(0, 30).replace('\n', ' ')}…"`, r.kinds.includes('truncated-key') && !/gsk_x|AIzaa|sk-proj-a/i.test(r.text), r.text.replace('\n', ' '));
+  }
+  ok('…but a word that merely ends in such letters is not', redactSecrets('ask-help desk-top').count === 0);
+
+  // Tool output is often JSON: it must stay parseable.
+  const json = JSON.stringify({ success: true, token: fill(20), nested: { api_key: fill(16), note: 'ok' }, list: [`Bearer ${fill(20)}`] });
+  const masked = redactSecrets(json).text;
+  let parsed: any = null;
+  try { parsed = JSON.parse(masked); } catch { /* invalid */ }
+  ok('JSON stays valid JSON', parsed !== null, masked);
+  ok('…with the values hidden', parsed?.token === '[REDACTED:secret]' && parsed?.nested?.api_key === '[REDACTED:secret]'
+    && parsed?.nested?.note === 'ok' && parsed?.list?.[0] === 'Bearer [REDACTED:bearer]', masked);
+
+  const { redactDeep } = await import('../security/redactor.js' as string);
+  const entry = { tool: 'run_command', args: { command: `curl -H "Authorization: Bearer ${fill(24)}"` }, count: 3, ok: true, when: null };
+  const deep = redactDeep(entry);
+  let nested: any = { v: `gsk_${fill(30, 'xY7')}` };
+  for (let i = 0; i < 20; i++) nested = { next: nested };
+  ok('deeper than it walks: fails closed', JSON.stringify(redactDeep(nested)).includes('[REDACTED]') && !JSON.stringify(redactDeep(nested)).includes('gsk_'));
+  ok('objects: every string redacted, other values kept',
+    deep.args.command.includes('[REDACTED:bearer]') && deep.count === 3 && deep.ok === true && deep.when === null && entry.args.command.includes(fill(24)),
+    JSON.stringify(deep));
 }
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);

@@ -31,6 +31,7 @@ import { approvalGate } from '../security/approvalGate.js';
 import { runApproved, type ApprovedCall } from '../security/approvalScope.js';
 import { getRequestSource, getRequestText } from './traceContext.js';
 import { buildApprovalRequest } from '../security/approvalRequest.js';
+import { redact, redactDeep } from '../security/redactor.js';
 
 /** Execution risk: drives sandboxing, caching and queueing (not permissions). */
 export type RiskLevel = 'low' | 'medium' | 'high';
@@ -238,6 +239,25 @@ export function reportedFailure(output: string): { failed: boolean; reason?: str
 
 // ─── Tool Registry V2 ─────────────────────────────────────────────────────────
 
+/** Calls per tool per minute at risk level 0–4 (JARVIS_TOOL_RATE_LIMITS overrides; 0 = no limit). */
+const DEFAULT_RATE_LIMITS = [120, 60, 20, 10, 10] as const;
+const RATE_WINDOW_MS = 60_000;
+
+export function rateLimitFor(level: number, env: Record<string, string | undefined> = process.env): number {
+  const configured = (env['JARVIS_TOOL_RATE_LIMITS'] ?? '').split(',').map((v) => v.trim());
+  const value = Number(configured[level]);
+  if (configured[level] !== undefined && configured[level] !== '' && Number.isFinite(value) && value >= 0) return value;
+  return DEFAULT_RATE_LIMITS[Math.max(0, Math.min(4, level))] ?? 10;
+}
+
+/** A tool result with credentials replaced in what it says. */
+function redactResult(result: ToolResult): ToolResult {
+  const output = redact(result.output);
+  const error = result.error === undefined ? undefined : redact(result.error);
+  if (output === result.output && error === result.error) return result;
+  return { ...result, output, ...(error !== undefined ? { error } : {}) };
+}
+
 export class ToolRegistryV2 {
   private tools = new Map<string, AgentTool>();
   /** Tools registered without catalogue or declared metadata. */
@@ -254,6 +274,8 @@ export class ToolRegistryV2 {
   private _metrics = new Map<string, ToolMetrics>();
   /** Execution history ring buffer (max 200 entries) */
   private _history: ExecutionRecord[] = [];
+  /** When each tool was last dispatched, for the per-minute limits. */
+  private _callTimes = new Map<string, number[]>();
   private readonly HISTORY_MAX = 200;
   /** Consecutive failures before a tool is auto-degraded */
   private readonly DEGRADE_THRESHOLD = 5;
@@ -391,9 +413,10 @@ export class ToolRegistryV2 {
   riskOf(name: string, args: Record<string, unknown> = {}): RiskTier {
     const meta = this.getMeta(name);
     if (!meta) return 4;
-    if (!meta.actions) return meta.risk;
     const action = typeof args['action'] === 'string' ? args['action'].toLowerCase() : '';
-    return meta.actions[action]?.risk ?? meta.risk;
+    const risk = meta.actions ? meta.actions[action]?.risk ?? meta.risk : meta.risk;
+    // Changing something outside the PC (sending, posting) is never below 2.
+    return meta.external === 'change' ? (Math.max(2, risk) as RiskTier) : risk;
   }
 
   /** What JARVIS can do, grouped by category, optionally filtered. */
@@ -645,6 +668,14 @@ export class ToolRegistryV2 {
       securityAuditLogger.denied(name, `LEVEL_${assessment.level}`, decision.message, name);
       return { success: false, output: decision.message, error: decision.code, tool: name, durationMs: Date.now() - start };
     }
+
+    // Per-minute limit by the call's risk, before anyone is asked to approve it.
+    const overLimit = this.overRateLimit(name, assessment.level);
+    if (overLimit) {
+      console.warn(`[ToolRegistry] ⛔ ${overLimit}`);
+      securityAuditLogger.denied(name, `LEVEL_${assessment.level}`, overLimit, name);
+      return { success: false, output: overLimit, error: 'RATE_LIMITED', tool: name, durationMs: Date.now() - start };
+    }
     let approvedCall: ApprovedCall | undefined;
     if (decision.outcome === 'approve') {
       const label = callLabel(name, assessment.action);
@@ -707,9 +738,11 @@ export class ToolRegistryV2 {
       }
     }
 
+    this.noteCall(name);
     const runUnderLock = async () => {
-      // 4. Execute with timeout + abort signal
-      const result = await this.executeWithFallbacks(tool, args, externalSignal, start);
+      // 4. Execute with timeout + abort signal. What a tool returns goes on to
+      // the LLM, memory and logs, so credentials in it are replaced here.
+      const result = redactResult(await this.executeWithFallbacks(tool, args, externalSignal, start));
 
       // 5. Cache successful results of cacheable tools
       if (result.success && this.isCacheable(tool)) {
@@ -731,8 +764,8 @@ export class ToolRegistryV2 {
         } catch (err: any) {
           resolve({
             success: false,
-            output: `Queue execution error: ${err.message}`,
-            error: err.message,
+            output: redact(`Queue execution error: ${err.message}`),
+            error: redact(String(err.message)),
             tool: tool.name,
             durationMs: Date.now() - start,
           });
@@ -960,7 +993,13 @@ export class ToolRegistryV2 {
     if (this._history.length >= this.HISTORY_MAX) {
       this._history.shift(); // drop oldest
     }
-    this._history.push(record);
+    // Kept without credentials: action_history shows it, and arguments can
+    // carry a token (a command line, a URL).
+    this._history.push({
+      ...record,
+      args: redactDeep(record.args),
+      ...(record.error !== undefined ? { error: redact(record.error) } : {}),
+    });
   }
 
   /** Returns metrics for all tools or a specific tool. */
@@ -970,6 +1009,24 @@ export class ToolRegistryV2 {
       return m ? [m] : [];
     }
     return [...this._metrics.values()];
+  }
+
+  /** The limit message when `name` has run as often as its limit allows this minute. */
+  private overRateLimit(name: string, level: number): string | null {
+    const limit = rateLimitFor(level);
+    if (limit <= 0) return null;
+    const now = Date.now();
+    const recent = (this._callTimes.get(name) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+    this._callTimes.set(name, recent);
+    return recent.length >= limit
+      ? `Rate limit: ${name} ran ${recent.length} times in the last minute (limit ${limit} at risk level ${level}). Try again in a minute.`
+      : null;
+  }
+
+  private noteCall(name: string): void {
+    const times = this._callTimes.get(name) ?? [];
+    times.push(Date.now());
+    this._callTimes.set(name, times);
   }
 
   /** Returns recent execution history (newest last). */

@@ -44,6 +44,7 @@ import { fsWatcher }          from './self_healing/fsWatcher.js';
 // NEW: Phase 1 — shutdown hook imports
 import { goalManager }           from './core/goalManager.js';
 import { approvalGate }          from './security/approvalGate.js';
+import { redact }                from './security/redactor.js';
 // NEW: Phase 2 — Runtime health dashboard
 import { runtimeDashboard }      from './monitoring/runtimeDashboard.js';
 // NEW: Phase 3 — Vector memory supervisor
@@ -142,7 +143,7 @@ function sttJsLog(event: string, text: string, note?: string): void {
       ts: new Date().toISOString(),
       source: 'jarvis.ts',
       event,
-      text: text.slice(0, 200),
+      text: redact(text).slice(0, 200),
       ...(note ? { note: note.slice(0, 120) } : {}),
     });
     appendSttLogLine(entry);
