@@ -19,7 +19,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P9 Browser control | [x] |
 | P10 Files and development actions | [x] |
 | P11 Error recovery | [x] |
-| P12 Voice | [ ] |
+| P12 Voice | [x] |
 | P13 Integration and scenarios | [ ] |
 | P14 Windows observation and control | [ ] |
 | P15 Final verification | [ ] |
@@ -138,12 +138,12 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P12 — Voice
-- [ ] Spoken approval request and answer rules
-- [ ] Spoken summaries for observations
-- [ ] New capabilities reachable by voice through the same pipeline
-- [ ] JARVIS's own speech cannot approve
-- [ ] Tests (simulated speech), full suite, documentation
-- [ ] PHASE COMPLETE
+- [x] Spoken approval request and answer rules
+- [x] Spoken summaries for observations
+- [x] New capabilities reachable by voice through the same pipeline
+- [x] JARVIS's own speech cannot approve
+- [x] Tests (simulated speech), full suite, documentation
+- [x] PHASE COMPLETE
 
 ## P13 — Integration and scenarios
 - [ ] Browser, backend, application, "continue", website, dangerous-request scenarios

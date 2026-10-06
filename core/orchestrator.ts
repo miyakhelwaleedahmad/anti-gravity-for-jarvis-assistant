@@ -16,6 +16,7 @@
 import { agentStateMachine, AgentState } from './agentStateMachine.js';
 import { asRepair, beginTrace, endTrace } from './traceContext.js';
 import { diagnose, MAX_RECOVERY_ROUNDS, observeFailure } from './recoveryPlanner.js';
+import { runningSummary, systemStateSummary, tabsSummary } from './voiceSummaries.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import type { ApprovalDecision } from '../security/approvalRequest.js';
 import { verificationFailedReply, withCheck } from './verifiers.js';
@@ -555,11 +556,29 @@ export class JarvisOrchestrator {
             : failureReply(result, `I tried to close the active window but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'get_system_state') {
+          // A few spoken sentences; the full state goes to the console (it used to be read out as JSON).
           const result = await runRoutedTool('get_system_state', {});
-          this.speak(result?.success ? `Here is the current system state, sir: ${result.output}` : 'Failed to retrieve system state, sir.');
+          if (result?.success) console.log(`[Orchestrator] System state:\n${result.output}`);
+          this.speak(result?.success ? systemStateSummary(parseJson(result.output)) : 'Failed to retrieve system state, sir.');
         } else if (route.type === 'get_browser_tabs') {
-          const result = await runRoutedTool('get_browser_tabs', {});
-          this.speak(result?.success ? `Here are the open Chrome tabs, sir: ${result.output}` : 'Failed to retrieve browser tabs, sir.');
+          // The tabs with the one on screen (P8), said in at most three sentences.
+          const live = await runRoutedTool('browser_state', {});
+          const state = live?.success ? parseJson(live.output.replace(/^<untrusted_context[^>]*>\n?|\n?<\/untrusted_context>$/g, '')) : null;
+          if (state?.tabs) {
+            console.log(`[Orchestrator] Browser:\n${live!.output}`);
+            this.speak(tabsSummary(state.tabs));
+          } else {
+            if (live && !live.success) console.log(`[Orchestrator] ${live.output}`);
+            const seen = await runRoutedTool('get_browser_tabs', {});
+            const tabs = seen?.success ? parseJson(seen.output) : null;
+            this.speak(Array.isArray(tabs) && tabs.length
+              ? tabsSummary(tabs)
+              : 'Chrome is not reachable for me, sir. The console shows how to start it with the debugging port.');
+          }
+        } else if (route.type === 'whats_running') {
+          const [apps, servers] = await Promise.all([runRoutedTool('get_open_apps', {}), runRoutedTool('dev_status', {})]);
+          const appList = apps?.success ? parseJson(apps.output) : null;
+          this.speak(runningSummary(Array.isArray(appList) ? appList : [], servers?.success ? devStatusReply(servers.output) : 'I could not check the local servers, sir.'));
         } else if (route.type === 'is_tab_open' && route.target) {
           const result = await runRoutedTool('is_tab_open', { tabNameOrUrl: route.target });
           this.speak(result?.success && result.output === 'true' ? `Yes, the ${route.target} tab is open, sir.` : `No, the ${route.target} tab is not open, sir.`);
@@ -1635,8 +1654,11 @@ export class JarvisOrchestrator {
     if (clean === 'what is open') {
       return { type: 'get_system_state', reply: 'Checking what is open, sir.' };
     }
-    if (clean === 'what is open in chrome') {
+    if (BROWSER_TABS_PHRASES.has(clean)) {
       return { type: 'get_browser_tabs', reply: 'Checking open Chrome tabs, sir.' };
+    }
+    if (RUNNING_PHRASES.has(clean)) {
+      return { type: 'whats_running', reply: '' };
     }
     if (clean === 'is youtube open') {
       return { type: 'is_tab_open', target: 'youtube', reply: 'Checking if YouTube is open, sir.' };
@@ -1655,7 +1677,9 @@ export class JarvisOrchestrator {
       'good night': 'Good night, sir.',
       'okay': 'Understood.',
       'ok': 'Understood.',
-      'yes': 'Confirmed.',
+      // Nothing is waiting for an answer here (a pending approval takes "yes"
+      // before routing): "Confirmed." suggested that something was approved.
+      'yes': 'Understood, sir. Nothing is waiting for your approval.',
       'no': 'Understood.',
     };
     if (clean in simplePhrases) {
@@ -2255,6 +2279,23 @@ const CAPABILITY_LIST_PHRASES = new Set([
 ]);
 
 /** A question about what JARVIS can do, rather than a request to do something. */
+/** Questions about the browser's tabs, answered from browser_state without the LLM. */
+const BROWSER_TABS_PHRASES = new Set([
+  'what is open in chrome', 'whats open in chrome', 'what is open in my browser', 'whats open in my browser',
+  'what is open in the browser', 'whats open in the browser', 'which tabs are open', 'what tabs are open',
+  'what tabs do i have open', 'which tabs do i have open',
+]);
+
+/** "What's running?": open apps and local servers. */
+const RUNNING_PHRASES = new Set([
+  'whats running', 'what is running', 'whats running on my pc', 'what is running on my pc',
+  'whats running on my computer', 'what is running on my computer', 'what apps are running',
+]);
+
+function parseJson(text: string): any {
+  try { return JSON.parse(text); } catch { return null; }
+}
+
 const CAPABILITY_QUESTION =
   /\b(what|which) (tools|capabilities)\b|\bwhat can you do\b|\byour (tools|capabilities|abilities)\b|\blist (your |all )?(tools|capabilities)\b/;
 

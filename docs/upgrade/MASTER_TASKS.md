@@ -462,16 +462,22 @@ Bounded attempts; honest final message.
 
 ## P12 — Voice
 
-### T12.1 — Spoken approval · Critical · [ ] · depends on: T11.4
+### T12.1 — Spoken approval · Critical · [x] · depends on: T11.4
 Short request (action, target, risk, reversibility); answer window; level 4 not by voice.
+(Mostly built in P3; P12 ends the request on "cancel".)
 
-### T12.2 — JARVIS cannot approve itself · Critical · [ ] · depends on: T12.1
+### T12.2 — JARVIS cannot approve itself · Critical · [x] · depends on: T12.1
 A heard answer matching JARVIS's own last speech is rejected.
+Found in P12: only the request itself was guarded; an "approve" heard while
+JARVIS said anything else during the window approved, and the echo of "Voice
+cannot approve this one" denied a level-4 request. Anything heard while JARVIS
+speaks, or 0.3 s after, is now ignored.
 
-### T12.3 — Spoken summaries · Normal · [ ] · depends on: T11.4
+### T12.3 — Spoken summaries · Normal · [x] · depends on: T11.4
 At most three sentences; details printed.
+Found in P12: "what is open" and "what is open in chrome" read raw JSON aloud.
 
-### T12.4 — Voice routes · Normal · [ ] · depends on: T12.3
+### T12.4 — Voice routes · Normal · [x] · depends on: T12.3
 New observation questions by voice, same pipeline.
 
 ---

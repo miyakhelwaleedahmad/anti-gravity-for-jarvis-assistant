@@ -578,3 +578,41 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   servers JARVIS ran is in memory.
 - **Next:** P12 — voice.
 
+## P12 — Voice — COMPLETE
+
+- **Implemented** ([VOICE.md](VOICE.md)):
+  - The spoken approval request ends on "Say approve or cancel." (an echo of
+    its last word can only deny).
+  - `approvalGate.offerVoiceAnswer` ignores anything heard while JARVIS
+    speaks any message during the window, and for 0.3 s after.
+  - `core/voiceSummaries.ts`: "what is open in my browser" / "which tabs are
+    open" (browser_state, with the tab on screen), "what is open", and the
+    new "what's running" are answered in at most three sentences from real
+    readings, with no LLM request; details go to the console.
+  - "yes" with nothing waiting answers "Understood, sir. Nothing is waiting
+    for your approval." instead of "Confirmed."
+- **Found and fixed:** an "approve" heard while JARVIS said something else
+  during the approval window approved; the echo of "Voice cannot approve this
+  one" denied a level-4 request; "what is open" and "what is open in chrome"
+  read raw JSON aloud; "Confirmed." for a "yes" that confirmed nothing. All
+  shown on the P11 code.
+- **Tested:** `tests/voiceApprovalTest.ts`, a simulated speech stream against
+  the real approval gate and orchestrator, 20 checks, all pass — the spoken
+  request's question and ending; "approve" after JARVIS finished approves;
+  the request heard back ignored, then the user's answer approves; an echo of
+  "cancel" denies; "approve" during another message ignored, accepted after
+  it; no answer denies; level 4: voice refused with the spoken notice, its
+  echo does not deny, the typed code approves; the risk engine decides the
+  same for eight calls spoken or typed; five questions answered by voice in
+  at most three sentences, no LLM request, no JSON; a tab summary with the tab
+  on screen and clipped titles. On the P11 code: 8 of 20 pass.
+  `approvalGateStructuredTest` (60), `systemStateRouteTest` (31),
+  `deterministicCommandRouteTest` (44), `voiceRouteMockTest` (9) still pass.
+  Full suite: 105 files, 99 passed · 0 failed · 6 environment; CI mode 97
+  passed · 8 skipped.
+- **Not verified here:** a real microphone and speaker (P14 Windows pack):
+  how late the speech recognizer delivers an echo after JARVIS stops.
+- **Known limits:** STT results carry no capture time, so a bare "approve"
+  heard after JARVIS finishes is taken as the user's.
+- **Next:** P13 — integration scenarios.
+

@@ -154,7 +154,9 @@ JARVIS NEEDS YOUR APPROVAL  (request apr_muw8a4kv_dibk)
 ```
 
 Spoken: "Sir, I need your approval to end process on notepad. Risk level 3. It
-cannot be undone. Do you approve this action? Say approve or confirm."
+cannot be undone. Do you approve this action? Say approve or cancel." (Since
+P12 it ends on "cancel": an echo of its last word can only deny; before, it
+ended on "confirm".)
 
 Where the fields come from: ACTION from a title per tool action; WHY from the
 user's words for this request (or, with none, the reason approval is needed);
@@ -171,9 +173,14 @@ Answer rules:
 - Spoken: "approve", "confirm" or "yes" (also "yes sir", "I approve"), counted
   only from the moment JARVIS has finished saying the request — and anything
   else it was saying before it — until 10 s later. Words heard while JARVIS is
-  speaking are its own voice and are ignored, so its "say approve or confirm"
-  cannot approve anything. "no", "cancel", "stop" deny. Any other sentence
-  denies the request and is then handled as a new command.
+  speaking are its own voice and are ignored, so its "say approve or cancel"
+  cannot approve anything. Since P12 this holds for anything JARVIS says while
+  the request waits (a reminder, "Voice cannot approve this one"), while it
+  plays and for 0.3 s after; before, an "approve" heard during such a message
+  approved, and the echo of "Voice cannot approve this one" denied a level-4
+  request the user was about to approve with the code. "no", "cancel", "stop"
+  deny. Any other sentence denies the request and is then handled as a new
+  command.
 - An answer is consumed: it is not also run as a command. (Before, the typed
   answer went to the command prompt as well, and the spoken one to the echo
   filter.)

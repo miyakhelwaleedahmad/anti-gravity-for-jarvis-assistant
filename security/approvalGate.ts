@@ -65,6 +65,9 @@ function words(text: string): string {
 }
 
 export class ApprovalGate {
+  /** When JARVIS last started and stopped speaking (the bridge), once a spoken request was made. */
+  private speech?: { ttsStartedMs: number; ttsEndedMs: number };
+
   private pending: Pending | null = null;
   private turn: Promise<void> = Promise.resolve();
   private consoleAttached = false;
@@ -156,6 +159,10 @@ export class ApprovalGate {
     }
     const now = Date.now();
     if (now < p.listeningFrom || now > p.expiresAt) return false;
+    // Anything JARVIS says while the request waits (a reminder, "voice cannot
+    // approve this one") is its own voice too, while it plays and just after.
+    const tts = this.speech;
+    if (tts && (tts.ttsStartedMs > tts.ttsEndedMs || now < tts.ttsEndedMs + ECHO_TAIL_MS)) return false;
     if (kind === 'other') {
       const heard = words(text);
       if (heard && words(spokenApprovalRequest(p.request)).includes(heard)) return false; // the request, heard back
@@ -320,6 +327,7 @@ export class ApprovalGate {
    */
   private async _voiceOrTextPromptWithTimeout(request: ApprovalRequest, timeoutMs: number): Promise<string> {
     const { nodeBridge } = await import('../bridge/nodeBridge.js');
+    this.speech = nodeBridge;
     const pending = this.openPending(request, { console: this.consoleAttached, voice: true });
     // Without the CLI loop, read a typed answer here as before.
     const typed = !this.consoleAttached && process.stdin.isTTY

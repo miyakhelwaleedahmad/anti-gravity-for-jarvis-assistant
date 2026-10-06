@@ -58,3 +58,13 @@ voice and text decisions.
 
 ## Completion requirements
 Gate; checklist; PHASE_STATUS; commit `phase-12-voice`; CI green.
+
+## As built (alignment note)
+- Voice answers go through `approvalGate.offerVoiceAnswer` (P3), not
+  `nodeBridge.waitForTextConfirmation`; `jarvis.ts` needed no change.
+- Content-based echo rules: the request heard back is ignored (P3), and
+  anything heard while JARVIS speaks or 0.3 s after (P12). A single heard
+  "approve" that is also a word of the request is accepted once JARVIS has
+  finished: STT results carry no capture time, so JARVIS ends the request on
+  "cancel" so that the likeliest echo can only deny.
+- Details: [VOICE.md](../VOICE.md).

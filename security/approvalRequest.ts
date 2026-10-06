@@ -259,7 +259,8 @@ export function spokenApprovalRequest(r: ApprovalRequest): string {
     `Sir, I need your approval to ${r.action.toLowerCase()}${target}.`,
     `Risk level ${r.risk}.`,
     SPOKEN_REVERSIBILITY[r.reversibility],
-    'Do you approve this action? Say approve or confirm.',
+    // Ends on "cancel": an echo of the last word can only deny.
+    'Do you approve this action? Say approve or cancel.',
   ].filter(Boolean).join(' ');
 }
 
