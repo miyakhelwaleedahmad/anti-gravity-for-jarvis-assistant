@@ -10,9 +10,24 @@ import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { keyboardController } from './keyboardController.js';
 import { rollbackManager } from './rollbackManager.js';
+import { activateTab, cdpPort, closeTabById, openTab } from '../perception/cdpClient.js';
 
-const DEBUG_PORT = 9222;
-const BASE_URL = `http://127.0.0.1:${DEBUG_PORT}`;
+/** JARVIS_CDP_PORT (default 9222), read at each call. */
+const baseUrl = () => `http://127.0.0.1:${cdpPort()}`;
+
+/**
+ * A browser window has the keyboard. Known on Windows only; elsewhere false,
+ * so that a shortcut is never pressed into some other application.
+ */
+async function browserInFront(): Promise<boolean> {
+  try {
+    const { getWindowsState } = await import('../perception/windowsState.js');
+    const state = await getWindowsState({ allowStale: false });
+    return /^(chrome|msedge|brave|firefox|opera|vivaldi)$/i.test(state.activeWindow.processName.replace(/\.exe$/i, ''));
+  } catch {
+    return false;
+  }
+}
 
 export interface CDPTab {
   id: string;
@@ -23,12 +38,12 @@ export interface CDPTab {
 
 export class BrowserController {
   private getInstruction(): string {
-    return 'Please start Chrome with remote debugging enabled:\nstart chrome.exe --remote-debugging-port=9222 --user-data-dir="W:\\jarvis-chrome-profile"';
+    return `Please start Chrome with remote debugging enabled:\nstart chrome.exe --remote-debugging-port=${cdpPort()} --user-data-dir="W:\\jarvis-chrome-profile"`;
   }
 
   private async fetchCDPTabs(): Promise<CDPTab[]> {
     try {
-      const response = await axios.get(`${BASE_URL}/json/list`, { timeout: 1500 });
+      const response = await axios.get(`${baseUrl()}/json/list`, { timeout: 1500 });
       return Array.isArray(response.data) ? response.data : [];
     } catch {
       throw new Error(`Chrome DevTools endpoint unavailable.\n${this.getInstruction()}`);
@@ -56,11 +71,24 @@ export class BrowserController {
       return null;
     }
     const lower = query.toLowerCase().trim();
-    const match = tabs.find(t => 
-      t.type === 'page' && 
+    // A tab's own id first: closeActiveTab and refreshTab pass one, and an id
+    // is in no title or URL, so those calls used to find nothing.
+    const match = tabs.find(t => t.type === 'page' && t.id === query.trim()) ?? tabs.find(t =>
+      t.type === 'page' &&
       (t.title.toLowerCase().includes(lower) || t.url.toLowerCase().includes(lower))
     );
     return match || null;
+  }
+
+  /** The tab on screen, or null when Chrome is not reachable. */
+  private async visibleTab(): Promise<CDPTab | null> {
+    try {
+      const { readBrowserState } = await import('../perception/browserState.js');
+      const tab = (await readBrowserState(cdpPort())).visibleTab;
+      return tab ? { id: tab.id, title: tab.title, url: tab.url, type: 'page' } : null;
+    } catch {
+      return null;
+    }
   }
 
   public async isTabOpen(query: string): Promise<boolean> {
@@ -82,8 +110,8 @@ export class BrowserController {
       throw new Error(`Browser tab matching "${query}" not found.`);
     }
 
-    await axios.get(`${BASE_URL}/json/activate/${tab.id}`);
-    return `Focused tab: "${tab.title}"`;
+    await activateTab(tab.id, cdpPort());
+    return `Focused tab: "${tab.title}" (tab ${tab.id})`;
   }
 
   public async closeTab(query: string): Promise<string> {
@@ -115,23 +143,22 @@ export class BrowserController {
       return true;
     });
 
-    await axios.get(`${BASE_URL}/json/close/${tab.id}`);
-    return `Closed tab: "${tab.title}"`;
+    await closeTabById(tab.id, cdpPort());
+    return `Closed tab: "${tab.title}" (tab ${tab.id})`;
   }
 
   public async closeActiveTab(): Promise<string> {
-    // Close active tab using Ctrl+W shortcut via keyboard controller as safe backup or direct CDP
-    try {
-      const tabs = await this.fetchCDPTabs();
-      const pageTabs = tabs.filter(t => t.type === 'page');
-      if (pageTabs.length > 0) {
-        return this.closeTab(pageTabs[0].id);
-      }
-    } catch {}
-    
-    // Fallback shortcut
-    await keyboardController.pressHotkey(['ctrl', 'w']);
-    return 'Closed active tab via Ctrl+W shortcut.';
+    // The tab on screen (not the first in the list), closed by its id.
+    const tab = await this.visibleTab();
+    if (tab) return this.closeTab(tab.id);
+
+    // Chrome cannot be reached: Ctrl+W only when a browser window is in front,
+    // never into whatever other application has the keyboard.
+    if (await browserInFront()) {
+      await keyboardController.pressHotkey(['ctrl', 'w']);
+      return 'Closed active tab via Ctrl+W shortcut.';
+    }
+    throw new Error(`No browser tab could be closed: Chrome is not reachable for JARVIS and no browser window is in front.\n${this.getInstruction()}`);
   }
 
   public async openUrl(url: string): Promise<string> {
@@ -145,16 +172,15 @@ export class BrowserController {
     }
 
     try {
-      // Direct CDP new tab
-      const response = await axios.get(`${BASE_URL}/json/new?${encodeURIComponent(finalUrl)}`);
-      const newTab = response.data;
-      
+      // Direct CDP new tab (PUT: current Chrome answers 405 to the GET used before)
+      const newTab = await openTab(finalUrl, cdpPort());
+
       rollbackManager.register('open_url', `Close opened tab: ${finalUrl}`, async () => {
-        await axios.get(`${BASE_URL}/json/close/${newTab.id}`);
+        await closeTabById(newTab.id, cdpPort());
         return true;
       });
 
-      return `Opened URL: ${finalUrl}`;
+      return `Opened URL: ${finalUrl} (tab ${newTab.id})`;
     } catch {
       // Fallback: spawn default browser
       const { appController } = await import('./appController.js');
@@ -167,13 +193,25 @@ export class BrowserController {
       throw new Error('Permission denied.');
     }
     
-    const tab = await this.findTab(query);
+    const tab = query.trim() ? await this.findTab(query) : await this.visibleTab();
     if (tab) {
-      await this.focusTab(tab.id);
+      // Reload through DevTools, and check the page loaded again.
+      const { navigate } = await import('./browserAgent.js');
+      const report = await navigate({ action: 'reload', tab: tab.id });
+      if (!report.success) throw new Error(report.error ?? 'The tab could not be reloaded.');
+      return report.check?.status === 'verified'
+        ? `Refreshed tab: "${tab.title}" (tab ${tab.id}) (checked: ${report.check.evidence})`
+        : `Reloaded tab "${tab.title}" (tab ${tab.id}), but the check found that ${report.check?.evidence ?? 'nothing could be checked'}`;
     }
-    
-    await keyboardController.pressHotkey(['ctrl', 'r']);
-    return `Refreshed tab: "${tab ? tab.title : 'active'}"`;
+
+    // Chrome cannot be reached: Ctrl+R only when a browser window is in front.
+    if (await browserInFront()) {
+      await keyboardController.pressHotkey(['ctrl', 'r']);
+      return 'Refreshed the browser window in front (Ctrl+R; not checked).';
+    }
+    throw new Error(query.trim()
+      ? `No browser tab matches "${query}".`
+      : `No browser tab could be refreshed: Chrome is not reachable for JARVIS and no browser window is in front.\n${this.getInstruction()}`);
   }
 }
 

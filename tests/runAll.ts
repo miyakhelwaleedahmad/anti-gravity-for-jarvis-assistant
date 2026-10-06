@@ -52,6 +52,7 @@ const PROVIDED_BY_WINDOWS = new Set(['dashboardHealthSystemTest', 'processContro
 /** Tests that need something only some hosts have: checked on this host. */
 const HOST_DEPENDENT: Record<string, () => string | undefined> = {
   browserObservationTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
+  browserControlAgentTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
 };
 
 /** What `name` needs that this host is missing, or undefined if nothing is. */

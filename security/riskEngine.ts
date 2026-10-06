@@ -20,6 +20,8 @@ import { isSecurityService } from '../control/adminController.js';
 import { approvedFolders } from '../control/fileController.js';
 import { isForeignWindowsAbsolute, isPathInside, isProtectedSystemPath } from '../core/workspaceRoot.js';
 import { isEnvFile } from './workspacePathPolicy.js';
+import { describeElement, lookupRef } from '../perception/browserRefs.js';
+import { NOT_OBSERVED, NO_CREDENTIALS, normalizeUrl, uploadPathProblem, urlProblem, wordsLevel } from './browserPolicy.js';
 
 export interface RiskAssessment {
   tool: string;
@@ -115,7 +117,7 @@ function samePath(a: string, b: string): boolean {
 export function assessRisk(call: { tool: string; args: Record<string, unknown>; baseRisk: RiskTier }): RiskAssessment {
   const { tool, args } = call;
   const action = text(args, 'action').toLowerCase() || undefined;
-  const target = text(args, 'target') || text(args, 'path') || text(args, 'command')
+  let target = text(args, 'target') || text(args, 'path') || text(args, 'command')
     || text(args, 'url') || text(args, 'file_path') || undefined;
   let level: RiskTier = call.baseRisk;
   const reasons = [`${callLabel(tool, action)} is risk ${call.baseRisk} in its metadata`];
@@ -197,6 +199,56 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
     case 'enable_full_control_session':
       needsSession = 0; // this call is how full control mode is turned on
       break;
+    // Browser actions (security/browserPolicy.ts). Element actions name an
+    // element JARVIS has looked at; its kind and label decide the level.
+    case 'browser_navigate':
+      if ((action ?? 'go') === 'go') {
+        target = normalizeUrl(text(args, 'url')) || undefined;
+        refused = urlProblem(text(args, 'url'));
+      }
+      break;
+    case 'browser_tab':
+      if (action === 'new') {
+        target = normalizeUrl(text(args, 'url')) || 'a new empty tab';
+        refused = urlProblem(text(args, 'url'), true);
+      } else {
+        target = text(args, 'tab') || 'the tab on screen';
+      }
+      break;
+    case 'browser_scroll':
+      if (args['ref'] !== undefined && args['ref'] !== '' && !lookupRef(args['ref'])) refused = NOT_OBSERVED;
+      break;
+    case 'browser_click':
+    case 'browser_type':
+    case 'browser_select':
+    case 'browser_download':
+    case 'browser_upload': {
+      const element = lookupRef(args['ref']);
+      if (!element) {
+        refused = NOT_OBSERVED;
+        break;
+      }
+      target = describeElement(element);
+      if (tool === 'browser_click') {
+        // What the element is first, then what its label says (which can only raise it).
+        if (element.submits) raise(2, 'it submits a form');
+        if (element.passwordForm) raise(2, 'it is in a sign-in form');
+        const words = wordsLevel(element.label);
+        if (words.level) raise(words.level, words.why ?? 'its label');
+        if (element.kind === 'link' && element.download) refused = 'That link downloads a file: use browser_download.';
+      } else if (tool === 'browser_type') {
+        if (element.credential) refused = NO_CREDENTIALS;
+        else if (!element.search) raise(2, 'a form field, not a search box');
+      } else if (tool === 'browser_select') {
+        if (element.inForm) raise(2, 'a choice in a form');
+      } else if (tool === 'browser_download') {
+        if (element.kind !== 'link') refused = 'JARVIS downloads from links only.';
+      } else {
+        target = `${text(args, 'path') || 'a file'} into the ${target}`;
+        refused = element.type === 'file' ? uploadPathProblem(text(args, 'path')) : 'That is not a file field.';
+      }
+      break;
+    }
   }
 
   return {

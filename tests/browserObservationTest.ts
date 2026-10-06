@@ -13,7 +13,8 @@
  *     close it; a key and a spoken password in the page are redacted.
  *  5. browser_page_structure: headings, links, buttons, forms (text and select
  *     values; never password, hidden, email or textarea values), tables
- *     (header, first 5 rows, total), references that select the element.
+ *     (header, first 5 rows, total), short references that stand for the
+ *     element (the model never sees a selector).
  *  6. A hostile page: replaced built-ins and shadowing elements do not change
  *     what JARVIS reads.
  *  7. Only fixed scripts: Runtime.evaluate is sent from one place, with the
@@ -49,6 +50,7 @@ const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');
 const { TOOL_CATALOG } = await import('../core/toolCatalog.js');
 const { CdpSession, listPages } = await import('../perception/cdpClient.js');
 const { readBrowserState, readPageText } = await import('../perception/browserState.js');
+const { lookupRef } = await import('../perception/browserRefs.js');
 const scripts = await import('../perception/cdpScripts.js');
 
 let passed = 0;
@@ -231,10 +233,12 @@ try {
   ok('a role=button element is a button', tableStruct?.buttons?.some((b: any) => b.text === 'Show more' && b.type === 'button'),
     JSON.stringify(tableStruct?.buttons));
 
+  ok('the model gets short references, never selectors or internal details',
+    /"ref": "e\d+"/.test(struct.output) && !/"(info|css|fp)":/.test(struct.output) && !struct.output.includes('nth-of-type'));
   // Each reference selects the element it describes (checked here with a raw
   // DevTools call; JARVIS itself has no way to run this).
   {
-    const refs = [s?.forms?.[0]?.ref, field('password')?.ref, s?.links?.[0]?.ref, s?.headings?.[1]?.ref];
+    const refs = [s?.forms?.[0]?.ref, field('password')?.ref, s?.links?.[0]?.ref, s?.headings?.[1]?.ref].map((r) => lookupRef(r)?.css);
     const session = await CdpSession.connect(formTab, chrome.port);
     const r = await session.send('Runtime.evaluate', {
       expression: `(${JSON.stringify(refs)}).map((ref) => { const el = document.querySelector(ref); return el ? (el.name || el.id || el.innerText) : null; })`,
@@ -256,7 +260,7 @@ try {
   const hostileForm = hostile?.forms?.[0];
   ok('elements named title, body, querySelectorAll, elements, action… do not change the structure read',
     hostile?.title === 'Hostile page' && hostileForm?.action === `${base}/go` && hostileForm?.method === 'get'
-    && hostileForm?.ref === '#f1' && hostileForm?.fields?.find((f: any) => f.name === 'real')?.value === 'kept',
+    && lookupRef(hostileForm?.ref)?.css === '#f1' && hostileForm?.fields?.find((f: any) => f.name === 'real')?.value === 'kept',
     JSON.stringify(hostileForm)?.slice(0, 300));
   const hostileTab = (await listPages(chrome.port)).find((p) => p.url.endsWith('/hostile'))!;
   const hostileState = await readBrowserState(chrome.port);

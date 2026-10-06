@@ -719,7 +719,7 @@ export class ToolRegistryV2 {
       };
     }
 
-    const dispatch = (): Promise<ToolResult> => this.dispatch(tool, args, externalSignal, start);
+    const dispatch = (): Promise<ToolResult> => this.dispatch(tool, args, externalSignal, start, assessment.level);
     return approvedCall ? runApproved(approvedCall, dispatch) : dispatch();
   }
 
@@ -729,6 +729,7 @@ export class ToolRegistryV2 {
     args: Record<string, unknown>,
     externalSignal: AbortSignal | undefined,
     start: number,
+    level: number,
   ): Promise<ToolResult> {
     const name = tool.name;
 
@@ -746,7 +747,7 @@ export class ToolRegistryV2 {
       }
     }
 
-    this.noteCall(name);
+    this.noteCall(name, level);
     const runUnderLock = async () => {
       // 4. Execute with timeout + abort signal. What a tool returns goes on to
       // the LLM, memory and logs, so credentials in it are replaced here.
@@ -1045,22 +1046,28 @@ export class ToolRegistryV2 {
     };
   }
 
-  /** The limit message when `name` has run as often as its limit allows this minute. */
+  /**
+   * The limit message when `name` has run as often at this risk level as the
+   * level's limit allows this minute. Calls are counted per level: ten plain
+   * clicks do not use up the limit of a payment click, and the other way round.
+   */
   private overRateLimit(name: string, level: number): string | null {
     const limit = rateLimitFor(level);
     if (limit <= 0) return null;
     const now = Date.now();
-    const recent = (this._callTimes.get(name) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-    this._callTimes.set(name, recent);
+    const key = `${name}@${level}`;
+    const recent = (this._callTimes.get(key) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+    this._callTimes.set(key, recent);
     return recent.length >= limit
       ? `Rate limit: ${name} ran ${recent.length} times in the last minute (limit ${limit} at risk level ${level}). Try again in a minute.`
       : null;
   }
 
-  private noteCall(name: string): void {
-    const times = this._callTimes.get(name) ?? [];
+  private noteCall(name: string, level: number): void {
+    const key = `${name}@${level}`;
+    const times = this._callTimes.get(key) ?? [];
     times.push(Date.now());
-    this._callTimes.set(name, times);
+    this._callTimes.set(key, times);
   }
 
   /** Returns recent execution history (newest last). */

@@ -16,7 +16,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P6 System and development observation | [x] |
 | P7 World state | [x] |
 | P8 Browser observation | [x] |
-| P9 Browser control | [ ] |
+| P9 Browser control | [x] |
 | P10 Files and development actions | [ ] |
 | P11 Error recovery | [ ] |
 | P12 Voice | [ ] |
@@ -113,13 +113,13 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P9 — Browser control
-- [ ] Navigation and tab actions
-- [ ] Click, type, select, scroll by element
-- [ ] Observe before, verify after
-- [ ] Screenshot, download, upload
-- [ ] Risk levels per action, approvals
-- [ ] Tests against real Chromium, full suite, documentation
-- [ ] PHASE COMPLETE
+- [x] Navigation and tab actions
+- [x] Click, type, select, scroll by element
+- [x] Observe before, verify after
+- [x] Screenshot, download, upload
+- [x] Risk levels per action, approvals
+- [x] Tests against real Chromium, full suite, documentation
+- [x] PHASE COMPLETE
 
 ## P10 — Files and development actions
 - [ ] File tools (list, search, compare, create, modify, rename, move, delete)

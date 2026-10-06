@@ -92,9 +92,27 @@ If the risk check itself fails, the call is refused (fail closed).
      because it opens nothing.
    - `control_browser` close: a YouTube or blank tab 1 *(sets; the browser
      controller's existing exemption)*; other tabs 2.
+   - Browser actions (P9, `security/browserPolicy.ts`). Element actions name
+     an element JARVIS has looked at (a reference from
+     `browser_page_structure`); any other reference is refused. The level comes
+     from what that element was when JARVIS looked:
+     - `browser_click` 1; a button that submits a form, or anything in a form
+       with a password field, 2; by its label — "send", "post", "save", "sign
+       in", "subscribe" and similar 2, "delete", "remove", "unsubscribe",
+       "cancel subscription" 3, "pay", "buy", "checkout", "place order",
+       "transfer", "donate" 4. The label rule is a heuristic: it only raises.
+       A link that downloads is refused (use `browser_download`).
+     - `browser_type` into a search box 1, any other field 2; password, card
+       number, card code and one-time-code fields are refused.
+     - `browser_select` 1; in a form 2.
+     - `browser_navigate` and `browser_tab new`: only http and https addresses,
+       without a user name or password in them; `javascript:`, `file:`,
+       `data:` and the rest are refused.
+     - `browser_tab close` 2; `browser_download` 2; `browser_upload` 3, only
+       from the approved folders, never keys or credential files (`.env`,
+       `id_rsa`, `.pem`, `.key`, `.kdbx`, anything in `.ssh`, `.aws`…).
 3. Planned for later phases: git push 3, push to `main`/`master` 4, force push
-   refused (P10); browser form submission 2, upload 3, typing into a password
-   field refused (P9).
+   refused (P10).
 
 ## Approval request (P3, `security/approvalRequest.ts`, `security/approvalGate.ts`)
 

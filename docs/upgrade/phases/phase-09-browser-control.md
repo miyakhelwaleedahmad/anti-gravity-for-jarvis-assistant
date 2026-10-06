@@ -71,3 +71,17 @@ A click without a prior observation; an unverified success; a password typed.
 
 ## Completion requirements
 Gate; checklist; PHASE_STATUS; BROWSER_CONTROL; commit `phase-09-browser-control`; CI green.
+
+## As built (alignment note)
+- Tools in `core/tools/browserActionTools.ts` (one file, registered with the
+  other built-in tools) rather than nine `skills/browser_*` folders; metadata
+  in `core/toolCatalog.ts`, rules in `security/browserPolicy.ts`.
+- Tabs through the DevTools HTTP endpoints (`/json/new` with PUT,
+  `/json/activate`, `/json/close`) rather than `Target.*`.
+- Element references are short ids kept by JARVIS (`perception/browserRefs.ts`)
+  with a fingerprint checked before each action.
+- Downloads use `allowAndName` and are renamed to the site's (cleaned) file
+  name in the JARVIS download folder.
+- Also repaired: `control_browser` open_url, close_current, refresh (see
+  BROWSER_CONTROL.md); per-level rate-limit counting.
+

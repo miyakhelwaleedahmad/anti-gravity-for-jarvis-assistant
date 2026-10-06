@@ -88,6 +88,15 @@ Risk per action where a tool has several. "R" = reversible.
 | browser_state (new, P8) | BROWSER | 0 | yes | none |
 | browser_read_page (new, P8) | BROWSER | 0 | yes | none |
 | browser_page_structure (new, P8) | BROWSER | 0 | yes | none |
+| browser_navigate (new, P9) | BROWSER | go 1 · back 1 · forward 1 · reload 1 | reload: partial | query |
+| browser_tab (new, P9) | BROWSER | new 1 · switch 1 · close 2 | close: partial | query |
+| browser_click (new, P9) | BROWSER | 1; raised by the element (P2 rules): submit 2, delete 3, pay 4 | partial | query |
+| browser_type (new, P9) | BROWSER | 1 search box · 2 other fields · password refused | yes | none |
+| browser_select (new, P9) | BROWSER | 1 · 2 in a form | yes | none |
+| browser_scroll (new, P9) | BROWSER | 1 | yes | none |
+| browser_screenshot (new, P9) | BROWSER | 1 | yes | none |
+| browser_download (new, P9) | BROWSER | 2 | yes | query |
+| browser_upload (new, P9) | BROWSER | 3 | partial | change |
 
 Notes:
 - P2's argument rules can raise a call's risk (a recursive delete, deleting a

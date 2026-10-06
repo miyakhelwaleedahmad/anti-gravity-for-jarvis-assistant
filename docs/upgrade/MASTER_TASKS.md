@@ -372,23 +372,38 @@ Real Chromium and a local test site.
 
 ## P9 — Browser control
 
-### T9.1 — Navigation and tabs · High · [ ] · depends on: T8.5, T5.4
+### T9.1 — Navigation and tabs · High · [x] · depends on: T8.5, T5.4
 navigate (http/https only), back, forward, reload, new, switch (level 1), close (level 2).
+(Tabs through the DevTools HTTP endpoints — `/json/new` with PUT — rather than
+`Target.*`: the same effect, no browser-level connection needed.)
 
-### T9.2 — Element actions · High · [ ] · depends on: T9.1
+### T9.2 — Element actions · High · [x] · depends on: T9.1
 click, type, select, scroll by element reference; password fields refused.
+(References are short ids kept by JARVIS — `perception/browserRefs.ts` — not
+CSS paths the model could alter; the tools live in
+`core/tools/browserActionTools.ts`, one file instead of nine skill folders.)
 
-### T9.3 — Observe and verify · Critical · [ ] · depends on: T9.2
+### T9.3 — Observe and verify · Critical · [x] · depends on: T9.2
 Element present, visible and enabled before; URL, value or page change after.
+(Also: same element and same page as when JARVIS looked, not covered; a page
+dialog is reported, never answered.)
 
-### T9.4 — Screenshot, download, upload · Normal · [ ] · depends on: T9.3
+### T9.4 — Screenshot, download, upload · Normal · [x] · depends on: T9.3
 Screenshot saved locally, not sent to the model by default; download verified
 on disk; upload only from approved folders, level 3.
 
-### T9.5 — Risk metadata · Critical · [ ] · depends on: T9.1–T9.4
+### T9.5 — Risk metadata · Critical · [x] · depends on: T9.1–T9.4
 Per-action risk; form submission level 2.
+(Plus label words: send/save/sign in 2, delete/remove 3, pay/buy/checkout 4.)
+Found in P9: the per-minute limit counted every call of a tool against the
+limit of the current call's level, so ten ordinary clicks made a payment
+click "rate limited"; calls are now counted per level.
 
-### T9.6 — Tests and documents · High · [ ] · depends on: T9.5
+### T9.6 — Tests and documents · High · [x] · depends on: T9.5
+Found in P9: `control_browser` open_url (GET answered 405, so the system
+browser opened instead), close_current and refresh (a tab id looked up among
+titles and URLs) did not work; refresh and close_current pressed keys into
+whatever window had the keyboard. Repaired and checked in the browser.
 
 ---
 

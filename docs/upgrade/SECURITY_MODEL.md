@@ -77,10 +77,30 @@ them is redacted.
 
 Each tool may run at most 120 / 60 / 20 / 10 / 10 times a minute at risk level
 0 / 1 / 2 / 3 / 4 (the level of the call, so a dry run counts as level 0).
+Calls are counted per level (since P9): before, every call of a tool counted
+against the limit of the current call's level, so ten ordinary clicks in a
+minute made the next "Pay now" click hit the level-4 limit.
 `JARVIS_TOOL_RATE_LIMITS="120,60,20,10,10"` overrides; 0 means no limit. Over
 the limit the call is refused before any approval is asked, is not retried,
 and JARVIS says so. A tool whose metadata says it changes something outside
 the PC (`external: change`) is at least risk 2.
+
+## Browser (P8, P9)
+
+- JARVIS reaches only the Chrome started with a debugging port and a profile of
+  its own, on 127.0.0.1; the everyday profile's logins and cookies are never
+  exposed to it.
+- The model never writes JavaScript: fixed functions in
+  `perception/cdpScripts.ts`, run in an isolated world; a reference or typed
+  text is passed to them as data.
+- Actions only on elements JARVIS has looked at, checked again before acting
+  (same element, same page, visible, enabled, not covered), and checked after.
+- No password, card or one-time-code typing; no password, hidden, email or
+  textarea values read; page dialogs reported, never answered.
+- Downloads go only to the JARVIS download folder and are never opened;
+  uploads only from the approved folders, never keys, approved each time.
+- Screenshots stay on the PC (`data/screenshots`); they are not sent to the
+  model.
 
 ## Data minimisation
 

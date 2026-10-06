@@ -118,6 +118,47 @@ const verifyFullControl = (on: boolean): Verifier => async () => {
     : failed(on ? 'full control mode is still off' : 'full control mode is still on');
 };
 
+/**
+ * control_browser, checked in the Chrome JARVIS reads (P8/P9): the tab the
+ * action names in its message — "(tab <id>)" — is gone, on screen or open.
+ */
+const verifyControlBrowser: Verifier = async (args, output) => {
+  const action = text(args, 'action').toLowerCase();
+  if (action === 'list') return unverifiable('listing tabs changes nothing');
+  let message = output;
+  try { message = String(JSON.parse(output)?.message ?? ''); } catch { /* plain text */ }
+  if (action === 'refresh') {
+    if (/\(checked: /.test(message)) return verified(/\(checked: (.*)\)$/.exec(message)?.[1] ?? 'the page loaded again');
+    const found = /but the check found that (.*)$/.exec(message)?.[1];
+    return found ? failed(found) : unverifiable('the refresh was a key press, which cannot be checked');
+  }
+  const id = /\(tab ([A-Za-z0-9]+)\)/.exec(message)?.[1];
+  if (!id) {
+    if (action === 'open_url') return unverifiable('it was opened outside the Chrome JARVIS reads');
+    if (/Ctrl\+W/.test(message)) return unverifiable('the tab was closed with a key press, which cannot be checked');
+    return failed(/is not open/.test(message) ? 'no open tab matched' : 'no tab was named in the result');
+  }
+  const { listPages, withPage, evaluateFixed, cdpPort } = await import('../perception/cdpClient.js');
+  let pages;
+  try { pages = await listPages(cdpPort()); } catch { return unverifiable('Chrome is not reachable for JARVIS, so the tabs could not be checked'); }
+  const page = pages.find((p) => p.id === id);
+  switch (action) {
+    case 'close':
+    case 'close_current':
+      return page ? failed('the tab is still open') : verified('the tab is gone');
+    case 'focus': {
+      if (!page) return failed('the tab is not open');
+      const { VISIBILITY_SCRIPT } = await import('../perception/cdpScripts.js');
+      const visibility = await withPage(page, (s) => evaluateFixed<string>(s, VISIBILITY_SCRIPT, 2_000), cdpPort()).catch(() => 'unknown');
+      return visibility === 'visible' ? verified('the tab is on screen') : failed('the tab is not on screen');
+    }
+    case 'open_url':
+      return page ? verified('the new tab is open') : failed('the new tab is not open');
+    default:
+      return unverifiable('nothing to check');
+  }
+};
+
 /** Windows actions are checked against the desktop in P14, which needs the PC itself. */
 const ON_WINDOWS = 'checked on Windows only (phase P14); not checked here';
 
@@ -132,7 +173,7 @@ export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> 
   open_app: { reason: ON_WINDOWS },
   control_app: { reason: ON_WINDOWS },
   control_window: { reason: ON_WINDOWS },
-  control_browser: { reason: 'checked once the browser can be read (phase P8)' },
+  control_browser: verifyControlBrowser,
   control_keyboard: { reason: ON_WINDOWS },
   control_mouse: { reason: ON_WINDOWS },
   control_process: { reason: ON_WINDOWS },

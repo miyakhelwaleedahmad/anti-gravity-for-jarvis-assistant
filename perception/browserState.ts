@@ -12,6 +12,7 @@
 import { cdpPort, cdpVersion, evaluateFixed, listPages, withPage, type CdpTarget } from './cdpClient.js';
 import { PAGE_STRUCTURE_SCRIPT, PAGE_TEXT_SCRIPT, VISIBILITY_SCRIPT } from './cdpScripts.js';
 import { redact, redactDeep } from '../security/redactor.js';
+import { rememberElements, type ElementInfo } from './browserRefs.js';
 
 export interface BrowserTab {
   id: string;
@@ -82,22 +83,69 @@ export async function findTab(query: string | undefined, port = cdpPort()): Prom
 
 export interface PageText { title: string; url: string; text: string; truncated: boolean }
 
+export interface StructureField { label: string; name: string; type: string; required: boolean; value?: string; ref: string }
+
 export interface PageStructure {
   title: string;
   url: string;
   headings: Array<{ level: string; text: string; ref: string }>;
   links: Array<{ text: string; href: string; ref: string }>;
-  buttons: Array<{ text: string; type: string; disabled: boolean; ref: string }>;
-  forms: Array<{ action: string; method: string; ref: string; fields: Array<{ label: string; name: string; type: string; required: boolean; value?: string; ref: string }> }>;
+  buttons: Array<{ text: string; type: string; disabled: boolean; submits: boolean; ref: string }>;
+  forms: Array<{ action: string; method: string; ref: string; fields: StructureField[] }>;
+  /** Fields outside any form (search boxes, chat boxes). */
+  fields: StructureField[];
   tables: Array<{ caption: string; header: string[]; rows: string[][]; totalRows: number; ref: string }>;
+}
+
+/**
+ * Replaces each element's `info` (CSS path, fingerprint, flags) with a short
+ * reference recorded in browserRefs, in document order. The model sees only
+ * the reference.
+ */
+function withRefs(raw: any, tabId: string): PageStructure {
+  const infos: ElementInfo[] = [];
+  const slots: Array<{ ref?: string }> = [];
+  const take = (item: any): any => {
+    const { info, ...rest } = item ?? {};
+    const slot: { ref?: string } = rest;
+    if (info && typeof info === 'object' && typeof info.css === 'string' && typeof info.fp === 'string') {
+      infos.push({ ...info, label: redact(String(info.label ?? '')).slice(0, 80) } as ElementInfo);
+      slots.push(slot);
+    }
+    return slot;
+  };
+  const list = (value: unknown): any[] => (Array.isArray(value) ? value : []);
+  const structure = {
+    title: String(raw?.title ?? ''),
+    url: String(raw?.url ?? ''),
+    headings: list(raw?.headings).map(take),
+    links: list(raw?.links).map(take),
+    buttons: list(raw?.buttons).map(take),
+    forms: list(raw?.forms).map((f) => {
+      const form = take(f);
+      form.fields = list(f?.fields).map(take);
+      return form;
+    }),
+    fields: list(raw?.fields).map(take),
+    tables: list(raw?.tables).map(take),
+  };
+  const observed = rememberElements(tabId, structure.url, infos);
+  observed.forEach((element, i) => { slots[i]!.ref = element.ref; });
+  return structure as PageStructure;
 }
 
 export async function readPageText(target: CdpTarget, port = cdpPort(), timeoutMs = 5_000): Promise<PageText> {
   return redactDeep(await withPage(target, (s) => evaluateFixed<PageText>(s, PAGE_TEXT_SCRIPT, timeoutMs), port));
 }
 
+/**
+ * Headings, links, buttons, forms, fields and tables, each with a reference a
+ * browser action can take (perception/browserRefs.ts). A new look at the tab
+ * replaces its earlier references.
+ */
 export async function readPageStructure(target: CdpTarget, port = cdpPort(), timeoutMs = 5_000): Promise<PageStructure> {
-  return redactDeep(await withPage(target, (s) => evaluateFixed<PageStructure>(s, PAGE_STRUCTURE_SCRIPT, timeoutMs), port));
+  const raw = await withPage(target, (s) => evaluateFixed<unknown>(s, PAGE_STRUCTURE_SCRIPT, timeoutMs), port);
+  return redactDeep(withRefs(raw, target.id));
 }
 
 /**

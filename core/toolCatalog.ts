@@ -17,6 +17,7 @@
 import type { AgentTool, ActionMeta, RiskTier, ToolMeta } from './toolRegistryV2.js';
 
 const JSON_RESULT = 'JSON: success, action, target, message or error';
+const BROWSER_RESULT = 'JSON: success, action, target, did, check (status, evidence), page, or error';
 
 /** Builds the metadata of a tool whose `action` argument selects what it does. */
 function withActions(
@@ -262,6 +263,62 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     { format: 'json', description: 'Untrusted page text: title, url, text (≤ 4000 chars)' }, 'BROWSER'),
   browser_page_structure: observation("Reads a tab's headings, links, buttons, forms (no password values) and tables.",
     { format: 'json', description: 'Untrusted page text: headings, links, buttons, forms, tables, each with a CSS ref' }, 'BROWSER'),
+  browser_navigate: withActions(
+    { category: 'BROWSER', reversible: 'partial', external: 'query',
+      effect: 'Opens a web address in a tab, or goes back, forward or reloads; checks the tab shows the page.',
+      output: { format: 'json', description: BROWSER_RESULT } },
+    {
+      go: { risk: 1, reversible: 'yes', effect: 'The tab shows the web address.' },
+      back: { risk: 1, reversible: 'yes', effect: 'The tab shows the previous page.' },
+      forward: { risk: 1, reversible: 'yes', effect: 'The tab shows the next page.' },
+      reload: { risk: 1, reversible: 'partial', effect: 'The page loads again; unsent form input is lost.' },
+    },
+  ),
+  browser_tab: withActions(
+    { category: 'BROWSER', reversible: 'partial', external: 'query',
+      effect: 'Opens, switches to or closes a tab; checks the result.',
+      output: { format: 'json', description: BROWSER_RESULT } },
+    {
+      new: { risk: 1, reversible: 'yes', effect: 'A new tab opens.' },
+      switch: { risk: 1, reversible: 'yes', effect: 'The tab comes to the front.' },
+      close: { risk: 2, reversible: 'partial', effect: 'The tab closes; unsaved input in it is lost.' },
+    },
+  ),
+  browser_click: {
+    category: 'BROWSER', risk: 1, reversible: 'partial', external: 'query',
+    effect: 'Clicks a link, button or field JARVIS has looked at; checks what changed.',
+    output: { format: 'json', description: BROWSER_RESULT },
+  },
+  browser_type: {
+    category: 'BROWSER', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Types text into a field JARVIS has looked at (never a password); checks the field holds it.',
+    output: { format: 'json', description: BROWSER_RESULT },
+  },
+  browser_select: {
+    category: 'BROWSER', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Chooses an option in a list JARVIS has looked at; checks the list shows it.',
+    output: { format: 'json', description: BROWSER_RESULT },
+  },
+  browser_scroll: {
+    category: 'BROWSER', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Scrolls the page, or to an element JARVIS has looked at; checks it moved.',
+    output: { format: 'json', description: BROWSER_RESULT },
+  },
+  browser_screenshot: {
+    category: 'BROWSER', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Saves a picture of a tab on this PC (not sent anywhere).',
+    output: { format: 'json', description: `${BROWSER_RESULT}, file` },
+  },
+  browser_download: {
+    category: 'BROWSER', risk: 2, reversible: 'yes', external: 'query',
+    effect: 'Downloads a linked file into the JARVIS download folder; checks it is on disk.',
+    output: { format: 'json', description: `${BROWSER_RESULT}, file` },
+  },
+  browser_upload: {
+    category: 'BROWSER', risk: 3, reversible: 'partial', external: 'change',
+    effect: 'Puts a file from an approved folder into a page\'s file field; the site may receive it.',
+    output: { format: 'json', description: BROWSER_RESULT },
+  },
   action_history: observation('Lists JARVIS\'s last tool calls and approval decisions, without credentials.',
     { format: 'json', description: 'calls (tool, args, success, error, at) and approvals (action, target, approved, by, at)' }, 'SYSTEM'),
 };

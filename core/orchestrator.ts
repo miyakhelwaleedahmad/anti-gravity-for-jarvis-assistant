@@ -1877,6 +1877,14 @@ export class JarvisOrchestrator {
       addIfRegistered('control_app', 'control_window');
     }
 
+    // Browser actions (P9), when the request is about a page or a tab: after
+    // the launch and close tools, before the read-only ones.
+    if (BROWSER_CONTEXT.test(clean)) {
+      for (const [words, tool] of BROWSER_ACTIONS) {
+        if (words.test(clean)) addIfRegistered(tool);
+      }
+    }
+
     // The read-only observation tools (P6, P8) come after the launch and close
     // tools, so "open chrome" still offers open_app first, and before the
     // generic lists below, so the 8-tool cap does not drop them.
@@ -2189,6 +2197,18 @@ const SYSTEM_QUESTION = /\b(cpu|processor|memory|ram|disk|storage|free space|upt
 const DEV_QUESTION = /\b(port|ports|localhost|backend|frontend|dev server|server running|servers running)\b/;
 const GIT_QUESTION = /\b(git|commit|commits|branch|uncommitted|repository|repo|diff)\b/;
 const BROWSER_QUESTION = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button)\b/;
+const BROWSER_CONTEXT = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button|field|box|url|address)\b/;
+const BROWSER_ACTIONS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\b(click|press|tap|tick|check|uncheck)\b/, 'browser_click'],
+  [/\b(type|fill|enter|write|search for)\b/, 'browser_type'],
+  [/\b(select|choose|pick)\b/, 'browser_select'],
+  [/\bscroll\b/, 'browser_scroll'],
+  [/\b(go back|go forward|back|forward|reload|refresh|navigate|go to|open)\b/, 'browser_navigate'],
+  [/\b(new tab|switch|close)\b/, 'browser_tab'],
+  [/\b(screenshot|screen shot)\b/, 'browser_screenshot'],
+  [/\bdownload\b/, 'browser_download'],
+  [/\b(upload|attach)\b/, 'browser_upload'],
+];
 
 /** The spoken summary of a system_overview result. */
 export function systemStatusReply(output: string): string {

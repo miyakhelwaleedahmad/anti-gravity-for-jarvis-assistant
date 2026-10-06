@@ -393,3 +393,83 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   `is_tab_open` still answer from the background observer's last reading.
 - **Next:** P9 — browser control.
 
+## P9 — Browser control — COMPLETE
+
+- **Implemented:**
+  - `control/browserAgent.ts` and nine tools (`core/tools/browserActionTools.ts`):
+    browser_navigate (go, back, forward, reload), browser_tab (new, switch,
+    close), browser_click, browser_type, browser_select, browser_scroll,
+    browser_screenshot, browser_download, browser_upload.
+  - Element actions take a reference from `browser_page_structure`
+    (`perception/browserRefs.ts`: short ids with the element's CSS path,
+    fingerprint and flags kept by JARVIS). Before acting: same element, same
+    page, visible, enabled, not covered. After: the check each tool reports,
+    passed to the registry's verify step, so an unseen effect is "not done".
+  - Risk from the element (`security/browserPolicy.ts`, risk engine): submit
+    or sign-in form 2; label words send/save/sign in 2, delete/remove 3,
+    pay/buy/checkout 4; search box 1, other fields 2; password, card and
+    one-time-code fields refused; only http/https addresses; uploads only from
+    the approved folders, never keys; downloads only to the JARVIS download
+    folder (`JARVIS_DOWNLOAD_DIR`).
+  - Page dialogs reported, never answered; one JARVIS operation per tab at a
+    time; the DevTools client gained events, a browser-level session, fixed
+    functions with arguments (`callFixed`) and the tab endpoints (`/json/new`
+    with PUT).
+  - The planner is offered the actions when a request about a page or tab
+    names them (click, type, choose, scroll, open, back, reload, tab,
+    screenshot, download, upload).
+- **Found and fixed:**
+  - `control_browser` open_url sent GET to `/json/new`; current Chrome answers
+    405, so every address opened in the system's default browser instead.
+    Now PUT; checked in the browser.
+  - `control_browser` close_current and refresh looked a tab up by its id among
+    titles and URLs and never found it: close_current answered
+    'Tab matching "<id>" is not open.' and was reported as done; refresh failed
+    ("Browser tab matching "<id>" not found"). Shown on the P8 code with
+    Chrome on port 9222 and full control mode; fixed (id first), checked.
+  - refresh with no matching tab, and close_current without DevTools, pressed
+    Ctrl+R / Ctrl+W into whatever window had the keyboard; now only when
+    Chrome cannot be reached and a browser window is in front (Windows), and
+    reported as not checked.
+  - Closing a tab that is not open was reported as done; the new
+    control_browser check reports it as not done.
+  - P4 rate limits counted every call of a tool against the limit of the
+    current call's level: after ten ordinary clicks in a minute, a "Pay now"
+    click was refused as rate-limited before its approval. Counted per level now.
+  - A click whose handler opens `alert()` held the click command until the
+    dialog was answered; JARVIS now stops waiting when it sees the dialog and
+    reports it.
+- **Tested:** `tests/browserControlAgentTest.ts` against headless Chromium 141
+  and a local shop page, through the registry, 70 checks, all pass —
+  registration, metadata, own checks; risk levels from the element (plain 1,
+  submit 2, delete 3, pay 4, search 1, form field 2, list 1/2) and refusals
+  (password, card number, one-time code, `javascript:`, `file:`, `data:`,
+  address with credentials, an element not seen, upload outside approved
+  folders or of `.env`); click, type (replace and add), choose (and a missing
+  option listed), checkbox, scroll to element and to top, screenshot PNG,
+  link to a new page, back, forward, reload (new document), open, new tab,
+  switch — each confirmed in the page by the test's own DevTools reads; a
+  changed, removed, hidden, disabled or covered button not clicked; a click
+  that changes nothing reported as not done; a dialog reported; typing a
+  password refused with the field still empty; typing into a form field and
+  submitting asked first (policy `ask`), denied → no request reached the
+  server, approved → submitted and seen; "Pay now" asks for a typed code;
+  download approved once and the file on disk; upload approved at level 3
+  and in the field; a link that opens a new tab seen; control_browser
+  open_url, focus, refresh, close_current checked in the browser and closing
+  a tab that is not open not reported as done; the planner offers the
+  actions; every `callFixed` passes a fixed function.
+  `tests/browserObservationTest.ts` updated for short references (43 checks).
+  On the P8 code: 4 of 70 pass (the tools do not exist; all five
+  control_browser checks fail).
+  Full suite: 102 files, 96 passed · 0 failed · 6 environment; CI mode 94
+  passed · 8 skipped.
+- **Not verified here:** the owner's Chrome on Windows (headed, with its
+  window manager: a minimized window makes "switch" report "not on screen");
+  the Ctrl+R / Ctrl+W fallbacks (Windows only, P14); sites with iframes —
+  only the main frame is read and acted on.
+- **Known limits:** label words are a heuristic (they only raise a level);
+  a page that scrolls inside a panel needs an element to scroll to; a
+  "Leave site?" dialog during navigation is not handled specially (not tested).
+- **Next:** P10 — files and development actions.
+
