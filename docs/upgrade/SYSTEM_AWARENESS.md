@@ -74,6 +74,16 @@ task        goal, plan, current step, done, failed,
 - The planner gets only the sections the request is about, capped and redacted.
 - World state is never written to long-term memory.
 
+As built (P7, `core/worldState.ts`): parts are chosen from the request's words
+(browser/tab/page → browser; server/port/backend/git/repo → development;
+app/window → apps; cpu/memory/disk/slow → system). Stale parts are read again
+before planning, at most 1.5 s; callers asking at the same time share one
+read. The background observer hands in its window and Chrome readings, so
+they rarely need a read of their own. The summary — at most 600 characters,
+redacted, angle brackets removed — goes to the planner as user-role data inside
+`<untrusted_context source="world-state">`, like the OCR text. The task part
+follows the graph's steps and shows the approval request on display.
+
 ## Questions it should answer by looking
 
 | Question | Observation |

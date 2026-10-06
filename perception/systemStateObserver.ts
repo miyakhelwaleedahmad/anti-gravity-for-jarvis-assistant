@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { getWindowsState } from './windowsState.js';
 import { getChromeState } from './chromeState.js';
 import { getJarvisServiceState } from './jarvisServiceState.js';
+import { worldState } from '../core/worldState.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -145,6 +146,8 @@ export class SystemStateObserver {
     try {
       // A background snapshot: the last state is fine while PowerShell is busy.
       const windowsData = await getWindowsState({ allowStale: true });
+      // Also the world state's apps part: a request then needs no new read.
+      worldState.set('apps', windowsData, 'systemStateObserver');
       
       const activeWindowChanged = JSON.stringify(this.state.activeWindow) !== JSON.stringify(windowsData.activeWindow);
       const openAppsChanged = JSON.stringify(this.state.openApps) !== JSON.stringify(windowsData.openApps);
@@ -164,6 +167,7 @@ export class SystemStateObserver {
     this.chromeProbeLock = true;
     try {
       const chromeData = await getChromeState();
+      worldState.set('browser', chromeData, 'systemStateObserver');
       const chromeChanged = JSON.stringify(this.state.chrome) !== JSON.stringify(chromeData);
       
       if (chromeChanged) {

@@ -14,7 +14,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P4 Redaction | [x] |
 | P5 Observe → act → verify | [x] |
 | P6 System and development observation | [x] |
-| P7 World state | [ ] |
+| P7 World state | [x] |
 | P8 Browser observation | [ ] |
 | P9 Browser control | [ ] |
 | P10 Files and development actions | [ ] |
@@ -96,13 +96,13 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P7 — World state
-- [ ] Model with timestamps and freshness
-- [ ] Refresh on demand
-- [ ] Task state including pending approvals
-- [ ] Planning summary (relevant, capped, redacted)
-- [ ] Not stored in long-term memory
-- [ ] Tests, full suite, documentation
-- [ ] PHASE COMPLETE
+- [x] Model with timestamps and freshness
+- [x] Refresh on demand
+- [x] Task state including pending approvals
+- [x] Planning summary (relevant, capped, redacted)
+- [x] Not stored in long-term memory
+- [x] Tests, full suite, documentation
+- [x] PHASE COMPLETE
 
 ## P8 — Browser observation
 - [ ] DevTools protocol client (WebSocket, timeouts)

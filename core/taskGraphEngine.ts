@@ -472,6 +472,7 @@ export class TaskGraphEngine extends EventEmitter {
       this.emit('node_completed', {
         nodeId: node.id,
         tool: node.tool,
+        args: node.args,
         result,
         durationMs: node.completedAt - (node.startedAt ?? node.completedAt),
       });
@@ -532,7 +533,7 @@ export class TaskGraphEngine extends EventEmitter {
         }
         node.status = 'failed';
         node.completedAt = Date.now();
-        this.emit('node_failed', { nodeId: node.id, tool: node.tool, error: errMsg, errorType });
+        this.emit('node_failed', { nodeId: node.id, tool: node.tool, args: node.args, error: errMsg, errorType });
       }
 
     } finally {

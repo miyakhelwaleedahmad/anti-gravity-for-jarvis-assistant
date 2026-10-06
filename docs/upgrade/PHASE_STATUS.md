@@ -285,3 +285,41 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   `JARVIS_DEV_PORTS`); which process owns a port is Windows work (P14).
 - **Next:** P7 — world state.
 
+## P7 — World state — COMPLETE
+
+- **Implemented:**
+  - `core/worldState.ts`: system, apps, browser, development and task parts,
+    each with the time it was observed and its source. Stale parts are read
+    again when a request needs them (5 min / 30 s / 30 s / 60 s); callers at
+    the same time share one read; nothing new polls — the background observer
+    hands in its window and Chrome readings.
+  - Planning: the parts the request is about, at most 600 characters,
+    redacted, angle brackets removed, as user-role data inside
+    `<untrusted_context source="world-state">`; read again first for at most
+    1.5 s.
+  - Task part: goal and plan when execution starts, the current step, done
+    and failed steps from the graph's events, the approval request on display.
+  - Goals (T7.3): status, plan summary and graph id are now recorded; the
+    loop returns its own failure reason; a failure is still counted once.
+- **Found and fixed:** goals never got their planning/executing status, plan
+  summary or graph id, and failed with a generic reason ("agent loop ended
+  without success") — the loop always received an empty goal. Giving it the
+  goal as it was would have counted each failure twice (the loop's own
+  failGoal calls plus process()); the loop now reports, process() decides.
+- **Tested:** `tests/worldStateTest.ts`, 20 checks, all pass — one read for a
+  fresh part and one for three concurrent callers of a stale part; an older
+  reading never replaces a newer one; the planning request for a backend
+  question carries the development part and not the browser part; a summary
+  of every part capped at 600 characters; a planted key redacted; a page
+  title holding `</untrusted_context>` cannot close the wrapper; no world state
+  for a request about none of it; current step, done step and the approval on
+  display; memory file and facts unchanged by observations; the observer feeds
+  the browser part; goal plan summary, graph id, one failure with the loop's
+  reason. On the code before P7: the module does not exist, and 3 of the 4
+  goal checks fail. Full suite: 100 files, 94 passed · 0 failed · 6 environment.
+- **Not verified here:** the apps part on Windows (window titles come from the
+  PowerShell session, P14).
+- **Known limits:** sections are chosen by keywords; a request phrased without
+  them gets no world state (the planner can still call the tools).
+- **Next:** P8 — browser observation (real Chromium here).
+

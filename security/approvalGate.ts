@@ -173,6 +173,12 @@ export class ApprovalGate {
     return true;
   }
 
+  /** The request on display, in a few words, if one is waiting for an answer. */
+  pendingSummary(): string | undefined {
+    const r = this.pending?.request;
+    return r ? `${r.action} — ${r.target} (level ${r.risk})` : undefined;
+  }
+
   /** The latest decisions, oldest first. */
   recentDecisions(limit = 20): ApprovalDecision[] {
     return this.history.slice(-limit);

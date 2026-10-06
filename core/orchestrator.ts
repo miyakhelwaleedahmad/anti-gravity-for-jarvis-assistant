@@ -20,6 +20,8 @@ import type { ApprovalDecision } from '../security/approvalRequest.js';
 import { verificationFailedReply, withCheck } from './verifiers.js';
 import { describeSnapshot } from '../perception/systemProbe.js';
 import { describeServers } from '../perception/devProbe.js';
+import { worldState } from './worldState.js';
+import { approvalGate } from '../security/approvalGate.js';
 import { currentTaskNode } from './taskContext.js';
 import { toolRegistryV2, type ToolCategory } from './toolRegistryV2.js';
 import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
@@ -146,6 +148,13 @@ export class JarvisOrchestrator {
       console.warn('[Orchestrator] Startup init warning (non-fatal):', err);
     });
 
+    // World state (P7): the task part follows the graph's steps and the
+    // approval request on display.
+    taskGraphEngine.on('node_started', (e: { tool: string; args?: Record<string, unknown> }) => worldState.stepStarted(stepLabel(e)));
+    taskGraphEngine.on('node_completed', (e: { tool: string; args?: Record<string, unknown> }) => worldState.stepFinished(stepLabel(e), true));
+    taskGraphEngine.on('node_failed', (e: { tool: string; args?: Record<string, unknown> }) => worldState.stepFinished(stepLabel(e), false));
+    worldState.watchApprovals(() => approvalGate.pendingSummary());
+
     // Wire interrupt signal: abort active graph on interrupt
     agentStateMachine.on('interrupted', () => {
       this.currentAbortController?.abort();
@@ -261,11 +270,13 @@ export class JarvisOrchestrator {
     }
 
     let loopOutcome: 'success' | 'failed' | 'blocked' = 'success';
-    // Approval decisions made for this request, stored on its goal.
-    const approvals: ApprovalDecision[] = [];
+    // What the loop learned for this request's goal: its approval decisions
+    // and, when it fails, why. The goal itself is completed or failed here only.
+    const record: LoopRecord = { approvals: [] };
+    const approvals = record.approvals;
     try {
       // Agent loop starts IMMEDIATELY — goal creation runs in background
-      loopOutcome = await this.runAgentLoop(input, source, goal, approvals);
+      loopOutcome = await this.runAgentLoop(input, source, goalPromise, record);
 
       // ── Phase 1: Resolve Goal based on actual outcome ──────────────────────
       // PIPELINE-OPT: Resolve the background goal promise now (it ran concurrently
@@ -281,7 +292,7 @@ export class JarvisOrchestrator {
           // 'failed' or 'blocked' — do NOT mark as completed
           await goalManager.failGoal(
             goal.id,
-            loopOutcome === 'blocked' ? 'blocked by safety policy' : 'agent loop ended without success'
+            record.failReason ?? (loopOutcome === 'blocked' ? 'blocked by safety policy' : 'agent loop ended without success'),
           ).catch(() => {});
         }
         this.activeGoal = null;
@@ -328,6 +339,7 @@ export class JarvisOrchestrator {
         // The request is over: an approval asked later must not show its
         // words as WHY, nor be asked by voice because it was spoken.
         endTrace();
+        worldState.endTask();
         agentMemory.clearWorkingContext();
         if (agentStateMachine.currentState !== AgentState.SPEAKING) {
           // ── Conversation recovery guarantee ─────────────────────────────────
@@ -460,9 +472,18 @@ export class JarvisOrchestrator {
   private async runAgentLoop(
     input: string,
     source: 'cli' | 'voice',
-    goal: Goal | null = null,
-    approvals: ApprovalDecision[] = [],
+    goalReady: Promise<Goal | null> | null = null,
+    record: LoopRecord = { approvals: [] },
   ): Promise<'success' | 'failed' | 'blocked'> {
+    const approvals = record.approvals;
+    // The goal is created in the background while planning starts; its status
+    // is recorded once it exists. (The loop used to receive `null` every time,
+    // so planning/executing, the plan summary and the graph id were never
+    // stored.) Completing or failing it is process()'s job: the loop records
+    // why it failed in `record.failReason`.
+    const noteGoal = (status: 'planning' | 'executing', extras: Parameters<typeof goalManager.updateGoalStatus>[2] = {}) => {
+      void goalReady?.then((g) => (g ? goalManager.updateGoalStatus(g.id, status, extras) : undefined)).catch(() => {});
+    };
     this._loopExecuting = true;
 
     // ── ⚡ Deterministic Pre-Router: known open/launch commands ───────────────
@@ -597,9 +618,7 @@ export class JarvisOrchestrator {
     }
 
     agentStateMachine.transition(AgentState.PLANNING);
-    if (goal) {
-      goalManager.updateGoalStatus(goal.id, 'planning').catch(() => {});
-    }
+    noteGoal('planning');
 
     if (this.isInterrupted()) return 'failed';
 
@@ -612,12 +631,7 @@ export class JarvisOrchestrator {
 
       if (isAborted || isActionRequest || noAnswer) {
         console.warn(`[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "${input}". Goal marked FAILED.`);
-        if (goal) {
-          await goalManager.failGoal(
-            goal.id,
-            isAborted ? 'Planning interrupted by watchdog/abort' : 'Planning produced no tool execution graph'
-          ).catch(() => {});
-        }
+        record.failReason = isAborted ? 'Planning interrupted by watchdog/abort' : 'Planning produced no tool execution graph';
         agentStateMachine.transition(AgentState.IDLE);
         return 'failed';
       }
@@ -634,7 +648,7 @@ export class JarvisOrchestrator {
     if (preCheck.verdict === 'rejected') {
       const msg = `My plan was invalid before it started, sir. ${preCheck.issues[0] ?? 'Unknown issue.'}`;
       this.speak(msg);
-      if (goal) await goalManager.failGoal(goal.id, preCheck.summary);
+      record.failReason = preCheck.summary;
       return 'failed';
     }
 
@@ -681,7 +695,7 @@ export class JarvisOrchestrator {
     if (replanRequest) {
       if (!taskGraphEngine.canReplan(input)) {
         console.warn('[Orchestrator] ⛔ Replan guard: budget exhausted for this goal.');
-        if (goal) await goalManager.failGoal(goal.id, 'PlannerIntelligence: low confidence plan rejected');
+        record.failReason = 'PlannerIntelligence: low confidence plan rejected';
         return 'failed';
       }
 
@@ -689,18 +703,13 @@ export class JarvisOrchestrator {
       if (!replanned) {
         // A direct answer finishes the request; an LLM failure or interrupt does not.
         if (this.lastPlanOutcome !== 'answered') return 'failed';
-        if (goal) await goalManager.completeGoal(goal.id).catch(() => {});
         return 'success';
       }
       activePlan = replanned;
     }
 
-    if (goal) {
-      goalManager.updateGoalStatus(goal.id, 'executing', {
-        planSummary: preCheck.summary,
-        taskGraphId: planResult.id,
-      }).catch(() => {});
-    }
+    noteGoal('executing', { planSummary: preCheck.summary, taskGraphId: planResult.id });
+    worldState.startTask(input, [...activePlan.nodes.values()].map(stepLabel));
 
     let graph = activePlan;
     let repairCycles = 0;
@@ -775,8 +784,8 @@ export class JarvisOrchestrator {
         const isBlocked = reflection.failureClass === 'tool_error' &&
           reflection.summary?.toLowerCase().includes('safety policy');
 
-        // Phase 1: fail the goal
-        if (goal) await goalManager.failGoal(goal.id, reflection.summary).catch(() => {});
+        // Phase 1: the goal fails with this reason (process() records it)
+        record.failReason = reflection.summary;
         return isBlocked ? 'blocked' : 'failed';
       }
 
@@ -799,7 +808,7 @@ export class JarvisOrchestrator {
         if (!allowed) {
           console.warn(`[Orchestrator] ⛔ Phase 6 replan guard: max replans reached for this goal.`);
           this.speak('I have attempted multiple strategies and was unable to complete the task, sir.');
-          if (goal) await goalManager.failGoal(goal.id, 'max replans exceeded').catch(() => {});
+          record.failReason = 'max replans exceeded';
           return 'failed';
         }
         // Generate and log alternative strategies for failed nodes
@@ -919,6 +928,19 @@ export class JarvisOrchestrator {
       const workingSummary = `[ACTIVE TASK] Goal: ${workingContext.goal} (Iter: ${workingContext.iteration})`;
       memTokens = workingSummary.length >> 2;
       messages.push({ role: 'system', content: workingSummary });
+    }
+
+    // World state (P7): the parts this request is about, read again if stale
+    // (at most ~1.5 s), as data in the same wrapper as the OCR text below.
+    try {
+      const wanted = worldState.sectionsFor(input);
+      if (wanted.length) {
+        await Promise.race([worldState.refresh(wanted), new Promise((r) => setTimeout(r, WORLD_REFRESH_BUDGET_MS))]);
+      }
+      const world = worldState.planningContext(input);
+      if (world) messages.push({ role: 'user', content: world });
+    } catch (err) {
+      console.warn('[Orchestrator] World state unavailable (non-fatal):', err);
     }
 
     // Inject vision frame if available.
@@ -2188,6 +2210,22 @@ function joinWords(items: string[]): string {
 }
 
 /** "what can you do" / "who are you", from the registry's metadata. */
+/** How long planning waits for stale world-state parts to be read again. */
+const WORLD_REFRESH_BUDGET_MS = 1_500;
+
+/** A task step as the world state shows it: "control_app close". */
+function stepLabel(node: { tool: string; args?: Record<string, unknown> }): string {
+  const action = typeof node.args?.['action'] === 'string' ? ` ${node.args['action']}` : '';
+  return `${node.tool}${action}`;
+}
+
+/** What one request's agent loop reports back for its goal. */
+interface LoopRecord {
+  approvals: ApprovalDecision[];
+  /** Why the loop failed, in its own words, for the goal. */
+  failReason?: string;
+}
+
 /** The approval decisions made in `graph`, each added once. */
 function collectApprovals(graph: TaskGraph, into: ApprovalDecision[]): void {
   for (const node of graph.nodes.values()) {

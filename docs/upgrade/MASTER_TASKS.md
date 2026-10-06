@@ -309,24 +309,27 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 
 ## P7 — World state
 
-### T7.1 — Model · Critical · [ ] · depends on: T6.5
+### T7.1 — Model · Critical · [x] · depends on: T6.5
 Sections system / browser / development / task, each with `observedAt` and source.
 Files: `core/worldState.ts` (new).
 
-### T7.2 — Refresh on demand · High · [ ] · depends on: T7.1
+### T7.2 — Refresh on demand · High · [x] · depends on: T7.1
 `refresh(sections, maxAgeMs)` uses the probes; nothing polls.
 
-### T7.3 — Task state · High · [ ] · depends on: T7.1, T3.4
+### T7.3 — Task state · High · [x] · depends on: T7.1, T3.4
 Goal, plan, current step, done, failed, pending approvals.
 Found in P3: `runAgentLoop` always receives `goal = null` (the goal is created
 in the background and not resolved yet), so a goal's planning/executing
 status, plan summary and task-graph id are never recorded. Fix here.
+(Done: the loop records status once the goal exists, and returns its failure
+reason; process() alone completes or fails the goal, so a failure is still
+counted once — passing the goal in naively would have counted it twice.)
 
-### T7.4 — Planning summary · High · [ ] · depends on: T7.2
+### T7.4 — Planning summary · High · [x] · depends on: T7.2
 Only sections relevant to the request; capped; redacted; marked as data.
 Files: `core/orchestrator.ts`.
 
-### T7.5 — Tests and documents · High · [ ] · depends on: T7.1–T7.4
+### T7.5 — Tests and documents · High · [x] · depends on: T7.1–T7.4
 Stale refresh; size cap; long-term memory unchanged.
 
 ---
