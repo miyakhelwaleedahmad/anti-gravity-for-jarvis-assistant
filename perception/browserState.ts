@@ -10,7 +10,7 @@
  */
 
 import { cdpPort, cdpVersion, evaluateFixed, listPages, withPage, type CdpTarget } from './cdpClient.js';
-import { PAGE_STRUCTURE_SCRIPT, PAGE_TEXT_SCRIPT, VISIBILITY_SCRIPT } from './cdpScripts.js';
+import { PAGE_STRUCTURE_SCRIPT, PAGE_TEXT_SCRIPT, TAB_HEALTH_SCRIPT, VISIBILITY_SCRIPT } from './cdpScripts.js';
 import { redact, redactDeep } from '../security/redactor.js';
 import { rememberElements, type ElementInfo } from './browserRefs.js';
 
@@ -20,6 +20,10 @@ export interface BrowserTab {
   url: string;
   visible: boolean;
   windowId?: number;
+  /** The HTTP status of the page's last load, when the browser knows it. */
+  status?: number;
+  /** Chrome shows its error page instead: ERR_CONNECTION_REFUSED and the like. */
+  error?: string;
 }
 
 export interface BrowserStateReport {
@@ -39,12 +43,18 @@ async function tabDetails(target: CdpTarget, port: number): Promise<BrowserTab> 
     await withPage(target, async (session) => {
       // The window comes from the browser, the visibility from the page: a
       // frozen page still gets its window.
-      const [visibility, win] = await Promise.allSettled([
+      const [visibility, win, health] = await Promise.allSettled([
         evaluateFixed<string>(session, VISIBILITY_SCRIPT, PER_TAB_MS),
         session.send<{ windowId?: number }>('Browser.getWindowForTarget', { targetId: target.id }, PER_TAB_MS),
+        evaluateFixed<{ status?: unknown; error?: unknown }>(session, TAB_HEALTH_SCRIPT, PER_TAB_MS),
       ]);
       tab.visible = visibility.status === 'fulfilled' && visibility.value === 'visible';
       if (win.status === 'fulfilled' && typeof win.value.windowId === 'number') tab.windowId = win.value.windowId;
+      if (health.status === 'fulfilled') {
+        const { status, error } = health.value ?? {};
+        if (typeof status === 'number' && status > 0) tab.status = status;
+        if (typeof error === 'string' && /^(?:NET::)?ERR_[A-Z0-9_]{1,60}$/.test(error)) tab.error = error;
+      }
     }, port);
   } catch {
     // A tab that cannot be reached (closed meanwhile, crashed) is listed without details.

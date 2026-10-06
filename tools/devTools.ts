@@ -139,7 +139,11 @@ function runScript(project: string, script: string): Promise<Record<string, unkn
 
 // ── Servers ──────────────────────────────────────────────────────────────────
 
-interface Server { pid: number; project: string; script: string; port?: number; startedAt: string; child: ChildProcess; output: string[] }
+interface Server {
+  pid: number; project: string; script: string; port?: number; startedAt: string; child: ChildProcess; output: string[];
+  /** JARVIS is stopping it (stop_server): its exit is not a crash. */
+  stopping?: boolean;
+}
 
 const servers = new Map<number, Server>();
 
@@ -152,15 +156,40 @@ export function jarvisServersIn(project: string): number[] {
   return [...servers.values()].filter((s) => s.project === project).map((s) => s.pid);
 }
 
+/** How a server JARVIS started ended: stopped by JARVIS (stop_server), or by itself — a crash, or a signal from elsewhere. */
+export interface ServerExit { code: number | null; signal: string | null; at: string; by: 'jarvis' | 'itself' }
+
+interface KnownServer { project: string; script: string; pid: number; exit?: ServerExit; lastLines: string[] }
+
 /**
- * Servers JARVIS started at least once, by port, kept after they stop: the
- * error recovery (core/recoveryPlanner.ts) restarts one when its port stops
- * answering. In memory only.
+ * Servers JARVIS started at least once, by port, kept after they stop — with
+ * how they ended and their last output lines (redacted): the error recovery
+ * (core/recoveryPlanner.ts) and the diagnosis (core/diagnosis.ts) restart one
+ * when its port stops answering, and say why it stopped. In memory only.
  */
-const known = new Map<number, { project: string; script: string }>();
+const known = new Map<number, KnownServer>();
 
 export function knownServerOnPort(port: number): { project: string; script: string } | undefined {
-  return known.get(port);
+  const entry = known.get(port);
+  return entry ? { project: entry.project, script: entry.script } : undefined;
+}
+
+/** Every server JARVIS started this session, by port: running or not, how it ended, its last lines. */
+export function knownServers(): Array<{ port: number; project: string; script: string; pid: number; running: boolean; exit?: ServerExit; lastLines: string[] }> {
+  return [...known].map(([port, k]) => {
+    const live = servers.get(k.pid);
+    return {
+      port, project: k.project, script: k.script, pid: k.pid,
+      running: !!live && alive(k.pid),
+      ...(k.exit ? { exit: k.exit } : {}),
+      lastLines: live ? lastLines(live.output) : k.lastLines,
+    };
+  });
+}
+
+/** The last few output lines, redacted and cut short. */
+function lastLines(output: string[], n = 6): string[] {
+  return tail(output.join('\n'), n).split('\n').filter(Boolean).map((l) => l.slice(0, 200));
 }
 
 /** The running server JARVIS started on `port`, if any. */
@@ -215,7 +244,16 @@ async function startServer(project: string, script: string, portArg: unknown): P
   child.stdout?.on('data', keep);
   child.stderr?.on('data', keep);
   let exitCode: number | null | undefined;
-  child.on('exit', (code) => { exitCode = code; servers.delete(server.pid); });
+  // How it ended is kept for the diagnosis; the last lines again on 'close',
+  // when the output written just before the exit has arrived.
+  const noteExit = (code: number | null, signal: NodeJS.Signals | null) => {
+    const entry = server.port !== undefined ? known.get(server.port) : undefined;
+    if (!entry || entry.pid !== server.pid) return;
+    entry.exit ??= { code, signal, at: new Date().toISOString(), by: server.stopping ? 'jarvis' : 'itself' };
+    entry.lastLines = lastLines(server.output);
+  };
+  child.on('exit', (code, signal) => { exitCode = code; servers.delete(server.pid); noteExit(code, signal); });
+  child.on('close', (code, signal) => noteExit(code, signal));
   servers.set(server.pid, server);
 
   const deadline = Date.now() + SERVER_START_MS;
@@ -238,7 +276,7 @@ async function startServer(project: string, script: string, portArg: unknown): P
     return { project, script, pid: server.pid, did, output: tail(server.output.join('\n')), check: failed(`no port answered within ${SERVER_START_MS / 1000} seconds; JARVIS stopped it`) };
   }
   server.port = port;
-  known.set(port, { project, script });
+  known.set(port, { project, script, pid: server.pid, lastLines: [] });
   const http = await httpInfo(port);
   return {
     project, script, pid: server.pid, port, did,
@@ -260,6 +298,7 @@ async function stopServer(pidArg: unknown, projectArg: unknown): Promise<Record<
   let allStopped = true;
   for (const pid of pids) {
     const server = servers.get(pid);
+    if (server) server.stopping = true;
     const stopped = await stopAndWait(pid);
     const portClosed = server?.port ? !(await portOpen(server.port)) : true;
     if (stopped) servers.delete(pid);
@@ -278,6 +317,8 @@ async function listServers(): Promise<Record<string, unknown>> {
       pid: s.pid, project: s.project, script: s.script, port: s.port, startedAt: s.startedAt,
       running: alive(s.pid), answering: s.port ? await portOpen(s.port) : false,
     }))),
+    // Servers JARVIS started that have stopped since: how, and their last lines.
+    stopped: knownServers().filter((k) => !k.running).map(({ running: _running, ...k }) => k),
   };
 }
 

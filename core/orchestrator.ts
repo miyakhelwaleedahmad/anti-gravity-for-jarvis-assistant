@@ -16,7 +16,9 @@
 import { agentStateMachine, AgentState } from './agentStateMachine.js';
 import { asRepair, beginTrace, endTrace } from './traceContext.js';
 import { diagnose, MAX_RECOVERY_ROUNDS, observeFailure } from './recoveryPlanner.js';
-import { runningSummary, systemStateSummary, tabsSummary } from './voiceSummaries.js';
+import {
+  continueOffer, continueQuestion, diagnosisSummary, repairSummary, runningSummary, systemStateSummary, tabsSummary, unfinishedReason,
+} from './voiceSummaries.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import type { ApprovalDecision } from '../security/approvalRequest.js';
 import { verificationFailedReply, withCheck } from './verifiers.js';
@@ -25,7 +27,7 @@ import { describeServers } from '../perception/devProbe.js';
 import { worldState } from './worldState.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { currentTaskNode } from './taskContext.js';
-import { toolRegistryV2, type ToolCategory } from './toolRegistryV2.js';
+import { toolRegistryV2, type ToolCategory, type ToolResult } from './toolRegistryV2.js';
 import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
 import { agentMemory } from '../memory/agentMemory.js';
@@ -94,6 +96,12 @@ export class JarvisOrchestrator {
    * followed by "I was unable to recover from the error, sir."
    */
   private lastPlanOutcome: 'graph' | 'answered' | 'failed' | 'interrupted' = 'graph';
+  /**
+   * "Continue what I was doing" (P13): the unfinished request JARVIS offered
+   * to run again. Only a "yes" as the very next request, within a minute,
+   * runs it — as a new request, through every check; anything else drops it.
+   */
+  private continueOffer: { description: string; expires: number } | null = null;
   public onBargeIn: (() => void)[] = [];
 
   constructor(config: Partial<OrchestratorConfig> = {}) {
@@ -389,6 +397,11 @@ export class JarvisOrchestrator {
       }
 
     }
+    // "Yes" to "continue what I was doing": the earlier request, as a new
+    // request of its own — planned again, every step checked and asked again.
+    if (record.followUp && this.currentProcessCallId === callId) {
+      await this.process(record.followUp, source);
+    }
   }
 
   startLoop(): void {
@@ -492,6 +505,8 @@ export class JarvisOrchestrator {
     // Checked FIRST — before memory writes — so memory unavailability never
     // blocks a fast-path command. Bypasses LLM to prevent Groq 429 failures.
     const route = this.matchDeterministicCommand(input);
+    // An offer to continue holds for the very next request only.
+    if (route?.type !== 'continue_confirmed' && route?.type !== 'continue_declined') this.continueOffer = null;
     if (route) {
       console.log(`[Orchestrator] ⚡ Deterministic command route: type="${route.type}"${route.target ? ` target="${route.target}"` : ''}`);
       // Transition through IDLE → PLANNING → EXECUTING only if not already there.
@@ -592,6 +607,20 @@ export class JarvisOrchestrator {
         } else if (route.type === 'dev_status') {
           const result = await runRoutedTool('dev_status', {});
           this.speak(result?.success ? devStatusReply(result.output) : 'I could not check the local servers, sir.');
+        } else if (route.type === 'diagnose_app') {
+          this.speak(await this.diagnoseAndRepair(runRoutedTool));
+        } else if (route.type === 'continue_work') {
+          this.speak(await this.continueWork(runRoutedTool));
+        } else if (route.type === 'continue_confirmed') {
+          const offer = this.continueOffer;
+          this.continueOffer = null;
+          if (offer) {
+            console.log(`[Orchestrator] ▶️  Continuing "${offer.description}" as a new request.`);
+            record.followUp = offer.description;
+          }
+        } else if (route.type === 'continue_declined') {
+          this.continueOffer = null;
+          this.speak(route.reply);
         } else if (route.type === 'list_capabilities') {
           // Through the registry like any tool call; the full list goes to the console.
           const result = await runRoutedTool('list_capabilities', {});
@@ -683,9 +712,12 @@ export class JarvisOrchestrator {
       if (intelligence.recommendation === 'replan') {
         const highRisk = intelligence.predictions.filter(p => p.riskLevel === 'high');
         const topIssue = highRisk[0];
+        // The prediction is about failing, not danger: "high-risk steps" read
+        // like the safety levels, for a step that had merely failed before (P13).
+        const why = topIssue?.reasons.find((r) => /failure rate|not registered|missing required/i.test(r)) ?? topIssue?.reasons[0];
         const msg = topIssue
-          ? `My plan has high-risk steps, sir. I'll reconsider. (${topIssue.reasons[0] ?? 'low confidence'})`
-          : `My plan confidence is too low to proceed safely, sir. Replanning.`;
+          ? `Part of my plan is likely to fail, sir: the ${topIssue.tool} step${why ? ` (${why})` : ''}. I'll plan it again.`
+          : `I am not confident in this plan, sir. I'll plan it again.`;
 
         // The message promised a replan, but the code called failGoal() and
         // returned 'failed' without ever replanning (JARVIS-007). Record the
@@ -888,6 +920,58 @@ export class JarvisOrchestrator {
   }
 
   // ── Phase Implementations ─────────────────────────────────────────────────
+
+  /**
+   * "Why isn't my application working?" (P13, core/diagnosis.ts): the
+   * diagnosis from real readings; the repairs it proposes, each through the
+   * registry (risk engine, approval gate with the fault as WHY); then a second
+   * diagnosis, which is what the reply says about the result.
+   */
+  private async diagnoseAndRepair(run: (tool: string, args: Record<string, unknown>) => Promise<ToolResult>): Promise<string> {
+    const first = await run('diagnose_app', {});
+    const report = first?.success ? parseJson(first.output) : null;
+    if (!report) return 'I could not check the application, sir.';
+    console.log(`[Orchestrator] Diagnosis:\n${first.output}`);
+    type Step = { tool: string; args: Record<string, unknown>; says: string; did: string };
+    const faults: Array<{ text: string; repairs?: Step[] }> = Array.isArray(report.faults) ? report.faults : [];
+    const repairs = faults.flatMap((f) => f.repairs ?? []);
+    if (!repairs.length) return diagnosisSummary(report);
+
+    const why = `To get your application working, JARVIS needs to repair this: ${faults.filter((f) => f.repairs?.length).map((f) => f.text).join('; ')}.`;
+    const done: string[] = [];
+    let reloadedTab: string | undefined;
+    for (const step of repairs) {
+      console.log(`[Orchestrator] 🩹 Repair: ${step.says} via ${step.tool}`);
+      agentMemory.pushEpisode('repair', `Repair: ${step.says}`, { tool: step.tool }, 7);
+      const result = await asRepair(why, () => run(step.tool, step.args));
+      if (!result?.success) return repairSummary(report, done, { says: step.says, reason: repairFailure(result) }, null);
+      if (step.tool === 'browser_navigate') reloadedTab = String(step.args['tab'] ?? '');
+      done.push(step.did);
+    }
+    const second = await run('diagnose_app', {});
+    const after = second?.success ? parseJson(second.output) : null;
+    if (after) console.log(`[Orchestrator] Diagnosis after the repair:\n${second.output}`);
+    return repairSummary(report, done, null, after, reloadedTab);
+  }
+
+  /**
+   * "Continue what I was doing" (P13): the newest request, when it is recent
+   * and did not finish, is named with why it stopped and offered again (a
+   * "yes" runs it as a new request). Otherwise JARVIS asks, saying what is on
+   * screen.
+   */
+  private async continueWork(run: (tool: string, args: Record<string, unknown>) => Promise<ToolResult>): Promise<string> {
+    const last = goalManager.getRecentGoals(1).find((g) => Date.now() - g.createdAt < CONTINUE_WINDOW_MS);
+    if (last && last.status !== 'completed' && last.status !== 'cancelled') {
+      this.continueOffer = { description: last.description, expires: Date.now() + CONTINUE_OFFER_MS };
+      return continueOffer(last.description, unfinishedReason(last.status, last.lastError));
+    }
+    const [browser, active] = await Promise.all([run('browser_state', {}), run('get_active_window', {})]);
+    const state = browser?.success ? parseJson(browser.output.replace(/^<untrusted_context[^>]*>\n?|\n?<\/untrusted_context>$/g, '')) : null;
+    const activeWindow = active?.success ? parseJson(active.output) : null;
+    const onScreen = state?.visibleTab?.title || activeWindow?.title || undefined;
+    return continueQuestion(last ? { description: last.description, done: last.status === 'completed' } : undefined, onScreen);
+  }
 
   /**
    * RECOVERY (P11, core/recoveryPlanner.ts): for each failed step, read again
@@ -1654,11 +1738,19 @@ export class JarvisOrchestrator {
     if (clean === 'what is open') {
       return { type: 'get_system_state', reply: 'Checking what is open, sir.' };
     }
-    if (BROWSER_TABS_PHRASES.has(clean)) {
+    if (BROWSER_TABS_PHRASES.has(clean) || BROWSER_TABS_QUESTION.test(clean)) {
       return { type: 'get_browser_tabs', reply: 'Checking open Chrome tabs, sir.' };
     }
     if (RUNNING_PHRASES.has(clean)) {
       return { type: 'whats_running', reply: '' };
+    }
+    if (CONTINUE_QUESTION.test(clean)) {
+      return { type: 'continue_work', reply: '' };
+    }
+    // The answer to "Shall I try it again?", while that offer holds.
+    if (this.continueOffer && Date.now() < this.continueOffer.expires) {
+      if (CONTINUE_YES.test(clean)) return { type: 'continue_confirmed', reply: '' };
+      if (CONTINUE_NO.test(clean)) return { type: 'continue_declined', reply: 'Understood, sir. I will leave it.' };
     }
     if (clean === 'is youtube open') {
       return { type: 'is_tab_open', target: 'youtube', reply: 'Checking if YouTube is open, sir.' };
@@ -1716,6 +1808,11 @@ export class JarvisOrchestrator {
     }
     if (DEV_STATUS_QUESTION.test(clean)) {
       return { type: 'dev_status', reply: '' };
+    }
+    // "Why isn't my application working?": diagnosed, repaired through the
+    // registry where a repair is known, and checked again (P13).
+    if (APP_TROUBLE.some((pattern) => pattern.test(clean))) {
+      return { type: 'diagnose_app', reply: '' };
     }
 
     // 6. Help
@@ -1985,6 +2082,8 @@ export class JarvisOrchestrator {
       if (/\bpush\b/.test(clean)) addIfRegistered('git_push');
     }
     if (DEV_ACTION.test(clean)) addIfRegistered('dev');
+    // Something does not work: the diagnosis, for phrasings the route above does not take (P13).
+    if (TROUBLE_WORDS.test(clean)) addIfRegistered('diagnose_app');
 
     // The read-only observation tools (P6, P8) come after the launch and close
     // tools, so "open chrome" still offers open_app first, and before the
@@ -2292,6 +2391,48 @@ const RUNNING_PHRASES = new Set([
   'whats running on my computer', 'what is running on my computer', 'what apps are running',
 ]);
 
+/** "What is (currently) open in my browser?" and the like (P13; the fixed phrases above stay). */
+const BROWSER_TABS_QUESTION =
+  /^(?:(?:whats|what is|what do i have)(?: currently| now)? open(?: right now| now)? (?:in|on) (?:my |the )?(?:browser|chrome|google chrome)|(?:what|which) tabs? (?:is|are|do i have)(?: currently| now)? open(?: right now| now)?(?: (?:in|on) (?:my |the )?(?:browser|chrome|google chrome))?)$/;
+
+/** "Why isn't my application working?" and the like: diagnosed from real readings (P13). */
+const APP_NOUN = '(?:app|application|website|web site|site|web app|webapp|backend|back end|frontend|front end|server|dev server|local server|web server|api|page|project)';
+const NOT_WORKING = '(?:working|loading|responding|running|opening|starting|work|load|respond|run|open|start|up)';
+const BROKEN = '(?:down|broken|failing|crashing|crashed|dead)';
+const CHECK = '(?:(?:check|find out|tell me|see|figure out|look at|look into|investigate) )?';
+const APP_TROUBLE: readonly RegExp[] = [
+  new RegExp(`^${CHECK}why (?:is|isnt|does|doesnt|wont|cant|did|didnt) (?:my|the) ${APP_NOUN} (?:not )?(?:${NOT_WORKING}|${BROKEN})$`),
+  new RegExp(`^${CHECK}why (?:my|the) ${APP_NOUN} (?:isnt|is not|doesnt|does not|wont|will not|cant|cannot|can not|didnt|did not) ${NOT_WORKING}$`),
+  new RegExp(`^${CHECK}why (?:my|the) ${APP_NOUN} is ${BROKEN}$`),
+  new RegExp(`^(?:my|the) ${APP_NOUN} (?:isnt|is not|doesnt|does not|wont|will not|cant|cannot|can not|stopped|has stopped) ${NOT_WORKING}$`),
+  new RegExp(`^(?:my|the) ${APP_NOUN} (?:is |keeps |seems )?${BROKEN}$`),
+  new RegExp(`^(?:whats|what is) (?:wrong|going on|the problem|the issue) with (?:my|the) ${APP_NOUN}$`),
+  new RegExp(`^(?:fix|repair|debug|diagnose|troubleshoot) (?:my|the) ${APP_NOUN}$`),
+  new RegExp(`^(?:is|are) (?:my|the) ${APP_NOUN} working$`),
+];
+
+/** "Continue what I was doing" and the like (P13), and the answers to its offer. */
+const CONTINUE_QUESTION =
+  /^(?:continue|resume|carry on with|pick up|go back to|get back to|keep going with) (?:what i was doing|where i left off|where we left off|what we were doing|my (?:last )?(?:task|work))$|^what was i doing$|^where was i$/;
+const CONTINUE_YES = /^(?:yes|yes please|yeah|yep|try again|yes try again|go ahead)$/;
+const CONTINUE_NO = /^(?:no|no thanks|nope|leave it|dont)$/;
+/** How recent a request must be for "continue" to offer it, and how long the offer holds. */
+const CONTINUE_WINDOW_MS = 12 * 60 * 60_000;
+const CONTINUE_OFFER_MS = 60_000;
+
+/** Why a repair step did not run, or failed, in words. */
+function repairFailure(result: ToolResult | undefined): string {
+  if (result?.error === 'APPROVAL_DENIED') return 'it was not approved';
+  if (result?.error === 'RATE_LIMITED') return 'too many actions ran in the last minute';
+  if (isPermissionDenial(result?.error ?? '') || isPermissionDenial(result?.output ?? '')) {
+    return 'it needs full control mode; say "enable full control mode" and ask again';
+  }
+  if (result?.error === 'RISK_REFUSED') {
+    return `the safety policy refused it (${(result.output ?? '').replace(/^Refused by safety policy:\s*/, '').slice(0, 120)})`;
+  }
+  return `that failed: ${(result?.verification?.evidence ?? result?.output ?? 'no result').slice(0, 120)}`;
+}
+
 function parseJson(text: string): any {
   try { return JSON.parse(text); } catch { return null; }
 }
@@ -2317,7 +2458,9 @@ const GIT_QUESTION = /\b(git|commit|commits|branch|uncommitted|repository|repo|d
 const BROWSER_QUESTION = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button)\b/;
 const FILE_ACTION = /\b(files?|folders?|directory|rename|move|delete|trash|restore|compare)\b/;
 const GIT_ACTION = /\b(git|commit|commits|branch|branches|push|repo|repository)\b/;
-const DEV_ACTION = /\b(tests?|build|lint|typecheck|type check|dev server|start (?:the )?server|stop (?:the )?server|npm|pnpm|script|scripts)\b/;
+// "stop my web server" did not offer `dev` (P13): the server may have a name.
+const DEV_ACTION = /\b(tests?|build|lint|typecheck|type check|dev server|(?:start|stop|restart) (?:the |my )?(?:[a-z]+ )?server|npm|pnpm|script|scripts)\b/;
+const TROUBLE_WORDS = /\b(not working|isnt working|doesnt work|wont load|not loading|broken|crash(?:ed|es|ing)?|(?:is|went|keeps going) down|error page|blank page|failing)\b/;
 const BROWSER_CONTEXT = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button|field|box|url|address)\b/;
 const BROWSER_ACTIONS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(click|press|tap|tick|check|uncheck)\b/, 'browser_click'],
@@ -2373,6 +2516,8 @@ interface LoopRecord {
   approvals: ApprovalDecision[];
   /** Why the loop failed, in its own words, for the goal. */
   failReason?: string;
+  /** A request to process once this one has finished (a confirmed "continue"). */
+  followUp?: string;
 }
 
 /** The approval decisions made in `graph`, each added once. */

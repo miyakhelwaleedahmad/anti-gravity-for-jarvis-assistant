@@ -609,10 +609,99 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   `approvalGateStructuredTest` (60), `systemStateRouteTest` (31),
   `deterministicCommandRouteTest` (44), `voiceRouteMockTest` (9) still pass.
   Full suite: 105 files, 99 passed · 0 failed · 6 environment; CI mode 97
-  passed · 8 skipped.
+  passed · 8 skipped. GitHub CI on `3130ac1`: green (97 passed · 8 skipped).
 - **Not verified here:** a real microphone and speaker (P14 Windows pack):
   how late the speech recognizer delivers an echo after JARVIS stops.
 - **Known limits:** STT results carry no capture time, so a bare "approve"
   heard after JARVIS finishes is taken as the user's.
 - **Next:** P13 — integration scenarios.
+
+## P13 — Integration and scenarios — COMPLETE
+
+- **Implemented** ([SCENARIOS.md](SCENARIOS.md)):
+  - Scenario harness `tests/scenarios/harness.ts`: real headless Chromium, a
+    local test site, two projects JARVIS starts through `dev` (a website in a
+    git repository, a backend), HOME in a temporary folder, a scripted model
+    that counts and keeps every request after the router's redaction.
+  - `core/diagnosis.ts` and the `diagnose_app` tool (level 0): the servers
+    JARVIS started (how one ended, its last error line), their ports, the
+    development ports and the browser tabs → faults, repairs, a question.
+    "Why isn't my application working?", "Check why my website isn't
+    working." and similar phrasings run it, then its repairs through the
+    registry (a stopped server started again, level 1; a hung one stopped
+    first, level 2; the tab that showed the error reloaded, level 1), then a
+    second diagnosis, which is what the reply says. No LLM request.
+  - "Continue what I was doing.": the newest request, if unfinished and less
+    than 12 hours old, named with why it stopped and offered again; a "yes"
+    as the next request runs it as a new request (every approval asked
+    again); otherwise a question with what is on screen. No LLM request.
+  - `browser_state` reports each tab's HTTP status and Chrome's error page;
+    `dev servers` lists servers that stopped, with how and their last lines.
+- **Found and fixed** (each shown failing on the P12 code):
+  - "What is currently open in my browser?" went to the LLM: only fixed
+    phrases were routed. Now a pattern, 0 requests.
+  - Nothing could say why an application was not working, and "continue what
+    I was doing" had nothing to continue from (both went to the LLM with no
+    tool for it).
+  - Redaction missed credential names with words joined to them inside a
+    line: `DB_PASSWORD=…` in a log line passed unchanged (a script's output
+    from `dev run` goes to the model; the scenario's log line would have been
+    said aloud). Also `AWS_SECRET_ACCESS_KEY=…`, `"dbPassword": …`,
+    `API_TOKEN: …`. And the URL rule took 1.3 s on a 64 KB dotted or dashed
+    word (now about 30 ms).
+  - A tab on Chrome's error page looked like any tab (the host as its title).
+  - A server JARVIS started that crashed left nothing behind: its output and
+    exit code were dropped when it exited.
+  - "Stop my web server" did not offer the `dev` tool to the planner.
+  - The planner's own check said "My plan has high-risk steps" for steps that
+    had only failed before (seen in P11); now "Part of my plan is likely to
+    fail, sir: the … step (Historical failure rate: …%)".
+- **Tested:** `tests/scenarioIntegrationTest.ts`, 35 checks, all pass —
+  1. the tabs and the one on screen, in at most three sentences, from
+  `browser_state`; 2. "port … answers 200"; 3. the backend crashed (`/crash`
+  logs a fake password and exits 1): "The api server on port … stopped by
+  itself, exit code 1, sir; its last line was: Error, lost the connection to
+  the database, DB PASSWORD a hidden value. I started it again; it answers
+  now." — started through the registry, no approval, the port answers; then
+  a backend that runs but no longer answers: stopping it is asked (level 2)
+  with the fault as WHY — cancelled: the process lives, "…but it was not
+  approved"; approved: the old process gone, a new one answering; 4. "Stop my
+  web server." not approved, then "Continue what I was doing." names it and
+  why; the offer holds for the next request only; "no" leaves it; "yes" runs
+  it again with its approval asked again, and the server stops; asked again,
+  JARVIS asks a question naming the tab on screen; 5. the website's tab shows
+  Chrome's error page: the server started and the tab reloaded through the
+  registry, the port answers and the tab shows "Web app"; 6. "Delete my
+  Downloads folder." as `files`: refused, nothing asked; as `control_file`:
+  level 4 with a code, voice cannot approve, a spoken "yes" and then no
+  answer: cancelled after 30 s; the tools were never reached and the files
+  are there. No planted secret (a token in a tab title, the log password, a
+  key in a `.env` file) in any of the 5 LLM requests or anything said. On the
+  P12 code: 18 of 35 pass. `tests/diagnosisRulesTest.ts`, 17 checks, all pass
+  (HTTP 500, a port taken by another program, a tab for an unknown port, a
+  site that cannot be reached, nothing wrong, nothing known, failed and
+  partial repairs, the telling log line, redacted speech); it cannot run on
+  the P12 code. `errorRecoveryTest` 15 (P12 code: 14 — the "high-risk"
+  wording); `redactionTest` 46 (P12 code: 39). Full suite: 107 files, 101
+  passed · 0 failed · 6 environment; CI mode 99 passed · 8 skipped.
+- **LLM requests per scenario** (scripted model; the free tier allows about
+  20 a day per model):
+
+  | Scenario | Requests spoken | LLM requests |
+  |---|---|---|
+  | 1. What is currently open in my browser? | 1 | 0 |
+  | 2. Is my backend running? | 1 | 0 |
+  | 3. Why isn't my application working? (crashed; hung ×2) | 3 | 0 |
+  | 4. Continue what I was doing (with "Stop my web server.", "yes", "no" …) | 10 | 3 — planning "Stop my web server." (1), its re-run after "yes" (planning and reply, 2) |
+  | 5. Check why my website isn't working. | 1 | 0 |
+  | 6. Delete my Downloads folder. (two attempts) | 2 | 2 — planning |
+- **Not verified here:** the owner's Windows PC, Chrome profile and projects
+  (P14); a real model's plans for these requests; a real microphone for the
+  yes-or-no answer.
+- **Known limits:** the servers JARVIS started are remembered in memory only:
+  after JARVIS restarts, the diagnosis cannot say how one ended and asks
+  which project to start. "Continue" offers only the newest request. By voice,
+  one-word answers other than "yes" and "no" ("yeah", "nope") are dropped by
+  the existing fragment filter before they reach the orchestrator.
+- **Next:** P14 — Windows observation and control.
 

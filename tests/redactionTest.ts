@@ -45,6 +45,11 @@ if (!redactSecrets) {
     ['api_key in a command', `curl --data api_key=${fill(16)}`, 'secret'],
     ['JSON secret', `{"client_secret": "${fill(20)}"}`, 'secret'],
     ['a password said in words', `my wifi password is ${fill(10)} thanks`, 'secret'],
+    // P13: names with words joined to them, inside a log line.
+    ['a prefixed name in a log line', `Error: lost the database (DB_PASSWORD=${fill(14)})`, 'secret'],
+    ['a long prefixed name', `started with AWS_SECRET_ACCESS_KEY=${fill(20)} set`, 'secret'],
+    ['a camelCase name in JSON', `{"dbPassword":"${fill(14)}"}`, 'secret'],
+    ['NAME: value', `env API_TOKEN: ${fill(16)}`, 'secret'],
   ];
   for (const [label, input, kind] of cases) {
     const r = redactSecrets(input);
@@ -70,11 +75,20 @@ if (!redactSecrets) {
     'C:\\Users\\me\\Documents\\notes.txt',
     'https://www.youtube.com/results?search_query=cats',
     'JARVIS_BRAIN_MODEL=gemini-3.5-flash',
+    'usage max_tokens: 4096, inputTokens: 12, tokens: 1500',
   ]) {
     const r = redactSecrets(plain);
     ok(`unchanged: "${plain.slice(0, 40)}"`, r.text === plain && r.count === 0, r.text);
   }
   ok('empty text', redactSecrets('').text === '' && redactSecrets('').count === 0);
+
+  // Long words with many separators used to take over a second (the URL rule).
+  for (const [label, text] of [['dashes', 'ab-'.repeat(22_000)], ['dots', 'ab.'.repeat(22_000)], ['names', 'password-'.repeat(7_000)]] as const) {
+    const t0 = performance.now();
+    redactSecrets(text);
+    const ms = Math.round(performance.now() - t0);
+    ok(`64 KB of ${label} is redacted in under 300 ms`, ms < 300, `${ms} ms`);
+  }
 
   // Text shortened before redaction: what is left of a key is still hidden.
   for (const cut of [`User [voice]: my key is gsk_${fill(9, 'xY7')}`, `token prefix AIza${fill(12)}…`, `line one\nsk-proj-${fill(8)}\nline three`]) {

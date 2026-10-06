@@ -43,9 +43,13 @@ keys of known shapes (Google `AIza…`/`AQ.…`, OpenAI-style `sk-…`, Groq `gs
 GitHub, AWS, Slack), JWTs, `Authorization: Bearer …`, `Cookie` / `Set-Cookie`
 values, private-key blocks, `password` / `token` / `secret` / `api_key` pairs
 (`:` or `=`, quoted or not; quoted values keep their quotes so JSON stays
-valid), "my password is …", URLs with a password, `.env` lines whose name
-contains KEY, TOKEN, SECRET or PASSWORD, and what is left of a known key
-prefix when text was cut short before it got here.
+valid) — since P13 also with words joined to the name, anywhere in a line
+(`DB_PASSWORD=…` in a log line, `AWS_SECRET_ACCESS_KEY=…`, `"dbPassword": …`,
+`API_TOKEN: …`; not `max_tokens: 4096`) — "my password is …", URLs with a
+password, `.env` lines whose name contains KEY, TOKEN, SECRET or PASSWORD, and
+what is left of a known key prefix when text was cut short before it got here.
+The URL rule's scheme is bounded since P13: a 64 KB dotted or dashed word took
+over a second, now about 30 ms.
 
 Where it is applied:
 

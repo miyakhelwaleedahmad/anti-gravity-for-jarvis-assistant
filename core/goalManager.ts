@@ -344,6 +344,12 @@ export class GoalManager {
     return `Recent Goals:\n${lines.join('\n')}`;
   }
 
+  /** The most recent goals, the newest request first ("continue what I was doing", P13). */
+  getRecentGoals(limit = 5): Goal[] {
+    this.ensureInit();
+    return [...this.db.data.goals].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+  }
+
   // ── Phase 6: Priority, Cancellation, Merge ────────────────────────────────
 
   /**

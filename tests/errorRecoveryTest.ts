@@ -195,6 +195,16 @@ try {
     `${flakyTabs} tabs: ${out.said}`);
   ok('each repair went through the registry', out.calls.filter((c) => c.tool === 'browser_tab' && (c.args as any).action === 'new').length === 2,
     out.calls.map((c) => c.tool).join(' '));
+
+  console.log('\n--- 6. The planner\'s own check, in plain words (P13) ---');
+  // browser_page_structure has just failed three times: a plan with two such
+  // steps is planned again. JARVIS used to call them "high-risk steps".
+  out = await ask('read both flaky pages', [
+    { name: 'browser_page_structure', args: { tab: `127.0.0.1:${port}/flaky` } },
+    { name: 'browser_page_structure', args: { tab: `127.0.0.1:${port}/flaky-too` } },
+  ]);
+  ok('a plan likely to fail is planned again, and JARVIS says "likely to fail", not "high-risk"',
+    /Part of my plan is likely to fail, sir: the browser_page_structure step \(Historical failure rate: \d+%\)/.test(out.said) && !/high-risk/i.test(out.said), out.said);
 } finally {
   await toolRegistryV2.execute('dev', { action: 'stop_server', project: app }).catch(() => undefined);
   await chrome.stop();

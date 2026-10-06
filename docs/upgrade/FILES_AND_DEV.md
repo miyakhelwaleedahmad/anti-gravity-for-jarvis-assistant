@@ -54,7 +54,8 @@ comes from the lock file (pnpm, yarn, else npm); the script name must be in
 | run | `test`, `build`, `lint`, `typecheck`, `check` (and `test:…` etc.); up to 10 min (`JARVIS_DEV_RUN_TIMEOUT_MS`) | the exit code (a failing test run is reported, not hidden) |
 | start_server | `dev`, `start`, `serve`, `preview`; optional `port` (passed as `PORT`) | a port answers within 30 s (`JARVIS_DEV_SERVER_START_MS`), from the output's address or a newly open dev port; otherwise JARVIS stops it |
 | stop_server | by pid or project — only servers JARVIS started | the process is gone and its port closed |
-| servers | lists them | — |
+| servers | lists them, and (P13) under `stopped` the ones that have stopped since: how (by itself with its exit code, from outside with a signal, or by JARVIS) and their last output lines, redacted | — |
 
 The list of servers JARVIS started is kept in memory: after JARVIS restarts it
-cannot stop one it started before.
+cannot stop one it started before. The diagnosis ([SCENARIOS.md](SCENARIOS.md))
+uses the same list to say why a server stopped and to start it again.

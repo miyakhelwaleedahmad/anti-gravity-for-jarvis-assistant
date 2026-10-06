@@ -54,6 +54,7 @@ const HOST_DEPENDENT: Record<string, () => string | undefined> = {
   browserObservationTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   browserControlAgentTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   errorRecoveryTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
+  scenarioIntegrationTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
 };
 
 /** What `name` needs that this host is missing, or undefined if nothing is. */

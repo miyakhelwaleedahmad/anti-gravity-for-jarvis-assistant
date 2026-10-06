@@ -255,6 +255,8 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     { format: 'json', description: 'platform, cpu {model, cores, usagePercent}, memory, uptimeHours, disks[], network[]' }),
   dev_status: observation('Checks local development ports (127.0.0.1) and what answers on them.',
     { format: 'json', description: 'ports[]: port, open, http {status, server, title (untrusted)}' }, 'DEVELOPMENT'),
+  diagnose_app: observation('Checks why a local application or website is not working: the servers JARVIS started, their last log lines, the ports and the browser tabs. Proposes repairs; runs none.',
+    { format: 'json', description: 'faults[] (text, line, repairs, note), healthy[], question, servers[], tabs[] (untrusted titles), ports[]' }, 'DEVELOPMENT'),
   git_overview: observation('Reads branch, changes and recent commits of the git repositories in the project folders.',
     { format: 'json', description: 'repositories[]: path, branch, ahead, behind, changed, untracked, files, lastCommits, diffSummary' }, 'DEVELOPMENT'),
   browser_state: observation('Reads the browser JARVIS can reach: version, windows, tabs, the tab on screen.',

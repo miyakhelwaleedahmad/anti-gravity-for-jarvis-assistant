@@ -484,16 +484,16 @@ New observation questions by voice, same pipeline.
 
 ## P13 — Integration and scenarios
 
-### T13.1 — Scenario harness · High · [ ] · depends on: T12.4
+### T13.1 — Scenario harness · High · [x] · depends on: T12.4
 Real Chromium, local servers, temporary git repository, scripted model, LLM-request counter.
 
-### T13.2 — Scenarios · High · [ ] · depends on: T13.1
+### T13.2 — Scenarios · High · [x] · depends on: T13.1
 Browser contents; backend running; application not working; continue previous
 work; website not working; dangerous request.
 
-### T13.3 — Fixes found by scenarios · High · [ ] · depends on: T13.2
+### T13.3 — Fixes found by scenarios · High · [x] · depends on: T13.2
 
-### T13.4 — Documents and quota table · Normal · [ ] · depends on: T13.3
+### T13.4 — Documents and quota table · Normal · [x] · depends on: T13.3
 
 ---
 

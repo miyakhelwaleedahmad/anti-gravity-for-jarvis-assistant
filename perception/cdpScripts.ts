@@ -84,6 +84,23 @@ const HELPERS = String.raw`
 /** document.visibilityState, to find the tab on screen. */
 export const VISIBILITY_SCRIPT = `Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState').get.call(document)`;
 
+/**
+ * Whether the tab shows Chrome's own error page, and which error
+ * (ERR_CONNECTION_REFUSED…), and the HTTP status of the page's last load —
+ * from the browser's record of it, without requesting the page again. The
+ * text is read only on Chrome's error page.
+ */
+export const TAB_HEALTH_SCRIPT = String.raw`(() => {
+  const get = (proto, name, obj) => Object.getOwnPropertyDescriptor(proto, name).get.call(obj);
+  const nav = performance.getEntriesByType('navigation')[0];
+  const status = nav && typeof nav.responseStatus === 'number' ? nav.responseStatus : 0;
+  if (location.protocol !== 'chrome-error:') return { status, error: '' };
+  const body = get(Document.prototype, 'body', document);
+  const text = body ? String(get(HTMLElement.prototype, 'innerText', body)) : '';
+  const code = text.match(/\b(?:NET::)?ERR_[A-Z0-9_]+\b/);
+  return { status, error: code ? code[0] : 'ERR_FAILED' };
+})()`;
+
 /** Title, URL and visible text (at most 4 000 characters). */
 export const PAGE_TEXT_SCRIPT = String.raw`(() => {
   ${HELPERS}

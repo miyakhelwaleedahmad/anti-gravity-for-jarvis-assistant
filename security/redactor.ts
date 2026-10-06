@@ -20,6 +20,13 @@ export interface Redaction {
 type Rule = readonly [kind: string, pattern: RegExp, keep?: string, quote?: string];
 
 const SECRET_NAMES = '(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret|auth[_-]?token)';
+/**
+ * A field named for a credential, with the words joined to it: DB_PASSWORD,
+ * AWS_SECRET_ACCESS_KEY, dbPassword, SECRET_KEY_BASE — in a log line as much
+ * as at the start of one. Not "max_tokens" or "inputTokens": after the name
+ * comes a separator or the value. Bounded, so a long word stays fast.
+ */
+const SECRET_FIELD = `[A-Za-z0-9_-]{0,40}?${SECRET_NAMES}(?:[_-][A-Za-z0-9]{1,20}){0,3}`;
 
 /**
  * Order matters: whole blocks and specific formats first, so that the generic
@@ -38,14 +45,15 @@ const RULES: readonly Rule[] = [
   ['jwt', /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g],
   ['bearer', /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{10,}/gi, '$1'],
   ['cookie', /^(\s*(?:set-)?cookie\s*:\s*).+$/gim, '$1'],
-  ['url-credentials', /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/:@]+:[^\s/@]+(?=@)/gi, '$1'],
+  // The scheme is bounded: unbounded, a long dotted or dashed word took seconds.
+  ['url-credentials', /\b([a-z][a-z0-9+.-]{0,30}:\/\/)[^\s/:@]+:[^\s/@]+(?=@)/gi, '$1'],
   // .env lines: NAME=value where the name says what it is.
   ['env-secret', /^(\s*(?:export\s+)?[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)[A-Za-z0-9_]*\s*=\s*)\S.*$/gm, '$1'],
   // name: value / name=value pairs in prose, JSON or a command line. A quoted
   // value keeps its quotes, so JSON output stays valid JSON.
-  ['secret', new RegExp(`\\b(${SECRET_NAMES}["']?\\s*[:=]\\s*)"(?:[^"\\\\\\n]|\\\\.){4,}"`, 'gi'), '$1', '"'],
-  ['secret', new RegExp(`\\b(${SECRET_NAMES}["']?\\s*[:=]\\s*)'[^'\\n]{4,}'`, 'gi'), '$1', "'"],
-  ['secret', new RegExp(`\\b(${SECRET_NAMES}["']?\\s*[:=]\\s*)[^\\s"',;{}]{4,}`, 'gi'), '$1'],
+  ['secret', new RegExp(`\\b(${SECRET_FIELD}["']?\\s*[:=]\\s*)"(?:[^"\\\\\\n]|\\\\.){4,}"`, 'gi'), '$1', '"'],
+  ['secret', new RegExp(`\\b(${SECRET_FIELD}["']?\\s*[:=]\\s*)'[^'\\n]{4,}'`, 'gi'), '$1', "'"],
+  ['secret', new RegExp(`\\b(${SECRET_FIELD}["']?\\s*[:=]\\s*)[^\\s"',;{}]{4,}`, 'gi'), '$1'],
   // The way it is said: "my wifi password is …".
   ['secret', /\b((?:password|passwd|passphrase|passcode)\s+(?:is|was)\s+)["']?[^\s"',;]{4,}["']?/gi, '$1'],
   // A key cut short (text shortened before it reached here): the known prefix

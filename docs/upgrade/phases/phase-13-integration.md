@@ -55,3 +55,19 @@ Any scenario passing only with a mocked observation (observations must be real).
 
 ## Completion requirements
 Gate; checklist; PHASE_STATUS; commit `phase-13-integration`; CI green.
+
+## As built (alignment note)
+- Harness and scenarios: `tests/scenarios/harness.ts`,
+  `tests/scenarioIntegrationTest.ts`; rules the scenarios do not reach:
+  `tests/diagnosisRulesTest.ts`.
+- Three scenarios needed capabilities that did not exist: the diagnosis
+  (`core/diagnosis.ts`, the `diagnose_app` tool), "continue what I was doing"
+  (recent goals, an offer that a "yes" confirms), and wider phrasing for the
+  browser question. Both new flows are routes without an LLM request; their
+  actions go through the registry like any call.
+- What JARVIS observes in the scenarios is real; two things are replaced in
+  the test: the model (scripted, as this prompt says) and, in the dangerous
+  scenario, the two file tools' last step — by recorders that act on nothing,
+  so a fault in the checks could not delete even the temporary folder. None
+  was reached.
+- Details: [SCENARIOS.md](../SCENARIOS.md).

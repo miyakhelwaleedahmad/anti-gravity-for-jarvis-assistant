@@ -35,3 +35,19 @@ and runs the step once more, instead of repeating it blind or giving up.
 
 A repair never bypasses the risk engine or the approval gate: there is no
 other path to run a tool.
+
+## When the user asks (P13)
+
+"Why isn't my application working?" runs the same kind of repair without a
+failed step: a diagnosis of the servers JARVIS started, the ports and the
+browser tabs, its repairs through the registry, and a second diagnosis to
+check them ([SCENARIOS.md](SCENARIOS.md)).
+
+## The planner's own check
+
+Before a plan runs, `core/plannerIntelligence.ts` predicts which steps are
+likely to fail, from each tool's recent results. When two steps look likely
+to fail, JARVIS plans again and says so: "Part of my plan is likely to fail,
+sir: the browser_page_structure step (Historical failure rate: 100%). I'll
+plan it again." Before P13 it said "My plan has high-risk steps", which read
+like the safety levels for a step that had only failed before.

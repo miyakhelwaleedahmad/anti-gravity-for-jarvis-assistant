@@ -18,6 +18,7 @@ import { browserActionTools } from './browserActionTools.js';
 import { filesTool } from '../../tools/fsTools.js';
 import { gitPushTool, gitTool } from '../../tools/gitTools.js';
 import { devTool } from '../../tools/devTools.js';
+import { diagnoseAppTool } from './diagnosisTools.js';
 
 export function registerAllTools(): void {
   toolRegistryV2.registerMany([
@@ -41,6 +42,7 @@ export function registerAllTools(): void {
     gitTool,
     gitPushTool,
     devTool,
+    diagnoseAppTool,
   ]);
 
   console.log(`[ToolRegistry] All built-in tools registered. Total: ${toolRegistryV2.names().length}`);

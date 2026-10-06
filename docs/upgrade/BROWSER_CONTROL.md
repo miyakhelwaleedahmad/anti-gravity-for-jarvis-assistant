@@ -50,7 +50,7 @@ read only window titles (P14).
 
 | Tool | Returns |
 |---|---|
-| browser_state | browser version, windows, tabs (title, URL, on screen or not), the tab on screen |
+| browser_state | browser version, windows, tabs (title, URL, on screen or not; since P13 the HTTP `status` of the page's last load and, when Chrome shows its error page, the `error` code such as `ERR_CONNECTION_REFUSED`), the tab on screen |
 | browser_read_page | title, URL, page text capped at 4 000 characters |
 | browser_page_structure | headings (h1–h3, ≤ 30), links (≤ 50), buttons (≤ 40, with `submits` for a form's submit button), forms (≤ 10; fields ≤ 30 with label, name, type, required; a value only for text, search and select fields), fields outside forms (≤ 20: search boxes, chat boxes), tables (≤ 5; caption, header, first 5 rows, total rows), each with a reference such as `e12` |
 

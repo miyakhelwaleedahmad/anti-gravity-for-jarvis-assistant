@@ -20,7 +20,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P10 Files and development actions | [x] |
 | P11 Error recovery | [x] |
 | P12 Voice | [x] |
-| P13 Integration and scenarios | [ ] |
+| P13 Integration and scenarios | [x] |
 | P14 Windows observation and control | [ ] |
 | P15 Final verification | [ ] |
 
@@ -146,10 +146,10 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P13 — Integration and scenarios
-- [ ] Browser, backend, application, "continue", website, dangerous-request scenarios
-- [ ] LLM request count per scenario recorded
-- [ ] Tests, full suite, documentation
-- [ ] PHASE COMPLETE
+- [x] Browser, backend, application, "continue", website, dangerous-request scenarios
+- [x] LLM request count per scenario recorded
+- [x] Tests, full suite, documentation
+- [x] PHASE COMPLETE
 
 ## P14 — Windows observation and control
 - [ ] Windows observation (GPU, displays, audio, cameras, installed apps, services, ports, clipboard)
