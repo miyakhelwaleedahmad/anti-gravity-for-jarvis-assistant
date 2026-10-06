@@ -533,3 +533,48 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   compare handles files up to 2 000 lines; scripts are allowed by name.
 - **Next:** P11 — error recovery.
 
+## P11 — Error recovery — COMPLETE
+
+- **Implemented** ([ERROR_RECOVERY.md](ERROR_RECOVERY.md)):
+  - `core/recoveryPlanner.ts`: on a failed step, the world-state part it
+    touched is read again; known failures get a repair as ordinary tool calls
+    — a local port where JARVIS ran a server stopped answering → start that
+    server (1); the port is held by JARVIS's own old server → stop it (2);
+    no tab matches an address → open it (1). A server JARVIS never ran, a port
+    held by another program, or a missing file → JARVIS asks; it never guesses.
+  - `core/orchestrator.ts` `recoverPhase`: each repair runs through the tool
+    registry (risk engine, approval gate, after-action check); the approval
+    request shows the failure as WHY (`core/traceContext.ts` `asRepair`);
+    the failed step runs again; at most 2 rounds; JARVIS says what it
+    repaired, or why it stopped (not approved, refused, failed, still failing).
+  - `dev` remembers, per port, the servers it started; `browser_read_page`
+    and `browser_page_structure` name the tab they did not find; `files`
+    says "does not exist" for a missing path.
+- **Found and fixed:** a new tab, or a navigation, that ended on Chrome's
+  error page was checked as done ("a new tab shows chrome-error://chromewebdata/",
+  shown on the P10 code); it is now "Chrome could not load …", not done.
+- **Observed, not changed:** the planner's own check (`plannerIntelligence`)
+  refuses a plan whose tool failed often just before ("My plan has high-risk
+  steps, sir… Low success rate"), although the steps are not risky; the
+  wording is misleading. Left for P13.
+- **Tested:** `tests/errorRecoveryTest.ts`, through the real orchestrator
+  with a scripted model, real headless Chromium and real dev servers, 14
+  checks, all pass — a page on a port whose server JARVIS had run and that is
+  down: the server is started again (level 1, no approval, in the registry's
+  history), the port answers, the page opens, and JARVIS says "I started the
+  dev server of web on port … first, because nothing answers on port …";
+  starting a server whose port JARVIS's old server holds: stopping it asks
+  (level 2) with the failure as WHY — denied: nothing stopped, the server
+  still answers, the reply says it was not approved; approved: old process
+  gone, new server answering; a missing tab given as an address: opened,
+  then read; a missing file: JARVIS asks, nothing touched; a step that keeps
+  failing: two repairs (two tabs), then "I repaired it 2 times, sir, but the
+  step still fails". On the P10 code: 2 of 14 pass (the two setup checks).
+  Full suite: 104 files, 98 passed · 0 failed · 6 environment; CI mode 96
+  passed · 8 skipped.
+- **Not verified here:** the same on Windows with the owner's Chrome and
+  projects (P14).
+- **Known limits:** only the failures in the table are repaired; the list of
+  servers JARVIS ran is in memory.
+- **Next:** P12 — voice.
+

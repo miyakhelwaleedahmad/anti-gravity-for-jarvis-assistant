@@ -55,7 +55,8 @@ function isBinary(buffer: Buffer): boolean {
 
 function readText(p: string, limit = MAX_TEXT_BYTES): string {
   const stat = statOf(p);
-  if (!stat?.isFile()) throw new NotDone(`${path.basename(p)} is not a file.`);
+  if (!stat) throw new NotDone(`${p} does not exist.`);
+  if (!stat.isFile()) throw new NotDone(`${path.basename(p)} is not a file.`);
   if (stat.size > limit) throw new NotDone(`${path.basename(p)} is larger than ${Math.round(limit / 1024)} KB.`);
   const buffer = fs.readFileSync(p);
   if (isBinary(buffer)) throw new NotDone(`${path.basename(p)} is not a text file.`);

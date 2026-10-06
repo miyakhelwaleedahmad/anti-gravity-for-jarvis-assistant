@@ -18,7 +18,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P8 Browser observation | [x] |
 | P9 Browser control | [x] |
 | P10 Files and development actions | [x] |
-| P11 Error recovery | [ ] |
+| P11 Error recovery | [x] |
 | P12 Voice | [ ] |
 | P13 Integration and scenarios | [ ] |
 | P14 Windows observation and control | [ ] |
@@ -130,12 +130,12 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P11 — Error recovery
-- [ ] Diagnosis uses fresh observation
-- [ ] Repair steps pass the risk engine
-- [ ] Risky repair stops and asks
-- [ ] Verification after repair
-- [ ] Tests, full suite, documentation
-- [ ] PHASE COMPLETE
+- [x] Diagnosis uses fresh observation
+- [x] Repair steps pass the risk engine
+- [x] Risky repair stops and asks
+- [x] Verification after repair
+- [x] Tests, full suite, documentation
+- [x] PHASE COMPLETE
 
 ## P12 — Voice
 - [ ] Spoken approval request and answer rules

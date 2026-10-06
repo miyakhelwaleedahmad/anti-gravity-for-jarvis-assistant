@@ -408,6 +408,9 @@ export async function navigate(args: { action?: unknown; url?: unknown; tab?: un
       if (!loaded.done) {
         return { target: clean(target.title, 80), did, check: failed('the page did not finish loading within 15 seconds'), page: pageOf(loaded.state) };
       }
+      if (loaded.state?.url.startsWith('chrome-error://')) {
+        return { target: clean(target.title, 80), did, check: failed('Chrome could not load the page (the tab shows an error page)'), page: pageOf(loaded.state) };
+      }
       let evidence = action === 'reload' ? 'the page loaded again' : `the tab shows ${shown}`;
       if (action === 'go') {
         try {
@@ -434,7 +437,9 @@ export async function tab(args: { action?: unknown; url?: unknown; tab?: unknown
       return {
         target: clean(url, 160),
         did: `opened a new tab${url === 'about:blank' ? '' : ` with ${clean(url, 150)}`}`,
-        check: loaded.done ? verified(`a new tab shows ${clean(loaded.state?.url ?? url, 150)}`) : failed('the new tab did not finish loading within 15 seconds'),
+        check: !loaded.done ? failed('the new tab did not finish loading within 15 seconds')
+          : loaded.state?.url.startsWith('chrome-error://') ? failed(`Chrome could not load ${clean(url, 150)} (the tab shows an error page)`)
+          : verified(`a new tab shows ${clean(loaded.state?.url ?? url, 150)}`),
         ...(loaded.state ? { page: pageOf(loaded.state) } : {}),
       };
     }

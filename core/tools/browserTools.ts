@@ -49,7 +49,9 @@ export const browserReadPageTool: AgentTool = {
   async execute(args) {
     try {
       const target = await findTab(typeof args['tab'] === 'string' ? args['tab'] : undefined);
-      if (!target) return 'Error: no open tab matches that.';
+      if (!target) return typeof args['tab'] === 'string' && args['tab'].trim()
+        ? `Error: No open tab matches "${String(args['tab']).replace(/["\n]/g, '').slice(0, 120)}".`
+        : 'Error: No tab is open.';
       return asUntrustedPage(await readPageText(target));
     } catch (err) {
       return failure(err);
@@ -68,7 +70,9 @@ export const browserPageStructureTool: AgentTool = {
   async execute(args) {
     try {
       const target = await findTab(typeof args['tab'] === 'string' ? args['tab'] : undefined);
-      if (!target) return 'Error: no open tab matches that.';
+      if (!target) return typeof args['tab'] === 'string' && args['tab'].trim()
+        ? `Error: No open tab matches "${String(args['tab']).replace(/["\n]/g, '').slice(0, 120)}".`
+        : 'Error: No tab is open.';
       return asUntrustedPage(await readPageStructure(target));
     } catch (err) {
       return failure(err);

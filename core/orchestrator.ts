@@ -14,7 +14,8 @@
  */
 
 import { agentStateMachine, AgentState } from './agentStateMachine.js';
-import { beginTrace, endTrace } from './traceContext.js';
+import { asRepair, beginTrace, endTrace } from './traceContext.js';
+import { diagnose, MAX_RECOVERY_ROUNDS, observeFailure } from './recoveryPlanner.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
 import type { ApprovalDecision } from '../security/approvalRequest.js';
 import { verificationFailedReply, withCheck } from './verifiers.js';
@@ -713,6 +714,7 @@ export class JarvisOrchestrator {
 
     let graph = activePlan;
     let repairCycles = 0;
+    let recoveryRounds = 0;
 
     // ── Repair Loop ──────────────────────────────────────────────────────────
     while (repairCycles <= this.config.maxRepairCycles) {
@@ -766,6 +768,20 @@ export class JarvisOrchestrator {
       if (reflection.outcome === 'success') {
         await this.handleSuccess(graph, input);
         return 'success';
+      }
+
+      // ── P11: a failure JARVIS knows gets a concrete repair first ──────────
+      // Each repair step goes through the registry (risk engine, approval with
+      // the failure as WHY, after-action check); then the failed step runs again.
+      const recovery = await this.recoverPhase(graph, recoveryRounds);
+      if (recovery.kind === 'repaired') {
+        recoveryRounds++;
+        continue;
+      }
+      if (recovery.kind === 'stop') {
+        this.speak(recovery.message);
+        record.failReason = recovery.reason;
+        return recovery.blocked ? 'blocked' : 'failed';
       }
 
       // ── Abort path ─────────────────────────────────────────────────────────
@@ -853,6 +869,59 @@ export class JarvisOrchestrator {
   }
 
   // ── Phase Implementations ─────────────────────────────────────────────────
+
+  /**
+   * RECOVERY (P11, core/recoveryPlanner.ts): for each failed step, read again
+   * the part of the PC it touched and diagnose it. A known failure is repaired
+   * through the tool registry — so the risk engine, the approval gate and the
+   * after-action check apply — and the step is reset to run again; at most
+   * MAX_RECOVERY_ROUNDS rounds. A failure that needs the user, or a repair
+   * that is refused or not approved, stops with an honest message.
+   */
+  private async recoverPhase(graph: TaskGraph, rounds: number): Promise<
+    | { kind: 'none' }
+    | { kind: 'repaired' }
+    | { kind: 'stop'; message: string; reason: string; blocked: boolean }
+  > {
+    const failed = [...graph.nodes.values()].filter((n) => n.status === 'failed');
+    for (const node of failed) {
+      await observeFailure(node).catch(() => undefined);
+      const diagnosis = diagnose(node);
+      if (diagnosis.kind === 'none') continue;
+      if (diagnosis.kind === 'ask') return { kind: 'stop', message: diagnosis.message, reason: diagnosis.failure, blocked: false };
+      if (rounds >= MAX_RECOVERY_ROUNDS) {
+        return {
+          kind: 'stop',
+          message: `I repaired it ${rounds} times, sir, but the step still fails: ${diagnosis.failure}.`,
+          reason: `still failing after ${rounds} repairs: ${diagnosis.failure}`,
+          blocked: false,
+        };
+      }
+      const why = `To finish your request, JARVIS needs to repair this: ${diagnosis.failure}.`;
+      agentStateMachine.transition(AgentState.REPAIRING);
+      for (const step of diagnosis.steps) {
+        console.log(`[Orchestrator] 🩹 Repair (${rounds + 1}/${MAX_RECOVERY_ROUNDS}): ${step.says} via ${step.tool}`);
+        agentMemory.pushEpisode('repair', `Repair: ${step.says}`, { tool: step.tool, failure: diagnosis.failure }, 7);
+        const result = await asRepair(why, () => toolRegistryV2.execute(step.tool, step.args));
+        if (!result.success) {
+          const refused = result.error === 'RISK_REFUSED' || result.error === 'PERMISSION_DENIED';
+          const reason = result.error === 'APPROVAL_DENIED' ? 'it was not approved'
+            : refused ? `the safety policy refused it (${result.output.replace(/^Refused by safety policy: /, '').slice(0, 160)})`
+            : `that failed as well (${(result.verification?.evidence ?? result.output).slice(0, 160)})`;
+          return {
+            kind: 'stop',
+            message: `I could not finish, sir: ${diagnosis.failure}. I wanted to ${step.says}, but ${reason}.`,
+            reason: `${diagnosis.failure}; repair not done: ${reason}`,
+            blocked: refused,
+          };
+        }
+      }
+      this.speak(`I ${diagnosis.steps.map((s) => s.did).join(' and ')} first, because ${diagnosis.failure}, sir.`);
+      reflectionEngine.resetFailedNodes(graph, [node.id]);
+      return { kind: 'repaired' };
+    }
+    return { kind: 'none' };
+  }
 
   /**
    * PLANNING PHASE

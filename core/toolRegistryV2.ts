@@ -29,7 +29,7 @@ import { TOOL_CATALOG, deriveMeta } from './toolCatalog.js';
 import { assessRisk, callLabel, decide, level2Policy, type RiskAssessment, type RiskDecision } from '../security/riskEngine.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { runApproved, type ApprovedCall } from '../security/approvalScope.js';
-import { getRequestSource, getRequestText } from './traceContext.js';
+import { getRepairReason, getRequestSource, getRequestText } from './traceContext.js';
 import { buildApprovalRequest } from '../security/approvalRequest.js';
 import { redact, redactDeep } from '../security/redactor.js';
 import { verifyCall, type Verification, type Verifier } from './verifiers.js';
@@ -694,8 +694,8 @@ export class ToolRegistryV2 {
         tool: name,
         ...(assessment.action ? { action: assessment.action } : {}),
         target: assessment.target ?? JSON.stringify(args),
-        request: getRequestText(),
-        reason: assessment.reasons[0],
+        // A repair shows the failure it repairs as WHY (core/recoveryPlanner.ts).
+        ...(getRepairReason() ? { reason: getRepairReason() } : { request: getRequestText(), reason: assessment.reasons[0] }),
         risk: assessment.level,
         // The rule that set the level, when it was an argument and not the metadata.
         ...(assessment.reasons.length > 1 ? { riskDetail: assessment.reasons[assessment.reasons.length - 1] } : {}),

@@ -152,6 +152,23 @@ export function jarvisServersIn(project: string): number[] {
   return [...servers.values()].filter((s) => s.project === project).map((s) => s.pid);
 }
 
+/**
+ * Servers JARVIS started at least once, by port, kept after they stop: the
+ * error recovery (core/recoveryPlanner.ts) restarts one when its port stops
+ * answering. In memory only.
+ */
+const known = new Map<number, { project: string; script: string }>();
+
+export function knownServerOnPort(port: number): { project: string; script: string } | undefined {
+  return known.get(port);
+}
+
+/** The running server JARVIS started on `port`, if any. */
+export function jarvisServerOnPort(port: number): { pid: number; project: string; script: string } | undefined {
+  const server = [...servers.values()].find((s) => s.port === port && alive(s.pid));
+  return server ? { pid: server.pid, project: server.project, script: server.script } : undefined;
+}
+
 function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
@@ -221,6 +238,7 @@ async function startServer(project: string, script: string, portArg: unknown): P
     return { project, script, pid: server.pid, did, output: tail(server.output.join('\n')), check: failed(`no port answered within ${SERVER_START_MS / 1000} seconds; JARVIS stopped it`) };
   }
   server.port = port;
+  known.set(port, { project, script });
   const http = await httpInfo(port);
   return {
     project, script, pid: server.pid, port, did,

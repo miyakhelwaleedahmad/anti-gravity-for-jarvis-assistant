@@ -442,17 +442,20 @@ ignored now.
 
 ## P11 — Error recovery
 
-### T11.1 — Observe on failure · High · [ ] · depends on: T10.5
+### T11.1 — Observe on failure · High · [x] · depends on: T10.5
 Refresh the world-state sections the failed step touched.
 
-### T11.2 — Repair candidates · High · [ ] · depends on: T11.1
+### T11.2 — Repair candidates · High · [x] · depends on: T11.1
 Known failures → repairs (server down → start, tab missing → open); otherwise replan.
 Files: `core/recoveryPlanner.ts` (new), `core/orchestrator.ts`.
+(Also: a port held by JARVIS's own old server → stop it; a server JARVIS
+never ran, or a missing file → ask the user. Killing other processes is not
+a repair: JARVIS asks instead.)
 
-### T11.3 — Risk check for repairs · Critical · [ ] · depends on: T11.2
+### T11.3 — Risk check for repairs · Critical · [x] · depends on: T11.2
 Each repair step through the risk engine; risky → approval or report.
 
-### T11.4 — Verify and report · High · [ ] · depends on: T11.3
+### T11.4 — Verify and report · High · [x] · depends on: T11.3
 Bounded attempts; honest final message.
 
 ---

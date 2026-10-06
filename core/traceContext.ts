@@ -44,9 +44,32 @@ export function getTraceId(): string | undefined {
   return currentTraceId ?? undefined;
 }
 
+let currentRepair: string | undefined;
+
+/**
+ * Runs `fn` as a repair of a failed step (core/recoveryPlanner.ts): an
+ * approval request asked meanwhile shows `reason` — the failure being
+ * repaired — as its WHY.
+ */
+export async function asRepair<T>(reason: string, fn: () => Promise<T>): Promise<T> {
+  const previous = currentRepair;
+  currentRepair = reason;
+  try {
+    return await fn();
+  } finally {
+    currentRepair = previous;
+  }
+}
+
+/** The failure being repaired, while a repair runs. */
+export function getRepairReason(): string | undefined {
+  return currentRepair;
+}
+
 /** Clear the trace once a request settles. */
 export function endTrace(): void {
   currentTraceId = null;
   currentSource = undefined;
   currentRequest = undefined;
+  currentRepair = undefined;
 }

@@ -57,3 +57,12 @@ A risky repair executed without approval; an endless repair loop.
 
 ## Completion requirements
 Gate; checklist; PHASE_STATUS; commit `phase-11-error-recovery`; CI green.
+
+## As built (alignment note)
+- Repairs are limited to what JARVIS can do safely and check: start a server
+  it ran before, stop its own old server holding the port, open a missing
+  address in a tab. "Kill a hung process" and "start a service" are not
+  automatic repairs: JARVIS cannot tell from a failure which process is hung,
+  so those failures go to the existing strategies and the user. The process
+  stop tested here is JARVIS's own server (level 2, approved first).
+- Details: [ERROR_RECOVERY.md](../ERROR_RECOVERY.md).

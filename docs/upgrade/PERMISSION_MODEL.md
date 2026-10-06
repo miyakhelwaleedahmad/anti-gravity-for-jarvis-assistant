@@ -125,6 +125,13 @@ If the risk check itself fails, the call is refused (fail closed).
        check) and start_server (dev, start, serve, preview) 1; other scripts
        refused; stop_server 2, only for servers JARVIS started.
 
+## Repairs (P11)
+
+A repair of a failed step ([ERROR_RECOVERY.md](ERROR_RECOVERY.md)) is an
+ordinary tool call: same levels, same decisions, same approval. Its approval
+request shows the failure as WHY ("To finish your request, JARVIS needs to
+repair this: port 3000 is held by a server JARVIS started earlier").
+
 ## Approval request (P3, `security/approvalRequest.ts`, `security/approvalGate.ts`)
 
 When a call needs approval JARVIS stops and shows (console) and says (voice):
