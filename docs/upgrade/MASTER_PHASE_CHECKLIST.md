@@ -8,7 +8,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | Phase | Status |
 |---|---|
 | P0 Discovery and architecture | [x] |
-| P1 Tool registry | [ ] |
+| P1 Tool registry | [x] |
 | P2 Risk engine | [ ] |
 | P3 Approval gate | [ ] |
 | P4 Redaction | [ ] |
@@ -33,19 +33,19 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P1 — Tool registry
-- [ ] Architecture inspected
-- [ ] Metadata model designed (category, risk per action, approval, reversible, external, output)
-- [ ] Metadata filled for every registered tool
-- [ ] Registry discovery API (by category, by risk, capability summary)
-- [ ] `list_capabilities` tool
-- [ ] Planner and "what can you do" use the registry
-- [ ] Unit tests created
-- [ ] Tests passing (and failing on the old code where they test new behaviour)
-- [ ] Integration test passing (real orchestrator)
-- [ ] Full suite: no new failures
-- [ ] Documentation updated
-- [ ] Acceptance criteria verified
-- [ ] PHASE COMPLETE
+- [x] Architecture inspected
+- [x] Metadata model designed (category, risk per action, approval, reversible, external, output)
+- [x] Metadata filled for every registered tool
+- [x] Registry discovery API (by category, by risk, capability summary)
+- [x] `list_capabilities` tool
+- [x] Planner and "what can you do" use the registry
+- [x] Unit tests created
+- [x] Tests passing (and failing on the old code where they test new behaviour)
+- [x] Integration test passing (real orchestrator)
+- [x] Full suite: no new failures
+- [x] Documentation updated
+- [x] Acceptance criteria verified
+- [x] PHASE COMPLETE
 
 ## P2 — Risk engine
 - [ ] Risk assessment for a concrete call (tool, action, arguments, session)

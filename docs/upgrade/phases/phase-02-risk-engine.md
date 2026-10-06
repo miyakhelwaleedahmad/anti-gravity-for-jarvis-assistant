@@ -26,6 +26,8 @@ user's settings, enforced in the registry after all existing checks.
 4. Registry integration after validation; approved scope so a controller does
    not prompt again for the same call.
 5. Default session level 1 (`JARVIS_DEFAULT_PERMISSION_LEVEL`, default `1`).
+6. explain_code: apply read_file's containment (found in P1: it reads any
+   absolute path, so `.env` or a private key could be sent to the LLM).
 
 ## Implementation steps
 1. `assessRisk({ tool, args, source })`:
@@ -71,7 +73,7 @@ tests: `dispatchAuthzTest`, `permissionSessionTest`, `securityGateUnitTest`,
 `security/riskEngine.ts` (new), `security/approvalScope.ts` (new),
 `core/toolRegistryV2.ts`, `security/approvalGate.ts`, `control/permissionSession.ts`,
 `control/permissionDenial.ts`, `core/taskGraphEngine.ts`, `core/reflectionEngine.ts`,
-`.env.example`, tests, docs.
+`skills/coding/skill.ts`, `.env.example`, tests, docs.
 
 ## Dependencies
 P1.

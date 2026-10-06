@@ -26,7 +26,7 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 ## P1 — Tool registry
 
 ### T1.1 — Metadata model
-- Critical · [ ] · depends on: T0.2
+- Critical · [x] · depends on: T0.2
 - Add to `AgentTool` an optional `meta`: category; default risk 0–4; risk per
   action for multi-action tools; approval (`none` / `policy` / `always`);
   reversible (`yes` / `partial` / `no`); external effect (`none` / `reads` /
@@ -40,7 +40,7 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 - Acceptance: `execute()` behaviour unchanged.
 
 ### T1.2 — Metadata for every existing tool
-- Critical · [ ] · depends on: T1.1
+- Critical · [x] · depends on: T1.1
 - One catalogue for the 33 built-in tools; skills may also declare `meta` in
   `description.json`, which wins. A tool with neither gets derived defaults and
   one startup warning.
@@ -54,15 +54,16 @@ Priorities: **Critical** (safety or a dependency of everything after it),
   forgets its metadata.
 
 ### T1.3 — Discovery API
-- High · [ ] · depends on: T1.2
+- High · [x] · depends on: T1.2
 - `describeCapabilities({ category?, maxRisk? })` grouped by category;
   `capabilitySummary()` — a few lines for the planner.
 - Files: `core/toolRegistryV2.ts`.
 - Tests: grouping, filters, summary lists each category present.
-- Acceptance: summary under 600 characters for the current 33 tools.
+- Acceptance: the planner gets a group line under 400 characters (the full
+  per-tool summary, 650 characters, is printed, not sent).
 
 ### T1.4 — `list_capabilities` and routes
-- High · [ ] · depends on: T1.3
+- High · [x] · depends on: T1.3
 - A level-0 tool returning the grouped list; the "what can you do" route answers
   from the registry with no LLM request; capability questions ("which tools do
   you have for files?") are offered `list_capabilities`.
@@ -73,7 +74,7 @@ Priorities: **Critical** (safety or a dependency of everything after it),
 - Acceptance: existing router tests unchanged.
 
 ### T1.5 — Tests, suite, documents
-- High · [ ] · depends on: T1.1–T1.4
+- High · [x] · depends on: T1.1–T1.4
 - Files: `tests/toolRegistryMetadataTest.ts`, `docs/upgrade/TOOL_REGISTRY.md`,
   status and checklist.
 - Acceptance: new test fails on the old code; full suite no new failures; CI green.
@@ -119,6 +120,16 @@ Priorities: **Critical** (safety or a dependency of everything after it),
   full control mode, as the specification requires.
 - Files: `control/permissionSession.ts`, `.env.example`, `docs/upgrade/PERMISSION_MODEL.md`.
 - Tests: level-1 actions allowed by default; level-2 still refused without full control.
+
+
+### T2.6 — explain_code reads any file
+- Critical · [ ] · depends on: T2.1
+- Found in P1: `skills/coding/skill.ts` accepts any absolute path, so
+  "explain C:\Users\…\.ssh\id_rsa" or the project's `.env` sends the file
+  to the LLM. Apply read_file's containment (workspace root, system paths
+  refused); the risk engine refuses paths outside it.
+- Files: `skills/coding/skill.ts`, `security/riskEngine.ts`.
+- Tests: absolute path outside the project, `..` escape, Windows system path → refused.
 
 ---
 

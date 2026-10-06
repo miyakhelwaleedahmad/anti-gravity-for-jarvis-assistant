@@ -16,7 +16,7 @@
 import { agentStateMachine, AgentState } from './agentStateMachine.js';
 import { beginTrace } from './traceContext.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
-import { toolRegistryV2 } from './toolRegistryV2.js';
+import { toolRegistryV2, type ToolCategory } from './toolRegistryV2.js';
 import { FULL_CONTROL_HINT, isPermissionDenial } from '../control/permissionDenial.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
 import { agentMemory } from '../memory/agentMemory.js';
@@ -523,7 +523,15 @@ export class JarvisOrchestrator {
         } else if (route.type === 'enable_full_control_session') {
           const result = await runRoutedTool('enable_full_control_session', { source });
           this.speak(result?.success ? `Full control mode enabled, sir.` : 'Failed to enable full control, sir.');
+        } else if (route.type === 'list_capabilities') {
+          // Through the registry like any tool call; the full list goes to the console.
+          const result = await runRoutedTool('list_capabilities', {});
+          if (result?.success) console.log(`[Orchestrator] Capabilities:\n${result.output}`);
+          this.speak(result?.success ? route.reply : 'I could not read my tool list, sir.');
         } else {
+          if (route.type === 'what_can_you_do') {
+            console.log(`[Orchestrator] Capabilities:\n${toolRegistryV2.capabilitySummary()}`);
+          }
           if (route.type === 'stop') {
             nodeBridge.sendToRole('tts', { type: 'command', payload: { action: 'stop' } });
             (nodeBridge as any).pendingTTS = [];
@@ -833,6 +841,9 @@ export class JarvisOrchestrator {
     // ── 1. Fast Pre-Warmed System Prompt ──────────────────────────────────────
     const { prompt: systemPrompt, tokens: sysTokens } = this.getPrewarmedSystemPrompt();
     const messages: ILLMMessage[] = [{ role: 'system', content: systemPrompt }];
+    // What exists beyond the few tools offered with this request (≈40 tokens).
+    const toolOverview = capabilityOverview();
+    if (toolOverview) messages.push({ role: 'system', content: toolOverview });
 
     // ── 2. Optimized Tool Selection & Fast Token Estimate (Zero Serialization) 
     const selectedToolNames = this.selectPlanningToolNames(input);
@@ -1530,12 +1541,16 @@ export class JarvisOrchestrator {
       return { type: 'greeting', reply: 'Hello, sir. How may I assist you today?' };
     }
 
-    // 3. Capabilities / Identity
-    if (clean === 'what can you do' || clean === 'who are you') {
-      return {
-        type: 'what_can_you_do',
-        reply: 'I am JARVIS, your cognitive assistant, sir. I can launch applications, search the web, manage system files, and run commands.'
-      };
+    // 3. Capabilities / Identity — from the tool registry, not a fixed sentence.
+    // "can you" is stripped as filler above, so "what can you do" arrived as
+    // "what do", never matched, and went to the LLM.
+    const asked = input.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+      .replace(/^(hey )?jarvis /, '');
+    if (asked === 'what can you do' || clean === 'who are you') {
+      return { type: 'what_can_you_do', reply: capabilitiesReply(clean === 'who are you') };
+    }
+    if (CAPABILITY_LIST_PHRASES.has(clean)) {
+      return { type: 'list_capabilities', reply: capabilityListReply() };
     }
 
     // 4. Time
@@ -1778,6 +1793,10 @@ export class JarvisOrchestrator {
         if (toolRegistryV2.has(name)) requested.add(name);
       }
     };
+
+    if (CAPABILITY_QUESTION.test(clean)) {
+      addIfRegistered('list_capabilities');
+    }
 
     const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimize|maximize)\b/i.test(clean);
     const isLaunchIntent = !isKillOrClose && /\b(open|launch|start|run|app|application|desktop|whatsapp|youtube|chrome|calculator|vscode|code|notepad|spotify|browser|gmail|github)\b/i.test(clean);
@@ -2048,6 +2067,63 @@ export class JarvisOrchestrator {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ─── Capabilities, in words ───────────────────────────────────────────────────
+
+const CATEGORY_PHRASES: Record<ToolCategory, string> = {
+  OBSERVATION: 'check the state of your PC',
+  BROWSER: 'work with browser tabs',
+  COMPUTER: 'control your apps and windows',
+  FILESYSTEM: 'read and write files',
+  TERMINAL: 'run approved terminal commands',
+  DEVELOPMENT: 'read code for you',
+  NETWORK: 'look things up online',
+  COMMUNICATION: 'send messages',
+  SCHEDULING: 'manage your schedule',
+  MEMORY: 'remember facts and search documents',
+  SYSTEM: 'manage processes and services',
+};
+
+const CAPABILITY_LIST_PHRASES = new Set([
+  'list your tools', 'list your capabilities', 'list all your tools', 'show your tools',
+  'what tools do you have', 'which tools do you have',
+]);
+
+/** A question about what JARVIS can do, rather than a request to do something. */
+const CAPABILITY_QUESTION =
+  /\b(what|which) (tools|capabilities)\b|\bwhat can you do\b|\byour (tools|capabilities|abilities)\b|\blist (your |all )?(tools|capabilities)\b/;
+
+function joinWords(items: string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+/** "what can you do" / "who are you", from the registry's metadata. */
+export function capabilitiesReply(withIdentity = false): string {
+  const groups = toolRegistryV2.describeCapabilities();
+  const count = groups.reduce((n, g) => n + g.tools.length, 0);
+  const lead = withIdentity ? 'I am JARVIS, your assistant, sir. ' : '';
+  if (count === 0) return `${lead}My tools are still loading, sir.`;
+  const things = joinWords(groups.map((g) => CATEGORY_PHRASES[g.category]));
+  return `${lead}I have ${count} tools: I can ${things}. Say "list your tools" for each tool and its risk.`;
+}
+
+function capabilityListReply(): string {
+  const groups = toolRegistryV2.describeCapabilities();
+  const count = groups.reduce((n, g) => n + g.tools.length, 0);
+  const needApproval = groups.flatMap((g) => g.tools).filter((t) => t.approval === 'required').length;
+  return `I have ${count} tools in ${groups.length} groups, sir; ${needApproval} of them include high-risk actions. ` +
+    'The full list with the risk of each is in the console.';
+}
+
+/** One system line for planning: which tool groups exist and how many tools each has. */
+export function capabilityOverview(): string {
+  const groups = toolRegistryV2.describeCapabilities();
+  if (groups.length === 0) return '';
+  const parts = groups.map((g) => `${g.category} ${g.tools.length}`).join(', ');
+  return `JARVIS tool groups (${groups.reduce((n, g) => n + g.tools.length, 0)} tools): ${parts}. ` +
+    'Only the tools offered with this request can be called.';
 }
 
 /**

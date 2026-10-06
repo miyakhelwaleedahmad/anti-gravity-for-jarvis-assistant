@@ -66,7 +66,7 @@ Risk per action where a tool has several. "R" = reversible.
 | write_file | FILESYSTEM | 2 | no | none |
 | control_file | FILESYSTEM | search 0 · read 0 · create_folder 2 · write 2 · copy 2 · move 2 · rename 2 · delete 3 · delete_folder 3 | delete: no | none |
 | run_command | TERMINAL | 3 by default; by command class in P2 | no | none |
-| explain_code | DEVELOPMENT | 0 | yes | query |
+| explain_code | DEVELOPMENT | 0 | yes | none |
 | web_search | NETWORK | 1 | yes | query |
 | deep_search | NETWORK | 1 | yes | query |
 | get_weather | NETWORK | 1 | yes | query |
@@ -91,8 +91,15 @@ Notes:
 
 ## Discovery
 
+- `toolRegistryV2.getMeta(name)`, `riskOf(name, args)` — metadata and the risk
+  of one call (an unknown action gets the tool's highest risk).
 - `toolRegistryV2.describeCapabilities({ category?, maxRisk? })` — grouped list
   with each tool's risk range and approval need.
-- `toolRegistryV2.capabilitySummary()` — a few lines for the planner.
-- `list_capabilities` — the same through a tool, so the model can ask.
-- "what can you do" — answered from the registry, no LLM request.
+- `toolRegistryV2.capabilitySummary()` — one line per category with tool names
+  (printed to the console; 650 characters for the 34 tools).
+- Every planning request carries one line naming the groups and how many tools
+  each has (196 characters), so the model knows what exists beyond the few
+  tools offered with that request.
+- `list_capabilities` — the grouped list through a tool, so the model can ask.
+- "what can you do" / "who are you" / "list your tools" — answered from the
+  registry, no LLM request.

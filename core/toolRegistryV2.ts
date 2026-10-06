@@ -25,8 +25,69 @@
 import { toolExecutionSandbox } from './toolExecutionSandbox.js';
 import { permissionSession } from '../control/permissionSession.js';
 import { securityAuditLogger } from '../security/securityAuditLogger.js';
+import { TOOL_CATALOG, deriveMeta } from './toolCatalog.js';
 
+/** Execution risk: drives sandboxing, caching and queueing (not permissions). */
 export type RiskLevel = 'low' | 'medium' | 'high';
+
+// ─── Capability metadata (docs/upgrade/TOOL_REGISTRY.md) ─────────────────────
+
+export type ToolCategory =
+  | 'OBSERVATION' | 'BROWSER' | 'COMPUTER' | 'FILESYSTEM' | 'TERMINAL' | 'DEVELOPMENT'
+  | 'NETWORK' | 'COMMUNICATION' | 'SCHEDULING' | 'MEMORY' | 'SYSTEM';
+
+/** Display order of categories. */
+export const TOOL_CATEGORIES: readonly ToolCategory[] = [
+  'OBSERVATION', 'BROWSER', 'COMPUTER', 'FILESYSTEM', 'TERMINAL', 'DEVELOPMENT',
+  'NETWORK', 'COMMUNICATION', 'SCHEDULING', 'MEMORY', 'SYSTEM',
+];
+
+/** Risk of one call: 0 observe, 1 low, 2 moderate, 3 high, 4 critical (docs/upgrade/PERMISSION_MODEL.md). */
+export type RiskTier = 0 | 1 | 2 | 3 | 4;
+export type Reversibility = 'yes' | 'partial' | 'no';
+/** `query`: sends data out to get information; `change`: changes something outside the PC. */
+export type ExternalEffect = 'none' | 'query' | 'change';
+/** Derived from risk: 0–1 none, 2 by the user's policy, 3–4 always. */
+export type ApprovalNeed = 'none' | 'policy' | 'required';
+
+export interface ActionMeta {
+  risk: RiskTier;
+  reversible?: Reversibility;
+  /** Expected effect, shown in approval requests. */
+  effect?: string;
+}
+
+export interface ToolMeta {
+  category: ToolCategory;
+  /** For tools with actions: the highest action risk. */
+  risk: RiskTier;
+  reversible: Reversibility;
+  external: ExternalEffect;
+  effect: string;
+  output: { format: 'text' | 'json'; description: string };
+  /** Per value of the tool's `action` argument. */
+  actions?: Record<string, ActionMeta>;
+}
+
+export interface CapabilityEntry {
+  name: string;
+  summary: string;
+  /** Lowest and highest risk over the tool's actions. */
+  risk: [RiskTier, RiskTier];
+  approval: ApprovalNeed;
+  reversible: Reversibility;
+  external: ExternalEffect;
+  actions?: string[];
+}
+
+export interface CapabilityGroup {
+  category: ToolCategory;
+  tools: CapabilityEntry[];
+}
+
+export function approvalNeedFor(risk: RiskTier): ApprovalNeed {
+  return risk >= 3 ? 'required' : risk === 2 ? 'policy' : 'none';
+}
 
 export interface ToolSchemaProperty {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array';
@@ -92,6 +153,11 @@ export interface AgentTool {
   cacheable?: boolean;
   /** Phase 5: optional per-tool retry policy (overrides registry default) */
   retryPolicy?: Partial<RetryPolicy>;
+  /**
+   * Category, risk per action, reversibility, external effect, output. Taken
+   * from core/toolCatalog.ts at registration unless the tool declares it.
+   */
+  meta?: ToolMeta;
   /**
    * Phase 5: optional rollback hook.
    * Called when the tool succeeded but a downstream step failed and
@@ -169,6 +235,8 @@ export function reportedFailure(output: string): { failed: boolean; reason?: str
 
 export class ToolRegistryV2 {
   private tools = new Map<string, AgentTool>();
+  /** Tools registered without catalogue or declared metadata. */
+  private _derivedMeta = new Set<string>();
   private resultCache = new Map<string, { result: string; expiresAt: number }>();
   private readonly CACHE_TTL_MS = 30_000;
   private readonly EXECUTION_TIMEOUT_MS = 25_000;
@@ -214,6 +282,23 @@ export class ToolRegistryV2 {
         'dispatch-layer authorization is not enforced for it; it relies entirely on ' +
         'its own controller checks.',
       );
+    }
+
+    // Category, risks and effects. A tool the catalogue does not know gets
+    // derived defaults (never risk 0) and a warning.
+    this._derivedMeta.delete(tool.name);
+    if (!tool.meta) {
+      const catalogued = TOOL_CATALOG[tool.name];
+      if (catalogued) {
+        tool.meta = catalogued;
+      } else {
+        tool.meta = deriveMeta(tool);
+        this._derivedMeta.add(tool.name);
+        console.warn(
+          `[ToolRegistry] ⚠️  Tool "${tool.name}" has no metadata in core/toolCatalog.ts — ` +
+          `using derived defaults (risk ${tool.meta.risk}).`,
+        );
+      }
     }
 
     this.tools.set(tool.name, tool);
@@ -280,6 +365,68 @@ export class ToolRegistryV2 {
 
   names(): string[] {
     return [...this.tools.keys()];
+  }
+
+  // ── Capabilities ──────────────────────────────────────────────────────────
+
+  getMeta(name: string): ToolMeta | undefined {
+    return this.tools.get(name)?.meta;
+  }
+
+  /** Tools registered with derived metadata because the catalogue has no entry. */
+  derivedMetaTools(): string[] {
+    return [...this._derivedMeta];
+  }
+
+  /**
+   * Risk of one call. For a tool with actions, the requested action's risk; an
+   * unknown or missing action gets the tool's highest risk, never a lower one.
+   * An unregistered tool is 4.
+   */
+  riskOf(name: string, args: Record<string, unknown> = {}): RiskTier {
+    const meta = this.getMeta(name);
+    if (!meta) return 4;
+    if (!meta.actions) return meta.risk;
+    const action = typeof args['action'] === 'string' ? args['action'].toLowerCase() : '';
+    return meta.actions[action]?.risk ?? meta.risk;
+  }
+
+  /** What JARVIS can do, grouped by category, optionally filtered. */
+  describeCapabilities(filter: { category?: string; maxRisk?: number } = {}): CapabilityGroup[] {
+    const wanted = filter.category?.trim().toUpperCase();
+    const groups = new Map<ToolCategory, CapabilityEntry[]>();
+    for (const tool of this.tools.values()) {
+      const meta = tool.meta;
+      if (!meta || (wanted && meta.category !== wanted)) continue;
+      const risks = meta.actions ? Object.values(meta.actions).map((a) => a.risk) : [meta.risk];
+      const min = Math.min(...risks) as RiskTier;
+      const max = Math.max(...risks) as RiskTier;
+      if (filter.maxRisk !== undefined && min > filter.maxRisk) continue;
+      const entries = groups.get(meta.category) ?? [];
+      entries.push({
+        name: tool.name,
+        summary: meta.effect,
+        risk: [min, max],
+        approval: approvalNeedFor(max),
+        reversible: meta.reversible,
+        external: meta.external,
+        ...(meta.actions ? { actions: Object.keys(meta.actions) } : {}),
+      });
+      groups.set(meta.category, entries);
+    }
+    return TOOL_CATEGORIES
+      .filter((category) => groups.has(category))
+      .map((category) => ({
+        category,
+        tools: groups.get(category)!.sort((a, b) => a.name.localeCompare(b.name)),
+      }));
+  }
+
+  /** One line per category with its tools, e.g. for the console. */
+  capabilitySummary(): string {
+    return this.describeCapabilities()
+      .map((group) => `${group.category}: ${group.tools.map((t) => t.name).join(', ')}`)
+      .join('\n');
   }
 
   // ── LLM Definitions ───────────────────────────────────────────────────────

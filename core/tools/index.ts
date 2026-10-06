@@ -10,6 +10,7 @@ import { webSearchTool } from '../../tools/webSearchTool.js';
 import { fileReadTool, fileWriteTool } from '../../tools/fileTool.js';
 import { runCommandTool, getSystemInfoTool } from '../../tools/terminalTool.js';
 import { saveRelationTool, searchMemoryTool } from './memoryTool.js';
+import { listCapabilitiesTool } from './capabilityTool.js';
 
 export function registerAllTools(): void {
   toolRegistryV2.registerMany([
@@ -20,6 +21,7 @@ export function registerAllTools(): void {
     getSystemInfoTool,
     saveRelationTool,
     searchMemoryTool,
+    listCapabilitiesTool,
   ]);
 
   console.log(`[ToolRegistry] All built-in tools registered. Total: ${toolRegistryV2.names().length}`);

@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { toolRegistryV2 } from './toolRegistryV2.js';
-import type { AgentTool } from './toolRegistryV2.js';
+import type { AgentTool, ToolMeta } from './toolRegistryV2.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +30,8 @@ export interface SkillDescription {
   requiredLevel?: number;
   /** Low-risk skills only: reuse an identical call's result for 30 s. */
   cacheable?: boolean;
+  /** Category, risks, effects; overrides core/toolCatalog.ts for this skill. */
+  meta?: ToolMeta;
   parameters?: Record<string, {
     type: 'string' | 'number' | 'boolean' | 'object' | 'array';
     description: string;
@@ -165,6 +167,7 @@ export class SkillLoader {
       riskLevel: desc.riskLevel ?? 'medium',
       ...(typeof desc.requiredLevel === 'number' ? { requiredLevel: desc.requiredLevel } : {}),
       ...(desc.cacheable === true ? { cacheable: true } : {}),
+      ...(desc.meta ? { meta: desc.meta } : {}),
       inputSchema: Object.fromEntries(
         Object.entries(desc.parameters ?? {}).map(([key, p]) => [
           key,
