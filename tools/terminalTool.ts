@@ -88,6 +88,12 @@ function isBranchListing(args: string[]): boolean {
 }
 
 export function validateDeveloperCommand(command: string): { allowed: boolean; reason: string } {
+  // The checks below read the command with its whitespace collapsed, but the
+  // shell receives it as written, where a line break starts a second command.
+  // Refuse line breaks and other control characters before collapsing (P15).
+  if (/[\u0000-\u0008\u000a-\u001f\u007f\u0085\u2028\u2029]/.test(command)) {
+    return { allowed: false, reason: 'Line breaks and control characters are blocked for run_command.' };
+  }
   const normalized = command.trim().replace(/\s+/g, ' ');
 
   if (SHELL_METACHAR_PATTERN.test(normalized)) {

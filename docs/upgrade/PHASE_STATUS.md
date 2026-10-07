@@ -763,7 +763,8 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   reference that is not a number, and a section name with a command tacked
   on, answering in JSON. On the P13 code neither test can pass (the modules
   and scripts do not exist). Full suite: 109 files, 103 passed · 0 failed ·
-  6 environment; CI mode 101 passed · 8 skipped.
+  6 environment; CI mode 101 passed · 8 skipped. GitHub CI on `ec3e044`:
+  green, 101 passed · 0 failed · 8 skipped (`windowsScriptsTest` ran there).
 - **Not verified:** everything that needs Windows — the readings, UI
   Automation in real apps, screenshots, the clipboard, the checks after
   window and app actions, the pack itself. Also from earlier phases: P3's
@@ -775,3 +776,36 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   10 s; graphics memory is reported up to 4 GB (a WMI limit).
 - **Next:** the owner runs `pnpm verify:windows` and sends
   `data\logs\verify-windows.json`; meanwhile P15 — final verification.
+
+## P15 — Final verification — [!] BLOCKED (waiting for the owner's Windows report, as P14)
+
+- **Report:** [FINAL_JARVIS_IMPLEMENTATION_REPORT.md](FINAL_JARVIS_IMPLEMENTATION_REPORT.md)
+  — phases, tasks, every test group, security findings, performance,
+  blocked items, limitations, architecture changes, dependencies, next steps.
+- **Implemented:** `tests/securityBypassTest.ts`, 54 checks, all pass. It
+  tries to get past the approval gate through the real registry, risk engine
+  and gate: forged approval arguments, look-alike tool names, request text
+  that claims approval, a repair, a re-used approval, the approval scope,
+  full control mode, parallel calls, a blocklisted command, line breaks in
+  `run_command`. No tool body runs.
+- **Found and fixed:** `run_command` checked a command with its whitespace
+  collapsed, while the shell ran it as written. `git status`, a line break
+  and any other command passed at level 0 and the shell ran both lines.
+  `validateDeveloperCommand` now refuses line breaks and control characters
+  first. Before the fix the test's section 10 failed 6 checks; after it, all
+  54 checks pass.
+- **Tested here:** typecheck clean. `npm test`: 110 files, 104 passed · 0
+  failed · 6 environment. `npm test -- --ci`: 102 passed · 0 failed · 8
+  skipped. `scenarioIntegrationTest` again: 35 passed, LLM requests per
+  scenario 0, 0, 0, 3, 0, 2 (as in P13). Performance (two runs, this
+  container): deterministic pre-router 4.4–4.8 µs per call; "what is open"
+  and "what can you do" 0.5–0.9 ms end to end with 0 LLM requests; Node RSS
+  83–84 MB at startup, 141–144 MB with JARVIS loaded.
+- **Open points (read in the code, not changed):** the approval scope
+  approves any request made inside the approved call; fallback tools run
+  without their own risk check; the approval block shows a multi-line
+  command on one line. None is a bypass with today's tools (report §5.4).
+- **Not verified:** the Windows pack and the microphone and speakers, as in
+  P14.
+- **Next:** the owner runs `pnpm verify:windows` and sends
+  `data\logs\verify-windows.json`.

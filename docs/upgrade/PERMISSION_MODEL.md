@@ -69,9 +69,12 @@ If the risk check itself fails, the call is refused (fail closed).
 2. Apply the argument rules. Most only raise the level; three set it from the
    arguments because the controller already treats those calls that way:
    - `run_command`: commands the developer allow-list refuses are refused
-     (shell metacharacters, `rm -r`, `git push`, `git branch -D`,
-     `git diff --output=…`); read-only git 0; other allow-listed commands
-     (`npm run test`, `pnpm build`) 1. *(sets)*
+     (shell metacharacters, line breaks and other control characters, `rm -r`,
+     `git push`, `git branch -D`, `git diff --output=…`); read-only git 0;
+     other allow-listed commands (`npm run test`, `pnpm build`) 1. *(sets)*
+     Line breaks were added in P15: the checks read the command with its
+     whitespace collapsed, while the shell ran it as written, so
+     `git status` + line break + a second command ran both at level 0.
    - `control_system` shell/powershell: the blocklist refuses (`format c:`,
      `diskpart`, firewall off); otherwise the command class can raise it
      (risk 3 in the catalogue); commands that cannot be undone are level 4:

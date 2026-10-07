@@ -519,6 +519,13 @@ Runs the real checks on the owner's PC and writes a report to send back.
 
 ## P15 — Final verification
 
-### T15.1 — All test groups · Critical · [ ] · depends on: T14.6
-### T15.2 — Security and performance review · Critical · [ ] · depends on: T15.1
-### T15.3 — FINAL_JARVIS_IMPLEMENTATION_REPORT.md · High · [ ] · depends on: T15.2
+### T15.1 — All test groups · Critical · [~] · depends on: T14.6
+- Every group ran here (suite, CI mode, typecheck, scenarios, browser,
+  permission, security, recovery, regression, performance). The Windows pack
+  waits for the owner's run.
+
+### T15.2 — Security and performance review · Critical · [x] · depends on: T15.1
+- `tests/securityBypassTest.ts` (54 checks). Found and fixed: a line break
+  in `run_command` ran a second command at level 0.
+
+### T15.3 — FINAL_JARVIS_IMPLEMENTATION_REPORT.md · High · [x] · depends on: T15.2

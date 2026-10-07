@@ -22,7 +22,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P12 Voice | [x] |
 | P13 Integration and scenarios | [x] |
 | P14 Windows observation and control | [!] |
-| P15 Final verification | [ ] |
+| P15 Final verification | [!] |
 
 ## P0 — Discovery and architecture
 - [x] Repository, orchestrator, state machine, loop, tools, memory, voice, bridge inspected
@@ -161,6 +161,8 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [!] PHASE COMPLETE (blocked on the report)
 
 ## P15 — Final verification
-- [ ] Unit, integration, end-to-end, browser, Windows, permission, security, recovery, regression, performance
-- [ ] FINAL_JARVIS_IMPLEMENTATION_REPORT.md
-- [ ] PHASE COMPLETE
+- [x] Unit, integration, end-to-end, browser, permission, security, recovery, regression, performance
+- [!] Windows (the `pnpm verify:windows` run on the owner's PC)
+- [x] Security review: approval-bypass test; one defect found and fixed
+- [x] FINAL_JARVIS_IMPLEMENTATION_REPORT.md
+- [!] PHASE COMPLETE (blocked on the Windows report, as P14)
