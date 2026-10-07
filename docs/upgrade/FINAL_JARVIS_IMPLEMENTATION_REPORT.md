@@ -19,11 +19,14 @@ could not be run is listed in section 7.
 - The approval-bypass test (new in P15, 54 checks) found no way past the
   approval step. The P15 review found and fixed one command-injection defect
   in `run_command` (section 5.1).
-- The owner's first run of `pnpm verify:windows` (2010 iMac, 2026-10-07): 5
-  passed, 6 failed, 4 skipped. It found two problems, both fixed since:
-  the approval gate took a line typed before the request as the answer
-  (section 5.1), and the PowerShell time limits were too short for a slow
-  PC (section 7). A second run is needed.
+- The owner has run `pnpm verify:windows` twice (2010 iMac, 2026-10-07).
+  First run: 5 passed, 6 failed, 4 skipped. Second run: 13 passed, 3 failed,
+  0 skipped. The runs found four problems, all fixed since (sections 5.1
+  and 7): the approval gate took a line typed before the request as the
+  answer; the PowerShell time limits were short (the slowness did not come
+  back in the second run); the redactor broke the JSON of UI element lists;
+  the pack put its test project where JARVIS refuses projects. A third run
+  is needed.
 - No new dependencies.
 
 ## 2. Phases
@@ -52,8 +55,10 @@ Details and the evidence for each phase: [PHASE_STATUS.md](PHASE_STATUS.md).
 ## 3. Tasks
 
 [MASTER_TASKS.md](MASTER_TASKS.md) has 78 tasks. After P15: 71 done, 7 in
-progress, 0 not started. The 7 in progress are T14.1–T14.6 and T15.1, and
-all of them wait for the Windows run.
+progress, 0 not started. After the owner's second Windows run: 73 done
+(T14.1 Windows observation and T14.3 screenshots, verified on the PC), 5 in
+progress (T14.2, T14.4, T14.5, T14.6 and T15.1), all waiting for the third
+Windows run.
 
 ## 4. Tests run
 
@@ -68,6 +73,9 @@ working tree, with PowerShell 7.4.6 supplied for `windowsScriptsTest`.
 | GitHub CI on `ec3e044` (P14) | green: 101 passed · 0 failed · 8 skipped |
 | GitHub CI on `781086e` (P15, the code in this report) | green: 102 passed · 0 failed · 8 skipped |
 | After the fixes from the first Windows run: typecheck | exit 0, no errors |
+| …`npm test` | 111 files: 105 passed · 0 failed · 6 environment |
+| …`npm test -- --ci` | 111 files: 103 passed · 0 failed · 8 skipped |
+| After the fixes from the second Windows run: typecheck | exit 0, no errors |
 | …`npm test` | 111 files: 105 passed · 0 failed · 6 environment |
 | …`npm test -- --ci` | 111 files: 103 passed · 0 failed · 8 skipped |
 
@@ -136,6 +144,19 @@ approved a request nobody had seen.
   On the code before the fix, 6 fail: an early Enter denies, and an early
   "yes" approves, typed and during a spoken request. After the fix, all 9
   pass.
+
+**The redactor broke the JSON of UI element lists** (found by the owner's
+second Windows run). `ui_elements` gives every element a `"password": true`
+or `false` flag. The redactor replaced `false` with an unquoted marker,
+`"password": [REDACTED:secret]`, which is not JSON. The pack could not read
+Notepad's or Calculator's elements, and the model saw every element's
+password flag hidden. Nothing secret was shown: the flag is not a secret.
+
+- Fix: `security/redactor.ts` keeps `true`, `false` and `null`, and replaces
+  a number under a quoted JSON key with a quoted marker, so JSON stays JSON.
+- Test: `tests/redactionTest.ts`, 5 new checks. On the code before the fix,
+  4 fail; after it, all 51 checks pass. A value that only starts like a
+  flag (`falsehood99`) is still hidden.
 
 ### 5.2 Approval-bypass attempts (no bypass found)
 
@@ -253,20 +274,25 @@ run.
 
 ## 7. Blocked or not verified
 
-- **The Windows pack** (`pnpm verify:windows`) has run once on the owner's
-  PC (2010 iMac, Windows 10 19045, 2026-10-07): 5 passed (installed apps,
-  ports with their program, windows with their program, disks by drive
-  letter, a screenshot), 6 failed, 4 skipped. The console approval was
-  denied before it could be answered (section 5.1). Gpu, displays, audio,
-  cameras and services did not answer within their 10–15 s limits, because a
-  fresh Windows PowerShell is slow on that PC. The four steps that need full
-  control mode were skipped: clipboard, Notepad, Calculator, test server.
-  Both causes are fixed: the gate change, and longer PowerShell limits with
-  at least two looks in the desktop checks (PC_CONTROL.md, Known limits). A
-  second run is the one item P14 and P15 wait for. It covers the P14
-  readings, UI Automation in real apps, the clipboard, the checks after
-  window and app actions, P3's console approval in a real CMD window, and
-  P10's `cmd.exe` and `taskkill` paths.
+- **The Windows pack** (`pnpm verify:windows`) has run twice on the owner's
+  PC (2010 iMac, Windows 10 19045, 2026-10-07).
+  - First run: 5 passed, 6 failed, 4 skipped. The console approval was
+    denied before it could be answered (section 5.1). Gpu, displays, audio,
+    cameras and services did not answer within their 10–15 s limits. The
+    four steps that need full control mode were skipped.
+  - Second run: 13 passed, 3 failed, 0 skipped. Verified on Windows: P3's
+    typed approval in a real CMD window; every reading (in 0.8–2.8 s); P6's
+    disks by drive letter; a screenshot; the clipboard written, read back
+    and put back. PowerShell started in 0.4 s, so the first run's slowness
+    did not come back; its cause is not known, and the longer limits stay.
+    Failed: Notepad and Calculator (the redactor finding in 5.1), and the
+    test server, refused because the pack made its project in the temp
+    folder, which on Windows is under `AppData`, where JARVIS refuses
+    projects. The pack now uses `data\verify-windows-…`; the rule is
+    unchanged.
+  - A third run is the one item P14 and P15 wait for. Still to be shown on
+    Windows: UI Automation in real apps (Notepad, Calculator), the checks
+    after window and app actions, and P10's `cmd.exe` and `taskkill` paths.
 - **Microphone and speakers** (P12) need a check by hand on the PC. The pack
   lists this as not checked.
 - **The six environment tests** in section 4 did not run here. They need
@@ -323,10 +349,9 @@ JARVIS itself uses the built-in Windows PowerShell 5.1.
 
 ## 11. Recommended next steps
 
-1. The owner runs `pnpm verify:windows` again on the Windows PC and sends
-   back `data\logs\verify-windows.json`. P14 and P15 close on that report.
-   If the readings are still slow, run the P14 PowerShell files in one
-   long-lived PowerShell instead of starting one per reading.
+1. The owner runs `pnpm verify:windows` a third time on the Windows PC and
+   sends back `data\logs\verify-windows.json`. P14 and P15 close on that
+   report.
 2. Limit the approval scope to the approved call's own controller questions,
    so that a later tool which calls the registry cannot reuse an approval
    (5.4).

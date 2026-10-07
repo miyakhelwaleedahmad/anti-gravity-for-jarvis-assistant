@@ -117,5 +117,43 @@ if (!redactSecrets) {
     JSON.stringify(deep));
 }
 
+console.log('\n--- JSON flags and numbers (the owner\'s Windows run) ---');
+if (redactSecrets) {
+  // ui_elements marks each element "password": true/false. Redacting the flag
+  // left `"password": [REDACTED:secret]`, which is not JSON: the Notepad and
+  // Calculator checks of pnpm verify:windows could not read the list.
+  const elements = JSON.stringify({
+    success: true,
+    window: { hwnd: '197924', title: 'Untitled - Notepad', process: 'notepad' },
+    elements: [
+      { ref: 'u1', type: 'Edit', name: 'Text Editor', password: false, patterns: ['Value'], value: '' },
+      { ref: 'u2', type: 'Edit', name: 'PIN', password: true, patterns: ['Value'], value: '' },
+      { ref: 'u3', type: 'Button', name: 'Close', isPassword: false, token: null },
+    ],
+  }, null, 2);
+  const shown = redactSecrets(elements).text;
+  let parsed: any = null;
+  try { parsed = JSON.parse(shown); } catch { /* reported below */ }
+  ok('a UI element list with "password": true/false stays valid JSON', parsed !== null, shown.split('\n').find((l: string) => l.includes('REDACTED')) ?? '');
+  ok('…and its flags are kept (true, false and null are not secrets)',
+    parsed?.elements?.[0]?.password === false && parsed?.elements?.[1]?.password === true
+    && parsed?.elements?.[2]?.isPassword === false && parsed?.elements?.[2]?.token === null);
+  ok('a flag in prose or a command line is kept too', redactSecrets('password=false token: TRUE secret = null').count === 0,
+    redactSecrets('password=false token: TRUE secret = null').text);
+
+  // A number under a credential's name is still a secret (a PIN, a numeric
+  // password): replaced by a quoted marker, so the JSON stays JSON.
+  const numeric = JSON.stringify({ user: 'sam', password: 48151623, apiKey: -12345, count: 3 });
+  const masked = redactSecrets(numeric).text;
+  let back: any = null;
+  try { back = JSON.parse(masked); } catch { /* reported below */ }
+  ok('a number under "password" or "apiKey" is hidden, and the JSON still parses',
+    back !== null && !masked.includes('48151623') && !masked.includes('12345') && back.password === '[REDACTED:secret]' && back.count === 3, masked);
+  ok('a value that only starts like a flag is still hidden', !redactSecrets('password=falsehood99 token=nullify-me').text.match(/falsehood99|nullify-me/),
+    redactSecrets('password=falsehood99 token=nullify-me').text);
+} else {
+  ok('redactor exists', false);
+}
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

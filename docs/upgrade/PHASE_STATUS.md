@@ -802,7 +802,38 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   - The pack: full control mode for 30 minutes (15 before); longer waits for
     Notepad and Calculator to open and draw their controls; the time of each
     check printed; one PowerShell start timed first.
-- **Next:** the owner runs `pnpm verify:windows` again and sends
+- **Second Windows run** (same PC, 2026-10-07, report
+  `data\logs\verify-windows.json` sent by the owner): 13 passed, 3 failed,
+  0 skipped.
+  - Passed: the typed approval in CMD (P3, 28.4 s including reading and
+    typing); PowerShell started and finished in 0.4 s; every reading in
+    0.8–2.8 s — graphics card (AMD Mobility Radeon HD 5000, 0.5 GB),
+    display 1920×1080, audio (2 sound devices; 3 speaker and 1 microphone
+    endpoints), camera (Built-in iSight), 43 installed apps, 293 services,
+    12 listening ports all with their program, 4 windows; disks by drive
+    letter; a screenshot (0.9 s); the clipboard written, read back and put
+    back (2.2 s).
+  - The first run's timeouts did not come back: on this run PowerShell is
+    fast on this PC. What made the first run slow is not known; the longer
+    limits stay, since they change nothing when PowerShell is fast.
+  - Failed: Notepad (33.2 s) and Calculator (50.3 s): "Cannot read
+    properties of null (reading 'elements')"; the test server: refused,
+    "JARVIS runs scripts only in the project folders".
+- **Found and fixed from the second run:**
+  - The redactor replaced the `"password": false` flag that `ui_elements`
+    gives every element with an unquoted marker, so the list was no longer
+    JSON: the pack could not read Notepad's or Calculator's elements, and
+    the model saw every element's password flag hidden. `true`, `false` and
+    `null` are kept now (they are not secrets), and a number under a quoted
+    JSON key becomes a quoted marker. `tests/redactionTest.ts`, 5 new
+    checks: 4 fail on the code before the fix, all 51 pass after it.
+  - The pack made its test project in the temp folder, which on Windows is
+    under `AppData`; JARVIS never takes a folder there as a project folder
+    (on Linux the temp folder is `/tmp`, so the tests here did not show it).
+    The pack now makes it under `data\verify-windows-…` (git-ignored) and
+    removes it at the end, or when it stops early. The safety rule is
+    unchanged.
+- **Next:** the owner runs `pnpm verify:windows` a third time and sends
   `data\logs\verify-windows.json`.
 
 ## P15 — Final verification — [!] BLOCKED (waiting for the owner's Windows report, as P14)

@@ -53,7 +53,11 @@ const RULES: readonly Rule[] = [
   // value keeps its quotes, so JSON output stays valid JSON.
   ['secret', new RegExp(`\\b(${SECRET_FIELD}["']?\\s*[:=]\\s*)"(?:[^"\\\\\\n]|\\\\.){4,}"`, 'gi'), '$1', '"'],
   ['secret', new RegExp(`\\b(${SECRET_FIELD}["']?\\s*[:=]\\s*)'[^'\\n]{4,}'`, 'gi'), '$1', "'"],
-  ['secret', new RegExp(`\\b(${SECRET_FIELD}["']?\\s*[:=]\\s*)[^\\s"',;{}]{4,}`, 'gi'), '$1'],
+  // A number under a quoted JSON key (a PIN): a quoted marker, so the JSON stays valid.
+  ['secret', new RegExp(`\\b(${SECRET_FIELD}"\\s*:\\s*)-?\\d{4,}(?:\\.\\d+)?(?=\\s*[,}\\]\\r\\n]|$)`, 'gi'), '$1', '"'],
+  // true, false and null are not secrets: UI elements carry "password": false,
+  // and replacing it left text that is not JSON (the owner's Windows run).
+  ['secret', new RegExp(`\\b(${SECRET_FIELD}["']?\\s*[:=]\\s*)(?!(?:true|false|null)\\b)[^\\s"',;{}]{4,}`, 'gi'), '$1'],
   // The way it is said: "my wifi password is …".
   ['secret', /\b((?:password|passwd|passphrase|passcode)\s+(?:is|was)\s+)["']?[^\s"',;]{4,}["']?/gi, '$1'],
   // A key cut short (text shortened before it reached here): the known prefix

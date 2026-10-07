@@ -110,10 +110,12 @@ files on the clipboard are not, so the pack says to copy them again.
   stopped after 30 s, and JARVIS says a dialog may have opened.
 - `Win32_VideoController` reports at most 4 GB of graphics memory.
 - Every reading, UI Automation call and desktop check starts a fresh Windows
-  PowerShell. On a slow PC that takes many seconds: on the owner's 2010 iMac
-  the first run of `pnpm verify:windows` (2026-10-07) saw gpu, displays,
-  audio, cameras and services go past the first limits of 10–15 s. The
-  limits are now 45–60 s for readings, 60 s for listing a window's elements,
-  30 s for an action, a window's state or the clipboard, and 45 s for a
-  screenshot; the checks after window and app actions may take 60 s and
-  look at least twice. On a fast PC none of this changes anything.
+  PowerShell. In the first run of `pnpm verify:windows` on the owner's 2010
+  iMac (2026-10-07), gpu, displays, audio, cameras and services went past
+  the first limits of 10–15 s; in the second run the same day PowerShell
+  started in 0.4 s and every reading took 0.8–2.8 s. What slowed the first
+  run is not known. The limits are now 45–60 s for readings, 60 s for
+  listing a window's elements, 30 s for an action, a window's state or the
+  clipboard, and 45 s for a screenshot; the checks after window and app
+  actions may take 60 s and look at least twice. When PowerShell is fast,
+  none of this changes anything.

@@ -43,7 +43,11 @@ keys of known shapes (Google `AIza…`/`AQ.…`, OpenAI-style `sk-…`, Groq `gs
 GitHub, AWS, Slack), JWTs, `Authorization: Bearer …`, `Cookie` / `Set-Cookie`
 values, private-key blocks, `password` / `token` / `secret` / `api_key` pairs
 (`:` or `=`, quoted or not; quoted values keep their quotes so JSON stays
-valid) — since P13 also with words joined to the name, anywhere in a line
+valid; `true`, `false` and `null` are kept, being flags and not secrets, and
+a number under a quoted JSON key becomes a quoted marker — both since the
+owner's second Windows run, where the `"password": false` flag of every UI
+element became an unquoted marker and the list was no longer JSON) — since
+P13 also with words joined to the name, anywhere in a line
 (`DB_PASSWORD=…` in a log line, `AWS_SECRET_ACCESS_KEY=…`, `"dbPassword": …`,
 `API_TOKEN: …`; not `max_tokens: 4096`) — "my password is …", URLs with a
 password, `.env` lines whose name contains KEY, TOKEN, SECRET or PASSWORD, and

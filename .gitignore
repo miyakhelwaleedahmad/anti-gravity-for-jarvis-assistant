@@ -38,6 +38,8 @@ data/runtime/*.json
 # Browser screenshots (P9) and the file tools' trash and backups (P10): user data
 data/screenshots/
 data/trash/
+# The test project pnpm verify:windows makes for one run (P14)
+data/verify-windows-*/
 logs/*.jsonl
 logs/*.log
 

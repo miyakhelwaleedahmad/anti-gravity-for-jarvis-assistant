@@ -152,10 +152,10 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P14 — Windows observation and control
-- [~] Windows observation (GPU, displays, audio, cameras, installed apps, services, ports, clipboard) — built and tested here; Windows run pending
-- [~] UI Automation, screenshots, dialogs — built and tested here; Windows run pending
-- [~] Checks for window and app actions — built; Windows run pending
-- [~] `pnpm verify:windows` — built; to be run by the owner
+- [x] Windows observation (GPU, displays, audio, cameras, installed apps, services, ports, clipboard) — verified on the owner's PC (second run)
+- [~] UI Automation, screenshots, dialogs — screenshots verified on the owner's PC; UI Automation and dialogs wait for the third run
+- [~] Checks for window and app actions — built; wait for the third run
+- [~] `pnpm verify:windows` — run twice by the owner (5/16, then 13/16 passed); fixes in; third run pending
 - [x] Unit tests here
 - [!] Verification report from the owner's Windows PC
 - [!] PHASE COMPLETE (blocked on the report)

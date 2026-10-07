@@ -37,15 +37,6 @@ if (process.platform !== 'win32') {
   process.exit(2);
 }
 
-// The test server lives in the temp folder, which joins the project folders for this run only.
-const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-verify-'));
-const serverDir = path.join(scratch, 'verify-server');
-fs.mkdirSync(serverDir);
-fs.writeFileSync(path.join(serverDir, 'package.json'), JSON.stringify({ name: 'verify-server', private: true, scripts: { dev: 'node server.js' } }, null, 2));
-fs.writeFileSync(path.join(serverDir, 'server.js'),
-  "require('http').createServer((q, s) => s.end('ok')).listen(Number(process.env.PORT), '127.0.0.1', () => console.log('ready on http://localhost:' + process.env.PORT));\n");
-process.env['JARVIS_PROJECT_DIRS'] = [process.env['JARVIS_PROJECT_DIRS'], scratch].filter(Boolean).join(';');
-
 async function ask(question: string): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -74,6 +65,20 @@ is not taken as the answer).
 `);
 if ((await ask('Press Enter to start, or type q and Enter to quit: ')).trim().toLowerCase() === 'q') process.exit(0);
 console.log('Loading JARVIS…');
+
+// The test server's project: a folder of its own under data\ (git-ignored),
+// which joins the project folders for this run only, and is removed at the
+// end. Not the temp folder: on Windows that is under AppData, which JARVIS
+// never takes as a project folder (the owner's second run was refused).
+fs.mkdirSync(path.join(repo, 'data'), { recursive: true });
+const scratch = fs.mkdtempSync(path.join(repo, 'data', 'verify-windows-'));
+process.on('exit', () => { try { fs.rmSync(scratch, { recursive: true, force: true }); } catch { /* a file still in use */ } });
+const serverDir = path.join(scratch, 'verify-server');
+fs.mkdirSync(serverDir);
+fs.writeFileSync(path.join(serverDir, 'package.json'), JSON.stringify({ name: 'verify-server', private: true, scripts: { dev: 'node server.js' } }, null, 2));
+fs.writeFileSync(path.join(serverDir, 'server.js'),
+  "require('http').createServer((q, s) => s.end('ok')).listen(Number(process.env.PORT), '127.0.0.1', () => console.log('ready on http://localhost:' + process.env.PORT));\n");
+process.env['JARVIS_PROJECT_DIRS'] = [process.env['JARVIS_PROJECT_DIRS'], scratch].filter(Boolean).join(';');
 
 const { registerAllTools } = await import('../core/tools/index.js');
 const { SkillLoader } = await import('../core/skillLoader.js');
