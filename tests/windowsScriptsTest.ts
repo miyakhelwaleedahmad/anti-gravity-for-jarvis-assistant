@@ -70,6 +70,54 @@ for (const file of FILES) {
   ok(`${file}: plain ASCII`, [...fs.readFileSync(path.join(repo, file))].every((b) => b < 0x80));
 }
 
+// The Win32 code each script compiles with Add-Type -MemberDefinition (a
+// literal, or a variable set to one): compiled here by PowerShell's own
+// Add-Type, so a mistake in it shows up before it reaches a Windows PC.
+const COMPILE = `
+  $tokens = $null; $errors = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:JARVIS_TEST_FILE, [ref]$tokens, [ref]$errors)
+  $assigned = @{}
+  foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true)) {
+    $right = $a.Right
+    if ($a.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and $right -is [System.Management.Automation.Language.CommandExpressionAst] -and $right.Expression -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+      $assigned[$a.Left.VariablePath.UserPath] = $right.Expression.Value
+    }
+  }
+  $defs = New-Object System.Collections.ArrayList
+  foreach ($c in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Add-Type' }, $true)) {
+    for ($i = 0; $i -lt $c.CommandElements.Count - 1; $i++) {
+      $e = $c.CommandElements[$i]
+      if ($e -is [System.Management.Automation.Language.CommandParameterAst] -and $e.ParameterName -eq 'MemberDefinition') {
+        $v = $c.CommandElements[$i + 1]
+        if ($v -is [System.Management.Automation.Language.StringConstantExpressionAst]) { [void]$defs.Add($v.Value) }
+        elseif ($v -is [System.Management.Automation.Language.VariableExpressionAst]) { [void]$defs.Add($assigned[$v.VariablePath.UserPath]) }
+        else { [void]$defs.Add($null) }
+      }
+    }
+  }
+  $failures = @()
+  $n = 0
+  foreach ($d in $defs) {
+    $n++
+    try {
+      if (-not $d) { throw 'not a literal' }
+      Add-Type -Namespace ('JarvisCompile' + $n) -Name ('T' + $n) -MemberDefinition $d -ErrorAction Stop
+    } catch { $failures += ('#' + $n + ': ' + ([string]$_.Exception.Message).Split([char]10)[0]) }
+  }
+  ConvertTo-Json -Compress -InputObject @{ count = $defs.Count; failures = @($failures) }`;
+let compiled = 0;
+for (const file of FILES) {
+  const r = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-Command', COMPILE], {
+    encoding: 'utf8', timeout: 120_000, env: { ...process.env, JARVIS_TEST_FILE: path.join(repo, file) },
+  });
+  let parsed: { count?: number; failures?: string[] } = {};
+  try { parsed = JSON.parse(String(r.stdout).trim().split(/\r?\n/).pop() ?? ''); } catch { /* reported below */ }
+  compiled += parsed.count ?? 0;
+  ok(`${file}: its Win32 code compiles`, typeof parsed.count === 'number' && (parsed.failures ?? []).length === 0,
+    `${parsed.count ?? '?'} block(s)${(parsed.failures ?? []).length ? `; ${(parsed.failures ?? []).join('; ')}` : ''}${typeof parsed.count === 'number' ? '' : `; ${String(r.stdout + r.stderr).slice(0, 200)}`}`);
+}
+ok('all five Win32 blocks were found and compiled (probe 3, desktop 1, uia 1)', compiled === 5, `${compiled}`);
+
 console.log('\n--- 2. Run here, they refuse what is not theirs, as one line of JSON ---');
 let out = run('perception/windows_probe.ps1', { JARVIS_PROBE_SECTION: 'nonsense' });
 ok('probe: an unknown section → "unknown section"', out.ok === false && out.error === 'unknown section', JSON.stringify(out));

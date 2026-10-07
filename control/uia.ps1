@@ -11,6 +11,9 @@
 #   JARVIS_UIA_TYPE       must still have them, or nothing is done
 #   JARVIS_UIA_TEXT_FILE  set_value: the UTF-8 file holding the text
 # Nothing here is built from those values. Prints one line of JSON.
+# set_value uses the Value pattern; a classic multi-line text box (Notepad's)
+# has none in this UI Automation library, only for single-line boxes, so its
+# text is set and read back with WM_SETTEXT and WM_GETTEXT on its own handle.
 # Written for Windows PowerShell 5.1.
 
 $ErrorActionPreference = 'Stop'
@@ -27,6 +30,29 @@ $textFile = [string]$env:JARVIS_UIA_TEXT_FILE
 # apps (Calculator) keep their buttons about five levels down.
 $MaxDepth = 6
 $MaxElements = 200
+
+# Win32 calls: the window in front, and the text of a classic text box.
+$NativeMembers = @'
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, string lParam);
+[DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")] public static extern IntPtr SendMessageBuffer(IntPtr hWnd, uint msg, IntPtr wParam, System.Text.StringBuilder lParam);
+[DllImport("user32.dll", EntryPoint = "GetWindowLongW")] public static extern int GetWindowLong(IntPtr hWnd, int index);
+public static bool SetText(IntPtr hWnd, string text) {
+  return SendMessage(hWnd, 0x000C, IntPtr.Zero, text) != IntPtr.Zero;
+}
+public static string GetText(IntPtr hWnd) {
+  int length = SendMessage(hWnd, 0x000E, IntPtr.Zero, null).ToInt32();
+  var buffer = new System.Text.StringBuilder(length + 1);
+  SendMessageBuffer(hWnd, 0x000D, new IntPtr(length + 1), buffer);
+  return buffer.ToString();
+}
+public static bool IsReadOnly(IntPtr hWnd) {
+  return (GetWindowLong(hWnd, -16) & 0x0800) != 0;
+}
+public static bool IsPassword(IntPtr hWnd) {
+  return (GetWindowLong(hWnd, -16) & 0x0020) != 0;
+}
+'@
 
 function Out-Json($value) {
   ConvertTo-Json -InputObject $value -Depth 6 -Compress
@@ -122,7 +148,7 @@ function Find-Element($root) {
 try {
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
-  Add-Type -Namespace JarvisUia -Name Native -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();'
+  Add-Type -Namespace JarvisUia -Name Native -MemberDefinition $NativeMembers
   $window = Get-Window
   switch -Exact ($action) {
     'list' {
@@ -153,14 +179,29 @@ try {
       if (-not $textFile -or -not (Test-Path -LiteralPath $textFile -PathType Leaf)) { throw 'The file with the text is missing.' }
       $text = [string](Get-Content -LiteralPath $textFile -Raw -Encoding UTF8)
       $pattern = $null
-      if (-not $el.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) { throw 'The element does not take a value.' }
-      if ($pattern.Current.IsReadOnly) { throw 'The element is read-only.' }
-      $pattern.SetValue($text)
-      Start-Sleep -Milliseconds 150
-      $now = [string]$pattern.Current.Value
+      if ($el.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {
+        if ($pattern.Current.IsReadOnly) { throw 'The element is read-only.' }
+        $pattern.SetValue($text)
+        Start-Sleep -Milliseconds 150
+        $now = [string]$pattern.Current.Value
+        $how = 'value'
+      } else {
+        # A classic multi-line text box: its own window, of a known text box class.
+        $handle = New-Object IntPtr ([long]$el.Current.NativeWindowHandle)
+        $class = [string]$el.Current.ClassName
+        if ($handle -eq [IntPtr]::Zero -or $class -notmatch '^(Edit|RichEdit(\d+[AW])?)$') { throw 'The element does not take a value.' }
+        if ([JarvisUia.Native]::IsPassword($handle)) { throw 'JARVIS does not type into password fields.' }
+        if ([JarvisUia.Native]::IsReadOnly($handle)) { throw 'The element is read-only.' }
+        # A multi-line box breaks lines at CR LF.
+        $text = $text -replace "(?<!`r)`n", "`r`n"
+        if (-not [JarvisUia.Native]::SetText($handle, $text)) { throw 'The text box did not take the text.' }
+        Start-Sleep -Milliseconds 150
+        $now = [string][JarvisUia.Native]::GetText($handle)
+        $how = 'settext'
+      }
       $shown = $now
       if ($shown.Length -gt 200) { $shown = $shown.Substring(0, 200) }
-      Out-Json @{ ok = $true; action = $action; length = $text.Length; same = ($now -eq $text); value = $shown }
+      Out-Json @{ ok = $true; action = $action; length = $text.Length; same = ($now -eq $text); value = $shown; how = $how }
     }
     'focus' {
       $el = Find-Element $window.element

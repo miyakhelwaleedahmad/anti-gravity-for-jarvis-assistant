@@ -833,8 +833,45 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
     The pack now makes it under `data\verify-windows-…` (git-ignored) and
     removes it at the end, or when it stops early. The safety rule is
     unchanged.
-- **Next:** the owner runs `pnpm verify:windows` a third time and sends
-  `data\logs\verify-windows.json`.
+- **Third Windows run** (same PC, 2026-10-07, report sent by the owner): 14
+  passed, 2 failed, 0 skipped. Newly passed: the test server started and
+  stopped (P10's `cmd.exe`/`taskkill` path). Failed:
+  - Notepad: "no text field with a value among its 3 elements" (32.6 s).
+  - Calculator: the presses of C, 1, +, 2 and = were each accepted, but the
+    display read "Display is 0" (28.5 s).
+  - A `[windowsState] Poll failed (non-fatal): PS query timed out after
+    15000ms` line during the Calculator check came from the open check's
+    fallback to the older persistent PowerShell session
+    (`appController.isAppOpen` → `getWindowsState`); the check then passed
+    ("calculator is running"). It cost waiting time, not the failure.
+- **Diagnosis, approved by the owner before any change (Step A):**
+  - Notepad (cause shown in Microsoft's source of the UI Automation library
+    `uia.ps1` uses, `WindowsEditBox.cs` in dotnet/wpf): a classic Win32 text
+    box gets the Value pattern only when it is single-line; Notepad's is
+    multi-line (a Document with the Text pattern). The pack looked only for
+    a Value field and `set_value` used only the Value pattern, so Notepad's
+    text could never be set.
+  - Calculator: not determined from the report, which did not record what
+    each press did or which display element was read.
+- **Step A (this change):**
+  - `control/uia.ps1` `set_value`: an element without the Value pattern that
+    is a classic text box (its own window handle, class `Edit` or
+    `RichEdit…`) is set with WM_SETTEXT and read back with WM_GETTEXT on that
+    handle; refused when the element or the box's style says password, or
+    the box is read-only. Lone line feeds become CR LF. The result says how
+    (`value` or `settext`). Nothing else changed: same tool, same risk level
+    (2), same approval rules.
+  - The pack: Notepad accepts such a text box; Calculator records which
+    window is in front before and after, every display element's text after
+    each press (read straight from `uia.ps1`, so the presses keep the
+    references of their one listing, as before) and what each press
+    returned; both apps are closed also when their check fails (the third
+    run left them open). The Calculator check itself is unchanged.
+  - `tests/windowsScriptsTest.ts`: the Win32 code of the three PowerShell
+    files is compiled with PowerShell's own `Add-Type` (5 blocks); a block
+    with a C# mistake is reported.
+- **Next:** the owner runs `pnpm verify:windows` a fourth time and sends
+  `data\logs\verify-windows.json`; the Calculator evidence decides Step B.
 
 ## P15 — Final verification — [!] BLOCKED (waiting for the owner's Windows report, as P14)
 

@@ -55,7 +55,7 @@ see "Built in P14" below.
 |---|---|---|---|
 | `windows_overview` | GPU, displays, audio (speakers and microphones told apart), cameras, installed apps, services, listening ports with their program, visible windows with their program and its ports; at most 80 entries for the model, or those matching `filter` | 0 | — |
 | `ui_elements` | the buttons, fields, menus and texts of a window (default: the one in front), breadth first to depth 6, at most 200, each with a reference such as `u12`; never a password field's contents | 0 | — |
-| `ui_action` | invoke (button, box, list item, menu), set_value, focus — of an element listed in the last 10 minutes that still has the name and type JARVIS saw | 1–4 | the field holds the text; the element has the focus; the press happened |
+| `ui_action` | invoke (button, box, list item, menu), set_value, focus — of an element listed in the last 10 minutes that still has the name and type JARVIS saw. set_value uses the Value pattern; a classic multi-line text box (Notepad's), which has none, is set through its own window handle (WM_SETTEXT) | 1–4 | the field holds the text; the element has the focus; the press happened |
 | `screenshot` | the screen or the window in front, as a PNG in `data/screenshots/` (not in git); nothing is sent anywhere | 1 | a PNG of the size is on disk |
 | `clipboard` | read (at most 2 000 characters, secrets hidden) or write | 1 / 2 | the clipboard holds the text |
 

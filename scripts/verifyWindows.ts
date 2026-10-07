@@ -83,8 +83,8 @@ process.env['JARVIS_PROJECT_DIRS'] = [process.env['JARVIS_PROJECT_DIRS'], scratc
 const { registerAllTools } = await import('../core/tools/index.js');
 const { SkillLoader } = await import('../core/skillLoader.js');
 const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');
-const { redact } = await import('../security/redactor.js');
-const { probeWindows, windowState } = await import('../perception/windowsProbe.js');
+const { redact, redactDeep } = await import('../security/redactor.js');
+const { probeWindows, runPsFile, windowState } = await import('../perception/windowsProbe.js');
 const { keepLooking } = await import('../core/verifiers.js');
 const { readClipboard, writeClipboard, CLIPBOARD_WRITE_LIMIT } = await import('../control/desktopControl.js');
 const { removeScreenshot } = await import('../core/tools/windowsTools.js');
@@ -93,25 +93,30 @@ registerAllTools();
 await new SkillLoader(path.join(repo, 'skills')).loadSkills();
 
 type Status = 'PASS' | 'FAIL' | 'SKIP';
-interface Result { id: string; name: string; status: Status; evidence: string; ms: number }
+interface Result { id: string; name: string; status: Status; evidence: string; ms: number; details?: Record<string, unknown> }
 const results: Result[] = [];
 
 function need(condition: unknown, why: string): asserts condition {
   if (!condition) throw new Error(why);
 }
 
-async function check(id: string, name: string, fn: () => Promise<{ status?: Status; evidence: string }>): Promise<boolean> {
+/** `details`: what a check saw on the way, kept in the report whether it passes or fails. */
+async function check(id: string, name: string, fn: (details: Record<string, unknown>) => Promise<{ status?: Status; evidence: string }>): Promise<boolean> {
   const t0 = Date.now();
   let status: Status = 'FAIL';
   let evidence = '';
+  const details: Record<string, unknown> = {};
   try {
-    const r = await fn();
+    const r = await fn(details);
     status = r.status ?? 'PASS';
     evidence = r.evidence;
   } catch (err) {
     evidence = err instanceof Error ? err.message : String(err);
   }
-  const entry: Result = { id, name, status, evidence: redact(evidence).replace(/\s+/g, ' ').slice(0, 400), ms: Date.now() - t0 };
+  const entry: Result = {
+    id, name, status, evidence: redact(evidence).replace(/\s+/g, ' ').slice(0, 400), ms: Date.now() - t0,
+    ...(Object.keys(details).length ? { details: redactDeep(details) } : {}),
+  };
   results.push(entry);
   console.log(`  ${status.padEnd(4)}  ${name}${entry.evidence ? ` — ${entry.evidence}` : ''} (${(entry.ms / 1000).toFixed(1)} s)`);
   return status === 'PASS';
@@ -156,6 +161,29 @@ async function elementsWith(hwnd: string, wanted: (e: any) => boolean, ms: numbe
     if ((list.success && (list.body?.elements ?? []).some(wanted)) || Date.now() >= until) return list;
     await sleep(1_000);
   }
+}
+
+const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** The elements of a list, in short, for the report (no values). */
+function elementSummary(list: { body?: any }, max = 30) {
+  return (list.body?.elements ?? []).slice(0, max).map((e: any) => ({
+    type: e.type, className: e.className, automationId: e.automationId,
+    name: String(e.name ?? '').slice(0, 40), patterns: e.patterns, depth: e.depth,
+  }));
+}
+
+/**
+ * The text of every Calculator display element, read straight from uia.ps1:
+ * not through ui_elements, which would replace the references the presses use.
+ */
+async function calculatorDisplays(hwnd: string): Promise<string[]> {
+  const decimal = BigInt(hwnd).toString();
+  const r = await runPsFile('uia', { JARVIS_UIA_ACTION: 'list', JARVIS_UIA_HWND: decimal }, 60_000);
+  if (!r.ok) return [`(not read: ${String(r.error ?? 'no reason').slice(0, 80)})`];
+  return (Array.isArray(r['elements']) ? r['elements'] as any[] : [])
+    .filter((e) => e.automationId === 'CalculatorResults')
+    .map((e) => `${String(e.name ?? '')}${e.offscreen ? ' (offscreen)' : ''}`);
 }
 
 /** Close a window this pack opened; press "Don't save" if it asks. */
@@ -284,45 +312,85 @@ await check('desktop.clipboard', 'The clipboard written, read back and put back'
 });
 
 console.log('\n--- Apps through UI Automation ---');
-await check('apps.notepad', 'Notepad: opened, text field filled and read back, closed', async () => {
+await check('apps.notepad', 'Notepad: opened, text field filled and read back, closed', async (details) => {
   if (!fullControl) return { status: 'SKIP', evidence: 'needs full control mode' };
   const before = await windowHandles();
   const open = await call('open_app', { target: 'notepad' });
   need(open.success, `not opened: ${why(open)}`);
   const win = await newWindow(before, /notepad/i, 60_000);
   need(win?.hwnd, 'no new Notepad window appeared (Windows 11 may have opened a tab in a Notepad window that was already open: close Notepad and run again)');
-  const isField = (e: any) => (e.type === 'Document' || e.type === 'Edit') && (e.patterns ?? []).includes('Value');
-  const list = await elementsWith(win.hwnd, isField, 30_000);
-  need(list.success, `its elements could not be read: ${why(list)}`);
-  const field = (list.body.elements ?? []).find(isField);
-  need(field, `no text field with a value among its ${list.body.elements?.length ?? 0} elements`);
-  const text = `JARVIS check ${new Date().toISOString()}`;
-  const set = await call('ui_action', { action: 'set_value', ref: field.ref, text });
-  need(set.success && set.verification?.status === 'verified', `the text was not set: ${why(set)}`);
-  const closed = await closeOwnWindow(win.hwnd);
-  return { evidence: `typed and read back ${text.length} characters; ${closed}` };
+  details['window'] = { title: win.title, process: win.process };
+  let closed = '';
+  try {
+    // A text field: one with the Value pattern, or a classic multi-line text
+    // box (Notepad's), which UI Automation offers only the Text pattern for.
+    const isField = (e: any) => (e.type === 'Document' || e.type === 'Edit')
+      && ((e.patterns ?? []).includes('Value')
+        || ((e.patterns ?? []).includes('Text') && /^(Edit|RichEdit(\d+[AW])?)$/i.test(String(e.className ?? ''))));
+    const list = await elementsWith(win.hwnd, isField, 30_000);
+    details['elements'] = elementSummary(list);
+    need(list.success, `its elements could not be read: ${why(list)}`);
+    const field = (list.body.elements ?? []).find(isField);
+    need(field, `no text field among its ${list.body.elements?.length ?? 0} elements`);
+    details['field'] = { type: field.type, className: field.className, patterns: field.patterns };
+    const text = `JARVIS check ${new Date().toISOString()}`;
+    const set = await call('ui_action', { action: 'set_value', ref: field.ref, text });
+    details['set'] = { how: set.body?.how, same: set.body?.same, length: set.body?.length, check: set.verification?.status ?? null, error: set.success ? undefined : why(set) };
+    need(set.success && set.verification?.status === 'verified', `the text was not set: ${why(set)}`);
+    closed = await closeOwnWindow(win.hwnd);
+    return { evidence: `typed and read back ${text.length} characters (${set.body?.how === 'settext' ? 'multi-line text box' : 'value pattern'}); ${closed}` };
+  } catch (err) {
+    // Close what this check opened, also when it failed.
+    if (!closed) details['cleanup'] = await closeOwnWindow(win.hwnd).catch((e) => `not closed: ${messageOf(e)}`);
+    throw err;
+  }
 });
-await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async () => {
+await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async (details) => {
   if (!fullControl) return { status: 'SKIP', evidence: 'needs full control mode' };
   const before = await windowHandles();
   const open = await call('open_app', { target: 'calculator' });
   need(open.success, `not opened: ${why(open)}`);
   const win = await newWindow(before, /calculator|calc/i, 60_000);
   need(win?.hwnd, 'no new Calculator window appeared');
-  let list = await elementsWith(win.hwnd, (e) => e.automationId === 'num1Button', 30_000);
-  need(list.success, `its elements could not be read: ${why(list)}`);
-  for (const id of ['clearButton', 'num1Button', 'plusButton', 'num2Button', 'equalButton']) {
-    const button = (list.body.elements ?? []).find((e: any) => e.automationId === id);
-    if (!button && id === 'clearButton') continue;
-    need(button, `the ${id} button is not among its ${list.body.elements?.length ?? 0} elements`);
-    const press = await call('ui_action', { action: 'invoke', ref: button.ref });
-    need(press.success, `${id} was not pressed: ${why(press)}`);
+  details['window'] = { title: win.title, process: win.process };
+  let closed = '';
+  try {
+    let list = await elementsWith(win.hwnd, (e) => e.automationId === 'num1Button', 30_000);
+    need(list.success, `its elements could not be read: ${why(list)}`);
+    // Evidence for what Calculator does with each press (Step A): which window
+    // is in front, every display element and its text after each press, and
+    // what each press returned. The presses use the references of this one
+    // listing, as before.
+    details['elementCount'] = list.body.elements?.length ?? 0;
+    details['inFrontBefore'] = await windowState(win.hwnd).then((s) => s.foreground).catch((e) => `unknown: ${messageOf(e)}`);
+    details['displaysBefore'] = (list.body.elements ?? []).filter((e: any) => e.automationId === 'CalculatorResults')
+      .map((e: any) => ({ name: e.name, depth: e.depth, offscreen: e.offscreen }));
+    const presses: Array<Record<string, unknown>> = [];
+    details['presses'] = presses;
+    for (const id of ['clearButton', 'num1Button', 'plusButton', 'num2Button', 'equalButton']) {
+      const button = (list.body.elements ?? []).find((e: any) => e.automationId === id);
+      if (!button && id === 'clearButton') continue;
+      need(button, `the ${id} button is not among its ${list.body.elements?.length ?? 0} elements`);
+      const press = await call('ui_action', { action: 'invoke', ref: button.ref });
+      const displays = await calculatorDisplays(win.hwnd).catch((e) => [`(not read: ${messageOf(e)})`]);
+      presses.push({
+        button: id, name: button.name, pressed: press.success, did: press.body?.did ?? null,
+        windowOpen: press.body?.windowOpen ?? null, error: press.success ? undefined : why(press), displaysAfter: displays,
+      });
+      console.log(`        ${id}: ${press.success ? String(press.body?.did ?? 'done') : 'NOT pressed'}; display: ${displays.join(' | ') || '(no display element)'}`);
+      need(press.success, `${id} was not pressed: ${why(press)}`);
+    }
+    details['inFrontAfter'] = await windowState(win.hwnd).then((s) => s.foreground).catch((e) => `unknown: ${messageOf(e)}`);
+    list = await call('ui_elements', { window: win.hwnd });
+    const display = (list.body?.elements ?? []).find((e: any) => e.automationId === 'CalculatorResults');
+    need(display && /\b3\b/.test(String(display.name)), `the display shows "${display?.name ?? 'nothing JARVIS found'}"`);
+    closed = await closeOwnWindow(win.hwnd);
+    return { evidence: `"${display.name}"; ${closed}` };
+  } catch (err) {
+    // Close what this check opened, also when it failed.
+    if (!closed) details['cleanup'] = await closeOwnWindow(win.hwnd).catch((e) => `not closed: ${messageOf(e)}`);
+    throw err;
   }
-  list = await call('ui_elements', { window: win.hwnd });
-  const display = (list.body?.elements ?? []).find((e: any) => e.automationId === 'CalculatorResults');
-  need(display && /\b3\b/.test(String(display.name)), `the display shows "${display?.name ?? 'nothing JARVIS found'}"`);
-  const closed = await closeOwnWindow(win.hwnd);
-  return { evidence: `"${display.name}"; ${closed}` };
 });
 
 console.log('\n--- A development server (P10) ---');

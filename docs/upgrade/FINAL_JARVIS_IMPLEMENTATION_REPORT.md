@@ -290,9 +290,15 @@ run.
     folder, which on Windows is under `AppData`, where JARVIS refuses
     projects. The pack now uses `data\verify-windows-…`; the rule is
     unchanged.
-  - A third run is the one item P14 and P15 wait for. Still to be shown on
-    Windows: UI Automation in real apps (Notepad, Calculator), the checks
-    after window and app actions, and P10's `cmd.exe` and `taskkill` paths.
+  - Third run: 14 passed, 2 failed. The test server passed (P10's `cmd.exe`
+    and `taskkill` paths). Notepad failed because its multi-line text box has
+    no Value pattern in the UI Automation library `uia.ps1` uses (shown in
+    Microsoft's source); Calculator accepted all five presses but its display
+    read "Display is 0", for a reason the report could not show.
+  - Step A, approved by the owner: `set_value` sets a classic multi-line text
+    box through its own window handle; the pack records what each Calculator
+    press did. A fourth run is the one item P14 and P15 wait for, and its
+    Calculator evidence decides the Calculator fix (Step B).
 - **Microphone and speakers** (P12) need a check by hand on the PC. The pack
   lists this as not checked.
 - **The six environment tests** in section 4 did not run here. They need
