@@ -61,6 +61,7 @@ working tree, with PowerShell 7.4.6 supplied for `windowsScriptsTest`.
 | `npm test` | 110 files: 104 passed · 0 failed · 6 environment |
 | `npm test -- --ci` | 110 files: 102 passed · 0 failed · 8 skipped |
 | GitHub CI on `ec3e044` (P14) | green: 101 passed · 0 failed · 8 skipped |
+| GitHub CI on `781086e` (P15, the code in this report) | green: 102 passed · 0 failed · 8 skipped |
 
 The 6 environment results in normal mode are tests whose prerequisite this
 container lacks: `dashboardAccuracyTest` (Redis), `dashboardHealthSystemTest`

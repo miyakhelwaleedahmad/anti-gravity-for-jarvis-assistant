@@ -796,7 +796,8 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   54 checks pass.
 - **Tested here:** typecheck clean. `npm test`: 110 files, 104 passed · 0
   failed · 6 environment. `npm test -- --ci`: 102 passed · 0 failed · 8
-  skipped. `scenarioIntegrationTest` again: 35 passed, LLM requests per
+  skipped; GitHub CI on `781086e` green with the same 102 · 0 · 8.
+  `scenarioIntegrationTest` again: 35 passed, LLM requests per
   scenario 0, 0, 0, 3, 0, 2 (as in P13). Performance (two runs, this
   container): deterministic pre-router 4.4–4.8 µs per call; "what is open"
   and "what can you do" 0.5–0.9 ms end to end with 0 LLM requests; Node RSS
