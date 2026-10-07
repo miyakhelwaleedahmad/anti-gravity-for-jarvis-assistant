@@ -853,7 +853,7 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
     text could never be set.
   - Calculator: not determined from the report, which did not record what
     each press did or which display element was read.
-- **Step A (this change):**
+- **Step A** (commit `9f88ce8`):
   - `control/uia.ps1` `set_value`: an element without the Value pattern that
     is a classic text box (its own window handle, class `Edit` or
     `RichEdit…`) is set with WM_SETTEXT and read back with WM_GETTEXT on that
@@ -870,8 +870,80 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   - `tests/windowsScriptsTest.ts`: the Win32 code of the three PowerShell
     files is compiled with PowerShell's own `Add-Type` (5 blocks); a block
     with a C# mistake is reported.
-- **Next:** the owner runs `pnpm verify:windows` a fourth time and sends
-  `data\logs\verify-windows.json`; the Calculator evidence decides Step B.
+- **Fourth and fifth Windows runs** (same PC, 2026-10-07): `start` was typed
+  at the approval box and refused, as the approval rules require (only
+  APPROVE, YES or CONFIRM approve). The approval check failed and the four
+  checks that need full control mode were skipped: 11 passed, 1 failed, 4
+  skipped, both times. Nothing to fix.
+- **Sixth Windows run** (same PC, 2026-10-07, approved with `yes`, report
+  sent by the owner): 14 passed, 2 failed, 0 skipped.
+  - Notepad (100.8 s): "no text field among its 3 elements" — the window,
+    then its text box (class `Edit`) and status bar, both as a `Pane` with
+    no patterns; no title bar and no menu bar.
+  - Calculator (59.6 s): only 1 element (the `ApplicationFrameHost` frame)
+    for 30 s, the window not in front, so nothing was pressed.
+  - Both windows stayed open after the pack's close ("it did not close");
+    what the close returned was not recorded.
+  - The older persistent PowerShell session timed out after 15 s and was
+    restarted twice during these two checks.
+- **Diagnosis, approved by the owner before any change (Step B):**
+  - Notepad (proven by the element list): this UI Automation library
+    describes classic Win32 controls with helpers
+    (`UIAutomationClientsideProviders`) that it loads by itself once per
+    process; without them every classic control is a plain `Pane`, as here.
+    Step A's text-box path needs them, so it never ran. Why the library's
+    own attempt failed is not proven (likely: it finds the helpers' version
+    from the calling code, which PowerShell's generated code does not
+    give).
+  - Calculator: two runs, two symptoms (third run: presses accepted, display
+    "0"; sixth run: no buttons seen). Not determined. `uia.ps1` hid errors
+    while reading an element's children, so "no children" and "children not
+    read" looked the same.
+  - Closing: `control_window` close goes through `windowController`, which
+    waits twice on the older persistent session. Not determined, since the
+    close result was not recorded.
+- **Step B (this change):**
+  - `control/uia.ps1` registers the helpers itself before reading any
+    element (`ClientSettings.RegisterClientSideProviderAssembly`, tried at
+    most twice, since the library's own one-time attempt runs first inside
+    that call and can throw). If they cannot be registered, it says why and
+    goes on as before. The element list carries `helpers` (registered or
+    not, and why) and `problems`: an element, or the children of an element,
+    that could not be read, with the error (at most 20); before, these were
+    left out silently. `ui_elements` passes both on as
+    `classicControlHelpers` and `problems`.
+  - The pack records, for each close: what `control_window` returned
+    (success, message, the kernel's own result and time, the check), whether
+    the window was gone, its state, which program is in front and whether it
+    is this window, and any "Don't save" press. For Calculator: its windows
+    at the start and, on failure, at the end (only windows with Calculator in
+    the title or program); every 2 s for up to 60 s what UI Automation sees
+    (elements, problems, in front or not) until the buttons appear, and when
+    they appeared (it waited 30 s before). For Notepad: the helpers' state
+    and the problems. Notepad's steps and the closing steps are unchanged.
+  - Not changed: what the Calculator check presses and requires, closing,
+    the older persistent session, tools, risk levels, approval rules.
+  - `tests/windowsScriptsTest.ts`, 8 new checks (29 in all): with stand-in
+    UI Automation types, an unreadable element and unreadable children are
+    reported while the rest is still listed; with a stand-in library, the
+    helpers are registered at the first call, or at the second when the
+    first throws; two failures stop and say why; a missing library type is
+    reported and the script goes on. On the code before Step B, 7 of the 8
+    fail (the eighth, that the readable elements are still listed, passes on
+    both). The missing-type check also caught a mistake in the first draft
+    of Step B, where that type was looked up outside the error handling and
+    would have stopped every UI Automation action.
+  - Tested here: typecheck clean; `windowsScriptsTest` 29, `windowsToolsTest`
+    57, `redactionTest` 51, `securityBypassTest` 54, `approvalTypeAheadTest`
+    9, `approvalGateStructuredTest` 60, `secretSinksTest` 23,
+    `riskEngineTest` 127, all passed. `npm test`: 111 files, 105 passed · 0
+    failed · 6 environment. `npm test -- --ci`: 103 passed · 0 failed · 8
+    skipped. Not tested on Windows: the registration itself needs the real
+    library, so only the seventh run shows whether it works there.
+- **Next:** the owner runs `pnpm verify:windows` a seventh time and sends
+  `data\logs\verify-windows.json`: Notepad should pass if the helpers
+  register; the Calculator and close evidence decides the next step. No
+  Calculator or closing fix before then.
 
 ## P15 — Final verification — [!] BLOCKED (waiting for the owner's Windows report, as P14)
 

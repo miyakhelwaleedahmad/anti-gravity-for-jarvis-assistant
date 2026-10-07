@@ -118,6 +118,151 @@ for (const file of FILES) {
 }
 ok('all five Win32 blocks were found and compiled (probe 3, desktop 1, uia 1)', compiled === 5, `${compiled}`);
 
+// uia.ps1's own listing, given a stand-in window: stand-in UI Automation
+// types compiled here (none exist off Windows), then the script's functions
+// dot-sourced (its own run stops at once: no UI Automation here). One child
+// cannot be read, another's children cannot be read: both must be reported,
+// and the rest still listed. On the owner's PC such errors were hidden.
+const LISTING = `
+  $ErrorActionPreference = 'Stop'
+  Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+namespace System.Windows.Automation {
+  public class ControlType { public string ProgrammaticName { get; set; } }
+  public class AutomationPattern { public string ProgrammaticName { get; set; } }
+  public class ValuePattern { public static AutomationPattern Pattern = new AutomationPattern(); }
+  public class FakeInfo {
+    public string Name { get; set; }
+    public string AutomationId { get; set; }
+    public string ClassName { get; set; }
+    public bool IsEnabled { get; set; }
+    public bool HasKeyboardFocus { get; set; }
+    public bool IsPassword { get; set; }
+    public bool IsOffscreen { get; set; }
+    public ControlType ControlType { get; set; }
+  }
+  public class FakeElement {
+    public FakeInfo Info;
+    public bool Unreadable;
+    public bool ChildrenFail;
+    public int[] Id;
+    public FakeElement Parent;
+    public List<FakeElement> Children = new List<FakeElement>();
+    public FakeInfo Current { get { return Info; } }
+    // As UI Automation does for an element that has gone: its methods throw.
+    public AutomationPattern[] GetSupportedPatterns() {
+      if (Unreadable) throw new InvalidOperationException("The element is not available.");
+      return new AutomationPattern[0];
+    }
+    public int[] GetRuntimeId() { return Id; }
+    public static FakeElement Make(string type, string name, int id) {
+      var e = new FakeElement();
+      e.Info = new FakeInfo { Name = name, IsEnabled = true, ControlType = new ControlType { ProgrammaticName = "ControlType." + type } };
+      e.Id = new int[] { 42, id };
+      return e;
+    }
+    public FakeElement Add(FakeElement child) { child.Parent = this; Children.Add(child); return child; }
+  }
+  public class TreeWalker {
+    public static TreeWalker ControlViewWalker = new TreeWalker();
+    public FakeElement GetFirstChild(FakeElement e) {
+      if (e.ChildrenFail) throw new TimeoutException("The operation timed out.");
+      return e.Children.Count > 0 ? e.Children[0] : null;
+    }
+    public FakeElement GetNextSibling(FakeElement e) {
+      if (e.Parent == null) return null;
+      int i = e.Parent.Children.IndexOf(e);
+      return i + 1 < e.Parent.Children.Count ? e.Parent.Children[i + 1] : null;
+    }
+  }
+}
+'@
+  $null = . $env:JARVIS_TEST_FILE
+  $root = [System.Windows.Automation.FakeElement]::Make('Window', 'Test window', 1)
+  $busy = $root.Add([System.Windows.Automation.FakeElement]::Make('Pane', 'Busy pane', 2))
+  $busy.ChildrenFail = $true
+  [void]$busy.Add([System.Windows.Automation.FakeElement]::Make('Button', 'Hidden', 5))
+  $gone = $root.Add([System.Windows.Automation.FakeElement]::Make('Pane', 'Gone', 3))
+  $gone.Unreadable = $true
+  [void]$root.Add([System.Windows.Automation.FakeElement]::Make('Button', 'OK', 4))
+  $result = Get-Elements $root
+  $helpers = $null
+  if (Get-Command Register-ClassicControlHelpers -ErrorAction SilentlyContinue) { $helpers = Register-ClassicControlHelpers }
+  'RESULT ' + (ConvertTo-Json -Compress -Depth 4 -InputObject @{
+    types = @($result.elements | ForEach-Object { $_.type }); more = [bool]$result.more
+    reported = [bool]$result.ContainsKey('problems'); problems = @($result.problems); helpers = $helpers
+  })`;
+{
+  const r = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-Command', LISTING], {
+    encoding: 'utf8', timeout: 120_000, env: { ...process.env, JARVIS_TEST_FILE: path.join(repo, 'control/uia.ps1') },
+  });
+  const line = String(r.stdout).split(/\r?\n/).find((l) => l.startsWith('RESULT '));
+  let got: { types?: string[]; more?: boolean; reported?: boolean; problems?: string[]; helpers?: string | null } = {};
+  try { got = line ? JSON.parse(line.slice(7)) : {}; } catch { /* reported below */ }
+  const problems = got.problems ?? [];
+  ok('uia.ps1 listing: the readable elements are still listed (window, busy pane, OK)', JSON.stringify(got.types) === '["Window","Pane","Button"]' && got.more === false,
+    line ? JSON.stringify(got.types) : String(r.stdout + r.stderr).slice(0, 300));
+  ok('uia.ps1 listing: an element it could not read is reported, not left out silently',
+    got.reported === true && problems.some((p) => /depth 1/.test(p) && /not available/.test(p)), problems.join(' | '));
+  ok('uia.ps1 listing: children it could not read are reported, with what they belong to',
+    problems.some((p) => /children of the Pane at depth 1/.test(p) && /timed out/.test(p)) && problems.length === 2, problems.join(' | '));
+  ok('uia.ps1: registering the helpers for classic controls says why it could not (no UI Automation here), and does not stop the script',
+    typeof got.helpers === 'string' && /^not registered: /.test(got.helpers), String(got.helpers));
+}
+
+// uia.ps1's registration of those helpers, given a stand-in for the library
+// whose own one-time attempt throws first (as it can on the owner's PC): a
+// second call must register them, two failures are reported with the reason,
+// and a library type that is missing is reported without stopping the script.
+function registering(withProviders: boolean, failFirst: number[]): { results: Array<{ result: string; calls: number }>; out: string } {
+  const script = `
+  $ErrorActionPreference = 'Stop'
+  Add-Type -TypeDefinition @'
+${withProviders ? 'namespace UIAutomationClientsideProviders { public static class UIAutomationClientSideProviders { } }' : ''}
+namespace System.Windows.Automation {
+  public static class ClientSettings {
+    public static int Calls;
+    public static int FailFirst;
+    public static void RegisterClientSideProviderAssembly(System.Reflection.AssemblyName name) {
+      Calls++;
+      if (Calls <= FailFirst) throw new System.InvalidOperationException("The default helpers could not be loaded.");
+    }
+  }
+}
+'@
+  # No UI Automation library here to add: adding it does nothing.
+  function Add-Type { }
+  $null = . $env:JARVIS_TEST_FILE
+  $results = @(foreach ($n in @(${failFirst.join(',')})) {
+    [System.Windows.Automation.ClientSettings]::Calls = 0
+    [System.Windows.Automation.ClientSettings]::FailFirst = $n
+    $result = Register-ClassicControlHelpers
+    @{ result = [string]$result; calls = [System.Windows.Automation.ClientSettings]::Calls }
+  })
+  'RESULT ' + (ConvertTo-Json -Compress -Depth 3 -InputObject $results)`;
+  const r = spawnSync(pwsh!, ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8', timeout: 120_000, env: { ...process.env, JARVIS_TEST_FILE: path.join(repo, 'control/uia.ps1') },
+  });
+  const out = String(r.stdout ?? '') + String(r.stderr ?? '');
+  const line = String(r.stdout ?? '').split(/\r?\n/).find((l) => l.startsWith('RESULT '));
+  try { return { results: line ? [JSON.parse(line.slice(7))].flat() : [], out }; } catch { return { results: [], out }; }
+}
+{
+  const { results, out } = registering(true, [0, 1, 2]);
+  const show = results.length ? JSON.stringify(results) : out.slice(0, 300);
+  ok('uia.ps1: the helpers are registered at the first call when nothing fails',
+    results[0]?.result === 'registered' && results[0]?.calls === 1, show);
+  ok('uia.ps1: when the library\'s own first attempt throws, the second call registers the helpers',
+    results[1]?.result === 'registered' && results[1]?.calls === 2, show);
+  ok('uia.ps1: when both calls fail, it stops after two and says why',
+    results[2]?.calls === 2 && /^not registered: .*could not be loaded/.test(results[2]?.result ?? ''), show);
+  const missing = registering(false, [0]);
+  ok('uia.ps1: a library type that is missing is reported, and the script goes on',
+    missing.results[0]?.calls === 0 && /^not registered: /.test(missing.results[0]?.result ?? ''),
+    missing.results.length ? JSON.stringify(missing.results) : missing.out.slice(0, 300));
+}
+
 console.log('\n--- 2. Run here, they refuse what is not theirs, as one line of JSON ---');
 let out = run('perception/windows_probe.ps1', { JARVIS_PROBE_SECTION: 'nonsense' });
 ok('probe: an unknown section → "unknown section"', out.ok === false && out.error === 'unknown section', JSON.stringify(out));

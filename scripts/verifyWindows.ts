@@ -187,16 +187,51 @@ async function calculatorDisplays(hwnd: string): Promise<string[]> {
 }
 
 /** Close a window this pack opened; press "Don't save" if it asks. */
-async function closeOwnWindow(hwnd: string): Promise<string> {
+async function closeOwnWindow(hwnd: string, record: Record<string, unknown> = {}): Promise<string> {
+  // `record` gets what each step returned (Step B evidence); the steps are as before.
+  let t0 = Date.now();
   const close = await call('control_window', { action: 'close', target: hwnd });
-  if (await gone(hwnd, 5_000)) return 'closed';
+  record['close'] = {
+    success: close.success, ms: Date.now() - t0, error: close.error ?? null,
+    message: String(close.body?.message ?? close.output ?? '').slice(0, 200),
+    kernelSuccess: close.body?.success ?? null, kernelError: close.body?.error ?? null, kernelMs: close.body?.durationMs ?? null,
+    check: close.verification ?? null,
+  };
+  const closedNow = await gone(hwnd, 5_000);
+  record['goneAfterClose'] = closedNow;
+  if (closedNow) return 'closed';
+  record['stateAfterClose'] = await windowState(hwnd).catch((e) => `unknown: ${messageOf(e)}`);
   const front = await call('ui_elements', {});
+  // The program in front and whether it is this window; not its title.
+  record['inFront'] = front.success
+    ? { process: front.body?.window?.process ?? null, isThisWindow: sameHwnd(front.body?.window?.hwnd, hwnd), elements: front.body?.elements?.length ?? 0, problems: front.body?.problems ?? [] }
+    : { error: why(front) };
   const dontSave = (front.body?.elements ?? []).find((e: any) => e.type === 'Button' && /^don.?t save$|^no$/i.test(String(e.name)));
   need(dontSave, `it did not close (${close.success ? 'it is asking something JARVIS did not recognise' : why(close)}); nothing was pressed`);
+  t0 = Date.now();
   const press = await call('ui_action', { action: 'invoke', ref: dontSave.ref });
+  record['dontSave'] = { pressed: press.success, did: press.body?.did ?? null, error: press.success ? undefined : why(press), ms: Date.now() - t0 };
   need(press.success, `"Don't save" was not pressed: ${why(press)}`);
-  need(await gone(hwnd, 20_000), 'the window is still open after "Don\'t save"');
+  const closedLater = await gone(hwnd, 20_000);
+  record['goneAfterDontSave'] = closedLater;
+  need(closedLater, 'the window is still open after "Don\'t save"');
   return 'closed without saving';
+}
+
+/** The same window handle, written in hex or decimal. */
+function sameHwnd(a: unknown, b: unknown): boolean {
+  try { return BigInt(String(a)) === BigInt(String(b)); } catch { return false; }
+}
+
+/** Calculator's top-level windows (by title or its own program), without other windows' titles. */
+async function calculatorWindows(): Promise<unknown> {
+  try {
+    return (await probeWindows('windows') as Array<{ hwnd: string; title: string; process: string }>)
+      .filter((w) => /calculator/i.test(w.title) || /^(calculator|calculatorapp)$/i.test(w.process))
+      .map((w) => ({ hwnd: w.hwnd, title: w.title, process: w.process }));
+  } catch (err) {
+    return `not read: ${messageOf(err)}`;
+  }
 }
 
 function freePort(): Promise<number> {
@@ -329,6 +364,8 @@ await check('apps.notepad', 'Notepad: opened, text field filled and read back, c
         || ((e.patterns ?? []).includes('Text') && /^(Edit|RichEdit(\d+[AW])?)$/i.test(String(e.className ?? ''))));
     const list = await elementsWith(win.hwnd, isField, 30_000);
     details['elements'] = elementSummary(list);
+    details['classicControlHelpers'] = list.body?.classicControlHelpers ?? null;
+    details['problems'] = list.body?.problems ?? [];
     need(list.success, `its elements could not be read: ${why(list)}`);
     const field = (list.body.elements ?? []).find(isField);
     need(field, `no text field among its ${list.body.elements?.length ?? 0} elements`);
@@ -337,11 +374,17 @@ await check('apps.notepad', 'Notepad: opened, text field filled and read back, c
     const set = await call('ui_action', { action: 'set_value', ref: field.ref, text });
     details['set'] = { how: set.body?.how, same: set.body?.same, length: set.body?.length, check: set.verification?.status ?? null, error: set.success ? undefined : why(set) };
     need(set.success && set.verification?.status === 'verified', `the text was not set: ${why(set)}`);
-    closed = await closeOwnWindow(win.hwnd);
+    const closing: Record<string, unknown> = {};
+    details['closing'] = closing;
+    closed = await closeOwnWindow(win.hwnd, closing);
     return { evidence: `typed and read back ${text.length} characters (${set.body?.how === 'settext' ? 'multi-line text box' : 'value pattern'}); ${closed}` };
   } catch (err) {
     // Close what this check opened, also when it failed.
-    if (!closed) details['cleanup'] = await closeOwnWindow(win.hwnd).catch((e) => `not closed: ${messageOf(e)}`);
+    if (!closed) {
+      const cleanup: Record<string, unknown> = {};
+      details['cleanup'] = cleanup;
+      cleanup['result'] = await closeOwnWindow(win.hwnd, cleanup).catch((e) => `not closed: ${messageOf(e)}`);
+    }
     throw err;
   }
 });
@@ -353,9 +396,33 @@ await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async (deta
   const win = await newWindow(before, /calculator|calc/i, 60_000);
   need(win?.hwnd, 'no new Calculator window appeared');
   details['window'] = { title: win.title, process: win.process };
+  details['windowsAtStart'] = await calculatorWindows();
   let closed = '';
   try {
-    let list = await elementsWith(win.hwnd, (e) => e.automationId === 'num1Button', 30_000);
+    // Step B evidence: every 2 s for up to 60 s, what UI Automation sees in
+    // the window (elements, problems reading it) and whether it is in front,
+    // until the buttons appear.
+    const timeline: Array<Record<string, unknown>> = [];
+    details['timeline'] = timeline;
+    const shownAt = Date.now();
+    let buttonsAt: number | null = null;
+    let list: any;
+    for (;;) {
+      list = await call('ui_elements', { window: win.hwnd });
+      const elements = list.body?.elements ?? [];
+      const inFront = await windowState(win.hwnd).then((s) => s.foreground).catch(() => null);
+      timeline.push({
+        atMs: Date.now() - shownAt, read: list.success, elements: elements.length, inFront,
+        problems: (list.body?.problems ?? []).length, ...(list.success ? {} : { error: why(list) }),
+      });
+      if (elements.some((e: any) => e.automationId === 'num1Button')) { buttonsAt = Date.now() - shownAt; break; }
+      if (Date.now() - shownAt >= 60_000) break;
+      await sleep(2_000);
+    }
+    details['buttonsSeenAfterMs'] = buttonsAt;
+    details['classicControlHelpers'] = list.body?.classicControlHelpers ?? null;
+    details['problems'] = list.body?.problems ?? [];
+    console.log(`        buttons: ${buttonsAt === null ? 'not seen within 60 s' : `seen after ${(buttonsAt / 1000).toFixed(1)} s`}; elements: ${list.body?.elements?.length ?? 0}`);
     need(list.success, `its elements could not be read: ${why(list)}`);
     // Evidence for what Calculator does with each press (Step A): which window
     // is in front, every display element and its text after each press, and
@@ -384,11 +451,18 @@ await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async (deta
     list = await call('ui_elements', { window: win.hwnd });
     const display = (list.body?.elements ?? []).find((e: any) => e.automationId === 'CalculatorResults');
     need(display && /\b3\b/.test(String(display.name)), `the display shows "${display?.name ?? 'nothing JARVIS found'}"`);
-    closed = await closeOwnWindow(win.hwnd);
+    const closing: Record<string, unknown> = {};
+    details['closing'] = closing;
+    closed = await closeOwnWindow(win.hwnd, closing);
     return { evidence: `"${display.name}"; ${closed}` };
   } catch (err) {
+    details['windowsAtEnd'] = await calculatorWindows();
     // Close what this check opened, also when it failed.
-    if (!closed) details['cleanup'] = await closeOwnWindow(win.hwnd).catch((e) => `not closed: ${messageOf(e)}`);
+    if (!closed) {
+      const cleanup: Record<string, unknown> = {};
+      details['cleanup'] = cleanup;
+      cleanup['result'] = await closeOwnWindow(win.hwnd, cleanup).catch((e) => `not closed: ${messageOf(e)}`);
+    }
     throw err;
   }
 });

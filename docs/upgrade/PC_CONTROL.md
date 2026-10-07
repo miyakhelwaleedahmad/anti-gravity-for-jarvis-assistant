@@ -28,7 +28,11 @@ see "Built in P14" below.
 - **UI Automation first.** `control/uia.ps1` uses .NET `UIAutomationClient`
   to list the elements of the active window (name, type, automation id,
   enabled) and to invoke a button, set a field value or focus an element by
-  reference. Coordinates only when an element exposes nothing.
+  reference. Coordinates only when an element exposes nothing. It registers
+  the library's helpers for classic Win32 controls itself before reading
+  (without them every classic control is a plain pane, as on the owner's
+  PC), and a list says whether that worked (`classicControlHelpers`) and
+  which elements or children could not be read (`problems`).
 - **Observe before acting.** JARVIS reads the active window and its elements
   first, then acts on an element it has seen.
 - **Verify after.** Closing a window: it is gone from the window list. Opening

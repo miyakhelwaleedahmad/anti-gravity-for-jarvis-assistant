@@ -43,7 +43,15 @@ async function windowHandle(target: unknown): Promise<string> {
   return BigInt(match.hwnd).toString();
 }
 
-export interface UiList { window: UiWindow; elements: Array<UiElement & { ref: string }>; more: boolean }
+export interface UiList {
+  window: UiWindow;
+  elements: Array<UiElement & { ref: string }>;
+  more: boolean;
+  /** What could not be read in the window, said instead of left out. */
+  problems: string[];
+  /** Whether the helpers that describe classic Win32 controls were registered. */
+  classicControlHelpers: string;
+}
 
 /** The elements of a window (the one in front when `target` is empty), breadth first to depth 6, at most 200. */
 export async function listUiElements(target?: unknown): Promise<UiList> {
@@ -62,7 +70,9 @@ export async function listUiElements(target?: unknown): Promise<UiList> {
     patterns: Array.isArray(e['patterns']) ? (e['patterns'] as unknown[]).map(String) : typeof e['patterns'] === 'string' ? [e['patterns']] : [],
     value: e['password'] === true ? '' : String(e['value'] ?? '').slice(0, 200), depth: Number(e['depth']) || 0,
   })).filter((e) => /^-?\d+(\.-?\d+)*$/.test(e.id));
-  return { window, elements: rememberUi(window, elements), more: result['more'] === true };
+  const problems = Array.isArray(result['problems']) ? (result['problems'] as unknown[]).slice(0, 20).map((p) => String(p).slice(0, 240)) : [];
+  const classicControlHelpers = String(result['helpers'] ?? 'unknown').slice(0, 200);
+  return { window, elements: rememberUi(window, elements), more: result['more'] === true, problems, classicControlHelpers };
 }
 
 export type UiAction = 'invoke' | 'set_value' | 'focus';

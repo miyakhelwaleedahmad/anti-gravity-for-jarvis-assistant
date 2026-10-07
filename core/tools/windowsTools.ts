@@ -109,6 +109,8 @@ export const uiElementsTool: AgentTool = {
         window: list.window,
         elements: list.elements.map(({ id: _id, depth, ...e }) => ({ ...e, depth })),
         ...(list.more ? { more: 'The window has more elements than the 200 listed.' } : {}),
+        ...(list.problems.length ? { problems: list.problems } : {}),
+        classicControlHelpers: list.classicControlHelpers,
       });
     } catch (err) {
       return refusal(err);

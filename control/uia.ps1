@@ -58,6 +58,36 @@ function Out-Json($value) {
   ConvertTo-Json -InputObject $value -Depth 6 -Compress
 }
 
+# One line of an error message, at most 160 characters.
+function Get-Short($text) {
+  $line = ([string]$text -split "`r?`n")[0].Trim()
+  if ($line.Length -gt 160) { $line = $line.Substring(0, 160) }
+  return $line
+}
+
+# This UI Automation library describes classic Win32 controls (text boxes,
+# buttons, menus, title bars) with helpers it loads by itself, once per
+# process, after guessing their version from the code that called it. When
+# that one attempt fails, every classic control is a plain pane with no
+# patterns (as on the owner's PC: Notepad's text box was a Pane with none),
+# so they are registered here, before any element is read. The first call can
+# throw from the library's own one-time attempt, which runs first; the second
+# then registers them (ProxyManager.cs, dotnet/wpf). Says how it went.
+function Register-ClassicControlHelpers {
+  try {
+    Add-Type -AssemblyName UIAutomationClientsideProviders
+    $name = [UIAutomationClientsideProviders.UIAutomationClientSideProviders].Assembly.GetName()
+  } catch { return ('not registered: ' + (Get-Short $_.Exception.Message)) }
+  $last = ''
+  for ($attempt = 1; $attempt -le 2; $attempt++) {
+    try {
+      [System.Windows.Automation.ClientSettings]::RegisterClientSideProviderAssembly($name)
+      return 'registered'
+    } catch { $last = Get-Short $_.Exception.Message }
+  }
+  return ('not registered: ' + $last)
+}
+
 function Get-TypeName($el) {
   return ([string]$el.Current.ControlType.ProgrammaticName) -replace '^ControlType\.', ''
 }
@@ -105,6 +135,8 @@ function Get-Window {
 function Get-Elements($root) {
   $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
   $found = New-Object System.Collections.ArrayList
+  # What could not be read is said, at most 20 times, not left out silently.
+  $problems = New-Object System.Collections.ArrayList
   $queue = New-Object System.Collections.Queue
   $queue.Enqueue(@($root, 0))
   $more = $false
@@ -113,7 +145,10 @@ function Get-Elements($root) {
     $item = $queue.Dequeue()
     $el = $item[0]
     $depth = [int]$item[1]
-    try { [void]$found.Add((Get-Info $el $depth)) } catch { continue }
+    try { [void]$found.Add((Get-Info $el $depth)) } catch {
+      if ($problems.Count -lt 20) { [void]$problems.Add(('an element at depth {0} could not be read: {1}' -f $depth, (Get-Short $_.Exception.Message))) }
+      continue
+    }
     if ($depth -ge $MaxDepth) { continue }
     $children = New-Object System.Collections.ArrayList
     try {
@@ -122,10 +157,13 @@ function Get-Elements($root) {
         [void]$children.Add($child)
         $child = $walker.GetNextSibling($child)
       }
-    } catch { }
+    } catch {
+      $owner = $found[$found.Count - 1]
+      if ($problems.Count -lt 20) { [void]$problems.Add(('the children of the {0} at depth {1} could not all be read: {2}' -f $owner.type, $depth, (Get-Short $_.Exception.Message))) }
+    }
     foreach ($c in $children) { $queue.Enqueue(@($c, ($depth + 1))) }
   }
-  return @{ elements = $found; more = $more }
+  return @{ elements = $found; more = $more; problems = $problems }
 }
 
 function Find-Element($root) {
@@ -148,13 +186,14 @@ function Find-Element($root) {
 try {
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
+  $helpers = Register-ClassicControlHelpers
   Add-Type -Namespace JarvisUia -Name Native -MemberDefinition $NativeMembers
   $window = Get-Window
   switch -Exact ($action) {
     'list' {
       $result = Get-Elements $window.element
       $info = @{ hwnd = [string]$window.handle.ToInt64(); title = [string]$window.element.Current.Name; process = $window.process }
-      Out-Json @{ ok = $true; action = $action; window = $info; elements = $result.elements; more = $result.more }
+      Out-Json @{ ok = $true; action = $action; window = $info; elements = $result.elements; more = $result.more; problems = $result.problems; helpers = $helpers }
     }
     'invoke' {
       $el = Find-Element $window.element

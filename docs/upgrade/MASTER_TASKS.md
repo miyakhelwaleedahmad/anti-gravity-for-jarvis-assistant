@@ -506,21 +506,26 @@ Verified on the owner's PC (second `pnpm verify:windows` run, 2026-10-07):
 every reading passed in 0.8–2.8 s.
 
 ### T14.2 — UI Automation · High · [~] · depends on: T14.1
-Elements of the active window; invoke; set value; focus.
+Elements of the active window; invoke; set value; focus. On the owner's PC
+(sixth run) the library's helpers for classic controls were not loaded, so
+Notepad's text box was a plain pane; Step B registers them in `uia.ps1`.
+Waits for the seventh run.
 
 ### T14.3 — Screenshots and screen observation · Normal · [x] · depends on: T14.1
 Verified on the owner's PC (second run): a 1920×1080 PNG, checked on disk.
 
 ### T14.4 — Clipboard write and dialogs · Normal · [~] · depends on: T14.2
 Clipboard write verified on the owner's PC (second run: written, read back,
-put back). Dialogs ("Don't save" in Notepad) wait for the third run.
+put back). Dialogs ("Don't save" in Notepad) wait for the seventh run.
 
 ### T14.5 — Checks for window and app actions · Critical · [~] · depends on: T14.2
+In the sixth run neither Notepad nor Calculator closed; Step B records what
+the close returned and what its check found. Waits for the seventh run.
 
 ### T14.6 — `pnpm verify:windows` · Critical · [~] · depends on: T14.1–T14.5
 Runs the real checks on the owner's PC and writes a report to send back.
-Run twice (5/16 then 13/16 passed); the fixes from both runs are in; a third
-run decides.
+Run six times (5/16, 13/16, 14/16, twice 11/16 with the approval refused
+for `start`, then 14/16 passed); Steps A and B are in; a seventh run decides.
 
 ---
 

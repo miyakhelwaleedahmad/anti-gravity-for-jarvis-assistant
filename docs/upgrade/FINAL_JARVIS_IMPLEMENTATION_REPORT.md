@@ -19,14 +19,18 @@ could not be run is listed in section 7.
 - The approval-bypass test (new in P15, 54 checks) found no way past the
   approval step. The P15 review found and fixed one command-injection defect
   in `run_command` (section 5.1).
-- The owner has run `pnpm verify:windows` twice (2010 iMac, 2026-10-07).
-  First run: 5 passed, 6 failed, 4 skipped. Second run: 13 passed, 3 failed,
-  0 skipped. The runs found four problems, all fixed since (sections 5.1
+- The owner has run `pnpm verify:windows` six times (2010 iMac,
+  2026-10-07). The first two (5 passed, 6 failed, 4 skipped; then 13
+  passed, 3 failed) found four problems, all fixed since (sections 5.1
   and 7): the approval gate took a line typed before the request as the
   answer; the PowerShell time limits were short (the slowness did not come
   back in the second run); the redactor broke the JSON of UI element lists;
-  the pack put its test project where JARVIS refuses projects. A third run
-  is needed.
+  the pack put its test project where JARVIS refuses projects. In the third
+  and sixth runs (14 passed, 2 failed each) Notepad and Calculator failed;
+  in the sixth their windows did not close either, and Notepad's text box
+  was unreadable because the UI Automation helpers for classic controls
+  were not loaded. Step B registers them and records what Calculator and
+  the window close do. A seventh run is needed.
 - No new dependencies.
 
 ## 2. Phases
@@ -57,8 +61,8 @@ Details and the evidence for each phase: [PHASE_STATUS.md](PHASE_STATUS.md).
 [MASTER_TASKS.md](MASTER_TASKS.md) has 78 tasks. After P15: 71 done, 7 in
 progress, 0 not started. After the owner's second Windows run: 73 done
 (T14.1 Windows observation and T14.3 screenshots, verified on the PC), 5 in
-progress (T14.2, T14.4, T14.5, T14.6 and T15.1), all waiting for the third
-Windows run.
+progress (T14.2, T14.4, T14.5, T14.6 and T15.1), all waiting for a Windows
+run in which Notepad and Calculator pass (the seventh is next).
 
 ## 4. Tests run
 
@@ -274,8 +278,8 @@ run.
 
 ## 7. Blocked or not verified
 
-- **The Windows pack** (`pnpm verify:windows`) has run twice on the owner's
-  PC (2010 iMac, Windows 10 19045, 2026-10-07).
+- **The Windows pack** (`pnpm verify:windows`) has run six times on the
+  owner's PC (2010 iMac, Windows 10 19045, 2026-10-07).
   - First run: 5 passed, 6 failed, 4 skipped. The console approval was
     denied before it could be answered (section 5.1). Gpu, displays, audio,
     cameras and services did not answer within their 10–15 s limits. The
@@ -291,14 +295,30 @@ run.
     projects. The pack now uses `data\verify-windows-…`; the rule is
     unchanged.
   - Third run: 14 passed, 2 failed. The test server passed (P10's `cmd.exe`
-    and `taskkill` paths). Notepad failed because its multi-line text box has
-    no Value pattern in the UI Automation library `uia.ps1` uses (shown in
-    Microsoft's source); Calculator accepted all five presses but its display
-    read "Display is 0", for a reason the report could not show.
-  - Step A, approved by the owner: `set_value` sets a classic multi-line text
-    box through its own window handle; the pack records what each Calculator
-    press did. A fourth run is the one item P14 and P15 wait for, and its
-    Calculator evidence decides the Calculator fix (Step B).
+    and `taskkill` paths). Notepad: no text field with a value among its 3
+    elements. Calculator accepted all five presses but its display read
+    "Display is 0", for a reason the report could not show.
+  - Step A, approved by the owner: `set_value` sets a classic multi-line
+    text box through its own window handle, since in the UI Automation
+    library `uia.ps1` uses such a box has no Value pattern (Microsoft's
+    source); the pack records what each Calculator press did. That
+    diagnosis assumed the library's helpers for classic controls were
+    loaded; the sixth run showed they were not.
+  - Fourth and fifth runs: `start` was typed at the approval box and
+    refused, as the rules require; 11 passed, 1 failed (the approval), 4
+    skipped.
+  - Sixth run: 14 passed, 2 failed. Notepad's text box and status bar were
+    plain panes with no patterns, and there was no title or menu bar: the
+    helpers were not loaded, so Step A's path never ran. Calculator showed
+    only its frame (1 element) for 30 s and was not in front, so nothing was
+    pressed. Neither window closed; what the close returned was not
+    recorded.
+  - Step B, approved by the owner: `uia.ps1` registers the helpers itself
+    (at most two tries) and reports elements and children it could not
+    read; the pack records each close step and, for Calculator, a 60 s
+    timeline of what UI Automation sees. No Calculator or closing fix yet.
+    A seventh run is the one item P14 and P15 wait for, and its evidence
+    decides the next step.
 - **Microphone and speakers** (P12) need a check by hand on the PC. The pack
   lists this as not checked.
 - **The six environment tests** in section 4 did not run here. They need
@@ -350,12 +370,14 @@ result, and a check of the result.
 ## 10. New dependencies
 
 None. `package.json` gains one script, `verify:windows`. PowerShell 7 is used
-only by `windowsScriptsTest`, to parse JARVIS's PowerShell files. On Windows,
+only by `windowsScriptsTest`, to parse JARVIS's PowerShell files, compile
+their Win32 code and run parts of `uia.ps1` against stand-in UI Automation
+types. On Windows,
 JARVIS itself uses the built-in Windows PowerShell 5.1.
 
 ## 11. Recommended next steps
 
-1. The owner runs `pnpm verify:windows` a third time on the Windows PC and
+1. The owner runs `pnpm verify:windows` a seventh time on the Windows PC and
    sends back `data\logs\verify-windows.json`. P14 and P15 close on that
    report.
 2. Limit the approval scope to the approved call's own controller questions,

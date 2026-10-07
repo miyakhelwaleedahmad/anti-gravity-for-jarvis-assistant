@@ -153,9 +153,9 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 
 ## P14 — Windows observation and control
 - [x] Windows observation (GPU, displays, audio, cameras, installed apps, services, ports, clipboard) — verified on the owner's PC (second run)
-- [~] UI Automation, screenshots, dialogs — screenshots verified on the owner's PC; UI Automation and dialogs wait for the third run
-- [~] Checks for window and app actions — built; wait for the third run
-- [~] `pnpm verify:windows` — run twice by the owner (5/16, then 13/16 passed); fixes in; third run pending
+- [~] UI Automation, screenshots, dialogs — screenshots verified on the owner's PC; UI Automation and dialogs wait for the seventh run (Step B)
+- [~] Checks for window and app actions — built; closing failed in the sixth run, evidence added (Step B); wait for the seventh run
+- [~] `pnpm verify:windows` — run six times by the owner (best: 14/16 passed); Steps A and B in; seventh run pending
 - [x] Unit tests here
 - [!] Verification report from the owner's Windows PC
 - [!] PHASE COMPLETE (blocked on the report)
