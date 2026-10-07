@@ -44,6 +44,13 @@ const ECHO_TAIL_MS = 300;
 const SPEECH_START_WAIT_MS = 2_000;
 const SPEECH_MAX_MS = 15_000;
 const HISTORY_LIMIT = 50;
+/**
+ * Lines already waiting in the console when the gate starts reading it were
+ * typed before the request was shown; they arrive within this time and are
+ * dropped (an Enter pressed while JARVIS loaded denied a request on the
+ * owner's PC, and an early "yes" would have approved one).
+ */
+const TYPE_AHEAD_DRAIN_MS = 300;
 
 interface Pending {
   request: ApprovalRequest;
@@ -299,24 +306,44 @@ export class ApprovalGate {
     return line;
   }
 
-  /** One line from stdin, or null when the time is up or stdin closes. */
+  /**
+   * One line from stdin, or null when the time is up or stdin closes. Lines
+   * that were waiting before the request was shown are not an answer: they
+   * are dropped, and the prompt appears once they have been read.
+   */
   private readLine(prompt: string, timeoutMs: number): { promise: Promise<string | null>; close: () => void } {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
     let settled = false;
+    let listening = false;
+    let early = 0;
     let timer: NodeJS.Timeout | undefined;
+    let drain: NodeJS.Timeout | undefined;
     let finish!: (value: string | null) => void;
     const promise = new Promise<string | null>((resolve) => {
       finish = (value) => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
+        if (drain) clearTimeout(drain);
         rl.close();
         resolve(value);
       };
     });
     timer = setTimeout(() => finish(null), timeoutMs);
-    rl.question(prompt, (answer) => finish(answer));
+    rl.on('line', (line) => {
+      if (listening) finish(line);
+      else early++;
+    });
     rl.on('close', () => finish(null));
+    // setImmediate: waiting input read in the same turn as the timer is still early.
+    drain = setTimeout(() => setImmediate(() => {
+      if (settled) return;
+      listening = true;
+      if (early > 0) {
+        process.stdout.write(`  (${early === 1 ? 'A line' : `${early} lines`} typed before this request was shown: not an answer. Type your answer now.)\n`);
+      }
+      process.stdout.write(prompt);
+    }), TYPE_AHEAD_DRAIN_MS);
     return { promise, close: () => finish(null) };
   }
 

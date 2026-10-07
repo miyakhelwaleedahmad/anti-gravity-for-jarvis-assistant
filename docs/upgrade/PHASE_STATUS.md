@@ -773,9 +773,37 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   speakers (by hand: the pack lists it as not checked).
 - **Known limits:** `win_automate.ps1` and the window poll still use the
   20-program list; a dialog that blocks its caller stops an invoke after
-  10 s; graphics memory is reported up to 4 GB (a WMI limit).
-- **Next:** the owner runs `pnpm verify:windows` and sends
-  `data\logs\verify-windows.json`; meanwhile P15 — final verification.
+  30 s (10 s before the first Windows run); graphics memory is reported up
+  to 4 GB (a WMI limit).
+- **First Windows run** (owner's PC, a 2010 iMac with Windows 10 19045,
+  2026-10-07, console output sent by the owner): 5 passed, 6 failed, 4
+  skipped.
+  - Passed: installed apps (43), listening ports with their program (12 of
+    12 named), windows with their program, disks by drive letter (C:, W:,
+    X:), a 1920×1080 screenshot (checked on disk, deleted).
+  - Failed: the console approval was denied before it could be answered; gpu,
+    displays, audio, cameras and services: "PowerShell did not answer within
+    10–15 s".
+  - Skipped (they need full control mode): clipboard, Notepad, Calculator,
+    test server.
+- **Found and fixed from that run:**
+  - The approval gate, where it reads the console itself (no CLI loop, as
+    in the pack), took a line typed before the request was shown as the
+    answer: an Enter pressed while JARVIS loaded denied the request, and an
+    early "yes" would have approved it. Such lines are now dropped with a
+    note. `tests/approvalTypeAheadTest.ts`, 9 checks: 6 fail on the code
+    before the fix (an early Enter denies; an early "yes" approves, typed and
+    during a spoken request), all pass after it.
+  - The limits for a fresh Windows PowerShell were set for a fast PC.
+    Readings now 45–60 s, listing a window's elements 60 s, an action, a
+    window's state and the clipboard 30 s, a screenshot 45 s; the checks
+    after window and app actions 60 s (5 s before) and at least two looks
+    (`keepLooking`, `tests/windowsToolsTest.ts` section 7, 4 checks).
+  - The pack: full control mode for 30 minutes (15 before); longer waits for
+    Notepad and Calculator to open and draw their controls; the time of each
+    check printed; one PowerShell start timed first.
+- **Next:** the owner runs `pnpm verify:windows` again and sends
+  `data\logs\verify-windows.json`.
 
 ## P15 — Final verification — [!] BLOCKED (waiting for the owner's Windows report, as P14)
 

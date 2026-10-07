@@ -19,6 +19,11 @@ could not be run is listed in section 7.
 - The approval-bypass test (new in P15, 54 checks) found no way past the
   approval step. The P15 review found and fixed one command-injection defect
   in `run_command` (section 5.1).
+- The owner's first run of `pnpm verify:windows` (2010 iMac, 2026-10-07): 5
+  passed, 6 failed, 4 skipped. It found two problems, both fixed since:
+  the approval gate took a line typed before the request as the answer
+  (section 5.1), and the PowerShell time limits were too short for a slow
+  PC (section 7). A second run is needed.
 - No new dependencies.
 
 ## 2. Phases
@@ -62,6 +67,9 @@ working tree, with PowerShell 7.4.6 supplied for `windowsScriptsTest`.
 | `npm test -- --ci` | 110 files: 102 passed · 0 failed · 8 skipped |
 | GitHub CI on `ec3e044` (P14) | green: 101 passed · 0 failed · 8 skipped |
 | GitHub CI on `781086e` (P15, the code in this report) | green: 102 passed · 0 failed · 8 skipped |
+| After the fixes from the first Windows run: typecheck | exit 0, no errors |
+| …`npm test` | 111 files: 105 passed · 0 failed · 6 environment |
+| …`npm test -- --ci` | 111 files: 103 passed · 0 failed · 8 skipped |
 
 The 6 environment results in normal mode are tests whose prerequisite this
 container lacks: `dashboardAccuracyTest` (Redis), `dashboardHealthSystemTest`
@@ -111,6 +119,23 @@ A carriage return alone did the same.
   checks failed: for each of LF, CR LF and CR, the call was not refused and
   the tool body ran. After the fix, all 54 checks pass. A one-line
   `git status` still runs.
+
+**A line typed before an approval request was shown was taken as the
+answer** (found by the owner's first Windows run). Where the gate reads the
+console itself, with no CLI loop as in `pnpm verify:windows`, a line typed
+while JARVIS was busy waited in the console and was read the moment the
+request appeared. On the owner's PC an Enter pressed while JARVIS loaded
+denied the request before it could be answered. An early "yes" would have
+approved a request nobody had seen.
+
+- Fix: `security/approvalGate.ts` drops the lines that were already waiting
+  when the request appears, says so, and only then shows the prompt. The
+  CLI loop of `jarvis.ts` was not affected: it takes a typed line as an
+  answer only while a request is on display.
+- Test: `tests/approvalTypeAheadTest.ts`, 9 checks, with a stand-in console.
+  On the code before the fix, 6 fail: an early Enter denies, and an early
+  "yes" approves, typed and during a spoken request. After the fix, all 9
+  pass.
 
 ### 5.2 Approval-bypass attempts (no bypass found)
 
@@ -228,11 +253,20 @@ run.
 
 ## 7. Blocked or not verified
 
-- **The Windows pack** (`pnpm verify:windows`) has not run. It covers the
-  P14 readings, UI Automation in real apps, screenshots, the clipboard, and
-  the checks after window and app actions. It also covers P3's console
-  approval in a real CMD window, P6's drive letters, and P10's `cmd.exe` and
-  `taskkill` paths. This is the one item P14 and P15 wait for.
+- **The Windows pack** (`pnpm verify:windows`) has run once on the owner's
+  PC (2010 iMac, Windows 10 19045, 2026-10-07): 5 passed (installed apps,
+  ports with their program, windows with their program, disks by drive
+  letter, a screenshot), 6 failed, 4 skipped. The console approval was
+  denied before it could be answered (section 5.1). Gpu, displays, audio,
+  cameras and services did not answer within their 10–15 s limits, because a
+  fresh Windows PowerShell is slow on that PC. The four steps that need full
+  control mode were skipped: clipboard, Notepad, Calculator, test server.
+  Both causes are fixed: the gate change, and longer PowerShell limits with
+  at least two looks in the desktop checks (PC_CONTROL.md, Known limits). A
+  second run is the one item P14 and P15 wait for. It covers the P14
+  readings, UI Automation in real apps, the clipboard, the checks after
+  window and app actions, P3's console approval in a real CMD window, and
+  P10's `cmd.exe` and `taskkill` paths.
 - **Microphone and speakers** (P12) need a check by hand on the PC. The pack
   lists this as not checked.
 - **The six environment tests** in section 4 did not run here. They need
@@ -244,7 +278,7 @@ run.
 
 - `win_automate.ps1` and the window poll still list at most 20 programs, one
   window each. The new P14 tools and checks list every visible window instead.
-- A dialog that blocks its caller stops a UI Automation invoke after 10 s.
+- A dialog that blocks its caller stops a UI Automation invoke after 30 s.
 - WMI reports at most 4 GB of graphics memory.
 - `appController.isAppOpen` looks for `calc.exe`, which exits once
   Calculator is open. The P14 checks look for the window first.
@@ -289,8 +323,10 @@ JARVIS itself uses the built-in Windows PowerShell 5.1.
 
 ## 11. Recommended next steps
 
-1. The owner runs `pnpm verify:windows` on the Windows PC and sends back
-   `data\logs\verify-windows.json`. P14 and P15 close on that report.
+1. The owner runs `pnpm verify:windows` again on the Windows PC and sends
+   back `data\logs\verify-windows.json`. P14 and P15 close on that report.
+   If the readings are still slow, run the P14 PowerShell files in one
+   long-lived PowerShell instead of starting one per reading.
 2. Limit the approval scope to the approved call's own controller questions,
    so that a later tool which calls the registry cannot reuse an approval
    (5.4).

@@ -184,7 +184,12 @@ when there is one. Every field passes through the redactor first
 Answer rules:
 - Typed: `APPROVE`, `YES` or `CONFIRM`, while this request is displayed and
   before it expires (30 s). Anything else, an empty line, or silence denies. A
-  line typed when nothing is displayed is not an answer to anything.
+  line typed when nothing is displayed is not an answer to anything. Where the
+  gate reads the console itself (no CLI loop, as in `pnpm verify:windows`),
+  lines that were already waiting when the request appeared are dropped with
+  a note, and the prompt follows; before, such a line was read as the answer
+  (on the owner's PC an Enter pressed while JARVIS loaded denied the request,
+  and an early "yes" would have approved one nobody had seen).
 - Spoken: "approve", "confirm" or "yes" (also "yes sir", "I approve"), counted
   only from the moment JARVIS has finished saying the request — and anything
   else it was saying before it — until 10 s later. Words heard while JARVIS is

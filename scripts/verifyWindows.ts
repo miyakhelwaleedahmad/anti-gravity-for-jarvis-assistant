@@ -7,6 +7,8 @@
  *
  *   1. one typed approval turns on full control mode (P3's console approval,
  *      in a real CMD window), so the level-2 steps below do not each ask;
+ *      then how long Windows PowerShell takes to start on this PC, which each
+ *      reading and check below starts (it explains a slow run);
  *   2. readings: GPU, displays, audio, cameras, installed apps, services,
  *      listening ports, windows, and the disks by drive letter (P6);
  *   3. a screenshot (deleted again); the clipboard read, written, put back;
@@ -20,6 +22,7 @@
  * data\logs\verify-windows.json (not in git), redacted.
  */
 
+import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
@@ -65,15 +68,19 @@ Before you start:
   - save and close any Notepad and Calculator windows;
   - if the clipboard holds a picture or files, copy them again afterwards.
 
-JARVIS will ask once for approval below: type  approve  and press Enter.
+On a slow PC this takes several minutes. JARVIS asks once for approval: type
+approve only when the approval box appears (anything typed before it shows
+is not taken as the answer).
 `);
 if ((await ask('Press Enter to start, or type q and Enter to quit: ')).trim().toLowerCase() === 'q') process.exit(0);
+console.log('Loading JARVIS…');
 
 const { registerAllTools } = await import('../core/tools/index.js');
 const { SkillLoader } = await import('../core/skillLoader.js');
 const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');
 const { redact } = await import('../security/redactor.js');
 const { probeWindows, windowState } = await import('../perception/windowsProbe.js');
+const { keepLooking } = await import('../core/verifiers.js');
 const { readClipboard, writeClipboard, CLIPBOARD_WRITE_LIMIT } = await import('../control/desktopControl.js');
 const { removeScreenshot } = await import('../core/tools/windowsTools.js');
 const { permissionSession } = await import('../control/permissionSession.js');
@@ -101,7 +108,7 @@ async function check(id: string, name: string, fn: () => Promise<{ status?: Stat
   }
   const entry: Result = { id, name, status, evidence: redact(evidence).replace(/\s+/g, ' ').slice(0, 400), ms: Date.now() - t0 };
   results.push(entry);
-  console.log(`  ${status.padEnd(4)}  ${name}${entry.evidence ? ` — ${entry.evidence}` : ''}`);
+  console.log(`  ${status.padEnd(4)}  ${name}${entry.evidence ? ` — ${entry.evidence}` : ''} (${(entry.ms / 1000).toFixed(1)} s)`);
   return status === 'PASS';
 }
 
@@ -131,26 +138,31 @@ async function newWindow(before: Set<string>, match: RegExp, ms: number) {
   return undefined;
 }
 
-/** The window is gone, asked of Windows by its handle. */
+/** The window is gone, asked of Windows by its handle — at least twice, since one look can be slow. */
 async function gone(hwnd: string, ms: number): Promise<boolean> {
+  return keepLooking(async () => !(await windowState(hwnd)).exists, ms);
+}
+
+/** The window's elements, listed again until `wanted` is among them: a slow PC draws an app's controls late. */
+async function elementsWith(hwnd: string, wanted: (e: any) => boolean, ms: number) {
   const until = Date.now() + ms;
-  while (Date.now() < until) {
-    if (!(await windowState(hwnd)).exists) return true;
-    await sleep(300);
+  for (;;) {
+    const list = await call('ui_elements', { window: hwnd });
+    if ((list.success && (list.body?.elements ?? []).some(wanted)) || Date.now() >= until) return list;
+    await sleep(1_000);
   }
-  return false;
 }
 
 /** Close a window this pack opened; press "Don't save" if it asks. */
 async function closeOwnWindow(hwnd: string): Promise<string> {
   const close = await call('control_window', { action: 'close', target: hwnd });
-  if (await gone(hwnd, 3_000)) return 'closed';
+  if (await gone(hwnd, 5_000)) return 'closed';
   const front = await call('ui_elements', {});
   const dontSave = (front.body?.elements ?? []).find((e: any) => e.type === 'Button' && /^don.?t save$|^no$/i.test(String(e.name)));
   need(dontSave, `it did not close (${close.success ? 'it is asking something JARVIS did not recognise' : why(close)}); nothing was pressed`);
   const press = await call('ui_action', { action: 'invoke', ref: dontSave.ref });
   need(press.success, `"Don't save" was not pressed: ${why(press)}`);
-  need(await gone(hwnd, 5_000), 'the window is still open after "Don\'t save"');
+  need(await gone(hwnd, 20_000), 'the window is still open after "Don\'t save"');
   return 'closed without saving';
 }
 
@@ -168,11 +180,23 @@ function freePort(): Promise<number> {
 const answers = (port: number) => fetch(`http://127.0.0.1:${port}/`).then((r) => r.ok).catch(() => false);
 
 console.log('\n--- Approval in this window (P3) ---');
+console.log('  When the approval box appears, type  approve  and press Enter.');
 const fullControl = await check('approval.console', 'A typed approval turns on full control mode', async () => {
-  const r = await call('enable_full_control_session', { source: 'cli', durationMinutes: 15 });
+  // 30 minutes: a slow PC needs several for the steps below; it is turned off at the end.
+  const r = await call('enable_full_control_session', { source: 'cli', durationMinutes: 30 });
   need(r.success, `not turned on: ${why(r)}`);
   need(permissionSession.getCurrentLevel() >= 2, 'the session level did not become 2');
-  return { evidence: 'approved in the console; full control mode is on for 15 minutes' };
+  return { evidence: 'approved in the console; full control mode is on for 30 minutes' };
+});
+
+console.log('\n--- PowerShell on this PC ---');
+await check('powershell.start', 'Windows PowerShell started and finished once', async () => {
+  // A fixed command, nothing typed: the time every reading and check below pays first.
+  await new Promise<void>((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'exit 0'], { timeout: 120_000, windowsHide: true, shell: false },
+      (err) => (err ? reject(new Error(`it did not start: ${err.message}`)) : resolve()));
+  });
+  return { evidence: 'each reading and check below starts one' };
 });
 
 console.log('\n--- Readings ---');
@@ -260,11 +284,12 @@ await check('apps.notepad', 'Notepad: opened, text field filled and read back, c
   const before = await windowHandles();
   const open = await call('open_app', { target: 'notepad' });
   need(open.success, `not opened: ${why(open)}`);
-  const win = await newWindow(before, /notepad/i, 10_000);
+  const win = await newWindow(before, /notepad/i, 60_000);
   need(win?.hwnd, 'no new Notepad window appeared (Windows 11 may have opened a tab in a Notepad window that was already open: close Notepad and run again)');
-  const list = await call('ui_elements', { window: win.hwnd });
+  const isField = (e: any) => (e.type === 'Document' || e.type === 'Edit') && (e.patterns ?? []).includes('Value');
+  const list = await elementsWith(win.hwnd, isField, 30_000);
   need(list.success, `its elements could not be read: ${why(list)}`);
-  const field = (list.body.elements ?? []).find((e: any) => (e.type === 'Document' || e.type === 'Edit') && (e.patterns ?? []).includes('Value'));
+  const field = (list.body.elements ?? []).find(isField);
   need(field, `no text field with a value among its ${list.body.elements?.length ?? 0} elements`);
   const text = `JARVIS check ${new Date().toISOString()}`;
   const set = await call('ui_action', { action: 'set_value', ref: field.ref, text });
@@ -277,10 +302,9 @@ await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async () =>
   const before = await windowHandles();
   const open = await call('open_app', { target: 'calculator' });
   need(open.success, `not opened: ${why(open)}`);
-  const win = await newWindow(before, /calculator|calc/i, 15_000);
+  const win = await newWindow(before, /calculator|calc/i, 60_000);
   need(win?.hwnd, 'no new Calculator window appeared');
-  await sleep(1_000);
-  let list = await call('ui_elements', { window: win.hwnd });
+  let list = await elementsWith(win.hwnd, (e) => e.automationId === 'num1Button', 30_000);
   need(list.success, `its elements could not be read: ${why(list)}`);
   for (const id of ['clearButton', 'num1Button', 'plusButton', 'num2Button', 'equalButton']) {
     const button = (list.body.elements ?? []).find((e: any) => e.automationId === id);

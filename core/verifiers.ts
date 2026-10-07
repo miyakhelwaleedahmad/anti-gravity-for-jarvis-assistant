@@ -164,6 +164,21 @@ const ON_WINDOWS = 'checked on Windows only (phase P14); not checked here';
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Ask `look` until it answers true, for up to `ms` — but at least `minLooks`
+ * times. Each look at the desktop starts a fresh Windows PowerShell; on a
+ * slow PC (the owner's 2010 iMac) one look can take longer than `ms`, and a
+ * window that closed or appeared while it ran was then never seen.
+ */
+export async function keepLooking(look: () => Promise<boolean>, ms: number, minLooks = 2, pauseMs = 300): Promise<boolean> {
+  const until = Date.now() + ms;
+  for (let looks = 1; ; looks++) {
+    if (await look()) return true;
+    if (looks >= minLooks && Date.now() >= until) return false;
+    await pause(pauseMs);
+  }
+}
+
 /** The result's message: kernel results carry it in JSON, others are plain text. */
 function messageOf(output: string): string {
   try { return String(JSON.parse(output)?.message ?? output); } catch { return output; }
@@ -182,12 +197,9 @@ const verifyControlWindow: Verifier = async (args, output) => {
   if (!hwnd) return unverifiable('the result did not name the window');
   const { windowState } = await import('../perception/windowsProbe.js');
   if (action === 'close' || action === 'close_current') {
-    const until = Date.now() + 3_000;
-    for (;;) {
-      if (!(await windowState(hwnd)).exists) return verified('the window is gone');
-      if (Date.now() >= until) return failed('the window is still open; it may be asking whether to save');
-      await pause(300);
-    }
+    return (await keepLooking(async () => !(await windowState(hwnd)).exists, 3_000))
+      ? verified('the window is gone')
+      : failed('the window is still open; it may be asking whether to save');
   }
   const state = await windowState(hwnd);
   if (!state.exists) return failed('the window is gone');
@@ -220,17 +232,17 @@ async function appState(target: string, wanted: boolean, ms: number): Promise<bo
   const { probeWindows } = await import('../perception/windowsProbe.js');
   const { appController } = await import('../control/appController.js');
   const matcher = appWindowMatcher(target);
-  const until = Date.now() + ms;
-  for (;;) {
+  return keepLooking(async () => {
     const windows = await probeWindows('windows') as Array<{ title: string; process: string }>;
     const visible = windows.some((w) => matcher.test(w.title) || matcher.test(w.process));
     // Closing closes windows: a process left in the background counts as closed.
     const open = visible || (wanted && (await appController.isAppOpen(target)));
-    if (open === wanted) return true;
-    if (Date.now() >= until) return false;
-    await pause(300);
-  }
+    return open === wanted;
+  }, ms);
 }
+
+/** An app that was opened may need a while to show its window on a slow PC. */
+const APP_OPEN_WAIT_MS = 15_000;
 
 /** control_app (P14), on the desktop: an opened or restarted app runs, a closed one has no window left, a focused one is in front. */
 const verifyControlApp: Verifier = async (args) => {
@@ -239,7 +251,7 @@ const verifyControlApp: Verifier = async (args) => {
   const target = text(args, 'target');
   if (!target) return unverifiable('no app was named');
   if (action === 'open' || action === 'restart') {
-    return (await appState(target, true, 4_000)) ? verified(`${target} is running`) : failed(`${target} is not running`);
+    return (await appState(target, true, APP_OPEN_WAIT_MS)) ? verified(`${target} is running`) : failed(`${target} is not running`);
   }
   if (action === 'close') {
     return (await appState(target, false, 3_000)) ? verified(`no window of ${target} is open`) : failed(`a window of ${target} is still open`);
@@ -265,7 +277,7 @@ const verifyOpenApp: Verifier = async (args, output) => {
     return unverifiable('a web page or a Windows page opened, which is not checked');
   }
   if (!target) return unverifiable('no app was named');
-  return (await appState(target, true, 4_000)) ? verified(`${target} is running`) : failed(`${target} is not running`);
+  return (await appState(target, true, APP_OPEN_WAIT_MS)) ? verified(`${target} is running`) : failed(`${target} is not running`);
 };
 
 export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> = {
@@ -302,9 +314,17 @@ export function withCheck(reply: string, verification: Verification | undefined)
 }
 
 const LIMIT_MS = 5_000;
+/**
+ * Checks that look at the Windows desktop start a fresh PowerShell per look,
+ * which on a slow PC takes many seconds (the owner's 2010 iMac): they get
+ * longer before they count as not checked.
+ */
+const DESKTOP_LIMIT_MS = 60_000;
+const DESKTOP_CHECKS = new Set(['control_window', 'control_app', 'open_app']);
 
 /**
- * The check for `tool`'s successful call, cut off after 5 s. A check that
+ * The check for `tool`'s successful call, cut off after 5 s (60 s for the
+ * Windows desktop checks). A check that
  * throws or runs out of time is `unverifiable`, never a pass. Undefined when
  * the tool has no entry (it only reads).
  */
@@ -319,7 +339,8 @@ export async function verifyCall(
   if (typeof entry !== 'function') return unverifiable(entry.reason);
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<Verification>((resolve) => {
-    timer = setTimeout(() => resolve(unverifiable(`the check took longer than ${LIMIT_MS / 1000} s`)), LIMIT_MS);
+    const limit = process.platform === 'win32' && DESKTOP_CHECKS.has(tool) ? DESKTOP_LIMIT_MS : LIMIT_MS;
+    timer = setTimeout(() => resolve(unverifiable(`the check took longer than ${limit / 1000} s`)), limit);
   });
   try {
     return await Promise.race([

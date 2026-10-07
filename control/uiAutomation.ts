@@ -20,8 +20,11 @@ import { describeUiElement, lookupUiRef, rememberUi, type UiElement, type UiWind
 
 export { lookupUiRef, rememberUi, UI_REF_MAX_AGE_MS, type UiElement, type UiRef, type UiWindow } from './uiRefs.js';
 
-const UIA_TIMEOUT_MS = 15_000;
-const ACT_TIMEOUT_MS = 10_000;
+// Each call starts a fresh Windows PowerShell: on a slow PC (the owner's 2010
+// iMac) that alone takes many seconds, so the first limits of 15 s and 10 s
+// were raised. A dialog that blocks the app's caller ends an action at 30 s.
+const UIA_TIMEOUT_MS = 60_000;
+const ACT_TIMEOUT_MS = 30_000;
 
 /**
  * The window a request names: a handle, or words of its title or its program

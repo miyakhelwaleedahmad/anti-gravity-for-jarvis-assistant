@@ -22,6 +22,9 @@ import { dataRoot, getWorkspaceRoot } from '../core/workspaceRoot.js';
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 export const CLIPBOARD_READ_LIMIT = 2_000;
 export const CLIPBOARD_WRITE_LIMIT = 100_000;
+/** Each call starts a fresh Windows PowerShell, slow on a slow PC (the owner's 2010 iMac). */
+const SCREENSHOT_TIMEOUT_MS = 45_000;
+const CLIPBOARD_TIMEOUT_MS = 30_000;
 
 export function screenshotsDir(): string {
   return path.join(dataRoot(getWorkspaceRoot()), 'data', 'screenshots');
@@ -48,7 +51,7 @@ export async function takeScreenshot(mode: 'screen' | 'window' = 'screen'): Prom
   const dir = screenshotsDir();
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `desktop-${new Date().toISOString().replace(/[:.]/g, '-')}.png`);
-  const result = await runPsFile('desktop', { JARVIS_DESKTOP_ACTION: 'screenshot', JARVIS_DESKTOP_FILE: file, JARVIS_DESKTOP_MODE: mode }, 20_000);
+  const result = await runPsFile('desktop', { JARVIS_DESKTOP_ACTION: 'screenshot', JARVIS_DESKTOP_FILE: file, JARVIS_DESKTOP_MODE: mode }, SCREENSHOT_TIMEOUT_MS);
   if (!result.ok) throw new Error(`The screenshot was not taken: ${String(result.error ?? 'no reason given').slice(0, 160)}`);
   const bytes = fs.existsSync(file) ? fs.statSync(file).size : 0;
   return { file, width: Number(result['width']) || 0, height: Number(result['height']) || 0, bytes };
@@ -56,7 +59,7 @@ export async function takeScreenshot(mode: 'screen' | 'window' = 'screen'): Prom
 
 /** The clipboard's text, cut to `limit` characters (2 000 for the model). */
 export async function readClipboard(limit = CLIPBOARD_READ_LIMIT): Promise<{ text: string; length: number; truncated: boolean }> {
-  const result = await runPsFile('desktop', { JARVIS_DESKTOP_ACTION: 'clipboard_read' }, 10_000);
+  const result = await runPsFile('desktop', { JARVIS_DESKTOP_ACTION: 'clipboard_read' }, CLIPBOARD_TIMEOUT_MS);
   if (!result.ok) throw new Error(`The clipboard could not be read: ${String(result.error ?? 'no reason given').slice(0, 160)}`);
   const text = String(result['text'] ?? '');
   return { text: text.slice(0, limit), length: text.length, truncated: text.length > limit };
@@ -69,7 +72,7 @@ export async function writeClipboard(text: string): Promise<{ length: number; sa
   const file = path.join(os.tmpdir(), `jarvis-clip-${crypto.randomBytes(8).toString('hex')}.txt`);
   fs.writeFileSync(file, text, { encoding: 'utf8', mode: 0o600 });
   try {
-    const result = await runPsFile('desktop', { JARVIS_DESKTOP_ACTION: 'clipboard_write', JARVIS_DESKTOP_FILE: file }, 10_000);
+    const result = await runPsFile('desktop', { JARVIS_DESKTOP_ACTION: 'clipboard_write', JARVIS_DESKTOP_FILE: file }, CLIPBOARD_TIMEOUT_MS);
     if (!result.ok) throw new Error(`The clipboard was not changed: ${String(result.error ?? 'no reason given').slice(0, 160)}`);
     return { length: Number(result['length']) || text.length, same: result['same'] === true };
   } finally {

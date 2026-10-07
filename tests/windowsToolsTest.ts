@@ -172,6 +172,34 @@ ok('"take a screenshot" → screenshot; in a browser tab → browser_screenshot'
 ok('"what is on my clipboard" → clipboard', offered('what is on my clipboard').includes('clipboard'));
 ok('"open chrome" still offers open_app first', offered('open chrome')[0] === 'open_app');
 
+console.log('\n--- 7. Checks on a slow PC: at least two looks ---');
+{
+  // Each look at the desktop starts a fresh PowerShell; on the owner's 2010
+  // iMac one look took longer than the whole time the check allowed, so a
+  // window that closed while the first look ran was never seen.
+  const verifiers = await import('../core/verifiers.js') as any;
+  const keepLooking = verifiers.keepLooking as undefined | ((look: () => Promise<boolean>, ms: number, minLooks?: number, pauseMs?: number) => Promise<boolean>);
+  ok('a helper asks the desktop again after a slow look', typeof keepLooking === 'function');
+  if (keepLooking) {
+    const slowLook = (answers: boolean[]) => {
+      let i = 0;
+      const look = async () => { await new Promise((r) => setTimeout(r, 60)); return answers[Math.min(i++, answers.length - 1)]!; };
+      return { look, count: () => i };
+    };
+    // One look (60 ms) takes longer than the time allowed (20 ms); the window
+    // is gone by the second look.
+    let s1 = slowLook([false, true]);
+    ok('a look slower than the time allowed is followed by a second look, which sees the change',
+      (await keepLooking(s1.look, 20, 2, 0)) === true && s1.count() === 2, `looks=${s1.count()}`);
+    s1 = slowLook([false, false, false]);
+    ok('…and it stops after two looks when nothing changes', (await keepLooking(s1.look, 20, 2, 0)) === false && s1.count() === 2, `looks=${s1.count()}`);
+    // A fast desktop: many looks within the time allowed, as before.
+    let fast = 0;
+    const answer = await keepLooking(async () => ++fast >= 5, 1_000, 2, 1);
+    ok('on a fast PC it keeps looking within the time allowed', answer === true && fast === 5, `looks=${fast}`);
+  }
+}
+
 process.chdir(os.tmpdir());
 fs.rmSync(workspace, { recursive: true, force: true });
 console.log(`\n=== ${passed} passed, ${failed} failed ===`);

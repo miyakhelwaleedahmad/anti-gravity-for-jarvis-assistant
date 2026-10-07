@@ -107,5 +107,13 @@ files on the clipboard are not, so the pack says to copy them again.
   and at most 20 programs; `ui_elements` and the checks above read every
   visible window.
 - Win32 dialogs that block their caller can make an invoke wait: it is
-  stopped after 10 s, and JARVIS says a dialog may have opened.
+  stopped after 30 s, and JARVIS says a dialog may have opened.
 - `Win32_VideoController` reports at most 4 GB of graphics memory.
+- Every reading, UI Automation call and desktop check starts a fresh Windows
+  PowerShell. On a slow PC that takes many seconds: on the owner's 2010 iMac
+  the first run of `pnpm verify:windows` (2026-10-07) saw gpu, displays,
+  audio, cameras and services go past the first limits of 10–15 s. The
+  limits are now 45–60 s for readings, 60 s for listing a window's elements,
+  30 s for an action, a window's state or the clipboard, and 45 s for a
+  screenshot; the checks after window and app actions may take 60 s and
+  look at least twice. On a fast PC none of this changes anything.

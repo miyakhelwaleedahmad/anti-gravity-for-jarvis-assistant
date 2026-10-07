@@ -168,9 +168,19 @@ const PARSERS: Record<ProbeSection, (r: PsResult) => unknown> = {
   apps: parseApps, services: parseServices, ports: parsePorts, windows: parseWindows,
 };
 
+/**
+ * How long one reading may take. Each starts a fresh Windows PowerShell,
+ * which on a slow PC needs many seconds before it runs a line: on the
+ * owner's 2010 iMac with a hard disk, gpu, displays, audio, cameras and
+ * services went past the first limits of 10–15 s (verify:windows,
+ * 2026-10-07). A limit only matters when a reading is slow.
+ */
 const SECTION_TIMEOUT_MS: Record<ProbeSection, number> = {
-  gpu: 15_000, displays: 10_000, audio: 15_000, cameras: 15_000, apps: 20_000, services: 15_000, ports: 15_000, windows: 10_000,
+  gpu: 60_000, displays: 45_000, audio: 60_000, cameras: 60_000, apps: 60_000, services: 60_000, ports: 45_000, windows: 45_000,
 };
+
+/** One window's state: a fresh PowerShell too, asked in the checks after window actions. */
+const WINDOW_STATE_TIMEOUT_MS = 30_000;
 
 export interface WindowState { exists: boolean; visible: boolean; foreground: boolean; minimized: boolean; maximized: boolean }
 
@@ -183,7 +193,7 @@ export async function windowState(hwnd: string): Promise<WindowState> {
   const text = String(hwnd ?? '').trim();
   const decimal = /^0x[0-9a-f]{1,16}$/i.test(text) ? BigInt(text).toString() : /^\d{1,19}$/.test(text) ? text : '';
   if (!decimal) throw new Error('That is not a window handle.');
-  const r = await runPsFile('probe', { JARVIS_PROBE_SECTION: 'window_state', JARVIS_PROBE_HWND: decimal }, 10_000);
+  const r = await runPsFile('probe', { JARVIS_PROBE_SECTION: 'window_state', JARVIS_PROBE_HWND: decimal }, WINDOW_STATE_TIMEOUT_MS);
   if (!r.ok) throw new Error(`Windows did not say how the window is: ${str(r.error, 160) || 'no reason given'}.`);
   return { exists: r['exists'] === true, visible: r['visible'] === true, foreground: r['foreground'] === true, minimized: r['minimized'] === true, maximized: r['maximized'] === true };
 }
