@@ -24,7 +24,7 @@ import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
 import { getWorkspaceRoot } from '../core/workspaceRoot.js';
-import { findChromium } from './chromeHelper.js';
+import { findChromium, findPwsh } from './chromeHelper.js';
 
 /**
  * Tests that need something this repository cannot provide on its own.
@@ -55,6 +55,7 @@ const HOST_DEPENDENT: Record<string, () => string | undefined> = {
   browserControlAgentTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   errorRecoveryTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   scenarioIntegrationTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
+  windowsScriptsTest: () => (findPwsh() ? undefined : 'PowerShell 7, pwsh (JARVIS_TEST_PWSH)'),
 };
 
 /** What `name` needs that this host is missing, or undefined if nothing is. */

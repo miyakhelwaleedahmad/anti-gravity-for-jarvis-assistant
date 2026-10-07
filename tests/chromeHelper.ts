@@ -2,7 +2,8 @@
  * tests/chromeHelper.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Not a test: finds a Chromium or Chrome on this machine and starts it headless
- * with a debugging port and a throwaway profile, for the browser tests.
+ * with a debugging port and a throwaway profile, for the browser tests. Also
+ * finds a PowerShell 7 (pwsh) for the script checks (windowsScriptsTest).
  */
 
 import { spawn, type ChildProcess } from 'child_process';
@@ -24,6 +25,17 @@ const CANDIDATES = [
 
 export function findChromium(): string | undefined {
   return CANDIDATES.find((p) => p && fs.existsSync(p));
+}
+
+/** PowerShell 7: JARVIS_TEST_PWSH, else pwsh on the PATH. */
+export function findPwsh(): string | undefined {
+  const named = process.env['JARVIS_TEST_PWSH'];
+  if (named) return fs.existsSync(named) ? named : undefined;
+  const exe = process.platform === 'win32' ? 'pwsh.exe' : 'pwsh';
+  for (const dir of (process.env['PATH'] ?? '').split(path.delimiter)) {
+    if (dir && fs.existsSync(path.join(dir, exe))) return path.join(dir, exe);
+  }
+  return undefined;
 }
 
 export async function freePort(): Promise<number> {

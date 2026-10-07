@@ -499,20 +499,20 @@ work; website not working; dangerous request.
 
 ## P14 — Windows observation and control
 
-### T14.1 — Windows observation · High · [ ] · depends on: T13.4
+### T14.1 — Windows observation · High · [~] · depends on: T13.4
 GPU, displays, audio devices, cameras/microphones, installed apps, services,
 listening ports with owning process, process ↔ window, clipboard read (level 1, redacted).
 
-### T14.2 — UI Automation · High · [ ] · depends on: T14.1
+### T14.2 — UI Automation · High · [~] · depends on: T14.1
 Elements of the active window; invoke; set value; focus.
 
-### T14.3 — Screenshots and screen observation · Normal · [ ] · depends on: T14.1
+### T14.3 — Screenshots and screen observation · Normal · [~] · depends on: T14.1
 
-### T14.4 — Clipboard write and dialogs · Normal · [ ] · depends on: T14.2
+### T14.4 — Clipboard write and dialogs · Normal · [~] · depends on: T14.2
 
-### T14.5 — Checks for window and app actions · Critical · [ ] · depends on: T14.2
+### T14.5 — Checks for window and app actions · Critical · [~] · depends on: T14.2
 
-### T14.6 — `pnpm verify:windows` · Critical · [ ] · depends on: T14.1–T14.5
+### T14.6 — `pnpm verify:windows` · Critical · [~] · depends on: T14.1–T14.5
 Runs the real checks on the owner's PC and writes a report to send back.
 
 ---

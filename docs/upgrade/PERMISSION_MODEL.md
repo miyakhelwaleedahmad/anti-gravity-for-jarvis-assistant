@@ -124,6 +124,18 @@ If the risk check itself fails, the call is refused (fail closed).
      - `dev`: scripts and servers 0; run (test, build, lint, typecheck,
        check) and start_server (dev, start, serve, preview) 1; other scripts
        refused; stop_server 2, only for servers JARVIS started.
+   - Windows (P14, [PC_CONTROL.md](PC_CONTROL.md)):
+     - `windows_overview`, `ui_elements` 0; `screenshot` 1; `clipboard` read 1
+       (redacted), write 2.
+     - `ui_action` names an element JARVIS listed with `ui_elements` in the
+       last 10 minutes; any other reference is refused, and so is anything in
+       a terminal window (cmd, PowerShell, Windows Terminal: commands go
+       through `run_command`). focus 1; set_value 2, a password field refused;
+       invoke 2, raised by the button's own words like `browser_click`
+       ("delete" 3, "buy" 4), "Install", "Uninstall", "Restart now" 3, and a
+       confirming button ("Yes", "OK", "Next", "Delete", "Install"…) in a
+       window whose title or text asks to delete, install, replace or
+       overwrite 3.
 
 ## Repairs (P11)
 

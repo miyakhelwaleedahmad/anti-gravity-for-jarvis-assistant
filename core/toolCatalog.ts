@@ -321,6 +321,36 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     effect: 'Puts a file from an approved folder into a page\'s file field; the site may receive it.',
     output: { format: 'json', description: BROWSER_RESULT },
   },
+
+  // ── Windows (P14) ───────────────────────────────────────────────────────────
+  windows_overview: observation('Reads this Windows PC: graphics cards, displays, audio devices, cameras, installed apps, services, listening ports with their program, windows with their program.',
+    { format: 'json', description: 'section and its entries (at most 80, optionally filtered), count' }),
+  ui_elements: observation('Lists the buttons, fields, menus and texts of a Windows app window, each with a reference; never a password field\'s contents.',
+    { format: 'json', description: 'window {hwnd, title, process}, elements[] (ref, name, type, value, patterns) — the app\'s own text' }, 'COMPUTER'),
+  ui_action: withActions(
+    { category: 'COMPUTER', reversible: 'partial', external: 'none',
+      effect: 'Presses, fills or focuses an element of a Windows app that JARVIS listed; checks the result.',
+      output: { format: 'json', description: 'JSON: success, action, target, did, check (status, evidence), or error' } },
+    {
+      focus: { risk: 1, reversible: 'yes', effect: 'The element has the keyboard focus.' },
+      set_value: { risk: 2, reversible: 'yes', effect: 'The field holds the text; what it held is replaced.' },
+      invoke: { risk: 2, reversible: 'partial', effect: 'The element is pressed: a button, a box, a list item or a menu.' },
+    },
+  ),
+  screenshot: {
+    category: 'COMPUTER', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Saves a picture of the screen or of the window in front in the JARVIS data folder (not sent anywhere).',
+    output: { format: 'json', description: 'file, width, height, bytes, check' },
+  },
+  clipboard: withActions(
+    { category: 'COMPUTER', reversible: 'partial', external: 'none',
+      effect: 'Reads the clipboard\'s text (secrets hidden) or replaces it.',
+      output: { format: 'json', description: 'read: text (≤ 2 000 characters, redacted), length; write: length, check' } },
+    {
+      read: { risk: 1, reversible: 'yes', effect: 'Reads the clipboard text; secrets in it are hidden.' },
+      write: { risk: 2, reversible: 'partial', effect: 'The clipboard holds the new text; what it held before is replaced.' },
+    },
+  ),
   files: withActions(
     { category: 'FILESYSTEM', reversible: 'yes', external: 'none',
       effect: 'Lists, searches, compares, creates, changes, renames, moves and deletes files in the approved folders; deleted items go to the JARVIS trash.',

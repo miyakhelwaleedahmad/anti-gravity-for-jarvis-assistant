@@ -19,8 +19,9 @@ changes, keeps an audit log and registers rollbacks.
 | Services, shell | PowerShell with approval and blocklist | 2 + approval |
 | Screen capture | `vision/screen_capture.py` (mss + OCR) — started, never activated | — |
 
-Missing: UI Automation (reading a window's buttons and fields), screenshots on
-request, clipboard, dialogs, checks after actions.
+Missing before P14: UI Automation (reading a window's buttons and fields),
+screenshots on request, clipboard, dialogs, checks after actions. Built since:
+see "Built in P14" below.
 
 ## Target
 
@@ -48,9 +49,63 @@ request, clipboard, dialogs, checks after actions.
 | dialog buttons that confirm deletion, installation or system changes | 3 |
 | anything touching security software, credentials or system-critical settings | 4 |
 
+## Built in P14
+
+| Tool | Does | Level | Checks after |
+|---|---|---|---|
+| `windows_overview` | GPU, displays, audio (speakers and microphones told apart), cameras, installed apps, services, listening ports with their program, visible windows with their program and its ports; at most 80 entries for the model, or those matching `filter` | 0 | — |
+| `ui_elements` | the buttons, fields, menus and texts of a window (default: the one in front), breadth first to depth 6, at most 200, each with a reference such as `u12`; never a password field's contents | 0 | — |
+| `ui_action` | invoke (button, box, list item, menu), set_value, focus — of an element listed in the last 10 minutes that still has the name and type JARVIS saw | 1–4 | the field holds the text; the element has the focus; the press happened |
+| `screenshot` | the screen or the window in front, as a PNG in `data/screenshots/` (not in git); nothing is sent anywhere | 1 | a PNG of the size is on disk |
+| `clipboard` | read (at most 2 000 characters, secrets hidden) or write | 1 / 2 | the clipboard holds the text |
+
+Window and app actions are checked on the desktop (`core/verifiers.ts`):
+closing a window — Windows is asked whether that window handle still exists
+(up to 3 s; one asking whether to save is reported as still open); focus —
+it is in front; minimise or maximise — it is; opening an app — a visible
+window of it, by title or program (Calculator's window belongs to
+ApplicationFrameHost, VS Code's program is "Code"), or its process. Off
+Windows these say "checked on Windows only".
+
+How PowerShell is run (`perception/windowsProbe.ts`):
+
+- Three fixed files — `perception/windows_probe.ps1`, `control/uia.ps1`,
+  `control/desktop.ps1` — each started on its own with `powershell.exe
+  -NoProfile -NonInteractive -File`, no shell. Nothing is ever pasted into
+  a command or a script.
+- Values go in through `JARVIS_*` environment variables, refused in
+  TypeScript if they hold a line break or other control character, and
+  checked again in the script (a section from a fixed list, a handle that is
+  digits, a runtime id that is digits and dots). Text for a field or the
+  clipboard goes in a temporary file (deleted afterwards) whose path is the
+  variable.
+- Not the persistent session of `perception/windowsState.ts`: these can take
+  seconds, and that session serves the window poll every 4 s.
+- Plain ASCII files, so Windows PowerShell 5.1 reads them the same with or
+  without a byte-order mark; output is UTF-8.
+
 ## Verification
 
-`pnpm verify:windows` (P14) runs each capability against harmless targets
-(Notepad, Calculator, a temporary file), writes `data/logs/verify-windows.json`,
-and prints PASS/FAIL per check. It never touches files outside the temp folder
-and asks for approval before any level-2 step.
+`pnpm verify:windows` (`scripts/verifyWindows.ts`) runs on the owner's PC, in
+CMD. It asks once, in that window, to turn on full control mode for 15
+minutes — the typed console approval of P3 — and the level-2 steps then run
+under it (with `JARVIS_LEVEL2_POLICY=ask` each also asks). Then: every
+`windows_overview` section; the disks by drive letter (P6); a screenshot,
+deleted again; the clipboard written, read back and the old text put back;
+Notepad opened, its text field filled and read back, closed ("Don't save" if
+it asks); Calculator, 1 + 2 = pressed and 3 read, closed; a test server in
+the temp folder started and stopped (P10's taskkill). Only windows the pack
+opened are touched, found by comparing the window list before and after.
+The report, redacted, goes to `data\logs\verify-windows.json` (not in git).
+
+The old clipboard text is kept in memory only, to be put back; a picture or
+files on the clipboard are not, so the pack says to copy them again.
+
+## Known limits
+
+- `win_automate.ps1` and the window poll still list one window per program
+  and at most 20 programs; `ui_elements` and the checks above read every
+  visible window.
+- Win32 dialogs that block their caller can make an invoke wait: it is
+  stopped after 10 s, and JARVIS says a dialog may have opened.
+- `Win32_VideoController` reports at most 4 GB of graphics memory.

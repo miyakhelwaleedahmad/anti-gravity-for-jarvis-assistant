@@ -2075,6 +2075,12 @@ export class JarvisOrchestrator {
       }
     }
 
+    // Windows apps, the screen and the clipboard (P14).
+    if (DESKTOP_UI.test(clean) && UI_ACTION_WORDS.test(clean)) addIfRegistered('ui_elements', 'ui_action');
+    if (SCREENSHOT_WORDS.test(clean) && !BROWSER_CONTEXT.test(clean)) addIfRegistered('screenshot');
+    if (/\b(clipboard|copied|paste)\b/.test(clean)) addIfRegistered('clipboard');
+    if (WINDOWS_QUESTION.test(clean)) addIfRegistered('windows_overview');
+
     // Files, git and project scripts (P10).
     if (FILE_ACTION.test(clean)) addIfRegistered('files');
     if (GIT_ACTION.test(clean)) {
@@ -2461,6 +2467,12 @@ const GIT_ACTION = /\b(git|commit|commits|branch|branches|push|repo|repository)\
 // "stop my web server" did not offer `dev` (P13): the server may have a name.
 const DEV_ACTION = /\b(tests?|build|lint|typecheck|type check|dev server|(?:start|stop|restart) (?:the |my )?(?:[a-z]+ )?server|npm|pnpm|script|scripts)\b/;
 const TROUBLE_WORDS = /\b(not working|isnt working|doesnt work|wont load|not loading|broken|crash(?:ed|es|ing)?|(?:is|went|keeps going) down|error page|blank page|failing)\b/;
+/** Pressing or typing in a Windows app, a dialog or a window (P14). */
+const DESKTOP_UI = /\b(dialog|window|notepad|calculator|explorer|settings|app|application|program|desktop|popup|pop up|message box|installer)\b/;
+const UI_ACTION_WORDS = /\b(click|press|tap|type|fill|enter|select|choose|tick|check|uncheck|focus)\b/;
+const SCREENSHOT_WORDS = /\b(screenshot|screen shot|capture (?:the |my )?screen|picture of (?:the |my )?screen)\b/;
+/** Questions about this PC's hardware and software the other tools do not answer (P14). */
+const WINDOWS_QUESTION = /\b(gpu|graphics card|video card|display|displays|monitor|monitors|screen resolution|resolution|sound device|audio device|speakers?|microphones?|mic|webcam|camera|cameras|installed|programs|services?|listening|which program|what program)\b/;
 const BROWSER_CONTEXT = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button|field|box|url|address)\b/;
 const BROWSER_ACTIONS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(click|press|tap|tick|check|uncheck)\b/, 'browser_click'],

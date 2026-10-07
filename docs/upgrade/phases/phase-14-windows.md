@@ -75,3 +75,22 @@ Any check failing on Windows; any PowerShell built from user or model text.
 ## Completion requirements
 Gate (including the Windows report); checklist; PHASE_STATUS; PC_CONTROL;
 commit `phase-14-windows`; CI green.
+
+## As built (alignment note)
+- Observation, UI Automation, screenshots, clipboard and the window and app
+  checks are built ([PC_CONTROL.md](../PC_CONTROL.md)); `pnpm verify:windows`
+  is `scripts/verifyWindows.ts`.
+- The readings run in their own short PowerShell processes, not the
+  persistent session: they can take seconds, and that session serves the
+  window poll every 4 s.
+- Windows are read with EnumWindows (every visible top-level window), not
+  `Process.MainWindowTitle` (one per program): Store apps such as Calculator
+  share one ApplicationFrameHost process, so a new Calculator window could be
+  missed and a window could look closed when it was only not listed.
+- The window checks ask Windows about one handle (`IsWindow`,
+  `GetForegroundWindow`, `IsIconic`, `IsZoomed`) instead of reading a list.
+- The pack asks once, to turn on full control mode, instead of before each
+  level-2 step: the same permission model, one prompt instead of ten.
+- OCR through the vision service is not used: screenshots are saved locally
+  and their path is returned.
+- Status: `[!] BLOCKED` until the owner sends `data\logs\verify-windows.json`.

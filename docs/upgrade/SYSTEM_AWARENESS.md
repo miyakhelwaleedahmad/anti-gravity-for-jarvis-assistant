@@ -58,6 +58,17 @@ microphones (PnP device classes), installed apps (uninstall registry keys),
 services (`Get-Service`), listening ports with the owning process
 (`Get-NetTCPConnection`), process ↔ window mapping, clipboard (level 1, redacted).
 
+Built as the `windows_overview` tool (sections gpu, displays, audio, cameras,
+apps, services, ports, windows; optional `filter`), through
+`perception/windows_probe.ps1` — one short PowerShell process per reading,
+the section name in an environment variable, the script text fixed
+([PC_CONTROL.md](PC_CONTROL.md)). Windows are every visible top-level window
+(EnumWindows, not one per program), joined with the ports their process
+listens on. Speakers and microphones are told apart by the names Windows
+gives them. The clipboard is the `clipboard` tool. Checked here with
+`ConvertTo-Json` output and PowerShell's own parser; on the PC by
+`pnpm verify:windows`.
+
 ### World state (P7)
 
 ```

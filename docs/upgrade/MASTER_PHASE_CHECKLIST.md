@@ -21,7 +21,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 | P11 Error recovery | [x] |
 | P12 Voice | [x] |
 | P13 Integration and scenarios | [x] |
-| P14 Windows observation and control | [ ] |
+| P14 Windows observation and control | [!] |
 | P15 Final verification | [ ] |
 
 ## P0 — Discovery and architecture
@@ -152,13 +152,13 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [x] PHASE COMPLETE
 
 ## P14 — Windows observation and control
-- [ ] Windows observation (GPU, displays, audio, cameras, installed apps, services, ports, clipboard)
-- [ ] UI Automation, screenshots, dialogs
-- [ ] Checks for window and app actions
-- [ ] `pnpm verify:windows`
-- [ ] Unit tests here
-- [ ] Verification report from the owner's Windows PC
-- [ ] PHASE COMPLETE
+- [~] Windows observation (GPU, displays, audio, cameras, installed apps, services, ports, clipboard) — built and tested here; Windows run pending
+- [~] UI Automation, screenshots, dialogs — built and tested here; Windows run pending
+- [~] Checks for window and app actions — built; Windows run pending
+- [~] `pnpm verify:windows` — built; to be run by the owner
+- [x] Unit tests here
+- [!] Verification report from the owner's Windows PC
+- [!] PHASE COMPLETE (blocked on the report)
 
 ## P15 — Final verification
 - [ ] Unit, integration, end-to-end, browser, Windows, permission, security, recovery, regression, performance

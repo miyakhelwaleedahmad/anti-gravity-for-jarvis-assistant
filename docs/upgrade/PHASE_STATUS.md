@@ -683,7 +683,8 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   partial repairs, the telling log line, redacted speech); it cannot run on
   the P12 code. `errorRecoveryTest` 15 (P12 code: 14 — the "high-risk"
   wording); `redactionTest` 46 (P12 code: 39). Full suite: 107 files, 101
-  passed · 0 failed · 6 environment; CI mode 99 passed · 8 skipped.
+  passed · 0 failed · 6 environment; CI mode 99 passed · 8 skipped. GitHub CI
+  on `aa419ea`: green (99 passed · 8 skipped).
 - **LLM requests per scenario** (scripted model; the free tier allows about
   20 a day per model):
 
@@ -705,3 +706,72 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   the existing fragment filter before they reach the orchestrator.
 - **Next:** P14 — Windows observation and control.
 
+## P14 — Windows observation and control — [!] BLOCKED (waiting for the owner's Windows report)
+
+- **Implemented** ([PC_CONTROL.md](PC_CONTROL.md), [SYSTEM_AWARENESS.md](SYSTEM_AWARENESS.md)):
+  - `windows_overview` (level 0): GPU, displays, audio (speakers and
+    microphones told apart), cameras, installed apps, services, listening
+    ports with their program, visible windows with their program and ports;
+    at most 80 entries for the model, or those matching a filter.
+  - `ui_elements` (0) and `ui_action` (1–4): UI Automation — a window's
+    buttons, fields and texts with references (`u12`); invoke, set_value,
+    focus, only on an element listed in the last 10 minutes that still has
+    the name and type JARVIS saw. Never a password field; never a terminal
+    window; a confirming button in a dialog that asks to delete or install
+    is level 3.
+  - `screenshot` (1): a PNG in `data/screenshots/`, sent nowhere.
+    `clipboard`: read (1, redacted, ≤ 2 000 characters), write (2).
+  - Checks after window and app actions: Windows is asked about the window
+    handle (gone, in front, minimised, maximised); an opened app has a
+    visible window by title or program, or a process.
+  - PowerShell: three fixed, plain-ASCII files, each run on its own with
+    `-File`, values only in checked `JARVIS_*` environment variables, text in
+    a temporary file; nothing typed is ever part of a command or a script.
+  - `pnpm verify:windows` (`scripts/verifyWindows.ts`): the checks for the
+    owner's PC, in CMD — one typed approval (full control mode, P3's console
+    approval), every reading, the disks by drive letter (P6), a screenshot,
+    the clipboard (old text put back), Notepad typed into and closed,
+    Calculator 1 + 2 = 3, a test server started and stopped (P10's taskkill).
+    Report: `data\logs\verify-windows.json` (not in git).
+- **Found and fixed while building it:**
+  - The window list JARVIS polls keeps one window per program and at most 20
+    programs. Store apps (Calculator, Settings) share one host process, so a
+    new Calculator window could be missed, and a window could look closed
+    when it was only not listed. The new tools and checks use every visible
+    top-level window (EnumWindows) and ask about one handle directly.
+  - The app check through `appController.isAppOpen` looks for `calc.exe`,
+    which exits once Calculator is up: a successful open would have been
+    reported as failed. The check looks for the app's window by title or
+    program first.
+- **Tested here:** `tests/windowsToolsTest.ts`, 53 checks, all pass: the
+  parsers on `ConvertTo-Json` output (tests/fixtures/windowsProbe.json —
+  PowerShell 7.4 output of objects built as the scripts build them, with
+  example values, not a reading of a real PC); the scripts read only their
+  `JARVIS_*` variables and run nothing they are given; a value with a line
+  break, another file or another variable is refused before PowerShell
+  starts; off Windows every tool says it needs Windows; the risk rules
+  (unlisted element refused; terminal refused; password refused; focus 1,
+  OK 2, "Delete account" 3, "Buy now" 4, "Install" 3, "Yes" in a
+  delete-permanently dialog 3, "Next" in an installer ready to install 3;
+  references replaced and expiring; clipboard 1/2; screenshot 1); the window
+  and app checks say "checked on Windows only" here; the planner is offered
+  the new tools for matching requests; `pnpm verify:windows` refuses to run
+  off Windows. `tests/windowsScriptsTest.ts` (needs pwsh; GitHub's Ubuntu
+  runner has it), 17 checks, all pass: the three files parse with
+  PowerShell's own parser, use nothing Windows PowerShell 5.1 lacks, are
+  plain ASCII, and refuse an unknown section or action, a handle or
+  reference that is not a number, and a section name with a command tacked
+  on, answering in JSON. On the P13 code neither test can pass (the modules
+  and scripts do not exist). Full suite: 109 files, 103 passed · 0 failed ·
+  6 environment; CI mode 101 passed · 8 skipped.
+- **Not verified:** everything that needs Windows — the readings, UI
+  Automation in real apps, screenshots, the clipboard, the checks after
+  window and app actions, the pack itself. Also from earlier phases: P3's
+  console approval in a real CMD window, P6's drive letters, P10's
+  `cmd.exe`/`taskkill` paths (all in the pack), P12's microphone and
+  speakers (by hand: the pack lists it as not checked).
+- **Known limits:** `win_automate.ps1` and the window poll still use the
+  20-program list; a dialog that blocks its caller stops an invoke after
+  10 s; graphics memory is reported up to 4 GB (a WMI limit).
+- **Next:** the owner runs `pnpm verify:windows` and sends
+  `data\logs\verify-windows.json`; meanwhile P15 — final verification.

@@ -162,6 +162,112 @@ const verifyControlBrowser: Verifier = async (args, output) => {
 /** Windows actions are checked against the desktop in P14, which needs the PC itself. */
 const ON_WINDOWS = 'checked on Windows only (phase P14); not checked here';
 
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The result's message: kernel results carry it in JSON, others are plain text. */
+function messageOf(output: string): string {
+  try { return String(JSON.parse(output)?.message ?? output); } catch { return output; }
+}
+
+/**
+ * control_window (P14), asked of Windows by the window's handle: a closed
+ * window is gone (looked for up to 3 s; one asking whether to save stays,
+ * which is said), a focused one is in front, a minimised or maximised one is
+ * so. A move or resize is not read back.
+ */
+const verifyControlWindow: Verifier = async (args, output) => {
+  if (process.platform !== 'win32') return unverifiable(ON_WINDOWS);
+  const action = text(args, 'action').toLowerCase();
+  const hwnd = /window (0x[0-9a-f]+)/i.exec(messageOf(output))?.[1];
+  if (!hwnd) return unverifiable('the result did not name the window');
+  const { windowState } = await import('../perception/windowsProbe.js');
+  if (action === 'close' || action === 'close_current') {
+    const until = Date.now() + 3_000;
+    for (;;) {
+      if (!(await windowState(hwnd)).exists) return verified('the window is gone');
+      if (Date.now() >= until) return failed('the window is still open; it may be asking whether to save');
+      await pause(300);
+    }
+  }
+  const state = await windowState(hwnd);
+  if (!state.exists) return failed('the window is gone');
+  if (action === 'focus') return state.foreground ? verified('the window is in front') : failed('another window is in front');
+  if (action === 'minimize') return state.minimized ? verified('the window is minimised') : failed('the window is not minimised');
+  if (action === 'maximize') return state.maximized ? verified('the window is maximised') : failed('the window is not maximised');
+  return unverifiable('its new position or size is not read back');
+};
+
+/**
+ * How an app's window is recognised, by its title or program. calc.exe
+ * exits once Calculator is up (its window belongs to ApplicationFrameHost),
+ * and VS Code's program is "Code": the name asked for is not always the
+ * program's.
+ */
+const APP_WINDOWS: Readonly<Record<string, RegExp>> = {
+  calculator: /calculator/i, calc: /calculator/i,
+  vscode: /visual studio code|^code$/i, 'vs code': /visual studio code|^code$/i, code: /visual studio code|^code$/i,
+  cmd: /command prompt|^cmd$|windowsterminal/i, 'command prompt': /command prompt|^cmd$|windowsterminal/i,
+  settings: /^settings$/i, 'ms-settings': /^settings$/i,
+};
+
+export function appWindowMatcher(target: string): RegExp {
+  const key = target.toLowerCase().trim();
+  return APP_WINDOWS[key] ?? new RegExp(key.replace(/\.exe$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+}
+
+/** A visible window of the app, or (for `open`) its process, asked again for up to `ms`. */
+async function appState(target: string, wanted: boolean, ms: number): Promise<boolean> {
+  const { probeWindows } = await import('../perception/windowsProbe.js');
+  const { appController } = await import('../control/appController.js');
+  const matcher = appWindowMatcher(target);
+  const until = Date.now() + ms;
+  for (;;) {
+    const windows = await probeWindows('windows') as Array<{ title: string; process: string }>;
+    const visible = windows.some((w) => matcher.test(w.title) || matcher.test(w.process));
+    // Closing closes windows: a process left in the background counts as closed.
+    const open = visible || (wanted && (await appController.isAppOpen(target)));
+    if (open === wanted) return true;
+    if (Date.now() >= until) return false;
+    await pause(300);
+  }
+}
+
+/** control_app (P14), on the desktop: an opened or restarted app runs, a closed one has no window left, a focused one is in front. */
+const verifyControlApp: Verifier = async (args) => {
+  if (process.platform !== 'win32') return unverifiable(ON_WINDOWS);
+  const action = text(args, 'action').toLowerCase();
+  const target = text(args, 'target');
+  if (!target) return unverifiable('no app was named');
+  if (action === 'open' || action === 'restart') {
+    return (await appState(target, true, 4_000)) ? verified(`${target} is running`) : failed(`${target} is not running`);
+  }
+  if (action === 'close') {
+    return (await appState(target, false, 3_000)) ? verified(`no window of ${target} is open`) : failed(`a window of ${target} is still open`);
+  }
+  if (action === 'focus') {
+    const { getWindowsState } = await import('../perception/windowsState.js');
+    const active = (await getWindowsState({ waitMs: 1_000 })).activeWindow;
+    const matcher = appWindowMatcher(target);
+    return matcher.test(active.processName) || matcher.test(active.title)
+      ? verified(`${target} is in front`) : failed(`${active.processName || 'another window'} is in front`);
+  }
+  return unverifiable('nothing to check');
+};
+
+/** open_app (P14): an app runs afterwards; a web page opens in the default browser, which is not checked. */
+const verifyOpenApp: Verifier = async (args, output) => {
+  if (process.platform !== 'win32') return unverifiable(ON_WINDOWS);
+  if (args['dryRun']) return unverifiable('a dry run opens nothing');
+  let resolved = '';
+  try { resolved = String(JSON.parse(output)?.resolvedTarget ?? ''); } catch { /* plain text */ }
+  const target = text(args, 'target');
+  if (/^(https?:|www\.)|^ms-settings:/i.test(resolved) || /^(https?:|www\.)/i.test(target)) {
+    return unverifiable('a web page or a Windows page opened, which is not checked');
+  }
+  if (!target) return unverifiable('no app was named');
+  return (await appState(target, true, 4_000)) ? verified(`${target} is running`) : failed(`${target} is not running`);
+};
+
 export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> = {
   write_file: verifyWriteFile,
   control_file: verifyControlFile,
@@ -170,9 +276,9 @@ export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> 
   enable_full_control_session: verifyFullControl(true),
   disable_full_control_session: verifyFullControl(false),
   run_command: { reason: "a command's effect cannot be checked in general; its exit code is reported" },
-  open_app: { reason: ON_WINDOWS },
-  control_app: { reason: ON_WINDOWS },
-  control_window: { reason: ON_WINDOWS },
+  open_app: verifyOpenApp,
+  control_app: verifyControlApp,
+  control_window: verifyControlWindow,
   control_browser: verifyControlBrowser,
   control_keyboard: { reason: ON_WINDOWS },
   control_mouse: { reason: ON_WINDOWS },

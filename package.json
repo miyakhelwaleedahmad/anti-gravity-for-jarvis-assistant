@@ -16,6 +16,7 @@
     "test:all": "npm run test:voice-core && npm run test:pc-control",
     "test:ci": "tsx tests/runAll.ts --ci",
     "typecheck": "tsc --noEmit",
+    "verify:windows": "tsx scripts/verifyWindows.ts",
     "backup": "tsx backup.ts"
   },
   "dependencies": {

@@ -25,6 +25,15 @@ import { NOT_OBSERVED, NO_CREDENTIALS, normalizeUrl, uploadPathProblem, urlProbl
 import { changeLevel, checkFilePath, isApprovedRoot, isExecutable } from './fsPolicy.js';
 import { pushTargetSync, repoProblem } from '../tools/gitTools.js';
 import { isJarvisServer, projectProblem, scriptProblem } from '../tools/devTools.js';
+import { describeUiElement, lookupUiRef } from '../control/uiRefs.js';
+
+const NOT_OBSERVED_UI = 'JARVIS has not looked at that element, or it was more than 10 minutes ago: list the window\'s elements (ui_elements) first.';
+/** Console and terminal windows: typing there runs commands. */
+const TERMINAL_PROCESS = /^(cmd|powershell|powershell_ise|pwsh|windowsterminal|wt|conhost|openconsole|bash|wsl|mintty|alacritty)$/i;
+/** Buttons that do the thing a dialog asked about. */
+const CONFIRMS = /^(yes|yes to all|ok|okay|continue|proceed|allow|confirm|delete|remove|replace|overwrite|install|uninstall|run|apply|accept|agree|i agree|next|finish)$/i;
+const DESTRUCTIVE_DIALOG = /\b(delet|remov|uninstall|install|format|eras|overwrit|replac|permanent|cannot be undone|can't be undone|recycle bin|discard)/i;
+const INSTALLS = /^(install|uninstall|repair|update now|restart now|format|erase)\b/i;
 
 export interface RiskAssessment {
   tool: string;
@@ -249,6 +258,35 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
       } else {
         target = `${text(args, 'path') || 'a file'} into the ${target}`;
         refused = element.type === 'file' ? uploadPathProblem(text(args, 'path')) : 'That is not a file field.';
+      }
+      break;
+    }
+    // Windows apps (P14): only an element JARVIS has looked at; never a
+    // password, never in a terminal; what a button says — and what the dialog
+    // around it asks — can raise the level.
+    case 'ui_action': {
+      const element = lookupUiRef(args['ref']);
+      if (!element) {
+        refused = NOT_OBSERVED_UI;
+        break;
+      }
+      target = describeUiElement(element);
+      if (TERMINAL_PROCESS.test(element.process)) {
+        refused = 'JARVIS does not press or type in a terminal window; commands go through run_command.';
+        break;
+      }
+      if (action === 'set_value' && element.password) {
+        refused = NO_CREDENTIALS;
+        break;
+      }
+      if (action === 'invoke') {
+        const label = element.name.trim();
+        const words = wordsLevel(label);
+        if (words.level) raise(words.level, words.why ?? 'its label');
+        if (INSTALLS.test(label)) raise(3, 'it installs, removes or restarts something');
+        if (CONFIRMS.test(label) && DESTRUCTIVE_DIALOG.test(`${element.windowTitle} ${element.windowText}`)) {
+          raise(3, 'it confirms deleting, installing or replacing something');
+        }
       }
       break;
     }
