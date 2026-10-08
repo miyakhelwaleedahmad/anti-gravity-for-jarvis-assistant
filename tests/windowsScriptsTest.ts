@@ -9,6 +9,9 @@
  *  2. Run off Windows, each answers with one line of JSON — an unknown
  *     section or action, a handle or reference that is not a number, and a
  *     section name with a command tacked on are all refused, never run.
+ *  3. win_automate.ps1's window actions, run with the arguments JARVIS
+ *     builds, each reach their own Win32 call (a stand-in records it); one
+ *     that cannot be done is an error, never a silent success.
  *
  * What the scripts read on Windows is checked by pnpm verify:windows.
  */
@@ -33,7 +36,7 @@ function ok(label: string, condition: boolean, detail = ''): void {
   else { console.error(`  FAIL: ${label}${detail ? ` (${detail})` : ''}`); failed++; }
 }
 
-const FILES = ['perception/windows_probe.ps1', 'control/desktop.ps1', 'control/uia.ps1'];
+const FILES = ['perception/windows_probe.ps1', 'control/desktop.ps1', 'control/uia.ps1', 'control/win_automate.ps1'];
 const PS7_ONLY = ['QuestionQuestion', 'QuestionQuestionEquals', 'QuestionDot', 'QuestionLBracket', 'AndAnd', 'OrOr', 'QuestionMark'];
 
 function run(file: string, env: Record<string, string>): any {
@@ -280,6 +283,94 @@ out = run('control/desktop.ps1', { JARVIS_DESKTOP_ACTION: 'screenshot', JARVIS_D
 ok('desktop: a screenshot is written only as .png', out.ok === false && /No PNG file/.test(out.error) && !fs.existsSync(path.join(repo, 'shot.exe')), JSON.stringify(out));
 out = run('control/uia.ps1', { JARVIS_UIA_ACTION: 'list' });
 ok('uia: off Windows, an error in JSON (no UI Automation here)', out.ok === false && typeof out.error === 'string' && out.action === 'list', JSON.stringify(out).slice(0, 160));
+
+console.log('\n--- 3. win_automate.ps1 window actions, called as JARVIS calls them ---');
+// The owner's seventh Windows run: every close "succeeded" and nothing
+// closed. The script switched on -Action twice and had no -ActionType, so no
+// window action ever ran. Here the real script runs with the arguments
+// windowController and appController build (read from their source), with a
+// stand-in for its Win32 class that records each call; the script's own
+// Add-Type calls do nothing here, so the stand-in is the class it uses.
+{
+  const HWND = '0x1A0364';
+  const SAMPLES: Record<string, string> = { hwnd: HWND, 'match.hwnd': HWND, 'String(x)': '10', 'String(y)': '20', 'String(width)': '800', 'String(height)': '600' };
+  const calls: Array<{ from: string; args: string[] }> = [];
+  for (const file of ['control/windowController.ts', 'control/appController.ts']) {
+    for (const m of fs.readFileSync(path.join(repo, file), 'utf8').matchAll(/runAutomateScript\(\[([\s\S]*?)\]\)/g)) {
+      const tokens = m[1]!.split(',').map((t) => t.trim()).filter(Boolean);
+      const args = tokens.map((t) => /^'[^']*'$/.test(t) ? t.slice(1, -1) : (SAMPLES[t] ?? `?${t}`));
+      if (args.includes('control-window')) calls.push({ from: file, args });
+    }
+  }
+  const typeOf = (args: string[]) => args[args.indexOf('-ActionType') + 1] ?? '';
+  ok('the window actions JARVIS calls were found in its source: focus, close, minimize, maximize, move (move and resize)',
+    calls.length === 8 && ['focus', 'close', 'minimize', 'maximize', 'move'].every((t) => calls.some((c) => typeOf(c.args) === t))
+    && calls.every((c) => !c.args.some((a) => a.startsWith('?'))), calls.map((c) => `${path.basename(c.from)}:${typeOf(c.args)}`).join(' '));
+
+  const quote = (s: string) => `'${s.replace(/'/g, "''")}'`;
+  const asCommand = (args: string[]) => args.map((a) => (/^-[A-Za-z]+$/.test(a) ? a : quote(a))).join(' ');
+  const extra: Array<{ name: string; args: string[]; result?: boolean }> = [
+    { name: 'unknown', args: ['-Action', 'control-window', '-ActionType', 'bogus', '-Hwnd', HWND] },
+    { name: 'none', args: ['-Action', 'control-window', '-Hwnd', HWND] },
+    { name: 'badhandle', args: ['-Action', 'control-window', '-ActionType', 'close', '-Hwnd', '1A0364; calc'] },
+    { name: 'refused', args: ['-Action', 'control-window', '-ActionType', 'close', '-Hwnd', HWND], result: false },
+  ];
+  const runs = [...calls.map((c, i) => ({ name: `call${i}`, args: c.args, result: true })), ...extra.map((e) => ({ ...e, result: e.result ?? true }))];
+  const script = `
+  Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+public class WinAutomate {
+  public static List<string> Calls = new List<string>();
+  public static bool Result = true;
+  public static bool SetForegroundWindow(IntPtr h) { Calls.Add("SetForegroundWindow " + h.ToInt64()); return Result; }
+  public static bool ShowWindow(IntPtr h, int n) { Calls.Add("ShowWindow " + h.ToInt64() + " " + n); return true; }
+  public static bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool r) { Calls.Add("MoveWindow " + h.ToInt64() + " " + x + " " + y + " " + w + " " + ht); return Result; }
+  public static bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l) { Calls.Add("PostMessage " + h.ToInt64() + " " + m); return Result; }
+}
+'@
+  function Add-Type { }
+  $results = @{}
+${runs.map((r) => `  [WinAutomate]::Calls.Clear(); [WinAutomate]::Result = $${r.result}
+  $out = ''; $err = ''
+  try { $out = (& $env:JARVIS_TEST_FILE ${asCommand(r.args)} 2>&1 | ForEach-Object { [string]$_ }) -join ' | ' } catch { $err = [string]$_.Exception.Message }
+  $results['${r.name}'] = @{ out = $out; err = $err; calls = @([WinAutomate]::Calls) }`).join('\n')}
+  'RESULT ' + (ConvertTo-Json -Compress -Depth 4 -InputObject $results)`;
+  const r = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8', timeout: 180_000, env: { ...process.env, JARVIS_TEST_FILE: path.join(repo, 'control/win_automate.ps1') },
+  });
+  const line = String(r.stdout ?? '').split(/\r?\n/).find((l) => l.startsWith('RESULT '));
+  let got: Record<string, { out: string; err: string; calls: string[] }> = {};
+  try { got = line ? JSON.parse(line.slice(7)) : {}; } catch { /* reported below */ }
+  if (!line) console.error(String(r.stdout ?? '').slice(-400) + String(r.stderr ?? '').slice(-400));
+  const H = String(BigInt(HWND));
+  const EXPECT: Record<string, { calls: string[]; out: RegExp }> = {
+    focus: { calls: [`ShowWindow ${H} 9`, `SetForegroundWindow ${H}`], out: new RegExp(`Focused window ${HWND}`) },
+    close: { calls: [`PostMessage ${H} 16`], out: new RegExp(`Closed window ${HWND}`) },
+    minimize: { calls: [`ShowWindow ${H} 2`], out: new RegExp(`Minimized window ${HWND}`) },
+    maximize: { calls: [`ShowWindow ${H} 3`], out: new RegExp(`Maximized window ${HWND}`) },
+    move: { calls: [`MoveWindow ${H} 10 20 800 600`], out: new RegExp(`Moved/Resized window ${HWND}`) },
+  };
+  calls.forEach((c, i) => {
+    const type = typeOf(c.args);
+    const res = got[`call${i}`];
+    const want = EXPECT[type];
+    ok(`${path.basename(c.from, '.ts')} ${type}: reaches its own part of the script, with the window handle JARVIS passed, and says what it did`,
+      !!res && !!want && res.err === '' && res.calls.length === (type === 'focus' ? 2 : 1)
+      && res.calls.every((call) => want.calls.includes(call)) && want.out.test(res.out),
+      res ? `calls=[${res.calls.join('; ')}] out="${res.out.slice(0, 80)}"${res.err ? ` err="${res.err.slice(0, 80)}"` : ''}` : 'no result');
+  });
+  const refusedWith = (name: string, pattern: RegExp) => !!got[name] && got[name]!.calls.length === 0 && pattern.test(got[name]!.err);
+  ok('an unknown window action is an error, not a silent success', refusedWith('unknown', /window action/i), JSON.stringify(got['unknown'] ?? null));
+  ok('a window action with no action type is an error, not a silent success', refusedWith('none', /window action/i), JSON.stringify(got['none'] ?? null));
+  ok('a window handle that is not a hex number is refused before anything is sent', refusedWith('badhandle', /handle/i), JSON.stringify(got['badhandle'] ?? null));
+  ok('a close that Windows does not take is an error, not "Closed window"', !!got['refused'] && got['refused']!.calls.length === 1
+    && /did not take/i.test(got['refused']!.err) && !/Closed window/.test(got['refused']!.out), JSON.stringify(got['refused'] ?? null));
+  // As runAutomateScript runs it: powershell -File, where an error must end
+  // with a non-zero exit code (runAutomateScript then throws).
+  const direct = spawnSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', path.join(repo, 'control/win_automate.ps1'), '-Action', 'control-window', '-ActionType', 'bogus', '-Hwnd', HWND], { encoding: 'utf8', timeout: 60_000 });
+  ok('run with -File as runAutomateScript does, an unknown window action exits non-zero', direct.status !== 0, `exit ${direct.status}`);
+}
 
 console.log(`\n=== ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

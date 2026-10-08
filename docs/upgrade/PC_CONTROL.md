@@ -97,7 +97,11 @@ under it (with `JARVIS_LEVEL2_POLICY=ask` each also asks). Then: every
 `windows_overview` section; the disks by drive letter (P6); a screenshot,
 deleted again; the clipboard written, read back and the old text put back;
 Notepad opened, its text field filled and read back, closed ("Don't save" if
-it asks); Calculator, 1 + 2 = pressed and 3 read, closed; a test server in
+it asks, looked for in that Notepad window, never in another program's);
+a second, empty Notepad minimised, focused, maximised, moved, resized and
+closed through `control_window`; Calculator, 1 + 2 = pressed and 3 read,
+with its window state, the program in front and its elements recorded after
+each press, closed; a test server in
 the temp folder started and stopped (P10's taskkill). Only windows the pack
 opened are touched, found by comparing the window list before and after.
 The report, redacted, goes to `data\logs\verify-windows.json` (not in git).
@@ -106,6 +110,18 @@ The old clipboard text is kept in memory only, to be put back; a picture or
 files on the clipboard are not, so the pack says to copy them again.
 
 ## Known limits
+
+- Until Step C (2026-10-08) no window action of `control_window` or of the
+  app close and focus did anything: `win_automate.ps1` read the action from
+  `-Action` (always `control-window` there) and had no `-ActionType`, so it
+  matched nothing and printed nothing, and the close check, finding no window
+  named, passed it as not checked. Now each action reaches its own Win32
+  call, one that cannot be done is an error, and a close is checked strictly:
+  no result naming the window, another window than the handle asked for, or
+  a check that could not decide is a failed close.
+- Each window action first finds the window through the older persistent
+  PowerShell session; on the owner's PC that session timed out (15 s), and a
+  close took 10–21 s. Not changed yet.
 
 - `win_automate.ps1` and the window poll still list one window per program
   and at most 20 programs; `ui_elements` and the checks above read every

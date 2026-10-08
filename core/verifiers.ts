@@ -184,24 +184,58 @@ function messageOf(output: string): string {
   try { return String(JSON.parse(output)?.message ?? output); } catch { return output; }
 }
 
+/** What the window checks read from the desktop; tests put stand-ins here. */
+export const windowChecks = {
+  onWindows: (): boolean => process.platform === 'win32',
+  windowState: async (hwnd: string) => (await import('../perception/windowsProbe.js')).windowState(hwnd),
+};
+
+/** The same window handle, written in hex or decimal. */
+function sameHandle(a: string, b: string): boolean {
+  try { return BigInt(a) === BigInt(b); } catch { return false; }
+}
+
+const CLOSING = new Set(['close', 'close_current']);
+
+/** A control_window close: never taken on trust, so a close that cannot be checked is not done. */
+function isWindowClose(tool: string, args: Record<string, unknown>): boolean {
+  return tool === 'control_window' && CLOSING.has(text(args, 'action').toLowerCase());
+}
+
 /**
  * control_window (P14), asked of Windows by the window's handle: a closed
  * window is gone (looked for up to 3 s; one asking whether to save stays,
  * which is said), a focused one is in front, a minimised or maximised one is
  * so. A move or resize is not read back.
+ *
+ * A close is checked strictly (Step C; on the owner's seventh Windows run the
+ * close did nothing, said nothing, and "not checked" let it pass as done): no
+ * result naming the window, another window than the handle asked for, or a
+ * window that could not be read is a failed close. The window checked is the
+ * one asked for when the request gave its handle.
  */
 const verifyControlWindow: Verifier = async (args, output) => {
-  if (process.platform !== 'win32') return unverifiable(ON_WINDOWS);
   const action = text(args, 'action').toLowerCase();
-  const hwnd = /window (0x[0-9a-f]+)/i.exec(messageOf(output))?.[1];
-  if (!hwnd) return unverifiable('the result did not name the window');
-  const { windowState } = await import('../perception/windowsProbe.js');
-  if (action === 'close' || action === 'close_current') {
-    return (await keepLooking(async () => !(await windowState(hwnd)).exists, 3_000))
-      ? verified('the window is gone')
-      : failed('the window is still open; it may be asking whether to save');
+  const closing = CLOSING.has(action);
+  if (!windowChecks.onWindows()) return closing ? failed('windows are closed, and the close checked, only on Windows') : unverifiable(ON_WINDOWS);
+  const named = /window (0x[0-9a-f]+)/i.exec(messageOf(output))?.[1];
+  const target = text(args, 'target').trim();
+  const asked = /^0x[0-9a-f]{1,16}$/i.test(target) ? target : undefined;
+  if (closing) {
+    if (!named) return failed('the close gave no result naming a window, so nothing shows it was done');
+    if (asked && !sameHandle(named, asked)) return failed(`it acted on window ${named}, not on ${asked}, the window asked for`);
+    const hwnd = asked ?? named;
+    try {
+      return (await keepLooking(async () => !(await windowChecks.windowState(hwnd)).exists, 3_000))
+        ? verified('the window is gone')
+        : failed('the window is still open; it may be asking whether to save');
+    } catch (err) {
+      return failed(`whether the window closed could not be read: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
-  const state = await windowState(hwnd);
+  const hwnd = named ?? asked;
+  if (!hwnd) return unverifiable('the result did not name the window');
+  const state = await windowChecks.windowState(hwnd);
   if (!state.exists) return failed('the window is gone');
   if (action === 'focus') return state.foreground ? verified('the window is in front') : failed('another window is in front');
   if (action === 'minimize') return state.minimized ? verified('the window is minimised') : failed('the window is not minimised');
@@ -343,10 +377,12 @@ export async function verifyCall(
     timer = setTimeout(() => resolve(unverifiable(`the check took longer than ${limit / 1000} s`)), limit);
   });
   try {
-    return await Promise.race([
+    const result = await Promise.race([
       entry(args, output).catch((err: unknown) => unverifiable(`the check failed to run: ${err instanceof Error ? err.message : String(err)}`)),
       timeout,
     ]);
+    // A window close whose check did not run, or took too long, is not done.
+    return isWindowClose(tool, args) && result.status === 'unverifiable' ? failed(`the close could not be checked: ${result.evidence}`) : result;
   } finally {
     if (timer) clearTimeout(timer);
   }

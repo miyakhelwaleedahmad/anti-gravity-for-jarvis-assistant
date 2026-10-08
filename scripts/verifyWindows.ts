@@ -50,10 +50,11 @@ console.log(`
 JARVIS — Windows check (P14)
 
 This opens Notepad and Calculator, types a test line into the Notepad it
-opened, presses 1 + 2 = in Calculator, takes a screenshot (deleted again),
-puts a test text on the clipboard and then puts your text back, and starts a
-small test server on this PC. It reads, but does not change: services,
-installed apps, devices, ports.
+opened, minimises, restores, maximises, moves, resizes and closes a second
+empty Notepad it opened, presses 1 + 2 = in Calculator, takes a screenshot
+(deleted again), puts a test text on the clipboard and then puts your text
+back, and starts a small test server on this PC. It reads, but does not
+change: services, installed apps, devices, ports.
 
 Before you start:
   - save and close any Notepad and Calculator windows;
@@ -173,22 +174,47 @@ function elementSummary(list: { body?: any }, max = 30) {
   }));
 }
 
-/**
- * The text of every Calculator display element, read straight from uia.ps1:
- * not through ui_elements, which would replace the references the presses use.
- */
-async function calculatorDisplays(hwnd: string): Promise<string[]> {
-  const decimal = BigInt(hwnd).toString();
-  const r = await runPsFile('uia', { JARVIS_UIA_ACTION: 'list', JARVIS_UIA_HWND: decimal }, 60_000);
-  if (!r.ok) return [`(not read: ${String(r.error ?? 'no reason').slice(0, 80)})`];
-  return (Array.isArray(r['elements']) ? r['elements'] as any[] : [])
-    .filter((e) => e.automationId === 'CalculatorResults')
-    .map((e) => `${String(e.name ?? '')}${e.offscreen ? ' (offscreen)' : ''}`);
+/** A window's state (exists, visible, in front, minimised, maximised), or why it could not be read. */
+async function stateOf(hwnd: string): Promise<unknown> {
+  return windowState(hwnd).catch((e) => `unknown: ${messageOf(e)}`);
 }
 
-/** Close a window this pack opened; press "Don't save" if it asks. */
+/**
+ * Calculator's window as UI Automation sees it, read straight from uia.ps1:
+ * not through ui_elements, which would replace the references the presses
+ * use. How many elements and buttons it has, and the text of its displays.
+ */
+async function calculatorLook(hwnd: string): Promise<{ elements: number; buttons: number; displays: string[]; error?: string }> {
+  const r: any = await runPsFile('uia', { JARVIS_UIA_ACTION: 'list', JARVIS_UIA_HWND: BigInt(hwnd).toString() }, 60_000)
+    .catch((e) => ({ ok: false, error: messageOf(e) }));
+  if (!r.ok) return { elements: 0, buttons: 0, displays: [], error: String(r.error ?? 'no reason').slice(0, 120) };
+  const elements = Array.isArray(r['elements']) ? r['elements'] as any[] : [];
+  return {
+    elements: elements.length,
+    buttons: elements.filter((e) => e.type === 'Button').length,
+    displays: elements.filter((e) => e.automationId === 'CalculatorResults').map((e) => `${String(e.name ?? '')}${e.offscreen ? ' (offscreen)' : ''}`),
+  };
+}
+
+/** The program whose window is in front, and whether that window is `hwnd`; not its title. Read straight from uia.ps1, as above. */
+async function frontApp(hwnd: string): Promise<unknown> {
+  const r: any = await runPsFile('uia', { JARVIS_UIA_ACTION: 'list', JARVIS_UIA_HWND: '' }, 60_000)
+    .catch((e) => ({ ok: false, error: messageOf(e) }));
+  if (!r.ok) return `unknown: ${String(r.error ?? 'no reason').slice(0, 120)}`;
+  const w = (r['window'] ?? {}) as Record<string, unknown>;
+  return { process: String(w['process'] ?? '').slice(0, 60), isThisWindow: sameHwnd(w['hwnd'], hwnd) };
+}
+
+/**
+ * Close a window this pack opened; press "Don't save" if it asks. Since
+ * Step C the question is looked for in this window itself (UI Automation
+ * lists a window's dialog under it), not in whichever window is in front: on
+ * the owner's seventh run the CMD window was in front. Nothing is pressed in
+ * any other window; what the window in front shows is only recorded.
+ */
 async function closeOwnWindow(hwnd: string, record: Record<string, unknown> = {}): Promise<string> {
-  // `record` gets what each step returned (Step B evidence); the steps are as before.
+  // `record` gets what each step returned (Step B and C evidence).
+  record['stateBeforeClose'] = await stateOf(hwnd);
   let t0 = Date.now();
   const close = await call('control_window', { action: 'close', target: hwnd });
   record['close'] = {
@@ -200,14 +226,23 @@ async function closeOwnWindow(hwnd: string, record: Record<string, unknown> = {}
   const closedNow = await gone(hwnd, 5_000);
   record['goneAfterClose'] = closedNow;
   if (closedNow) return 'closed';
-  record['stateAfterClose'] = await windowState(hwnd).catch((e) => `unknown: ${messageOf(e)}`);
+  record['stateAfterClose'] = await stateOf(hwnd);
+  const isDontSave = (e: any) => e.type === 'Button' && /^don.?t save$|^no$/i.test(String(e.name));
+  // The program in front, whether it is this window and whether it shows such
+  // a button; not its title. Read first: a later look at this same window
+  // would otherwise replace the references of the one below.
   const front = await call('ui_elements', {});
-  // The program in front and whether it is this window; not its title.
   record['inFront'] = front.success
-    ? { process: front.body?.window?.process ?? null, isThisWindow: sameHwnd(front.body?.window?.hwnd, hwnd), elements: front.body?.elements?.length ?? 0, problems: front.body?.problems ?? [] }
+    ? { process: front.body?.window?.process ?? null, isThisWindow: sameHwnd(front.body?.window?.hwnd, hwnd), elements: front.body?.elements?.length ?? 0,
+      hasDontSave: (front.body?.elements ?? []).some(isDontSave), problems: front.body?.problems ?? [] }
     : { error: why(front) };
-  const dontSave = (front.body?.elements ?? []).find((e: any) => e.type === 'Button' && /^don.?t save$|^no$/i.test(String(e.name)));
-  need(dontSave, `it did not close (${close.success ? 'it is asking something JARVIS did not recognise' : why(close)}); nothing was pressed`);
+  const own = await call('ui_elements', { window: hwnd });
+  const dontSave = (own.body?.elements ?? []).find(isDontSave);
+  record['ownWindow'] = own.success
+    ? { elements: own.body?.elements?.length ?? 0, dialogs: (own.body?.elements ?? []).filter((e: any) => e.type === 'Window' && e.depth > 0).length,
+      dontSave: !!dontSave, problems: own.body?.problems ?? [] }
+    : { error: why(own) };
+  need(dontSave, `it did not close, and its own window shows no "Don't save" question (the close: ${close.success ? 'reported done' : why(close)}); nothing was pressed`);
   t0 = Date.now();
   const press = await call('ui_action', { action: 'invoke', ref: dontSave.ref });
   record['dontSave'] = { pressed: press.success, did: press.body?.did ?? null, error: press.success ? undefined : why(press), ms: Date.now() - t0 };
@@ -372,12 +407,12 @@ await check('apps.notepad', 'Notepad: opened, text field filled and read back, c
     details['field'] = { type: field.type, className: field.className, patterns: field.patterns };
     const text = `JARVIS check ${new Date().toISOString()}`;
     const set = await call('ui_action', { action: 'set_value', ref: field.ref, text });
-    details['set'] = { how: set.body?.how, same: set.body?.same, length: set.body?.length, check: set.verification?.status ?? null, error: set.success ? undefined : why(set) };
+    details['set'] = { check: set.verification?.status ?? null, evidence: set.verification?.evidence ?? null, error: set.success ? undefined : why(set) };
     need(set.success && set.verification?.status === 'verified', `the text was not set: ${why(set)}`);
     const closing: Record<string, unknown> = {};
     details['closing'] = closing;
     closed = await closeOwnWindow(win.hwnd, closing);
-    return { evidence: `typed and read back ${text.length} characters (${set.body?.how === 'settext' ? 'multi-line text box' : 'value pattern'}); ${closed}` };
+    return { evidence: `typed ${text.length} characters and read them back (${set.verification?.evidence ?? 'checked'}); ${closed}` };
   } catch (err) {
     // Close what this check opened, also when it failed.
     if (!closed) {
@@ -388,6 +423,49 @@ await check('apps.notepad', 'Notepad: opened, text field filled and read back, c
     throw err;
   }
 });
+
+// Step C: every control_window action through JARVIS's own path, on an empty
+// Notepad this pack opens (nothing typed, so closing it asks nothing). Until
+// Step C none of them did anything (win_automate.ps1). Every step runs, then
+// the check says which were done and which its after-action check confirmed;
+// a move or resize is not read back.
+await check('window.actions', 'Window actions on a window JARVIS opened: minimise, focus, maximise, move, resize, close', async (details) => {
+  if (!fullControl) return { status: 'SKIP', evidence: 'needs full control mode' };
+  const before = await windowHandles();
+  const open = await call('open_app', { target: 'notepad' });
+  need(open.success, `not opened: ${why(open)}`);
+  const win = await newWindow(before, /notepad/i, 60_000);
+  need(win?.hwnd, 'no new Notepad window appeared');
+  const steps: Array<Record<string, any>> = [];
+  details['steps'] = steps;
+  let closed = false;
+  try {
+    const act = async (action: string, extra: Record<string, unknown> = {}) => {
+      const t0 = Date.now();
+      const r = await call('control_window', { action, target: win.hwnd, ...extra });
+      steps.push({
+        action, done: r.success, ms: Date.now() - t0, message: String(r.body?.message ?? '').slice(0, 120),
+        check: r.verification ?? null, ...(r.success ? {} : { error: why(r) }), stateAfter: await stateOf(win.hwnd),
+      });
+      console.log(`        ${action}: ${r.success ? 'done' : 'NOT done'}${r.verification ? ` (${r.verification.status}: ${r.verification.evidence})` : ''}`);
+      return r;
+    };
+    await act('minimize');
+    await act('focus');
+    await act('maximize');
+    await act('move', { x: 120, y: 80 });
+    await act('resize', { width: 700, height: 500 });
+    const close = await act('close');
+    closed = close.success;
+    const notDone = steps.filter((s) => !s.done).map((s) => `${s.action} (${s.error})`);
+    need(notDone.length === 0, `not done: ${notDone.join('; ')}`);
+    const confirmed = steps.filter((s) => s.check?.status === 'verified').map((s) => s.action);
+    return { evidence: `all six done; confirmed on screen: ${confirmed.join(', ') || 'none'}; move and resize not read back` };
+  } finally {
+    if (!closed) details['cleanup'] = await closeOwnWindow(win.hwnd, {}).catch((e) => `not closed: ${messageOf(e)}`);
+  }
+});
+
 await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async (details) => {
   if (!fullControl) return { status: 'SKIP', evidence: 'needs full control mode' };
   const before = await windowHandles();
@@ -438,13 +516,23 @@ await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async (deta
       const button = (list.body.elements ?? []).find((e: any) => e.automationId === id);
       if (!button && id === 'clearButton') continue;
       need(button, `the ${id} button is not among its ${list.body.elements?.length ?? 0} elements`);
+      // Step C evidence for each press: Calculator's window state before and
+      // after (in front, minimised), the program in front after it, and
+      // whether Calculator's elements, buttons and display are still there.
+      const stateBefore = await stateOf(win.hwnd);
       const press = await call('ui_action', { action: 'invoke', ref: button.ref });
-      const displays = await calculatorDisplays(win.hwnd).catch((e) => [`(not read: ${messageOf(e)})`]);
+      const stateAfter = await stateOf(win.hwnd);
+      const look = await calculatorLook(win.hwnd);
+      const front = await frontApp(win.hwnd);
       presses.push({
-        button: id, name: button.name, pressed: press.success, did: press.body?.did ?? null,
-        windowOpen: press.body?.windowOpen ?? null, error: press.success ? undefined : why(press), displaysAfter: displays,
+        button: id, name: button.name, pressed: press.success, did: press.body?.did ?? null, error: press.success ? undefined : why(press),
+        stateBefore, stateAfter, inFrontAfter: front,
+        elementsAfter: look.elements, buttonsAfter: look.buttons, displaysAfter: look.displays, ...(look.error ? { readError: look.error } : {}),
       });
-      console.log(`        ${id}: ${press.success ? String(press.body?.did ?? 'done') : 'NOT pressed'}; display: ${displays.join(' | ') || '(no display element)'}`);
+      const minimised = typeof stateAfter === 'object' && stateAfter ? String((stateAfter as any).minimized) : 'unknown';
+      const inFront = typeof front === 'object' && front ? ((front as any).isThisWindow ? 'Calculator' : (front as any).process || 'unknown') : 'unknown';
+      console.log(`        ${id}: ${press.success ? String(press.body?.did ?? 'done') : 'NOT pressed'}; display: ${look.displays.join(' | ') || '(no display element)'}; `
+        + `elements: ${look.elements}; minimised: ${minimised}; in front: ${inFront}`);
       need(press.success, `${id} was not pressed: ${why(press)}`);
     }
     details['inFrontAfter'] = await windowState(win.hwnd).then((s) => s.foreground).catch((e) => `unknown: ${messageOf(e)}`);
@@ -457,6 +545,8 @@ await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async (deta
     return { evidence: `"${display.name}"; ${closed}` };
   } catch (err) {
     details['windowsAtEnd'] = await calculatorWindows();
+    details['stateAtEnd'] = await stateOf(win.hwnd);
+    details['inFrontAtEnd'] = await frontApp(win.hwnd);
     // Close what this check opened, also when it failed.
     if (!closed) {
       const cleanup: Record<string, unknown> = {};

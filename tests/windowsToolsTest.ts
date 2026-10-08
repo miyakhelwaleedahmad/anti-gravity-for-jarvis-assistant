@@ -151,11 +151,14 @@ ok('screenshot level 1; windows_overview and ui_elements level 0', level('screen
 console.log('\n--- 5. After-action checks ---');
 if (process.platform !== 'win32') {
   const checks = await Promise.all([
-    verifyCall('control_window', { action: 'close', target: '0x1' }, '{"message":"Closed window 0x1"}'),
+    verifyCall('control_window', { action: 'focus', target: '0x1' }, '{"message":"Focused window 0x1"}'),
     verifyCall('control_app', { action: 'open', target: 'calculator' }, '{}'),
     verifyCall('open_app', { target: 'notepad' }, '{}'),
   ]);
   ok('off Windows: window and app actions are "checked on Windows only", never passed', checks.every((c) => c?.status === 'unverifiable' && /Windows only/.test(c.evidence)));
+  // Since Step C a window close is never passed unchecked.
+  const close = await verifyCall('control_window', { action: 'close', target: '0x1' }, '{"message":"Closed window 0x1"}');
+  ok('off Windows: a window close is failed, not passed unchecked', close?.status === 'failed' && /only on Windows/.test(close.evidence), `${close?.status}: ${close?.evidence}`);
 }
 ok('an app is recognised by its window, not only its program: Calculator, VS Code, Notepad',
   appWindowMatcher('calculator').test('Calculator') && appWindowMatcher('vscode').test('Code') && appWindowMatcher('vscode').test('app.ts - Visual Studio Code')
@@ -197,6 +200,58 @@ console.log('\n--- 7. Checks on a slow PC: at least two looks ---');
     let fast = 0;
     const answer = await keepLooking(async () => ++fast >= 5, 1_000, 2, 1);
     ok('on a fast PC it keeps looking within the time allowed', answer === true && fast === 5, `looks=${fast}`);
+  }
+}
+
+console.log('\n--- 8. A window close is never taken on trust (Step C) ---');
+{
+  // The owner's seventh Windows run: the close did nothing and said nothing,
+  // and "not checked" let it pass as done. Here with a stand-in desktop.
+  const verifiers = await import('../core/verifiers.js') as any;
+  const desk = verifiers.windowChecks as undefined | { onWindows: () => boolean; windowState: (h: string) => Promise<Record<string, boolean>> };
+  ok('the window checks read the desktop through one place a test can stand in for', !!desk);
+  if (desk) {
+    const real = { onWindows: desk.onWindows, windowState: desk.windowState };
+    const open = new Set<string>();
+    const reads: string[] = [];
+    desk.onWindows = () => true;
+    desk.windowState = async (h: string) => {
+      reads.push(h);
+      if (/^0xbad$/i.test(h)) throw new Error('PowerShell did not answer');
+      const exists = open.has(String(BigInt(h)));
+      return { exists, visible: exists, foreground: exists, minimized: false, maximized: false };
+    };
+    const kernel = (message: string) => JSON.stringify({ success: true, action: 'closeWindow', message, error: null });
+    const close = (target: string, message: string) => verifyCall('control_window', { action: 'close', target }, kernel(message));
+    try {
+      open.add(String(BigInt('0x1A0364')));
+      let v = await close('0x1A0364', '');
+      ok('a close that gave no result is failed, not "not checked" (the seventh run)', v?.status === 'failed' && /no result/.test(v.evidence), `${v?.status}: ${v?.evidence}`);
+      v = await close('0x1A0364', 'Closed window 0x1A0364');
+      ok('a close whose window is still open is failed', v?.status === 'failed' && /still open/.test(v.evidence), `${v?.status}: ${v?.evidence}`);
+      open.clear();
+      reads.length = 0;
+      v = await close('0x1A0364', 'Closed window 0x1A0364');
+      ok('a close whose window is gone is verified, by the handle asked for', v?.status === 'verified' && reads.length > 0
+        && reads.every((h) => BigInt(h) === BigInt('0x1A0364')), `${v?.status}: ${v?.evidence}; read ${reads.join(',')}`);
+      v = await close('0x1A0364', 'Closed window 0x2');
+      ok('a result naming another window than the one asked for is failed', v?.status === 'failed' && /not on 0x1A0364/.test(v.evidence), `${v?.status}: ${v?.evidence}`);
+      v = await close('0xBAD', 'Closed window 0xBAD');
+      ok('a window that could not be read is a failed close', v?.status === 'failed' && /could not be read/.test(v.evidence), `${v?.status}: ${v?.evidence}`);
+      v = await verifyCall('control_window', { action: 'close_current' }, kernel('Closed window 0x1A0364'));
+      ok('close_current: checked by the window its result names', v?.status === 'verified', `${v?.status}: ${v?.evidence}`);
+      v = await verifyCall('control_window', { action: 'close', target: '0x1A0364' }, kernel('Closed window 0x1A0364'),
+        async () => ({ status: 'unverifiable', evidence: 'the check took longer than 60 s' }));
+      ok('a close whose check could not decide is failed, never passed', v?.status === 'failed' && /could not be checked/.test(v.evidence), `${v?.status}: ${v?.evidence}`);
+      open.add(String(BigInt('0x1A0364')));
+      v = await verifyCall('control_window', { action: 'focus', target: '0x1A0364' }, kernel(''));
+      ok('focus with a window handle and no result: that window is checked (it is in front)', v?.status === 'verified', `${v?.status}: ${v?.evidence}`);
+      v = await verifyCall('control_window', { action: 'move', target: '0x1A0364' }, kernel('Moved/Resized window 0x1A0364 to 1, 2 with size 800 x 600'));
+      ok('a move or resize still makes no claim (not read back)', v?.status === 'unverifiable', `${v?.status}: ${v?.evidence}`);
+    } finally {
+      desk.onWindows = real.onWindows;
+      desk.windowState = real.windowState;
+    }
   }
 }
 

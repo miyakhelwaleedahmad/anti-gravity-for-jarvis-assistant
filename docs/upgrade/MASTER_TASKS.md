@@ -509,23 +509,27 @@ every reading passed in 0.8–2.8 s.
 Elements of the active window; invoke; set value; focus. On the owner's PC
 (sixth run) the library's helpers for classic controls were not loaded, so
 Notepad's text box was a plain pane; Step B registers them in `uia.ps1`.
-Waits for the seventh run.
+Seventh run: Notepad's text set and read back on the PC. Calculator's presses
+not yet (its buttons vanished after "1"; evidence in Step C).
 
 ### T14.3 — Screenshots and screen observation · Normal · [x] · depends on: T14.1
 Verified on the owner's PC (second run): a 1920×1080 PNG, checked on disk.
 
 ### T14.4 — Clipboard write and dialogs · Normal · [~] · depends on: T14.2
 Clipboard write verified on the owner's PC (second run: written, read back,
-put back). Dialogs ("Don't save" in Notepad) wait for the seventh run.
+put back). Dialogs ("Don't save" in Notepad) wait for the eighth run: until
+Step C the close never ran, so the question never appeared.
 
 ### T14.5 — Checks for window and app actions · Critical · [~] · depends on: T14.2
-In the sixth run neither Notepad nor Calculator closed; Step B records what
-the close returned and what its check found. Waits for the seventh run.
+The seventh run showed why nothing closed: `win_automate.ps1` ran no window
+action at all (no `-ActionType`), and the close check passed the empty
+result. Fixed in Step C, with a strict close check and a pack check of every
+window action. Waits for the eighth run.
 
 ### T14.6 — `pnpm verify:windows` · Critical · [~] · depends on: T14.1–T14.5
 Runs the real checks on the owner's PC and writes a report to send back.
-Run six times (5/16, 13/16, 14/16, twice 11/16 with the approval refused
-for `start`, then 14/16 passed); Steps A and B are in; a seventh run decides.
+Run seven times (5/16, 13/16, 14/16, twice 11/16 with the approval refused
+for `start`, 14/16, 14/16); Steps A, B and C are in; an eighth run decides.
 
 ---
 

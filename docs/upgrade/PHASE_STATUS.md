@@ -902,7 +902,7 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   - Closing: `control_window` close goes through `windowController`, which
     waits twice on the older persistent session. Not determined, since the
     close result was not recorded.
-- **Step B (this change):**
+- **Step B** (commit `4b8eff3`):
   - `control/uia.ps1` registers the helpers itself before reading any
     element (`ClientSettings.RegisterClientSideProviderAssembly`, tried at
     most twice, since the library's own one-time attempt runs first inside
@@ -940,10 +940,97 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
     failed · 6 environment. `npm test -- --ci`: 103 passed · 0 failed · 8
     skipped. Not tested on Windows: the registration itself needs the real
     library, so only the seventh run shows whether it works there.
-- **Next:** the owner runs `pnpm verify:windows` a seventh time and sends
-  `data\logs\verify-windows.json`: Notepad should pass if the helpers
-  register; the Calculator and close evidence decides the next step. No
-  Calculator or closing fix before then.
+- **GitHub CI on `4b8eff3`:** the first attempt failed in
+  `browserControlAgentTest` (43 passed, 27 failed), a browser test Step B
+  does not touch; the re-run of the same commit passed (103 passed · 0
+  failed · 8 skipped). The same test had failed the same way once before, in
+  a local full run before Step B (41 passed, 29 failed, 16.6 s against about
+  9 s). On its own it passed 15 times in a row here. A copy whose first page
+  answers 1.5 s late also fails many checks at once (its first look at the
+  "Shop" tab finds nothing), but with other numbers, so what failed on CI is
+  not proven. A fix (wait for that tab instead of a fixed 500 ms) waits for
+  the owner's decision.
+- **Seventh Windows run** (same PC, 2026-10-07, after `git pull` to
+  `4b8eff3`; report sent by the owner): 14 passed, 2 failed.
+  - Notepad (50.9 s): the helpers registered; JARVIS saw 27 elements (title
+    bar, menus, status bar), the text box a `Document` named "Text Editor"
+    with the Text pattern, and the text was set and read back ("the field
+    holds the text"): Notepad typing works on the PC. The check failed at
+    closing: the close took 21.2 s, reported success with an empty message,
+    its check said "the result did not name the window" (not checked), the
+    window stayed open, nothing asked to save, and the CMD window was in
+    front.
+  - Calculator (23.2 s): its buttons were seen after 2.2 s (62 elements, in
+    front; the sixth run saw only the frame for 30 s). Clear pressed, display
+    "0"; 1 pressed, after which UI Automation found no display and no
+    buttons; + "The element is no longer there." At the end the window was
+    minimised and the CMD window in front. What minimised it is not shown:
+    JARVIS's own minimise did nothing (below), and the older session only
+    reads.
+- **Diagnosis, approved by the owner before any change (Step C):**
+  - Closing (proven): `control/win_automate.ps1` read the window action from
+    `-Action`, which in that branch is always `control-window`, and had no
+    `-ActionType` parameter. Close, focus, minimise, maximise and move or
+    resize matched nothing, printed nothing and reported success, since the
+    first upload (`f429071`). Shown with PowerShell 7: run as JARVIS calls
+    it, the close branch never ran; with the inner switch given "close", it
+    did. `windowController` and `appController` both call it this way. The
+    close check found no window named in the empty result and said "not
+    checked", which the registry lets pass.
+  - Calculator: not determined.
+- **Step C (this change):**
+  - `win_automate.ps1`: an `-ActionType` parameter, which the window actions
+    switch on. A handle that is not hex, an unknown or missing action, a close
+    message Windows does not take and a move it refuses are errors (non-zero
+    exit, so `runAutomateScript` throws), never a silent success.
+  - `core/verifiers.ts`: a close is checked strictly. No result naming a
+    window, a window other than the handle asked for, a window whose state
+    could not be read, and a check that could not decide (an error, the time
+    limit) are failed closes; when a handle was asked for, that window is the
+    one checked. Off Windows a close is failed, not "not checked". Focus,
+    minimise and maximise also check the handle asked for when the result
+    names none; otherwise they are as before. The desktop reads go through
+    `windowChecks`, which tests stand in for.
+  - The pack: Notepad's "Don't save" question is looked for in that Notepad
+    window (UI Automation lists a window's dialog under it); nothing is
+    pressed in another program, and whether the window in front shows such a
+    button is only recorded. A new check runs minimise, focus, maximise,
+    move, resize and close through `control_window` on a second, empty
+    Notepad. Calculator: its window state before and after each press, and
+    after each press the program in front and its element, button and
+    display counts. The Notepad evidence no longer says how the text was set
+    (the `ui_action` report does not carry it).
+  - Not changed: the older persistent session, what the Calculator check
+    presses and requires, tools, risk levels, approval rules.
+  - `tests/windowsScriptsTest.ts`, 18 new checks (47 in all): the real
+    `win_automate.ps1` run with the arguments `windowController` and
+    `appController` build (read from their source, 8 calls) and a stand-in
+    Win32 class that records each call: every action reaches its own call
+    with the handle passed and says what it did; an unknown or missing
+    action, a bad handle and a refused close are errors; run with `-File`, an
+    error exits non-zero. 13 fail on the script before Step C.
+    `win_automate.ps1` also joins the parse, PowerShell 5.1 and ASCII
+    checks.
+  - `tests/windowsToolsTest.ts`, 11 new checks (68 in all), with a stand-in
+    desktop: a close with no result, a window still open, another window
+    named, a window that could not be read and a check that could not decide
+    are failed; a gone window is verified by the handle asked for. One older
+    check changed on purpose: off Windows a close is now failed, not "not
+    checked". With the close logic before Step C, 6 fail, among them the
+    seventh run's case.
+  - Tested here: typecheck clean; `windowsScriptsTest` 47, `windowsToolsTest`
+    68, `securityBypassTest` 54, `approvalGateStructuredTest` 60,
+    `approvalTypeAheadTest` 9, `redactionTest` 51, `secretSinksTest` 23,
+    `riskEngineTest` 127, `verifyAfterActTest` 23, `taskFailureHonestyTest`
+    42, `registryRepairHonestyTest` 34, `toolExecutionPipelineVerificationTest`
+    20, `errorRecoveryTest` 15, `pcControlKernelTest` 38, `appControlTest` 11,
+    `closeAppRouteTest` 21, `executionDispatchAuditTest` 61,
+    `dispatchAuthzTest` 32, all passed. `npm test`: 111 files, 105 passed · 0
+    failed · 6 environment. `npm test -- --ci`: 103 passed · 0 failed · 8
+    skipped. Not tested on Windows yet: whether Windows takes each action.
+- **Next:** the owner runs `pnpm verify:windows` an eighth time and sends
+  `data\logs\verify-windows.json`. No Calculator fix before the owner has
+  read its evidence and approved one.
 
 ## P15 — Final verification — [!] BLOCKED (waiting for the owner's Windows report, as P14)
 

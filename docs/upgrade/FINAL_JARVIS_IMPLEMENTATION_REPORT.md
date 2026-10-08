@@ -19,7 +19,7 @@ could not be run is listed in section 7.
 - The approval-bypass test (new in P15, 54 checks) found no way past the
   approval step. The P15 review found and fixed one command-injection defect
   in `run_command` (section 5.1).
-- The owner has run `pnpm verify:windows` six times (2010 iMac,
+- The owner has run `pnpm verify:windows` seven times (2010 iMac,
   2026-10-07). The first two (5 passed, 6 failed, 4 skipped; then 13
   passed, 3 failed) found four problems, all fixed since (sections 5.1
   and 7): the approval gate took a line typed before the request as the
@@ -29,8 +29,11 @@ could not be run is listed in section 7.
   and sixth runs (14 passed, 2 failed each) Notepad and Calculator failed;
   in the sixth their windows did not close either, and Notepad's text box
   was unreadable because the UI Automation helpers for classic controls
-  were not loaded. Step B registers them and records what Calculator and
-  the window close do. A seventh run is needed.
+  were not loaded. Step B registers them: in the seventh run Notepad's text
+  was typed and read back on the PC. The same run showed that no window
+  action had ever done anything (`win_automate.ps1`, since the first upload)
+  and that a close nobody could check passed as done; Step C fixes both and
+  records more of what Calculator does. An eighth run is needed.
 - No new dependencies.
 
 ## 2. Phases
@@ -62,7 +65,7 @@ Details and the evidence for each phase: [PHASE_STATUS.md](PHASE_STATUS.md).
 progress, 0 not started. After the owner's second Windows run: 73 done
 (T14.1 Windows observation and T14.3 screenshots, verified on the PC), 5 in
 progress (T14.2, T14.4, T14.5, T14.6 and T15.1), all waiting for a Windows
-run in which Notepad and Calculator pass (the seventh is next).
+run in which Notepad and Calculator pass (the eighth is next).
 
 ## 4. Tests run
 
@@ -278,7 +281,7 @@ run.
 
 ## 7. Blocked or not verified
 
-- **The Windows pack** (`pnpm verify:windows`) has run six times on the
+- **The Windows pack** (`pnpm verify:windows`) has run seven times on the
   owner's PC (2010 iMac, Windows 10 19045, 2026-10-07).
   - First run: 5 passed, 6 failed, 4 skipped. The console approval was
     denied before it could be answered (section 5.1). Gpu, displays, audio,
@@ -317,8 +320,23 @@ run.
     (at most two tries) and reports elements and children it could not
     read; the pack records each close step and, for Calculator, a 60 s
     timeline of what UI Automation sees. No Calculator or closing fix yet.
-    A seventh run is the one item P14 and P15 wait for, and its evidence
-    decides the next step.
+  - Seventh run: 14 passed, 2 failed. Notepad: the helpers registered, the
+    text box was found and the text set and read back (verified on the PC);
+    the check failed at closing, which reported success, said nothing and
+    left the window open. Calculator: buttons seen after 2.2 s; after "1"
+    its display and buttons were gone from UI Automation and "+" could not
+    be pressed; at the end the window was minimised, for a reason the run
+    does not show.
+  - Step C, approved by the owner: `win_automate.ps1` gets the
+    `-ActionType` parameter its callers always passed, so close, focus,
+    minimise, maximise, move and resize reach their Win32 calls (they did
+    nothing before); what cannot be done is an error. A close is checked
+    strictly: no result, another window, an unreadable window or a check
+    that could not decide is a failed close. The pack looks for Notepad's
+    save question in that window, runs every window action on an empty
+    Notepad, and records Calculator's window state, the program in front and
+    its elements around each press. No Calculator fix. An eighth run is the
+    one item P14 and P15 wait for.
 - **Microphone and speakers** (P12) need a check by hand on the PC. The pack
   lists this as not checked.
 - **The six environment tests** in section 4 did not run here. They need
@@ -338,6 +356,15 @@ run.
   rules for.
 - The risk levels of browser clicks depend partly on button labels ("pay",
   "delete"). That rule can only raise a level.
+- Each window action first finds the window through the older persistent
+  PowerShell session, which on the owner's PC timed out (15 s): a close took
+  10–21 s. To be handled after the current Windows problems.
+- `browserControlAgentTest` failed twice in full-suite runs (once here before
+  Step B, once on GitHub CI for `4b8eff3`, whose re-run passed) with 27–29 of
+  70 checks at once; alone it passed 15 times in a row. A first page that
+  loads late breaks it the same way, but the CI failure's cause is not
+  proven. The fix (wait for the page instead of a fixed 500 ms) waits for the
+  owner's decision.
 
 ## 9. Architecture changes
 
@@ -377,9 +404,10 @@ JARVIS itself uses the built-in Windows PowerShell 5.1.
 
 ## 11. Recommended next steps
 
-1. The owner runs `pnpm verify:windows` a seventh time on the Windows PC and
-   sends back `data\logs\verify-windows.json`. P14 and P15 close on that
-   report.
+1. The owner runs `pnpm verify:windows` an eighth time on the Windows PC and
+   sends back `data\logs\verify-windows.json`. P14 and P15 close on a run
+   in which every check passes; the Calculator evidence decides whether a
+   Calculator fix is proposed.
 2. Limit the approval scope to the approved call's own controller questions,
    so that a later tool which calls the registry cannot reuse an approval
    (5.4).

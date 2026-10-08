@@ -1,5 +1,7 @@
 param(
     [string]$Action,
+    # control-window: focus, close, minimize, maximize or move
+    [string]$ActionType = "",
     [int]$X = 0,
     [int]$Y = 0,
     [int]$FromX = 0,
@@ -166,16 +168,20 @@ switch ($Action.ToLower()) {
         Write-Output "Pressed key $Key with modifiers $Modifiers"
     }
     "control-window" {
-        # Convert hex Hwnd to IntPtr
+        # The window action comes in -ActionType. It was read from -Action,
+        # which is always "control-window" here, so until Step C no window
+        # action ran and nothing was said (the owner's seventh Windows run).
+        # Anything not done is an error now, never a silent success.
+        if ($Hwnd -notmatch '^0x[0-9a-fA-F]{1,16}$') { throw "The window handle is not a hex number: $Hwnd" }
         $ptr = [IntPtr][Convert]::ToInt64($Hwnd, 16)
-        switch ($Action.ToLower()) {
+        switch ($ActionType.ToLower()) {
             "focus" {
                 [void][WinAutomate]::ShowWindow($ptr, 9) # Restore if minimized
                 [void][WinAutomate]::SetForegroundWindow($ptr)
                 Write-Output "Focused window $Hwnd"
             }
             "close" {
-                [void][WinAutomate]::PostMessage($ptr, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+                if (-not [WinAutomate]::PostMessage($ptr, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) { throw "Windows did not take the close message for window $Hwnd." }
                 Write-Output "Closed window $Hwnd"
             }
             "minimize" {
@@ -187,9 +193,10 @@ switch ($Action.ToLower()) {
                 Write-Output "Maximized window $Hwnd"
             }
             "move" {
-                [void][WinAutomate]::MoveWindow($ptr, $X, $Y, $Width, $Height, $true)
+                if (-not [WinAutomate]::MoveWindow($ptr, $X, $Y, $Width, $Height, $true)) { throw "Windows did not move window $Hwnd." }
                 Write-Output "Moved/Resized window $Hwnd to $X, $Y with size $Width x $Height"
             }
+            default { throw "Unknown window action: '$ActionType'." }
         }
     }
 }
