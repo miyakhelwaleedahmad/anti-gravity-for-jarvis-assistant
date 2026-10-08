@@ -196,6 +196,93 @@ if (summaries.tabsSummary) {
   ok('core/voiceSummaries.ts exists', false);
 }
 
+console.log('\n--- 6. A slow speaker that queues, as on the owner\'s PC ---');
+// The owner's log: every spoken full-control request was denied before it
+// could be answered. Their speaker took seconds to start (synthesis), queued
+// messages behind each other, and said speaking_end only when its queue was
+// empty; the gate waited 2 s for speech to start and 15 s for it to end, then
+// gave 10 s. This stand-in behaves like that speaker.
+{
+  const queue: string[] = [];
+  let playing = false;
+  const queueSpeaker = (synthMs: number, playMs: number) => (text: string) => {
+    said.push(text);
+    queue.push(text);
+    if (playing) return;
+    playing = true;
+    void (async () => {
+      await sleep(synthMs);
+      nodeBridge.ttsStartedMs = Date.now();
+      while (queue.length) { queue.shift(); await sleep(playMs); }
+      nodeBridge.ttsEndedMs = Date.now();
+      playing = false;
+    })();
+  };
+  const fastSpeaker = (nodeBridge as any).speakToClients;
+  // Answers once the speaker has said everything queued since `since`.
+  const answerAfterSpeech = async (since: number, words: string) => {
+    for (let i = 0; i < 1_000 && !(nodeBridge.ttsEndedMs > since && nodeBridge.ttsEndedMs >= nodeBridge.ttsStartedMs); i++) await sleep(20);
+    await sleep(350); // past the echo tail
+    return approvalGate.offerVoiceAnswer(words);
+  };
+
+  (nodeBridge as any).speakToClients = queueSpeaker(2_500, 800);
+  let since = Date.now();
+  asked = approvalGate.requestApproval(build(), '', '', '', 'voice', 1);
+  let taken = await answerAfterSpeech(since, 'approve');
+  ok('speech that starts 2.5 s late: the answer window opens after JARVIS has asked, and "approve" approves', taken && (await asked) === true);
+
+  (nodeBridge as any).speakToClients = queueSpeaker(300, 8_000);
+  (nodeBridge as any).speakToClients('Cancelled, sir. You did not approve it, so nothing was done.');
+  since = Date.now();
+  asked = approvalGate.requestApproval(build(), '', '', '', 'voice', 1);
+  taken = await answerAfterSpeech(since, 'approve');
+  ok('a question queued behind 8 s of other speech (16 s in all): still answerable after it is said', taken && (await asked) === true);
+
+  // Asked while JARVIS is already talking: no new speaking_start, and one
+  // speaking_end once the reply and the question are both said.
+  (nodeBridge as any).speakToClients = queueSpeaker(300, 3_000);
+  (nodeBridge as any).speakToClients('Sir, I need to check that first. One moment.');
+  for (let i = 0; i < 100 && !(nodeBridge.ttsStartedMs > nodeBridge.ttsEndedMs); i++) await sleep(20);
+  since = Date.now();
+  asked = approvalGate.requestApproval(build(), '', '', '', 'voice', 1);
+  await sleep(4_000); // the question is still playing: an answer now is not taken
+  const early = approvalGate.offerVoiceAnswer('approve');
+  for (let i = 0; i < 1_000 && !(nodeBridge.ttsEndedMs > since && nodeBridge.ttsEndedMs >= nodeBridge.ttsStartedMs); i++) await sleep(20);
+  await sleep(1_400); // the gate allows 1 s in case the speaker starts again
+  taken = approvalGate.offerVoiceAnswer('approve');
+  ok('asked while JARVIS is already speaking: listens once the whole queue is said, not before', !early && taken && (await asked) === true, `early=${early} taken=${taken}`);
+
+  (nodeBridge as any).speakToClients = fastSpeaker;
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (...a: unknown[]) => { lines.push(a.map(String).join(' ')); log(...a); };
+  try {
+    asked = approvalGate.requestApproval(build());
+    await whenListening();
+    approvalGate.offerVoiceAnswer('cancel');
+    await asked;
+  } finally {
+    console.log = log;
+  }
+  ok('a spoken request gives 20 s to answer once JARVIS has asked (10 s was too short)', lines.some((l) => /within 20 s/.test(l)), lines.find((l) => /within \d+ s/.test(l)) ?? 'no time shown');
+
+  const full = requests.buildApprovalRequest({
+    tool: 'enable_full_control_session', target: '{"durationMinutes":15,"source":"llm"}',
+    risk: 3, reason: 'test', source: 'voice',
+  });
+  const question = requests.spokenApprovalRequest(full);
+  ok('the spoken question does not read out code ({"durationMinutes":15,...})', !/[{}"]/.test(question) && /full control mode/.test(question) && /Say approve or cancel\.$/.test(question), question);
+
+  ok('"approved approved approved" approves (said again when JARVIS seemed not to hear)',
+    requests.classifyVoiceAnswer('approved approved approved') === 'approve' && requests.classifyVoiceAnswer('approve approve') === 'approve'
+    && requests.classifyVoiceAnswer('yes yes') === 'approve');
+  ok('…but not mixed with a refusal or JARVIS\'s own words',
+    requests.classifyVoiceAnswer('approve cancel') !== 'approve'
+    && requests.classifyVoiceAnswer('do you approve this action approved approved approved cancelled') !== 'approve'
+    && requests.classifyVoiceAnswer('approved date') !== 'approve');
+}
+
 server.close();
 try { await memoryManager.flush(); } catch { /* best effort */ }
 process.chdir(os.tmpdir());

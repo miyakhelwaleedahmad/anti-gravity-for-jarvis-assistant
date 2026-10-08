@@ -76,5 +76,43 @@ console.log('\n--- speaking_end clears the estimate ---');
   ok('capped at 2 minutes however much is queued', sm.speakingWatchdogMs() === 120_000, `${sm.speakingWatchdogMs()}ms`);
 }
 
+console.log('\n--- The conversation bus guard (it reopens the mic) allows for queued speech too ---');
+// On the owner's PC this guard was a fixed 12 s: it ended "speaking" while
+// JARVIS was still talking, so the mic reopened and JARVIS heard itself.
+{
+  const { conversationBus } = await import('../core/conversationBus.js');
+  const { nodeBridge } = await import('../bridge/nodeBridge.js');
+  let ends = 0;
+  conversationBus.subscribe('speaking:end', () => { ends++; });
+  const question = 'Sir, I need your approval to turn on full control mode. Say approve, or say deny.';
+
+  // Two replies queued through the bridge, as JARVIS does it.
+  nodeBridge.speakToClients(fallback);
+  nodeBridge.handleSpeakingLifecycleSignal('speaking_start');
+  nodeBridge.speakToClients(question);
+  const wanted = estimateSpeechMs(fallback) + estimateSpeechMs(question) + 3_000;
+  ok('the guard allows for both queued replies', conversationBus.speakingGuardMs === wanted, `${conversationBus.speakingGuardMs}ms, wanted ${wanted}ms`);
+  ok('which is longer than the old fixed 12 s', conversationBus.speakingGuardMs > 12_000);
+  await sleep(700);
+  ok('still speaking after the base time has passed', conversationBus.isSpeaking && ends === 0, `speaking=${conversationBus.isSpeaking}, ends=${ends}`);
+  nodeBridge.handleSpeakingLifecycleSignal('speaking_end');
+  ok('speaking_end ends it at once', !conversationBus.isSpeaking && ends === 1);
+
+  // Something queued while already speaking stretches the running guard.
+  ends = 0;
+  nodeBridge.handleSpeakingLifecycleSignal('speaking_start');
+  nodeBridge.speakToClients('ok');
+  await sleep(700);
+  ok('a reply queued while speaking stretches the guard', conversationBus.isSpeaking && ends === 0, `speaking=${conversationBus.isSpeaking}, ends=${ends}`);
+  nodeBridge.handleSpeakingLifecycleSignal('speaking_end');
+
+  // Nothing queued (TTS crashed): the guard still ends speaking at the base.
+  ends = 0;
+  nodeBridge.handleSpeakingLifecycleSignal('speaking_start');
+  ok('with nothing queued the guard is the base', conversationBus.speakingGuardMs === 300, `${conversationBus.speakingGuardMs}ms`);
+  await sleep(600);
+  ok('and it still ends speaking', !conversationBus.isSpeaking && ends === 1, `speaking=${conversationBus.isSpeaking}, ends=${ends}`);
+}
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

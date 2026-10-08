@@ -13,13 +13,12 @@ const PROTECTED_WINDOWS = ['antigravity', 'code', 'windowsterminal', 'powershell
 
 export class WindowController {
   private async findHwnd(target: string): Promise<string> {
-    const winState = await getWindowsState();
-    
-    // Check if target is already an HWND hex
+    // Check if target is already an HWND hex (no window list needed)
     if (/^0x[0-9a-fA-F]+$/.test(target)) {
       return target;
     }
 
+    const winState = await getWindowsState();
     const lower = target.toLowerCase().trim();
     const match = winState.openApps.find(app => 
       app.windowTitle.toLowerCase().includes(lower) || 

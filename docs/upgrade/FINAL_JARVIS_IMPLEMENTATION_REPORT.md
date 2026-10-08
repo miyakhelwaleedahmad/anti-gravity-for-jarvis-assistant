@@ -33,7 +33,11 @@ could not be run is listed in section 7.
   was typed and read back on the PC. The same run showed that no window
   action had ever done anything (`win_automate.ps1`, since the first upload)
   and that a close nobody could check passed as done; Step C fixes both and
-  records more of what Calculator does. An eighth run is needed.
+  records more of what Calculator does. In the eighth run (16 passed, 1
+  failed) Notepad and every window action worked; Calculator still failed
+  (a fix, Step D, waits for the owner's approval). Step E fixes faults from
+  the owner's JARVIS log, among them spoken full-control approvals that
+  always timed out (section 7).
 - No new dependencies.
 
 ## 2. Phases
@@ -65,7 +69,8 @@ Details and the evidence for each phase: [PHASE_STATUS.md](PHASE_STATUS.md).
 progress, 0 not started. After the owner's second Windows run: 73 done
 (T14.1 Windows observation and T14.3 screenshots, verified on the PC), 5 in
 progress (T14.2, T14.4, T14.5, T14.6 and T15.1), all waiting for a Windows
-run in which Notepad and Calculator pass (the eighth is next).
+run in which Notepad and Calculator pass (Calculator still fails in the
+eighth).
 
 ## 4. Tests run
 
@@ -335,8 +340,21 @@ run.
     that could not decide is a failed close. The pack looks for Notepad's
     save question in that window, runs every window action on an empty
     Notepad, and records Calculator's window state, the program in front and
-    its elements around each press. No Calculator fix. An eighth run is the
-    one item P14 and P15 wait for.
+    its elements around each press. No Calculator fix.
+  - Eighth run: 16 passed, 1 failed. Notepad's text and close, and
+    minimise, focus, maximise and close on an empty Notepad, worked on the
+    PC (move and resize ran; their result is not read back). Calculator
+    showed only its frame for 62 s, never came to the front, and was
+    minimised at the end. Step D (bring it to the front before reading and
+    pressing) waits for the owner's approval.
+  - Step E, from the owner's JARVIS log: spoken approvals waited for the
+    question to be said and gave 20 s (all four full-control requests had
+    timed out before they could be answered); the microphone no longer
+    reopens while JARVIS is still speaking; a replaced or interrupted
+    request stops and stays silent (it had said "difficulty reaching my
+    primary reasoning systems" and broken the next request); a window
+    action reads a fresh window list when the older session is busy. Tested
+    here, not yet on the PC.
 - **Microphone and speakers** (P12) need a check by hand on the PC. The pack
   lists this as not checked.
 - **The six environment tests** in section 4 did not run here. They need
@@ -404,10 +422,9 @@ JARVIS itself uses the built-in Windows PowerShell 5.1.
 
 ## 11. Recommended next steps
 
-1. The owner runs `pnpm verify:windows` an eighth time on the Windows PC and
-   sends back `data\logs\verify-windows.json`. P14 and P15 close on a run
-   in which every check passes; the Calculator evidence decides whether a
-   Calculator fix is proposed.
+1. The owner tries full control by voice with Step E and decides on Step D
+   (Calculator). P14 and P15 close on a `pnpm verify:windows` run in which
+   every check passes.
 2. Limit the approval scope to the approved call's own controller questions,
    so that a later tool which calls the registry cannot reuse an approval
    (5.4).

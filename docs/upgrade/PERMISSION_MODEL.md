@@ -190,9 +190,14 @@ Answer rules:
   a note, and the prompt follows; before, such a line was read as the answer
   (on the owner's PC an Enter pressed while JARVIS loaded denied the request,
   and an early "yes" would have approved one nobody had seen).
-- Spoken: "approve", "confirm" or "yes" (also "yes sir", "I approve"), counted
-  only from the moment JARVIS has finished saying the request — and anything
-  else it was saying before it — until 10 s later. Words heard while JARVIS is
+- Spoken: "approve", "confirm" or "yes" (also "yes sir", "I approve", or the
+  word said more than once, "approved approved"), counted only from the
+  moment JARVIS has finished saying the request — and anything else it was
+  saying before it — until 20 s later. (Step E, from the owner's JARVIS log:
+  the window was 10 s, the gate waited only 2 s for the speaker to start and
+  15 s for it to finish, and the owner's speaker took longer, so every spoken
+  full-control request was denied before it could be answered. The spoken
+  question no longer reads out a JSON target either.) Words heard while JARVIS is
   speaking are its own voice and are ignored, so its "say approve or cancel"
   cannot approve anything. Since P12 this holds for anything JARVIS says while
   the request waits (a reminder, "Voice cannot approve this one"), while it

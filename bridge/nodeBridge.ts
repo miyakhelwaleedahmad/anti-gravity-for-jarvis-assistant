@@ -587,6 +587,8 @@ export class NodeBridge {
     this.lastTtsTimestamp = Date.now();
     // Lets the SPEAKING watchdog allow for everything queued, not a fixed 12 s.
     agentStateMachine.noteSpeechQueued(cleanText);
+    // The same for the guard that reopens the mic (else JARVIS hears itself).
+    conversationBus.noteSpeechQueued();
 
     const msg: BridgeMessage = { type: "tts", payload: { text: cleanText } };
     const ttsClient = this.readyClients.get("tts");

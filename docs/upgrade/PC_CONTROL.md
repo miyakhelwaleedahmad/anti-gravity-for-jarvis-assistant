@@ -121,7 +121,10 @@ files on the clipboard are not, so the pack says to copy them again.
   a check that could not decide is a failed close.
 - Each window action first finds the window through the older persistent
   PowerShell session; on the owner's PC that session timed out (15 s), and a
-  close took 10–21 s. Not changed yet.
+  close took 10–21 s. The session is not changed yet. Since Step E an action
+  it cannot answer within 5 s reads the visible windows with a fresh
+  PowerShell (at most 15 s) instead of failing with "Window matching ... not
+  found"; a window handle given as the target needs no list.
 
 - `win_automate.ps1` and the window poll still list one window per program
   and at most 20 programs; `ui_elements` and the checks above read every

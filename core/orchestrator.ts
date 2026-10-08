@@ -40,6 +40,7 @@ import { SkillLoader } from './skillLoader.js';
 import type { ILLMMessage, ILLMToolCall } from '../bridge/llmTypes.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 // ── Phase 1: New module imports ───────────────────────────────────────────────
 import { goalManager, type Goal } from './goalManager.js';
@@ -65,6 +66,16 @@ const DEFAULT_CONFIG: OrchestratorConfig = {
   streamingEnabled: true,
   voiceEnabled: true,
 };
+
+/**
+ * The request a piece of the agent loop belongs to: its process() call and
+ * that call's own abort signal (aborted by a newer request or an interrupt).
+ * Checks used to read this.currentAbortController, which by then was the
+ * newer request's: on the owner's PC a replaced request went on speaking and
+ * moving the shared state, and the newer request failed with "unexpected
+ * error" (SPEAKING -> OBSERVING).
+ */
+const requestContext = new AsyncLocalStorage<{ callId: string; signal: AbortSignal }>();
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
 
@@ -227,7 +238,8 @@ export class JarvisOrchestrator {
     // before it, this request's own LLM call was cancelled before it started,
     // and a command typed while JARVIS was speaking was silently dropped.
     this.currentAbortController?.abort();
-    this.currentAbortController = new AbortController();
+    const controller = new AbortController();
+    this.currentAbortController = controller;
 
     if (agentStateMachine.is(AgentState.INTERRUPTED)) {
       console.log('[Orchestrator] ⚠️  System interrupted — ignoring new input until reset.');
@@ -286,7 +298,7 @@ export class JarvisOrchestrator {
     const approvals = record.approvals;
     try {
       // Agent loop starts IMMEDIATELY — goal creation runs in background
-      loopOutcome = await this.runAgentLoop(input, source, goalPromise, record);
+      loopOutcome = await requestContext.run({ callId, signal: controller.signal }, () => this.runAgentLoop(input, source, goalPromise, record));
 
       // ── Phase 1: Resolve Goal based on actual outcome ──────────────────────
       // PIPELINE-OPT: Resolve the background goal promise now (it ran concurrently
@@ -317,7 +329,7 @@ export class JarvisOrchestrator {
       const isRateLimit    = errStr.includes('rate-limited') || errStr.includes('429');
       const isTimeout      = errStr.includes('timeout') || errStr.includes('ETIMEDOUT') || errStr.includes('AbortError');
       const isNetworkError = errStr.includes('ECONNREFUSED') || errStr.includes('ENOTFOUND') || errStr.includes('fetch failed');
-      const isAborted      = this.currentAbortController?.signal.aborted;
+      const isAborted      = controller.signal.aborted;
 
       let fallback: string;
       if (isAborted) {
@@ -333,7 +345,8 @@ export class JarvisOrchestrator {
         fallback = 'I encountered an unexpected error, sir. Please try again.';
       }
 
-      if (fallback) this.speak(fallback);
+      // Spoken as this request (it was not aborted), whatever context called process().
+      if (fallback) requestContext.run({ callId, signal: controller.signal }, () => this.speak(fallback));
 
       // ── Phase 1: Fail Goal on unhandled error ──────────────────────────────
       if (goalPromise) { goal = await goalPromise; }
@@ -681,7 +694,8 @@ export class JarvisOrchestrator {
       if (isAborted || isActionRequest || noAnswer) {
         console.warn(`[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "${input}". Goal marked FAILED.`);
         record.failReason = isAborted ? 'Planning interrupted by watchdog/abort' : 'Planning produced no tool execution graph';
-        agentStateMachine.transition(AgentState.IDLE);
+        // A replaced request leaves the state to the newer one.
+        if (!this.isSuperseded()) agentStateMachine.transition(AgentState.IDLE);
         return 'failed';
       }
 
@@ -1256,6 +1270,7 @@ export class JarvisOrchestrator {
 
     } catch (err) {
       const planningAborted =
+        this.isInterrupted() ||
         this.currentAbortController?.signal.aborted ||
         agentStateMachine.currentState === AgentState.IDLE;
       if (planningAborted) {
@@ -2017,8 +2032,15 @@ export class JarvisOrchestrator {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  /** Interrupted, or this request was replaced by a newer one (its own signal aborted). */
   private isInterrupted(): boolean {
-    return agentStateMachine.is(AgentState.INTERRUPTED);
+    return agentStateMachine.is(AgentState.INTERRUPTED) || requestContext.getStore()?.signal.aborted === true;
+  }
+
+  /** A newer process() call has started since this request began. */
+  private isSuperseded(): boolean {
+    const request = requestContext.getStore();
+    return request !== undefined && request.callId !== this.currentProcessCallId;
   }
 
   private shouldUseHeavyContext(input: string): boolean {
@@ -2248,7 +2270,7 @@ export class JarvisOrchestrator {
   public speak(text: string): void {
     if (!text || !text.trim()) return;
     if (this.isInterrupted()) {
-      console.log(`[Orchestrator] 🛑 speak() blocked: system interrupted. Text: "${text.substring(0, 30)}..."`);
+      console.log(`[Orchestrator] 🛑 speak() blocked: interrupted or replaced by a newer request. Text: "${text.substring(0, 30)}..."`);
       return;
     }
 

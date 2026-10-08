@@ -464,7 +464,9 @@ Bounded attempts; honest final message.
 
 ### T12.1 — Spoken approval · Critical · [x] · depends on: T11.4
 Short request (action, target, risk, reversibility); answer window; level 4 not by voice.
-(Mostly built in P3; P12 ends the request on "cancel".)
+(Mostly built in P3; P12 ends the request on "cancel". Step E: on the
+owner's PC every spoken full-control request timed out before it could be
+answered; the gate now waits for the question to be said and gives 20 s.)
 
 ### T12.2 — JARVIS cannot approve itself · Critical · [x] · depends on: T12.1
 A heard answer matching JARVIS's own last speech is rejected.
@@ -524,12 +526,15 @@ Step C the close never ran, so the question never appeared.
 The seventh run showed why nothing closed: `win_automate.ps1` ran no window
 action at all (no `-ActionType`), and the close check passed the empty
 result. Fixed in Step C, with a strict close check and a pack check of every
-window action. Waits for the eighth run.
+window action. Eighth run: close, minimise, focus and maximise checked on the
+PC; move and resize ran (not read back). Calculator still fails (Step D
+waits for approval).
 
 ### T14.6 — `pnpm verify:windows` · Critical · [~] · depends on: T14.1–T14.5
 Runs the real checks on the owner's PC and writes a report to send back.
-Run seven times (5/16, 13/16, 14/16, twice 11/16 with the approval refused
-for `start`, 14/16, 14/16); Steps A, B and C are in; an eighth run decides.
+Run eight times (5/16, 13/16, 14/16, twice 11/16 with the approval refused
+for `start`, 14/16, 14/16, 16/17); Steps A, B and C are in; only Calculator
+fails.
 
 ---
 

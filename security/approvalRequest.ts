@@ -249,8 +249,10 @@ const SPOKEN_REVERSIBILITY: Record<ReversibilityText, string> = {
 /** The spoken version: short, with the target cut to a few words. */
 export function spokenApprovalRequest(r: ApprovalRequest): string {
   // Older callers write the target as "Close app: code"; say only "code".
+  // A target that is a call's arguments ({"durationMinutes":15,...}) is not
+  // read out: on the owner's PC it made the question long and garbled.
   const named = r.target.replace(/^[A-Za-z][A-Za-z ]{1,40}:\s+/, '');
-  const target = named && named !== '—' ? ` on ${oneLine(named, 60)}` : '';
+  const target = named && named !== '—' && !/^\s*[[{]/.test(named) ? ` on ${oneLine(named, 60)}` : '';
   if (r.strong) {
     return `Sir, this is a critical action: ${r.action.toLowerCase()}${target}. ` +
       'It needs the code shown in the console. Voice cannot approve it.';
@@ -280,7 +282,10 @@ export function classifyVoiceAnswer(text: string): 'approve' | 'deny' | 'other' 
     .replace(/^(?:hey )?jarvis /, '')
     .replace(/ (?:sir|please|jarvis)$/, '')
     .replace(/^(?:ok|okay) /, '');
-  if (/^(?:yes )?(?:i )?(?:approve|approved|confirm|confirmed)(?: it| that)?$/.test(clean) || clean === 'yes') {
+  // Said again when JARVIS seemed not to hear ("approved approved approved"):
+  // still only approval words.
+  if (/^(?:yes )?(?:i )?(?:approve|approved|confirm|confirmed)(?: it| that)?(?: (?:approve|approved|confirm|confirmed))*$/.test(clean)
+    || /^yes(?: yes)*$/.test(clean)) {
     return 'approve';
   }
   if (/^(?:no|nope|deny|denied|cancel|cancel it|stop|abort|reject|don't|do not|no don't|no do not)(?: it| that)?$/.test(clean)) {

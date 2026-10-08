@@ -153,9 +153,9 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 
 ## P14 — Windows observation and control
 - [x] Windows observation (GPU, displays, audio, cameras, installed apps, services, ports, clipboard) — verified on the owner's PC (second run)
-- [~] UI Automation, screenshots, dialogs — screenshots and Notepad typing verified on the owner's PC (seventh run); Calculator presses and dialogs wait for the eighth run
-- [~] Checks for window and app actions — window actions never ran (`win_automate.ps1`), fixed with a strict close check (Step C); wait for the eighth run
-- [~] `pnpm verify:windows` — run seven times by the owner (best: 14/16 passed); Steps A, B and C in; eighth run pending
+- [~] UI Automation, screenshots, dialogs — screenshots and Notepad typing verified on the owner's PC (seventh and eighth runs); Calculator presses still fail (Step D waits for approval); dialogs not exercised
+- [~] Checks for window and app actions — window actions never ran (`win_automate.ps1`), fixed with a strict close check (Step C); close, minimise, focus, maximise checked on the PC in the eighth run; move and resize not read back
+- [~] `pnpm verify:windows` — run eight times by the owner (eighth: 16/17 passed, Calculator failed); Steps A, B and C in
 - [x] Unit tests here
 - [!] Verification report from the owner's Windows PC
 - [!] PHASE COMPLETE (blocked on the report)

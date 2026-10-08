@@ -8,8 +8,9 @@
  * display counts:
  *  - typed: APPROVE, YES or CONFIRM while it is displayed (30 s); for level 4
  *    only `APPROVE <code>`;
- *  - spoken: "approve", "confirm" or "yes" within 10 s after JARVIS has
- *    finished asking; never for level 4.
+ *  - spoken: "approve", "confirm" or "yes" within 20 s after JARVIS has
+ *    finished asking (however long its speaker takes to say the question);
+ *    never for level 4.
  * Anything else, silence, or no way to answer denies. One request is on
  * display at a time; each decision is recorded on the task step and in the
  * security audit log.
@@ -34,15 +35,37 @@ import { currentTaskNode } from '../core/taskContext.js';
 import { getRequestSource, getRequestText } from '../core/traceContext.js';
 
 const DEFAULT_TIMEOUT_SECONDS = 30;
-const VOICE_TIMEOUT_SECONDS = 10;
+/**
+ * The spoken answer window, from when JARVIS has finished asking. 10 s was
+ * too short on the owner's PC: the microphone takes a moment to come back
+ * after JARVIS speaks, and speech recognition a few seconds more.
+ */
+const VOICE_TIMEOUT_SECONDS = 20;
 const DEFAULT_REASON = 'This action requires explicit human confirmation.';
 /** Spoken answers are prefixed so that they are never read as typed ones. */
 const VOICE_PREFIX = 'VOICE:';
 /** JARVIS's own voice can still reach the microphone just after it stops. */
 const ECHO_TAIL_MS = 300;
-/** If nothing starts saying the request by then, no speaker is connected. */
-const SPEECH_START_WAIT_MS = 2_000;
-const SPEECH_MAX_MS = 15_000;
+/**
+ * If nothing has started saying the request by then, no speaker is connected.
+ * The owner's speaker took longer than the old 2 s just to synthesise a
+ * sentence, so the answer window ran out before the question was heard.
+ */
+const SPEECH_START_WAIT_MS = 10_000;
+/**
+ * The longest JARVIS waits for its speaker to finish asking. The question can
+ * be queued behind other replies (speaking_end comes when the whole queue is
+ * done): on the owner's PC that took longer than the old 15 s, and the window
+ * closed while JARVIS was still asking.
+ */
+const SPEECH_MAX_MS = 90_000;
+/**
+ * Asked while JARVIS was already speaking, the request waits in the speaker's
+ * queue and the speaker says speaking_end once, when all of it is said. If it
+ * starts speaking again within this time, the request was said separately and
+ * its own end is waited for.
+ */
+const QUEUE_END_GRACE_MS = 1_000;
 const HISTORY_LIMIT = 50;
 /**
  * Lines already waiting in the console when the gate starts reading it were
@@ -363,18 +386,23 @@ export class ApprovalGate {
     typed?.promise.then((line) => { if (line !== null) pending.settle(line); });
 
     const askedAt = Date.now();
+    const queuedBehind = nodeBridge.ttsStartedMs > nodeBridge.ttsEndedMs; // already speaking
     nodeBridge.speakToClients(spokenApprovalRequest(request), { allowRepeat: true });
 
     // Wait until JARVIS has finished saying it, or nothing is saying it.
     // Never start listening while it is saying anything at all.
     while (!pending.isSettled()) {
-      const elapsed = Date.now() - askedAt;
+      const now = Date.now();
+      const elapsed = now - askedAt;
       const speakingNow = nodeBridge.ttsStartedMs > nodeBridge.ttsEndedMs;
-      const started = nodeBridge.ttsStartedMs > askedAt;
+      const started = nodeBridge.ttsStartedMs >= askedAt; // a start in the same ms counts
       if (started && !speakingNow) break;
+      // Queued behind other speech: one speaking_end for all of it.
+      if (queuedBehind && !started && !speakingNow && nodeBridge.ttsEndedMs > askedAt
+        && now - nodeBridge.ttsEndedMs >= QUEUE_END_GRACE_MS) break;
       // Nothing has started saying it since JARVIS last went quiet: no speaker.
-      const quietFor = Date.now() - Math.max(askedAt, nodeBridge.ttsEndedMs);
-      if (!started && !speakingNow && quietFor >= SPEECH_START_WAIT_MS) break;
+      const quietFor = now - Math.max(askedAt, nodeBridge.ttsEndedMs);
+      if (!queuedBehind && !started && !speakingNow && quietFor >= SPEECH_START_WAIT_MS) break;
       if (elapsed >= SPEECH_MAX_MS) break;
       await sleep(100);
     }

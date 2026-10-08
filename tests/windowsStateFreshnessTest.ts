@@ -16,6 +16,11 @@
  *     a current reading, or get none and fail; only background polls reuse
  *     the last result.
  *
+ *  3. On the owner's PC the session was busy for 10-30 s at a time, so
+ *     "maximize the notepad" failed with "Window matching notepad not found"
+ *     while Notepad was open. An action the session cannot answer now reads
+ *     the windows with a fresh PowerShell (a stand-in here).
+ *
  * A stand-in "PowerShell" (a Node script) replaces powershell.exe, so this runs
  * anywhere. It reports whatever window the test puts "on screen".
  */
@@ -23,7 +28,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { PersistentPSSession, getWindowsState, normalizeHwnd, psSession } from '../perception/windowsState.js';
+import { PersistentPSSession, freshWindowList, getWindowsState, normalizeHwnd, psSession } from '../perception/windowsState.js';
+import type { WindowInfo } from '../perception/windowsProbe.js';
 
 let passed = 0;
 let failed = 0;
@@ -32,6 +38,11 @@ function ok(label: string, condition: boolean, detail = ''): void {
   else { console.error(`  FAIL: ${label}${detail ? ` (${detail})` : ''}`); failed++; }
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// The fresh PowerShell reading, stood in for; until section 3 it has no answer.
+let freshReads = 0;
+let freshAnswer: () => WindowInfo[] = () => { throw new Error('no fresh reading in this part of the test'); };
+freshWindowList.read = async () => { freshReads++; return freshAnswer(); };
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-winstate-'));
 const screen = path.join(dir, 'screen.json');
@@ -110,6 +121,24 @@ ok('and gets no window rather than an old one', !stuck.activeWindow.hwnd && stuc
   JSON.stringify(stuck.activeWindow));
 const background = await getWindowsState({ allowStale: true }, session);
 ok('background polls still get the last good state', background.activeWindow.title === 'Notepad', background.activeWindow.title);
+
+console.log('\n--- PowerShell busy: an action reads the windows with a fresh PowerShell ---');
+freshReads = 0;
+freshAnswer = () => [{ pid: 7, process: 'notepad', title: 'Untitled - Notepad', hwnd: '0x2B2C' }];
+const busy = await getWindowsState({ waitMs: 300 }, session);
+ok('an action gets the windows open now', busy.openApps.length === 1 && busy.openApps[0].name === 'notepad'
+  && busy.openApps[0].windowTitle === 'Untitled - Notepad' && busy.openApps[0].hwnd === '0x2B2C', JSON.stringify(busy.openApps));
+ok('…with no active window (that reading is the session\'s, and it is busy)', busy.activeWindow.title === '' && !busy.activeWindow.hwnd);
+const poll2 = await getWindowsState({ allowStale: true }, session);
+ok('background polls do not start a fresh PowerShell', freshReads === 1 && poll2.activeWindow.title === 'Notepad', `fresh reads: ${freshReads}`);
+freshAnswer = () => { throw new Error('PowerShell did not answer within 15 s.'); };
+const none = await getWindowsState({ waitMs: 300 }, session);
+ok('if the fresh reading fails too, the action gets no window (never an old list)', none.openApps.length === 0 && none.activeWindow.title === '');
+
+const { windowController } = await import('../control/windowController.js');
+freshReads = 0;
+const viaHandle = await (windowController as any).findHwnd('0x2B2C');
+ok('a window handle is used as given, without reading any window list', viaHandle === '0x2B2C' && freshReads === 0, `fresh reads: ${freshReads}`);
 
 session.stop();
 psSession.stop();

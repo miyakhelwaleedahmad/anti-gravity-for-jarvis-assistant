@@ -23,6 +23,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { parseWindows, runPsFile, type WindowInfo } from './windowsProbe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -347,6 +348,38 @@ export interface WindowsStateOptions {
 }
 
 const ACTION_WAIT_MS = 5_000;
+/** How long an action waits for a window list from a fresh PowerShell. */
+const FRESH_LIST_TIMEOUT_MS = 15_000;
+
+/**
+ * The visible windows, read by a fresh PowerShell (the windows reading of
+ * pnpm verify:windows), for an action the persistent session cannot answer.
+ * On the owner's PC the session was busy for 10-30 s at a time, and "maximize
+ * the notepad" failed with "Window matching notepad not found" while Notepad
+ * was open. Tests stand in for it.
+ */
+export const freshWindowList = {
+  read: async (): Promise<WindowInfo[]> => {
+    const r = await runPsFile('probe', { JARVIS_PROBE_SECTION: 'windows' }, FRESH_LIST_TIMEOUT_MS);
+    if (!r.ok) throw new Error(String(r.error ?? 'no reason given').slice(0, 160));
+    return parseWindows(r);
+  },
+};
+
+/** A current list for an action, without the session. No active window: that reading is the session's. */
+async function freshStateForAction(reason: string): Promise<WindowsStateResult> {
+  try {
+    const windows = await freshWindowList.read();
+    console.warn(`[windowsState] ${reason} — read ${windows.length} window(s) with a fresh PowerShell instead.`);
+    return {
+      activeWindow: { ...EMPTY_RESULT.activeWindow },
+      openApps: windows.map((w) => ({ name: w.process, pid: w.pid, windowTitle: w.title, hwnd: w.hwnd })),
+    };
+  } catch (err) {
+    logPollFailure(`no current window list for an action: ${reason}; a fresh one failed too: ${err instanceof Error ? err.message : String(err)}`);
+    return EMPTY_RESULT;
+  }
+}
 
 export async function getWindowsState(
   options: WindowsStateOptions = {},
@@ -407,13 +440,13 @@ export async function getWindowsState(
 
   } catch (err: any) {
     if (err instanceof PSBusyError) {
-      // A background poll keeps the last state. An action gets nothing, so it
-      // fails ("no window found") instead of acting on a window list that may
-      // no longer be true.
+      // A background poll keeps the last state. An action never acts on a
+      // window list that may no longer be true: it reads a fresh one, or
+      // gets nothing and fails ("no window found").
       if (options.allowStale) return lastGood;
-      logPollFailure(`no current window list for an action: ${err.message}`);
-      return EMPTY_RESULT;
+      return freshStateForAction(err.message);
     }
+    if (!options.allowStale) return freshStateForAction(err.message);
     logPollFailure(err.message);
     return EMPTY_RESULT;
   }

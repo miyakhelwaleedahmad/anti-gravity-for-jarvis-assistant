@@ -1028,9 +1028,81 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
     `dispatchAuthzTest` 32, all passed. `npm test`: 111 files, 105 passed · 0
     failed · 6 environment. `npm test -- --ci`: 103 passed · 0 failed · 8
     skipped. Not tested on Windows yet: whether Windows takes each action.
-- **Next:** the owner runs `pnpm verify:windows` an eighth time and sends
-  `data\logs\verify-windows.json`. No Calculator fix before the owner has
-  read its evidence and approved one.
+- **Eighth Windows run** (same PC, 2026-10-08, after `git pull` to
+  `cd4f93b`; report sent by the owner): 16 passed, 1 failed (Calculator).
+  - Notepad: text typed and read back, and the window closed (checked by its
+    handle). The "Don't save" path was not exercised: the text is set
+    without marking the file as changed, so Notepad asked nothing.
+  - Window actions on an empty Notepad: minimise, focus, maximise and close
+    ran and were checked; move and resize ran but their position and size
+    are not read back. After the move the window was reported minimised;
+    why is not shown.
+  - Calculator: only the frame's 7 elements were seen for 62 s, it was never
+    in front, and it was minimised at the end; the close worked. What
+    minimises it is not determined. A fix (bring it to the front before
+    reading and pressing) is proposed as Step D and waits for the owner's
+    approval.
+- **Step E: fixes from the owner's JARVIS log** (2026-10-08; the owner asked
+  for the full-control problem and any other faults in the log to be fixed):
+  - Full control was never turned on: all four requests timed out ("Approval
+    timeout - action DENIED by default"); none was cancelled by an answer.
+    The gate gave 10 s to answer, waited at most 2 s for the speaker to start
+    and 15 s for it to finish; on the owner's PC the speaker took longer, and
+    the question was queued behind other speech, so the window had closed
+    (twice at 12 s, twice at 25 s) before or just after the question was
+    heard. "approved approved approved", said while JARVIS was still
+    talking, was not heard (the microphone is off while it speaks). The
+    spoken question also read out the JSON target.
+    `security/approvalGate.ts`: 20 s to answer; up to 10 s for the speaker to
+    start and 90 s for it to finish; a question asked while JARVIS is
+    already speaking is taken as said at the queue's speaking_end (1 s
+    allowed in case speech starts again). `security/approvalRequest.ts`: no
+    JSON target in the spoken question; an approval word said more than once
+    approves (never mixed with a refusal or JARVIS's own words). What may be
+    approved, and how, is unchanged.
+  - The microphone reopened while JARVIS was still speaking (it heard
+    itself): `core/conversationBus.ts` ended "speaking" after a fixed 12 s.
+    It now uses the state machine's allowance (12 s by default, longer for
+    the speech queued) and is stretched when more speech is queued
+    (`bridge/nodeBridge.ts`).
+  - A replaced or interrupted request went on: "full control mode", replaced
+    by "enable full control mode", said "I'm experiencing difficulty reaching
+    my primary reasoning systems" and moved the state to IDLE under the new
+    request; "maximize the notification", interrupted by "maximize the
+    notepad", spoke its result and left the state at SPEAKING, and the new
+    request failed ("SPEAKING -> OBSERVING", "I encountered an unexpected
+    error"). Its checks read the newest request's abort signal.
+    `core/orchestrator.ts`: each request keeps its own signal
+    (AsyncLocalStorage); a request whose signal is aborted stops, says
+    nothing and leaves the state alone.
+  - "Window matching notepad not found" with Notepad open: the older
+    PowerShell session was busy (10-30 s), and an action that cannot get a
+    current list from it got none. `perception/windowsState.ts`: such an
+    action now reads the visible windows with a fresh PowerShell (the
+    `windows` reading of `pnpm verify:windows`, at most 15 s), and still
+    never uses an old list; background polls are unchanged.
+    `control/windowController.ts`: a window handle is used as given, without
+    a window list. The session itself is not changed (Step C's rule).
+  - Not fixed, reported to the owner: speech synthesis timing out in
+    `voice/tts.py` (messages skipped), the startup warning while the memory
+    model loads, misheard words ("notification" for Notepad), letters typed
+    early joining a typed answer, and `SERPER_API_KEY` missing from the
+    owner's `.env` (the owner's to add).
+  - Tests: `voiceApprovalTest` 27 (7 new; 6 fail on the code before Step E),
+    `speakingWatchdogQueueTest` 16 (7 new; 4 fail before), new
+    `supersededRequestTest` 10 (7 fail before, reproducing the log's
+    "difficulty reaching" and "SPEAKING -> OBSERVING"),
+    `windowsStateFreshnessTest` 17 (5 new; the handle check fails with the
+    old window controller, and the old state module has no fallback to
+    test), `approvalGateStructuredTest` 60, `ttsSpeakingLifecycleTest` 8,
+    `bargeInProcessingTest` 4, `taskFailureHonestyTest` 42,
+    `errorRecoveryTest` 15, `closeAppRouteTest` 21,
+    `noGroqForLocalCommandsTest` 12, all passed; typecheck clean. `npm
+    test`: 112 files, 106 passed · 0 failed · 6 environment. `npm test --
+    --ci`: 104 passed · 0 failed · 8 skipped. Not tested on Windows yet.
+- **Next:** the owner pulls, starts JARVIS, says "enable full control mode",
+  waits for the question to finish and says "approve" (or types `yes`), and
+  sends the output. No Calculator fix before the owner approves Step D.
 
 ## P15 — Final verification — [!] BLOCKED (waiting for the owner's Windows report, as P14)
 
