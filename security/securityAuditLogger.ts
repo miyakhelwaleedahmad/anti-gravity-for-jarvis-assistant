@@ -51,6 +51,21 @@ export interface SecurityEvent {
   reversibility?: string;
   decidedBy?: string;
   partOf?: string;
+  /** The agent, task and root task that asked, for approvals asked by agents. */
+  agent?: string;
+  agentId?: string;
+  taskId?: string;
+  rootTaskId?: string;
+}
+
+/** The asking agent's fields of an approval request, when an agent asked. */
+function askedBy(request: ApprovalRequest): Pick<SecurityEvent, 'agent' | 'agentId' | 'taskId' | 'rootTaskId'> {
+  return {
+    ...(request.agent ? { agent: request.agent } : {}),
+    ...(request.agentId ? { agentId: request.agentId } : {}),
+    ...(request.taskId ? { taskId: request.taskId } : {}),
+    ...(request.rootTaskId ? { rootTaskId: request.rootTaskId } : {}),
+  };
 }
 
 function sanitize(value: string | undefined): string {
@@ -117,6 +132,7 @@ class SecurityAuditLogger {
       riskLevel: `LEVEL_${request.risk}`,
       reversibility: request.reversibility,
       source: request.source,
+      ...askedBy(request),
     });
   }
 
@@ -132,6 +148,7 @@ class SecurityAuditLogger {
       approved: decision.approved,
       decidedBy: decision.by,
       ...(decision.partOf ? { partOf: decision.partOf } : {}),
+      ...askedBy(request),
     });
   }
 

@@ -44,7 +44,7 @@ import {
 } from './agentContextApi.js';
 import type {
   AgentEvent, AgentEventType, AgentMessage, AgentOutcome, AgentRecord, AgentTaskRecord, ChildResult,
-  ChildTaskSpec, Claim, Conflict, CreateChildAgentRequest, Finding, LifecycleState, PermissionScope,
+  ChildTaskSpec, Claim, Conflict, CreateChildAgentRequest, Finding, LifecycleState, MessageOptions, PermissionScope,
   ResourceBudget, ResourceUsage, Source, WorkspaceArtifact,
 } from './types.js';
 import { isTerminal } from './types.js';
@@ -163,6 +163,8 @@ export class AgentManager {
   private childHandles = new Map<string, ChildHandle[]>();
   private requests = new Map<string, CreateChildAgentRequest>();
   private inboxes = new Map<string, AgentMessage[]>();
+  /** Ids of delivered messages (most recent 5,000): a message is handled once. */
+  private deliveredIds = new Set<string>();
   private agentCounter = 0;
   private tools: ToolExecutor = toolRegistryV2;
   private archiveEnabled = process.env['JARVIS_AGENT_ARCHIVE'] !== '0';
@@ -573,6 +575,10 @@ export class AgentManager {
     });
     this.setStatus(task, 'VALIDATING');
     this.emitTask('TASK_ASSIGNED', task, { role: def.role, agentName: agent.name });
+    this.deliver({
+      id: randomUUID(), from: parentAgentId, to: agent.agentId, rootTaskId, taskId: task.taskId, parentTaskId,
+      kind: 'assignment', text: task.description.slice(0, 500), data: { role: def.role, reason: req.reason ?? '' }, at: Date.now(),
+    });
     this.runs.get(rootTaskId)?.workspace.addDecision({
       at: now, agentId: parentAgentId, taskId: parentTaskId, decision: 'SPAWN',
       reasons: [req.reason ?? 'delegated'], childRole: def.role, childAgentId: agent.agentId, childTaskId: task.taskId,
@@ -636,6 +642,12 @@ export class AgentManager {
       this.heldSlots.set(task.taskId, release);
       this.setStatus(task, 'RUNNING');
       this.emitTask('TASK_STARTED', task, { role: def.role, name: agent.name });
+      if (task.parentAgentId) {
+        this.deliver({
+          id: randomUUID(), from: agent.agentId, to: task.parentAgentId, rootTaskId: task.rootTaskId, taskId: task.taskId,
+          ...(task.parentTaskId ? { parentTaskId: task.parentTaskId } : {}), kind: 'acceptance', text: `${agent.name} started`, status: 'ok', at: Date.now(),
+        });
+      }
       const behavior = this.registry.behaviorFor(def.role);
       const ctx = new TaskContext(this, task, agent, run, dependencyResults);
       const work = runAsAgent({
@@ -692,8 +704,10 @@ export class AgentManager {
     if (task.parentAgentId) {
       this.deliver({
         id: randomUUID(), from: agent.agentId, to: task.parentAgentId, rootTaskId: task.rootTaskId, taskId: task.taskId,
-        kind: status === 'COMPLETED' ? 'completion' : status === 'CANCELLED' ? 'cancellation' : 'error',
-        text: result.summary.slice(0, 500), data: { status }, at: Date.now(),
+        ...(task.parentTaskId ? { parentTaskId: task.parentTaskId } : {}),
+        kind: status === 'COMPLETED' ? 'completion' : status === 'CANCELLED' ? 'cancellation' : 'failure',
+        text: result.summary.slice(0, 500), data: { status },
+        status: status === 'COMPLETED' ? 'ok' : 'failed', ...(error ? { error } : {}), at: Date.now(),
       });
     }
     return result;
@@ -843,7 +857,21 @@ export class AgentManager {
     return out;
   }
 
-  deliver(message: AgentMessage): void {
+  /** True when `agentId` is a temporary agent whose task has ended: messages to it would be stale. */
+  hasEnded(rootTaskId: string, agentId: string): boolean {
+    const a = this.agentOf(rootTaskId, agentId);
+    return !!a && !a.permanent && a.endedAt !== undefined;
+  }
+
+  /**
+   * Puts a message in the recipient's inbox. False (and nothing happens) for a
+   * message id already delivered, or a recipient whose task has ended.
+   */
+  deliver(message: AgentMessage): boolean {
+    if (this.deliveredIds.has(message.id)) return false;
+    if (this.hasEnded(message.rootTaskId, message.to)) return false;
+    this.deliveredIds.add(message.id);
+    if (this.deliveredIds.size > 5_000) this.deliveredIds.delete(this.deliveredIds.values().next().value as string);
     const box = this.inboxes.get(message.to) ?? [];
     box.push(message);
     if (box.length > 200) box.splice(0, box.length - 200);
@@ -851,7 +879,9 @@ export class AgentManager {
     this.runs.get(message.rootTaskId)?.workspace.addMessage(message);
     this.events.emit('AGENT_MESSAGE', message.rootTaskId, { taskId: message.taskId, agentId: message.from }, {
       messageId: message.id, from: message.from, to: message.to, kind: message.kind, text: message.text.slice(0, 300),
+      ...(message.correlationId ? { correlationId: message.correlationId } : {}),
     });
+    return true;
   }
 
   inbox(agentId: string): AgentMessage[] {
@@ -1243,20 +1273,33 @@ class TaskContext implements AgentContext {
     this.manager.emitTask('PROGRESS_UPDATE', this.task, { note, ...(percent !== undefined ? { percent } : {}) });
   }
 
-  sendMessage(to: string, kind: AgentMessage['kind'], text: string, data?: Record<string, unknown>): AgentMessage {
+  sendMessage(to: string, kind: AgentMessage['kind'], text: string, data?: Record<string, unknown>, opts: MessageOptions = {}): AgentMessage {
     const allowed = this.manager.messageTargets(this.task);
     if (!allowed.has(to)) {
       const reason = `${this.agent.agentId} may message only its parent, children and siblings, not ${to}`;
       this.manager.emitTask('PERMISSION_DENIED', this.task, { code: 'MESSAGE_NOT_ALLOWED', reason, to });
       throw new Error(reason);
     }
+    if (this.manager.hasEnded(this.task.rootTaskId, to)) {
+      throw new Error(`${to} has finished its task; a message to it would never be read`);
+    }
     const message: AgentMessage = {
       id: randomUUID(), from: this.agent.agentId, to, rootTaskId: this.task.rootTaskId, taskId: this.task.taskId,
-      kind, text, ...(data ? { data } : {}), at: Date.now(),
+      ...(this.task.parentTaskId ? { parentTaskId: this.task.parentTaskId } : {}),
+      kind, text, ...(data ? { data } : {}),
+      ...(opts.correlationId ? { correlationId: opts.correlationId } : {}),
+      ...(opts.status ? { status: opts.status } : {}),
+      ...(opts.error ? { error: opts.error } : {}),
+      at: Date.now(),
     };
     this.manager.deliver(message);
     this.manager.tasks.touch(this.task.taskId);
     return message;
+  }
+
+  requestDelegation(childRole: string, description: string, reason: string): AgentMessage {
+    if (!this.task.parentAgentId) throw new Error('JARVIS has no parent to ask');
+    return this.sendMessage(this.task.parentAgentId, 'delegation_request', description, { childRole, reason });
   }
 
   inbox(): AgentMessage[] {

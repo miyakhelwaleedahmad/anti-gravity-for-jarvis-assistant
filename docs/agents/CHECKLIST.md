@@ -22,21 +22,23 @@ Legend: `[x]` done and tested · `[~]` existed before 7A, re-verified · `[ ]` n
 - [x] Gate: typecheck clean; suite 109 passed / 0 failed / 9 skipped
 
 ## Phase 2: communication and bounded hierarchy
-- [ ] Message kinds: assignment, acceptance, delegation_request, failure, verification
-- [ ] Message fields: parentTaskId, correlationId, status, error
-- [ ] Duplicate message ids dropped; messages to ended agents refused
-- [ ] Versioned artifacts
-- [ ] Approval request carries agentId, taskId, rootTaskId
-- [ ] Messages cannot grant tools or answer approvals (test)
-- [~] Parent/child/sibling-only messaging; nesting, child and active limits
-- [ ] Gate: typecheck + full suite green
+- [x] Message kinds: assignment, acceptance, delegation_request, failure, verification (`sevenAgentTest` §2)
+- [x] Message fields: parentTaskId, correlationId, status, error; request → reply matched by correlationId
+- [x] Duplicate message ids dropped; messages to ended agents refused
+- [x] Versioned artifacts (version, previousArtifactId; older versions kept)
+- [x] Approval request carries agentId, taskId, rootTaskId; written to the security audit log
+- [x] Two agents asking at once: each request names its own agent and task; a denial reaches only that call
+- [x] Messages cannot grant tools or raise risk (a message asking for run_command and risk 4 changed nothing)
+- [x] A worker that may not spawn asks its parent with delegation_request; the parent decides
+- [~] Parent/child/sibling-only messaging; nesting, child and active limits (`agentRuntimeTest`)
+- [x] Gate: typecheck clean; suite 109 passed / 0 failed / 9 skipped
 
 ## Phase 3: parallel execution and aggregation
-- [~] Independent tasks run concurrently (bounded)
-- [~] Dependent tasks wait; cycles refused
-- [~] Timeouts, stalls, retries, cancellation cascade, budgets
-- [ ] Data agent fans out independent analyses and aggregates them
-- [ ] Gate: typecheck + full suite green
+- [~] Independent tasks run concurrently (bounded): `agentRuntimeTest` §1–2
+- [~] Dependent tasks wait; cycles refused: `agentRuntimeTest` §3
+- [~] Cancellation cascade, retries, parent failure, timeouts, stalls, budgets: `agentRuntimeTest` §7–11
+- [x] Data agent fans out independent analyses (two workers ran at once) and aggregates them in order
+- [x] Gate: same run as Phase 2
 
 ## Phase 4: the seven specialists
 - [ ] Research: unchanged recursive flow

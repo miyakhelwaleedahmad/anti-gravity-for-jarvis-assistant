@@ -12,7 +12,7 @@ import type { AgentLimits } from './config.js';
 import type { AgentEventFilter } from './events.js';
 import type {
   AgentEvent, AgentMessage, AgentRecord, AgentTaskRecord, ChildResult, Claim, Conflict,
-  CreateChildAgentRequest, Finding, Source, WorkspaceArtifact,
+  CreateChildAgentRequest, Finding, MessageOptions, Source, WorkspaceArtifact,
 } from './types.js';
 import type { SharedWorkspace } from './workspace.js';
 import type { SpawnDecision, SpawnDecisionInput } from './spawnPolicy.js';
@@ -88,7 +88,9 @@ export interface AgentContext {
   addArtifact(input: { name: string; description?: string; parts: WorkspaceArtifact['parts'] }): WorkspaceArtifact;
   progress(note: string, percent?: number): void;
   /** To the parent, a child, or a sibling only. */
-  sendMessage(to: string, kind: AgentMessage['kind'], text: string, data?: Record<string, unknown>): AgentMessage;
+  sendMessage(to: string, kind: AgentMessage['kind'], text: string, data?: Record<string, unknown>, opts?: MessageOptions): AgentMessage;
+  /** Asks the parent to create a child this agent may not create itself (it decides; nothing is granted by asking). */
+  requestDelegation(childRole: string, description: string, reason: string): AgentMessage;
   inbox(): AgentMessage[];
   onMessage(handler: (m: AgentMessage) => void): () => void;
   /**

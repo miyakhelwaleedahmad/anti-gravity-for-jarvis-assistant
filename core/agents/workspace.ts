@@ -309,17 +309,45 @@ export class SharedWorkspace {
 
   // ── Artifacts ──────────────────────────────────────────────────────────────
 
-  addArtifact(input: Omit<WorkspaceArtifact, 'artifactId' | 'createdAt'>): WorkspaceArtifact {
-    const artifact: WorkspaceArtifact = { artifactId: `art-${randomUUID().slice(0, 8)}`, createdAt: nowMs(), ...input };
+  /**
+   * Adds an artifact. A second artifact with the same name from the same task
+   * is a new version: version + 1, linked to the one it replaces, which stays.
+   */
+  addArtifact(input: Omit<WorkspaceArtifact, 'artifactId' | 'createdAt' | 'version' | 'previousArtifactId'>): WorkspaceArtifact {
+    const previous = this.latestArtifact(input.name, input.taskId);
+    const artifact: WorkspaceArtifact = {
+      artifactId: `art-${randomUUID().slice(0, 8)}`, createdAt: nowMs(), ...input,
+      version: (previous?.version ?? 0) + 1,
+      ...(previous ? { previousArtifactId: previous.artifactId } : {}),
+    };
     this.artifactsById.set(artifact.artifactId, artifact);
     this.emit('ARTIFACT_CREATED', { taskId: artifact.taskId, agentId: artifact.producedBy }, {
-      artifactId: artifact.artifactId, name: artifact.name,
+      artifactId: artifact.artifactId, name: artifact.name, version: artifact.version,
     });
     return artifact;
   }
 
   artifacts(): WorkspaceArtifact[] {
     return [...this.artifactsById.values()];
+  }
+
+  getArtifact(id: string): WorkspaceArtifact | undefined {
+    return this.artifactsById.get(id);
+  }
+
+  /** The newest version of an artifact name (from one task, or from any). */
+  latestArtifact(name: string, taskId?: string): WorkspaceArtifact | undefined {
+    let best: WorkspaceArtifact | undefined;
+    for (const a of this.artifactsById.values()) {
+      if (a.name !== name || (taskId && a.taskId !== taskId)) continue;
+      if (!best || (a.version ?? 1) > (best.version ?? 1)) best = a;
+    }
+    return best;
+  }
+
+  /** Every version of an artifact name from one task, oldest first. */
+  artifactVersions(name: string, taskId: string): WorkspaceArtifact[] {
+    return [...this.artifactsById.values()].filter((a) => a.name === name && a.taskId === taskId).sort((x, y) => (x.version ?? 1) - (y.version ?? 1));
   }
 
   // ── Results ────────────────────────────────────────────────────────────────

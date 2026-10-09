@@ -594,7 +594,7 @@ console.log('\n--- 14. Real-time sharing and controlled messages between agents 
     const listener = await ctx.spawn({ childRole: 'test_worker', childTask: { description: 'listen for facts', input: { scenario: 'listener', sibling: finder.agentId } } });
     const [, rl] = await ctx.wait([finder, listener]);
     const inbox = ctx.inbox();
-    return { summary: 'ok', confidence: 1, data: { cousin: rl.data?.['cousin'], finderInbox: m.inbox(finder.agentId).map((x) => x.text), kinds: inbox.map((x) => x.kind) } };
+    return { summary: 'ok', confidence: 1, data: { cousin: rl.data?.['cousin'], finderInbox: m.inbox(finder.agentId).filter((x) => x.kind !== 'assignment').map((x) => x.text), kinds: inbox.map((x) => x.kind) } };
   });
   const r = await (await m.startRootTask({ request: 'share', specialistRole: 'test_specialist', task: { description: 'share', input: { scenario: 'share' } } })).result;
   const d = r.specialist.data ?? {};

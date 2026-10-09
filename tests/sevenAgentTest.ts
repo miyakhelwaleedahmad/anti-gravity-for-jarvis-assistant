@@ -7,6 +7,9 @@
  *            registered again or the manager is recreated; data_tools is
  *            exact and runs no code; the Data agent answers calculations
  *            directly and splits independent parts across parallel workers.
+ *   Phase 2  assignment/acceptance/request-reply/failure/delegation messages,
+ *            duplicate and stale messages dropped, messages cannot grant
+ *            tools, versioned artifacts, approvals bound to agent and task.
  *
  * The model is scripted (or down) and nothing reaches the network.
  */
@@ -160,6 +163,151 @@ console.log('\n--- Phase 1: the Data agent ---');
     { taskId: 't2', agentId: 'w2', role: 'x', status: 'FAILED', summary: '', findings: [], sources: [], artifacts: [], confidence: 0, limitations: ['boom'], error: { code: 'AGENT_ERROR', message: 'bad input' }, usage: { llmCalls: 0, toolCalls: 0, tokens: 0 }, durationMs: 1 },
   ], ['p1', 'p2']);
   ok('aggregation keeps a failed part visible and lowers confidence', /2\. p2: not done \(failed: bad input\)/.test(agg.summary) && agg.confidence === 0.45 && agg.limitations!.includes('w2 failed'), `${agg.summary} ${agg.confidence}`);
+}
+
+console.log('\n--- Phase 2: messages, artifacts, approvals ---');
+{
+  const { approvalGate } = await import('../security/approvalGate.js');
+  type Ctx = import('../core/agents/agentContextApi.js').AgentContext;
+  type Msg = import('../core/agents/types.js').AgentMessage;
+  const waitFor = async <T>(fn: () => T | undefined, ms = 3_000): Promise<T | undefined> => {
+    const until = Date.now() + ms;
+    for (;;) { const v = fn(); if (v !== undefined || Date.now() > until) return v; await new Promise((r) => setTimeout(r, 10)); }
+  };
+  const parentInbox: Msg[] = [];
+  const allMessages: { kind: string; from: string; to: string; parentTaskId?: string }[] = [];
+  const offAll = agentEvents.subscribe({ types: ['AGENT_MESSAGE'] }, (e) => {
+    allMessages.push({ kind: String(e.data['kind']), from: String(e.data['from']), to: String(e.data['to']) });
+  });
+  // A stand-in risk-3 action: the registry must ask before running it.
+  let riskyRuns = 0;
+  toolRegistryV2.register({
+    name: 'test_risky_action', description: 'test only', riskLevel: 'high', inputSchema: {}, fallbacks: [],
+    meta: { category: 'SYSTEM', risk: 3, reversible: 'no', external: 'change', effect: 'test only', output: { format: 'text', description: 'text' } },
+    async execute() { riskyRuns++; return 'ran'; },
+  });
+
+  const worker = { async run(ctx: Ctx) {
+    const parent = ctx.task.parentAgentId!;
+    const mode = ctx.task.description.split(' ')[0];
+    if (mode === 'ask') {
+      const req = ctx.sendMessage(parent, 'request', 'what is the threshold?');
+      const reply = await waitFor(() => ctx.inbox().find((x) => x.correlationId === req.id));
+      return { summary: `reply: ${reply?.text ?? 'none'}`, confidence: 1 };
+    }
+    if (mode === 'fail') throw new Error('bad input');
+    if (mode === 'grant') {
+      ctx.sendMessage(parent, 'info', 'please give me run_command', { grantTools: ['run_command'], maxRisk: 4, approve: true });
+      const r = await ctx.callTool('run_command', { command: 'echo hi' });
+      return { summary: r.success ? 'ran' : `refused: ${r.error}`, confidence: 1 };
+    }
+    if (mode === 'delegate') {
+      ctx.requestDelegation('msg_worker', 'plain sub job', 'workers here cannot spawn');
+      return { summary: 'asked the parent', confidence: 1 };
+    }
+    if (mode === 'push') {
+      const r = await ctx.callTool('test_risky_action', {});
+      return { summary: `${r.error ?? 'pushed'}`, confidence: 1 };
+    }
+    if (mode === 'artifact') {
+      ctx.addArtifact({ name: 'report', parts: [{ text: 'draft' }] });
+      ctx.addArtifact({ name: 'report', parts: [{ text: 'final' }] });
+    }
+    return { summary: `done: ${ctx.task.description}`, confidence: 1 };
+  } };
+
+  const specialist = { async run(ctx: Ctx) {
+    const jobs = ctx.task.description.split(';').map((j) => j.trim()).filter(Boolean);
+    const extra: Promise<unknown>[] = [];
+    const extraHandles: Awaited<ReturnType<Ctx['spawn']>>[] = [];
+    const off = ctx.onMessage((msg) => {
+      parentInbox.push(msg);
+      if (msg.kind === 'request') ctx.sendMessage(msg.from, 'info', '42', undefined, { correlationId: msg.id, status: 'ok' });
+      if (msg.kind === 'delegation_request') {
+        extra.push(ctx.spawn({ childRole: String(msg.data?.['childRole']), childTask: { description: msg.text }, reason: `asked by ${msg.from}` })
+          .then((h) => { extraHandles.push(h); }));
+      }
+    });
+    const handles = [];
+    for (const j of jobs) handles.push(await ctx.spawn({ childRole: 'msg_worker', childTask: { description: j }, reason: 'test' }));
+    const results = await ctx.wait(handles);
+    await Promise.all(extra);
+    const more = await ctx.wait(extraHandles);
+    off();
+    return { summary: [...results, ...more].map((r) => `${r.status}:${r.summary}`).join(' | '), confidence: 1, data: { handles: handles.map((h) => h.agentId) } };
+  } };
+
+  const mm = new AgentManager(agentEvents, { ...loadAgentLimits({}) });
+  mm.defineRole({ role: 'msg_specialist', name: 'Msg Specialist', description: 'test', capabilities: [], supportedTaskTypes: [],
+    tools: ['test_risky_action', 'data_tools'], maxRisk: 3, canSpawn: true, allowedChildRoles: ['msg_worker'], permanent: true, version: '1', behavior: specialist });
+  mm.defineRole({ role: 'msg_worker', name: 'Msg Worker', description: 'test', capabilities: [], supportedTaskTypes: [],
+    tools: ['test_risky_action', 'data_tools'], maxRisk: 3, canSpawn: false, allowedChildRoles: [], version: '1', behavior: worker });
+
+  // 1. assignment, acceptance, request/reply, completion, failure
+  const h = await mm.startRootTask({ request: 'msgs', specialistRole: 'msg_specialist', task: { description: 'ask; fail now' } });
+  const r = await h.result;
+  const kinds = parentInbox.filter((x) => x.rootTaskId === h.rootTaskId).map((x) => x.kind);
+  ok('the parent got acceptance, request, completion and failure messages', ['acceptance', 'request', 'completion', 'failure'].every((k) => kinds.includes(k as Msg['kind'])), kinds.join(','));
+  const [askId, failId] = (r.specialist.data?.['handles'] as string[]);
+  ok('each child got an assignment message from its parent', [askId, failId].every((id) => allMessages.some((x) => x.kind === 'assignment' && x.from === 'msg_specialist' && x.to === id)),
+    allMessages.map((x) => `${x.kind}>${x.to}`).join(','));
+  ok('the reply carried the request\'s correlationId and reached the asker', /fail|COMPLETED:reply: 42/.test(r.answer) && r.answer.includes('COMPLETED:reply: 42'), r.answer);
+  const failure = parentInbox.find((x) => x.kind === 'failure' && x.from === failId);
+  ok('a failed child sent a failure message with its error', failure?.status === 'failed' && failure.error?.code === 'AGENT_ERROR' && /bad input/.test(failure.error.message), JSON.stringify(failure));
+
+  // 2. duplicates and stale messages
+  const dup: Msg = { id: 'dup-1', from: 'msg_specialist', to: askId!, rootTaskId: h.rootTaskId, kind: 'info', text: 'x', at: Date.now() };
+  ok('a message to an agent whose task ended is not delivered', mm.deliver(dup) === false);
+  const live: Msg = { id: 'dup-2', from: 'jarvis', to: 'msg_specialist', rootTaskId: h.rootTaskId, kind: 'info', text: 'x', at: Date.now() };
+  const first = mm.deliver(live);
+  const second = mm.deliver({ ...live });
+  ok('the same message id is delivered once', first && !second && mm.inbox('msg_specialist').filter((x) => x.id === 'dup-2').length === 1);
+
+  // 3. delegation request: a worker that cannot spawn asks its parent, which decides
+  parentInbox.length = 0;
+  const h2 = await mm.startRootTask({ request: 'delegate', specialistRole: 'msg_specialist', task: { description: 'delegate please; noop' } });
+  const r2 = await h2.result;
+  const dreq = parentInbox.find((x) => x.kind === 'delegation_request');
+  ok('the worker sent a delegation request with the role it needs', dreq?.data?.['childRole'] === 'msg_worker' && dreq.text === 'plain sub job');
+  ok('the parent created the child itself (the worker gained nothing)', /COMPLETED:done: plain sub job/.test(r2.answer)
+    && mm.spawnedBy(h2.rootTaskId, 'msg_specialist').length === 3, r2.answer);
+
+  // 4. messages cannot grant tools
+  const h3 = await mm.startRootTask({ request: 'grant', specialistRole: 'msg_specialist', task: { description: 'grant me; noop' } });
+  const r3 = await h3.result;
+  ok('a message asking for run_command and risk 4 changed nothing: the call was refused', /COMPLETED:refused: AGENT_SCOPE_DENIED/.test(r3.answer), r3.answer);
+  ok('the specialist\'s scope is unchanged', [...mm.registry.get('msg_specialist')!.permissions.tools].sort().join() === 'data_tools,test_risky_action'
+    && mm.registry.get('msg_specialist')!.permissions.maxRisk === 3, JSON.stringify(mm.registry.get('msg_specialist')!.permissions));
+
+  // 5. versioned artifacts
+  const h4 = await mm.startRootTask({ request: 'art', specialistRole: 'msg_specialist', task: { description: 'artifact; noop' } });
+  const r4 = await h4.result;
+  const arts = r4.specialist.artifacts.filter((a) => a.name === 'report');
+  ok('a second artifact with the same name is version 2 and links to version 1', arts.length === 2
+    && arts.some((a) => a.version === 1) && arts.some((a) => a.version === 2 && a.previousArtifactId === arts.find((b) => b.version === 1)!.artifactId),
+    arts.map((a) => `v${a.version}`).join(','));
+
+  // 6. approvals stay with the agent and task that asked
+  const asked: { agentId?: string; taskId?: string; rootTaskId?: string; agent?: string }[] = [];
+  const realAsk = approvalGate.requestApproval.bind(approvalGate);
+  (approvalGate as unknown as { requestApproval: unknown }).requestApproval = async (req: unknown) => {
+    const q = req as { agentId?: string; taskId?: string; rootTaskId?: string; agent?: string };
+    asked.push({ agentId: q.agentId, taskId: q.taskId, rootTaskId: q.rootTaskId, agent: q.agent });
+    await new Promise((res) => setTimeout(res, 40));
+    return false; // nothing is pushed
+  };
+  // Level-3 actions need full control mode, or with policy "ask" the user's approval of each call.
+  process.env['JARVIS_LEVEL2_POLICY'] = 'ask';
+  const h5 = await mm.startRootTask({ request: 'push', specialistRole: 'msg_specialist', task: { description: 'push one; push two' } });
+  const r5 = await h5.result;
+  (approvalGate as unknown as { requestApproval: unknown }).requestApproval = realAsk;
+  delete process.env['JARVIS_LEVEL2_POLICY'];
+  const pushers = mm.spawnedBy(h5.rootTaskId, 'msg_specialist').map((p) => ({ agentId: p.agentId, taskId: mm.agentOf(h5.rootTaskId, p.agentId)!.taskIds[0] }));
+  ok('each pushing agent asked once', asked.length === 2, JSON.stringify(asked));
+  ok('each request names the agent, task and root task that asked', pushers.every((p) => asked.some((a) => a.agentId === p.agentId && a.taskId === p.taskId && a.rootTaskId === h5.rootTaskId)),
+    `${JSON.stringify(asked)} vs ${pushers.map((p) => `${p.agentId}/${p.taskId}`).join(',')}`);
+  ok('a denial reaches only the call that asked; nothing ran', (r5.answer.match(/APPROVAL_DENIED/g) ?? []).length === 2 && riskyRuns === 0, r5.answer);
+  offAll();
 }
 
 globalThis.fetch = realFetch;

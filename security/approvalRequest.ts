@@ -34,6 +34,10 @@ export interface ApprovalRequest {
   source: ApprovalSource;
   /** The agent that asked, when a background agent made the call ("Research Agent › Browser Worker"). */
   agent?: string;
+  /** Ids of the asking agent, its task and root task: the decision belongs to that call only. */
+  agentId?: string;
+  taskId?: string;
+  rootTaskId?: string;
   /** Level 4: approved only with `APPROVE <code>` typed in the console. */
   strong: boolean;
   code?: string;
@@ -178,6 +182,7 @@ export function buildApprovalRequest(input: {
   reversible?: ReversibilityText;
   source?: ApprovalSource;
   agent?: string;
+  agentIds?: { agentId: string; taskId: string; rootTaskId: string };
 }): ApprovalRequest {
   const key = input.action ? `${input.tool} ${input.action}` : String(input.tool ?? '');
   const action = ACTION_TITLES[key]
@@ -201,6 +206,7 @@ export function buildApprovalRequest(input: {
     reversibility: input.reversible ?? 'unknown',
     source: input.source ?? 'cli',
     ...(input.agent ? { agent: oneLine(input.agent, 120) } : {}),
+    ...(input.agentIds ? { agentId: input.agentIds.agentId, taskId: input.agentIds.taskId, rootTaskId: input.agentIds.rootTaskId } : {}),
     strong,
     ...(strong ? { code: newCode() } : {}),
     createdAt: Date.now(),

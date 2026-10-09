@@ -55,6 +55,12 @@ export function getAgentPath(): string | undefined {
   return currentAgentScope()?.agentPath;
 }
 
+/** Ids of the agent, task and root task making the current call; undefined outside agents. */
+export function getAgentIds(): { agentId: string; taskId: string; rootTaskId: string } | undefined {
+  const a = currentAgentScope();
+  return a ? { agentId: a.agentId, taskId: a.taskId, rootTaskId: a.rootTaskId } : undefined;
+}
+
 /** The active trace id, or undefined outside a request. */
 export function getTraceId(): string | undefined {
   return currentTraceId ?? undefined;

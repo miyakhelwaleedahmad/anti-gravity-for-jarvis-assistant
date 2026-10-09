@@ -312,6 +312,10 @@ export interface WorkspaceArtifact {
   producedBy: string;
   taskId: string;
   createdAt: number;
+  /** 1 for the first artifact of this name from this task; each new one adds 1. */
+  version?: number;
+  /** The version this one replaces. Earlier versions stay readable. */
+  previousArtifactId?: string;
 }
 
 /** What every child returns to its parent. Never thrown, always returned. */
@@ -451,14 +455,38 @@ export interface AgentEvent {
   data: Record<string, unknown>;
 }
 
+/**
+ * Message kinds. The first ten are the original ones; the last five cover the
+ * requested types (docs/agents/SEVEN_AGENT_DESIGN.md §4): task assignment and
+ * acceptance (sent by the manager), delegation request, failure
+ * notification and verification result. `error` stays for older senders.
+ */
+export type AgentMessageKind =
+  | 'progress' | 'partial_result' | 'finding' | 'artifact' | 'warning' | 'error' | 'completion' | 'cancellation' | 'request' | 'info'
+  | 'assignment' | 'acceptance' | 'delegation_request' | 'failure' | 'verification';
+
 export interface AgentMessage {
   id: string;
   from: string;
   to: string;
   rootTaskId: string;
   taskId?: string;
-  kind: 'progress' | 'partial_result' | 'finding' | 'artifact' | 'warning' | 'error' | 'completion' | 'cancellation' | 'request' | 'info';
+  /** The sender's parent task, when it has one. */
+  parentTaskId?: string;
+  /** The message this one answers (request → info, delegation_request → reply). */
+  correlationId?: string;
+  kind: AgentMessageKind;
   text: string;
   data?: Record<string, unknown>;
+  /** For replies and failures. */
+  status?: 'ok' | 'failed' | 'rejected';
+  error?: { code: string; message: string };
   at: number;
+}
+
+/** Optional fields of a message an agent sends. Messages never carry permissions. */
+export interface MessageOptions {
+  correlationId?: string;
+  status?: AgentMessage['status'];
+  error?: AgentMessage['error'];
 }
