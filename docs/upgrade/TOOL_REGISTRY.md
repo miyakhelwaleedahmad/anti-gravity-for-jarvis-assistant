@@ -129,3 +129,22 @@ Notes:
   offered to the planner for "what did you just do?".
 - "what can you do" / "who are you" / "list your tools" — answered from the
   registry, no LLM request.
+
+## Added with the multi-agent system
+
+JARVIS now has 65 tools (39 built-in, 26 skills).
+
+| Tool | Category | Risk | Reversible | External |
+|---|---|---|---|---|
+| github_search | NETWORK | 1 | yes | query |
+| github_repo | NETWORK | 1 | yes | query |
+| delegate_task | SYSTEM | 1 | yes | none |
+| agent_status | SYSTEM | 0 | yes | none |
+| cancel_agent_task | SYSTEM | 1 | no | none |
+
+- **The GitHub tools** (`tools/githubTools.ts`) are read-only and use `GITHUB_TOKEN` when it is set.
+- **The agent tools** (`core/agents/jarvisAgents.ts`) are JARVIS's own and are never given to agents. See [MULTI_AGENT_SYSTEM.md](MULTI_AGENT_SYSTEM.md).
+- **When the planner is offered them:**
+  - `delegate_task` for research, compare or background wording;
+  - `agent_status` and `cancel_agent_task` when agents are mentioned;
+  - `github_search` and `github_repo` for GitHub searches.

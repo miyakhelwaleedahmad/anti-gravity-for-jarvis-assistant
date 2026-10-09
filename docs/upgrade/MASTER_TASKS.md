@@ -550,3 +550,22 @@ fails.
   in `run_command` ran a second command at level 0.
 
 ### T15.3 — FINAL_JARVIS_IMPLEMENTATION_REPORT.md · High · [x] · depends on: T15.2
+
+---
+
+## MA — Multi-agent system
+
+### MA.1 — Audit and research · High · [x]
+- JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md, RECURSIVE_AGENT_RESEARCH.md (17 repositories, licences checked, nothing copied).
+
+### MA.2 — Core runtime and A2A · Critical · [x] · depends on: MA.1
+- `core/agents/*`; tests `agentRuntimeTest` (102), `a2aProtocolTest` (56); SDK interop 10/10.
+
+### MA.3 — Specialists and recursive research · Critical · [x] · depends on: MA.2
+- 7 specialists, 11 worker roles, GitHub tools; tests `agentSpecialistsTest` (27), `recursiveResearchExampleTest` (32).
+
+### MA.4 — JARVIS integration · Critical · [x] · depends on: MA.3
+- `delegate_task`, `agent_status`, `cancel_agent_task`, routes, spoken result, memory, dashboard; `jarvisAgentIntegrationTest` (42).
+
+### MA.5 — Live run on the owner's PC · High · [ ] · depends on: MA.4
+- "find the best GitHub projects for giving JARVIS browser awareness", then the status questions; send the console output.

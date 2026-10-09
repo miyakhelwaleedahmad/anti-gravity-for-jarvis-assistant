@@ -37,6 +37,7 @@ import { llmConfig } from '../config/llmconfig.js';
 import { conversationBus } from './conversationBus.js';
 import { registerAllTools } from './tools/index.js';
 import { SkillLoader } from './skillLoader.js';
+import { isResearchRequest } from './agents/jarvisAgents.js';
 import type { ILLMMessage, ILLMToolCall } from '../bridge/llmTypes.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -634,6 +635,21 @@ export class JarvisOrchestrator {
         } else if (route.type === 'continue_declined') {
           this.continueOffer = null;
           this.speak(route.reply);
+        } else if (route.type === 'agent_status') {
+          // First line is said; the tree and details go to the console.
+          const [question, agent] = (route.target ?? 'summary').split('|');
+          const result = await runRoutedTool('agent_status', { question, ...(agent ? { agent } : {}) });
+          const [first, ...rest] = (result?.output ?? '').split('\n');
+          if (rest.length) console.log(`[Orchestrator] Agents:\n${rest.join('\n')}`);
+          this.speak(result?.success && first ? first : 'I could not read what the agents are doing, sir.');
+        } else if (route.type === 'agent_stop') {
+          const result = await runRoutedTool('cancel_agent_task', { which: route.target ?? 'latest' });
+          const message = result?.success ? parseJson(result.output)?.message : undefined;
+          this.speak(typeof message === 'string' ? message : failureReply(result, 'I could not stop the agents, sir.'));
+        } else if (route.type === 'delegate' && route.target) {
+          const result = await runRoutedTool('delegate_task', { task: route.target });
+          const message = result?.success ? parseJson(result.output)?.message : undefined;
+          this.speak(typeof message === 'string' ? `On it, sir. ${message}` : failureReply(result, 'I could not start the agents, sir.'));
         } else if (route.type === 'list_capabilities') {
           // Through the registry like any tool call; the full list goes to the console.
           const result = await runRoutedTool('list_capabilities', {});
@@ -1737,6 +1753,11 @@ export class JarvisOrchestrator {
       return { type: 'stop', reply: 'Shutting down, sir.' };
     }
 
+    // ── Agents (core/agents): status questions, stopping, research ──────────
+    // A delegated task keeps the user's own words (case and all), minus the wake word.
+    const agentRoute = matchAgentRoute(clean, input.trim().replace(/^(?:(?:hey|ok|okay)\s+)?jarvis[\s,.:!-]+/i, '').replace(/[\s,]+please[.!?]*$/i, ''));
+    if (agentRoute) return agentRoute;
+
     // ── Pre-defined Mappings ──────────────────────────────────────────────────
     if (clean === 'close youtube') {
       return { type: 'close_browser_tab', target: 'youtube', reply: 'Closing YouTube, sir.' };
@@ -2072,6 +2093,16 @@ export class JarvisOrchestrator {
     }
     if (HISTORY_QUESTION.test(clean)) {
       addIfRegistered('action_history');
+    }
+    // Larger work for the specialist agents, and questions about them (core/agents).
+    if (/\b(research|investigate|compare|comparison|in the background|delegate|specialist)\b/.test(clean)) {
+      addIfRegistered('delegate_task');
+    }
+    if (/\b(agents?|sub ?agents|workers?)\b/.test(clean)) {
+      addIfRegistered('agent_status', 'cancel_agent_task');
+    }
+    if (/\bgithub\b/.test(clean) && /\b(find|search|projects?|repos?|repositor(?:y|ies)|librar(?:y|ies))\b/.test(clean)) {
+      addIfRegistered('github_search', 'github_repo');
     }
     const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimize|maximize)\b/i.test(clean);
     const isLaunchIntent = !isKillOrClose && /\b(open|launch|start|run|app|application|desktop|whatsapp|youtube|chrome|calculator|vscode|code|notepad|spotify|browser|gmail|github)\b/i.test(clean);
@@ -2412,6 +2443,27 @@ const BROWSER_TABS_PHRASES = new Set([
   'what is open in the browser', 'whats open in the browser', 'which tabs are open', 'what tabs are open',
   'what tabs do i have open', 'which tabs do i have open',
 ]);
+
+/**
+ * Questions about the agents (core/agents/jarvisAgents.ts), "stop this
+ * research", and plain research requests, which go straight to the Research
+ * Agent without a planning call. `clean` is lower case without punctuation.
+ */
+function matchAgentRoute(clean: string, original: string): { type: string; target?: string; reply: string } | null {
+  const status = (q: string) => ({ type: 'agent_status', target: q, reply: '' });
+  if (/^(how many|how much) (sub ?)?(agents|workers) (are|is) (running|working|active)/.test(clean)) return status('count');
+  if (/\b(show|display|give|tell)( me)? (the |your )?task (tree|graph)\b|^task (tree|graph)$/.test(clean)) return status('tree');
+  if (/^what (has|have|did) (each|the|your) (worker|workers|agent|agents|sub ?agents?) (discovered|found|find|discover)/.test(clean)) return status('findings');
+  if (/^(which|what) (agents?|workers?|sub ?agents?) (failed|have failed|are waiting|is waiting|are stuck|are blocked)/.test(clean)) return status('failures');
+  if (/^how much (work )?(remains|is left|is remaining)|^how much of the (research|task|work) is (left|done)/.test(clean)) return status('remaining');
+  const spawns = /^(what|which) (sub ?agents|subagents|workers|agents) did (the |your )?(research|browser|pc|coding|github|qa|memory) agent (create|make|start|spawn)/.exec(clean);
+  if (spawns) return status(`spawns|${spawns[4]}_agent`);
+  if (/^what (are|is) (your|the) (agents?|sub ?agents|workers) (doing|up to|working on)|^(agent|agents) status$|^status of (the |your )?agents$/.test(clean)) return status('summary');
+  if (/^(stop|cancel|abort|end) (this|the|that|your) (research|agents|agent work|background task|delegated task)$/.test(clean)) return { type: 'agent_stop', target: 'latest', reply: '' };
+  if (/^(stop|cancel|abort) (all|all the|all your) (agents|research|background tasks)$/.test(clean)) return { type: 'agent_stop', target: 'all', reply: '' };
+  if (isResearchRequest(clean)) return { type: 'delegate', target: original.trim(), reply: '' };
+  return null;
+}
 
 /** "What's running?": open apps and local servers. */
 const RUNNING_PHRASES = new Set([

@@ -52,6 +52,7 @@ import { vectorMemorySupervisor } from './memory/vectorMemorySupervisor.js';
 // NEW: PC State Observer
 import { systemStateObserver }    from './perception/systemStateObserver.js';
 import { healthManager }          from './monitoring/healthManager.js';
+import { ensureAgentSystem, shutdownAgentSystem } from './core/agents/jarvisAgents.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VOICE_DIR  = path.join(__dirname, 'voice');
@@ -327,6 +328,8 @@ async function startJarvis() {
     setImmediate(() => {
       systemStateObserver.start();
       runtimeDashboard.start(60_000, true);
+      // The specialist agents (core/agents); the A2A endpoint only if JARVIS_A2A_PORT is set.
+      ensureAgentSystem({ startHttp: true }).catch((err) => console.warn('[JARVIS] Agent system did not start:', err));
     });
 
     // Register barge-in hook to clear voice command queue
@@ -895,6 +898,7 @@ async function shutdown(signal = 'manual') {
   }
 
   // 2. Stop subsystems (non-throwing)
+  try { await shutdownAgentSystem(); } catch {}
   try { systemStateObserver.stop(); } catch {}
   try { selfHealingManager.stopHealthChecks(); } catch {}
   try { pipelineWatchdog.stop(); } catch {}

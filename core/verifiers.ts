@@ -331,6 +331,8 @@ export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> 
   control_process: { reason: ON_WINDOWS },
   control_system: { reason: ON_WINDOWS },
   cancel_current_action: { reason: 'it stops work in progress; there is nothing left to look at' },
+  delegate_task: { reason: 'it starts background agents; their result is checked and reported when they finish' },
+  cancel_agent_task: { reason: 'the tool itself waits until the cancelled agents have stopped' },
 };
 
 /** What JARVIS says when an action reported success but its check failed. */

@@ -175,6 +175,28 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     effect: 'Sends several related queries to the web search service.',
     output: { format: 'text', description: 'Merged search findings' },
   },
+  delegate_task: {
+    category: 'SYSTEM', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Starts specialist agents in the background; each of their actions is checked and approved on its own.',
+    output: { format: 'json', description: 'success, message, rootTaskId, taskId, specialist' },
+  },
+  agent_status: observation('Reads what the agents are doing, the task tree, findings and failures.',
+    { format: 'text', description: 'A sentence to say, then details' }, 'SYSTEM'),
+  cancel_agent_task: {
+    category: 'SYSTEM', risk: 1, reversible: 'no', external: 'none',
+    effect: 'Stops delegated agent work and every agent below it.',
+    output: { format: 'json', description: 'success, message, stopped' },
+  },
+  github_search: {
+    category: 'NETWORK', risk: 1, reversible: 'yes', external: 'query',
+    effect: 'Sends the search query to the GitHub API (read-only).',
+    output: { format: 'json', description: 'success, total, items: name, url, description, stars, language, licence, topics, last push' },
+  },
+  github_repo: {
+    category: 'NETWORK', risk: 1, reversible: 'yes', external: 'query',
+    effect: 'Reads one public repository from the GitHub API (read-only).',
+    output: { format: 'json', description: 'success, repository metadata, top-level files, start of the README' },
+  },
   get_weather: {
     category: 'NETWORK', risk: 1, reversible: 'yes', external: 'query',
     effect: 'Sends a place name to the weather service.',

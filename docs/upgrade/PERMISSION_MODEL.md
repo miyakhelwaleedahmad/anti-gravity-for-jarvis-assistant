@@ -237,3 +237,18 @@ action is not retried by the action queue, so the user is not asked twice.
 - The command blocklist, file containment, open_app allow-list and the bridge
   token stay as they are.
 - Full control mode still expires after its time limit.
+
+## Agents (multi-agent system)
+
+Agents add a layer in front of the rules above; they never replace them. See [MULTI_AGENT_SYSTEM.md](MULTI_AGENT_SYSTEM.md).
+
+- **Scope.** Each agent has a scope: tools (or `tool:action`), a highest risk per call, and whether it may create children.
+- **Children only narrow.** A child's scope is its parent's ∩ its role's ∩ the request. Asking for more is refused (`PERMISSION_ESCALATION`) rather than trimmed.
+- **Never given to agents:**
+  - full control on/off and cancel-current-action;
+  - `control_system:restart_jarvis`;
+  - `delegate_task`, `agent_status`, `cancel_agent_task`;
+  - any COMMUNICATION or SCHEDULING tool.
+- **Risk.** The highest risk an agent may be given is 3. Level-3 calls still need approval; level 4 never reaches an agent.
+- **Every agent call takes the full path.** It passes the agent's scope check, then this page's pipeline: floor, risk engine, rate limit, approval gate.
+- **The approval shows who asked.** It shows the user's original request and the agent: the console prints ASKED BY AGENT, and the voice says "the <agent> needs your approval".

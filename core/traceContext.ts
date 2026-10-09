@@ -12,7 +12,13 @@
  * explicitly serialises requests (a new `process()` aborts the previous loop),
  * so there is at most one active request. It is deliberately not an
  * AsyncLocalStorage — that would imply a concurrency this agent does not have.
+ *
+ * Background agents (core/agents) are the exception: they run beside the
+ * foreground request, so their root task's words and source come from their
+ * own AsyncLocalStorage scope (core/agents/agentScope.ts), checked first.
  */
+
+import { currentAgentScope } from './agents/agentScope.js';
 
 let currentTraceId: string | null = null;
 let currentSource: 'voice' | 'cli' | undefined;
@@ -29,14 +35,24 @@ export function beginTrace(source?: 'voice' | 'cli', request?: string): string {
   return currentTraceId;
 }
 
-/** Whether the active request was spoken or typed (approvals are asked the same way). */
+/**
+ * Whether the active request was spoken or typed (approvals are asked the same
+ * way). Inside a background agent: how its root task was asked
+ * (core/agents/agentScope.ts), since the foreground request may have changed.
+ */
 export function getRequestSource(): 'voice' | 'cli' | undefined {
-  return currentSource;
+  return currentAgentScope()?.source ?? currentSource;
 }
 
-/** The user's words for the active request. */
+/** The user's words for the active request; inside an agent, its root task's words. */
 export function getRequestText(): string | undefined {
-  return currentRequest;
+  const agent = currentAgentScope();
+  return agent ? agent.request : currentRequest;
+}
+
+/** The agent making the current call, as a path from JARVIS; undefined outside agents. */
+export function getAgentPath(): string | undefined {
+  return currentAgentScope()?.agentPath;
 }
 
 /** The active trace id, or undefined outside a request. */

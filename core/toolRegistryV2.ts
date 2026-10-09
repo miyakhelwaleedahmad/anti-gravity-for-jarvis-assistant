@@ -29,7 +29,7 @@ import { TOOL_CATALOG, deriveMeta } from './toolCatalog.js';
 import { assessRisk, callLabel, decide, level2Policy, type RiskAssessment, type RiskDecision } from '../security/riskEngine.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { runApproved, type ApprovedCall } from '../security/approvalScope.js';
-import { getRepairReason, getRequestSource, getRequestText } from './traceContext.js';
+import { getAgentPath, getRepairReason, getRequestSource, getRequestText } from './traceContext.js';
 import { buildApprovalRequest } from '../security/approvalRequest.js';
 import { redact, redactDeep } from '../security/redactor.js';
 import { verifyCall, type Verification, type Verifier } from './verifiers.js';
@@ -702,6 +702,8 @@ export class ToolRegistryV2 {
         ...(effect ? { effect } : {}),
         ...(reversible ? { reversible } : {}),
         source: getRequestSource() ?? 'cli',
+        // A call made by a background agent says which one (core/agents).
+        ...(getAgentPath() ? { agent: getAgentPath() } : {}),
       });
       const approved = await approvalGate.requestApproval(request);
       if (!approved) {

@@ -14,6 +14,7 @@
  */
 
 import { EventEmitter } from 'events';
+import type { AgentEvent } from './agents/types.js';
 
 // ─── Event Map ────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,10 @@ export type EventMap = {
   'AGENT_TASK_DONE':     { graphId: string; outcome: string; durationMs: number };
   'AGENT_REPAIR':        { graphId: string; strategy: string; cycle: number };
   'AGENT_ERROR':         { source: string; error: string; recoverable: boolean };
+
+  // Multi-agent system (core/agents/events.ts): TASK_CREATED … AGENT_STOPPED,
+  // one topic with the event type inside, so one subscription sees them all.
+  'AGENT_EVENT':         AgentEvent;
 };
 
 // ─── Message Envelope ─────────────────────────────────────────────────────────

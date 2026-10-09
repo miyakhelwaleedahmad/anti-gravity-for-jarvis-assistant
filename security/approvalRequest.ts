@@ -32,6 +32,8 @@ export interface ApprovalRequest {
   riskDetail?: string;
   reversibility: ReversibilityText;
   source: ApprovalSource;
+  /** The agent that asked, when a background agent made the call ("Research Agent › Browser Worker"). */
+  agent?: string;
   /** Level 4: approved only with `APPROVE <code>` typed in the console. */
   strong: boolean;
   code?: string;
@@ -175,6 +177,7 @@ export function buildApprovalRequest(input: {
   effect?: string;
   reversible?: ReversibilityText;
   source?: ApprovalSource;
+  agent?: string;
 }): ApprovalRequest {
   const key = input.action ? `${input.tool} ${input.action}` : String(input.tool ?? '');
   const action = ACTION_TITLES[key]
@@ -197,6 +200,7 @@ export function buildApprovalRequest(input: {
     ...(input.riskDetail ? { riskDetail: oneLine(input.riskDetail, 100) } : {}),
     reversibility: input.reversible ?? 'unknown',
     source: input.source ?? 'cli',
+    ...(input.agent ? { agent: oneLine(input.agent, 120) } : {}),
     strong,
     ...(strong ? { code: newCode() } : {}),
     createdAt: Date.now(),
@@ -227,6 +231,7 @@ export function formatApprovalRequest(r: ApprovalRequest, timeoutSecs: number): 
     thin,
     `  ACTION:           ${r.action}`,
     `  WHY:              ${r.why}`,
+    ...(r.agent ? [`  ASKED BY AGENT:   ${r.agent}`] : []),
     `  TARGET:           ${r.target}`,
     `  EXPECTED EFFECT:  ${r.expectedEffect}`,
     `  RISK:             ${risk}`,
@@ -257,8 +262,10 @@ export function spokenApprovalRequest(r: ApprovalRequest): string {
     return `Sir, this is a critical action: ${r.action.toLowerCase()}${target}. ` +
       'It needs the code shown in the console. Voice cannot approve it.';
   }
+  // A background agent's request says which agent asks, by its own name.
+  const asker = r.agent ? `the ${r.agent.split(' › ').pop()} needs` : 'I need';
   return [
-    `Sir, I need your approval to ${r.action.toLowerCase()}${target}.`,
+    `Sir, ${asker} your approval to ${r.action.toLowerCase()}${target}.`,
     `Risk level ${r.risk}.`,
     SPOKEN_REVERSIBILITY[r.reversibility],
     // Ends on "cancel": an echo of the last word can only deny.

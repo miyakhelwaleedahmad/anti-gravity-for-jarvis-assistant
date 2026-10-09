@@ -20,6 +20,8 @@ import { gitPushTool, gitTool } from '../../tools/gitTools.js';
 import { devTool } from '../../tools/devTools.js';
 import { diagnoseAppTool } from './diagnosisTools.js';
 import { windowsTools } from './windowsTools.js';
+import { githubRepoTool, githubSearchTool } from '../../tools/githubTools.js';
+import { agentTools } from '../agents/jarvisAgents.js';
 
 export function registerAllTools(): void {
   toolRegistryV2.registerMany([
@@ -45,6 +47,9 @@ export function registerAllTools(): void {
     devTool,
     diagnoseAppTool,
     ...windowsTools,
+    githubSearchTool,
+    githubRepoTool,
+    ...agentTools,
   ]);
 
   console.log(`[ToolRegistry] All built-in tools registered. Total: ${toolRegistryV2.names().length}`);

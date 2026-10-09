@@ -1137,3 +1137,36 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
   P14.
 - **Next:** the owner runs `pnpm verify:windows` and sends
   `data\logs\verify-windows.json`.
+
+## MA — Multi-agent system — IMPLEMENTED (tested here; not yet run on the owner's PC)
+
+- **Documents:**
+  - audit: [JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md](../../JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md);
+  - research: [RECURSIVE_AGENT_RESEARCH.md](../../RECURSIVE_AGENT_RESEARCH.md);
+  - design: [MULTI_AGENT_SYSTEM.md](MULTI_AGENT_SYSTEM.md);
+  - report: [JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md](../../JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md).
+- **Implemented:**
+  - `core/agents/`: Agent Manager/Factory, task manager, registry and Agent Cards, permissions, spawn policy, workspace, events on `messageBus`, A2A v1.0 server/client with an optional localhost HTTP endpoint, behaviours, the 7 specialists and 11 worker roles, and JARVIS's `delegate_task` / `agent_status` / `cancel_agent_task`.
+  - `tools/githubTools.ts`: `github_search` and `github_repo`, read-only.
+  - Orchestrator routes: research requests, agent questions, "stop this research".
+  - Approvals asked by an agent name the agent and the root request.
+  - No new package.
+- **Tested here:**
+
+  | Test | Result |
+  |---|---|
+  | `agentRuntimeTest` | 102 passed |
+  | `a2aProtocolTest` | 56 passed |
+  | `agentSpecialistsTest` | 27 passed |
+  | `recursiveResearchExampleTest` | 32 passed |
+  | `jarvisAgentIntegrationTest` | 42 passed |
+  | Official `@a2a-js/sdk` 1.3.0 client against the HTTP endpoint (scratch) | 10 of 10 passed |
+
+  Typecheck clean. Full suite (`npm test`, 117 files): 111 passed · 0 failed · 6 environment.
+- **Not verified:**
+  - live GitHub, Serper and Gemini (tests run offline with a scripted model);
+  - the agents on the owner's Windows PC.
+- **Next:**
+  1. The owner pulls, runs `npm run dev` and says "find the best GitHub projects for giving JARVIS browser awareness".
+  2. Then "what are your agents doing" and "show the task tree".
+  3. The owner sends the console output.
