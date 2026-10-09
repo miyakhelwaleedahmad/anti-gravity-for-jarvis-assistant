@@ -121,7 +121,10 @@ console.log('--- Fixed routes ---');
   ok('"find my python files" is not research', !isResearchRequest('find my python files'));
   ok('specialists are chosen by topic', chooseSpecialist('compare playwright and puppeteer') === 'research_agent'
     && chooseSpecialist('show my open tabs') === 'browser_agent' && chooseSpecialist('run the tests') === 'qa_agent'
-    && chooseSpecialist('what changed in the pull request') === 'github_agent');
+    && chooseSpecialist('what changed in the pull request') === 'coding_agent'
+    && chooseSpecialist('what is the average of 12, 15 and 30') === 'data_agent'
+    && chooseSpecialist('compare 15% of 240 with 40') === 'data_agent'
+    && chooseSpecialist('verify the research result') === 'qa_agent');
 }
 
 console.log('\n--- The planner is offered the agent tools; agents never get them ---');

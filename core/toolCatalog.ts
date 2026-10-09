@@ -203,6 +203,18 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     output: { format: 'text', description: 'Current weather and forecast' },
   },
 
+  data_tools: withActions(
+    { category: 'OBSERVATION', reversible: 'yes', external: 'none',
+      effect: 'Calculates and analyses the numbers or text it is given; reads nothing, runs nothing.',
+      output: { format: 'json', description: 'success, action, result / statistics / ranking / log counts, or error' } },
+    {
+      calculate: { risk: 0, reversible: 'yes', effect: 'Evaluates an arithmetic expression (no code).' },
+      stats: { risk: 0, reversible: 'yes', effect: 'Computes statistics over the given numbers.' },
+      compare: { risk: 0, reversible: 'yes', effect: 'Ranks the given items by one numeric field.' },
+      log_summary: { risk: 0, reversible: 'yes', effect: 'Counts log lines by level and the most frequent errors.' },
+    },
+  ),
+
   // ── Memory ──────────────────────────────────────────────────────────────────
   search_memory: {
     category: 'MEMORY', risk: 0, reversible: 'yes', external: 'none',

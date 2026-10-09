@@ -142,16 +142,23 @@ export function a2a(): { server: A2AServer; client: InProcessA2AClient } {
 // ─── Choosing a specialist ───────────────────────────────────────────────────
 
 const ROUTES: [RegExp, string][] = [
-  [/\b(git ?hub|pull request|\bpr\b|issues?|ci\b|commit|branch|push)\b/i, 'github_agent'],
+  [/\b(verify|validate|double[- ]check|fact[- ]check|security review|audit)\b/i, 'qa_agent'],
   [/\b(test|tests|lint|type ?check|build fails?|qa)\b/i, 'qa_agent'],
+  [/\b(git ?hub|pull request|\bpr\b|issues?|ci\b|commit|branch|push)\b/i, 'coding_agent'],
   [/\b(code|function|file|refactor|bug|compile|typescript|source)\b/i, 'coding_agent'],
   [/\b(tab|tabs|page|website|browser|chrome|url)\b/i, 'browser_agent'],
   [/\b(window|windows|app|apps|desktop|pc|computer|cpu|memory usage|process)\b/i, 'pc_agent'],
   [/\b(remember|recall|memory|notes|documents?)\b/i, 'memory_agent'],
 ];
 
-/** The specialist for a request: research wins for find/compare/best questions. */
+/** Calculations, statistics over given numbers, log analysis: the Data agent, even when the words say "compare". */
+const DATA_REQUEST = /\d\s*%|\b(calculate|compute|work out|average|mean|median|sum of|total of|percent(?:age)?|statistics|stats|standard deviation)\b|\d\s*[-+*/^%×÷]\s*\d|\b(analy[sz]e|summari[sz]e)\b.*\blogs?\b/i;
+
+/** The specialist for a request: data for numbers and logs, verification when asked to check, research for find/compare/best questions. */
 export function chooseSpecialist(task: string): string {
+  if (DATA_REQUEST.test(task)) return 'data_agent';
+  // "Verify the research result" is a verification request, not research.
+  if (/^\s*(please\s+)?(verify|validate|double[- ]check|fact[- ]check)\b/i.test(task)) return 'qa_agent';
   if (/\b(research|investigate|compare|comparison|best|recommend|alternatives?|find (?:me )?(?:the )?(?:best|good|top))\b/i.test(task)) return 'research_agent';
   for (const [pattern, role] of ROUTES) if (pattern.test(task)) return role;
   return 'research_agent';
@@ -169,7 +176,16 @@ function firstSentences(text: string, max = 280): string {
   return (out || text.slice(0, max)).trim();
 }
 
-const SPEAKER: Record<string, string> = Object.fromEntries(SPECIALIST_ROLES.map((r) => [r.role, r.name]));
+/** Short names for speech; the registry keeps the full role names. */
+const SPEAKER: Record<string, string> = {
+  research_agent: 'Research Agent',
+  coding_agent: 'Engineering Agent',
+  browser_agent: 'Browser Agent',
+  pc_agent: 'Desktop Agent',
+  memory_agent: 'Memory Agent',
+  data_agent: 'Data Agent',
+  qa_agent: 'Verification Agent',
+};
 
 export function completionSpeech(result: RootResult): string {
   const who = SPEAKER[result.specialist.role] ?? 'The agents';
@@ -240,8 +256,9 @@ function currentRoot(): string | undefined {
   return runs.find((r) => !r.endedAt)?.rootTaskId ?? runs[0]?.rootTaskId;
 }
 
+/** The name to say: a specialist's short name, else the agent's own name. */
 function nameOf(rootTaskId: string, agentId: string): string {
-  return agentManager.agentOf(rootTaskId, agentId)?.name ?? agentId;
+  return SPEAKER[agentId] ?? agentManager.agentOf(rootTaskId, agentId)?.name ?? agentId;
 }
 
 export type StatusQuestion = 'summary' | 'count' | 'tree' | 'findings' | 'failures' | 'remaining' | 'spawns';
@@ -298,7 +315,7 @@ export function agentStatusText(question: StatusQuestion, opts: { agent?: string
       if (!s.activeAgents) {
         return `No agents are working now, sir. The last task, "${run.request.slice(0, 80)}", ${run.status.toLowerCase().replace('_', ' ')}.\n${agentManager.renderTaskTree(root)}`;
       }
-      const doing = running.slice(0, 3).map((a) => `the ${a.name} is ${a.progress ?? 'working'}`).join('; ');
+      const doing = running.slice(0, 3).map((a) => `the ${SPEAKER[a.agentId] ?? a.name} is ${a.progress ?? 'working'}`).join('; ');
       return `${s.activeAgents} agent${s.activeAgents === 1 ? ' is' : 's are'} working on "${clip(run.request, 80)}", sir${doing ? `: ${doing}` : ''}.`
         + `${waiting.length ? ` ${waiting.length} ${waiting.length === 1 ? 'is' : 'are'} waiting for others.` : ''}\n${agentManager.renderTaskTree(root)}`;
     }

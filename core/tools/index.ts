@@ -21,6 +21,7 @@ import { devTool } from '../../tools/devTools.js';
 import { diagnoseAppTool } from './diagnosisTools.js';
 import { windowsTools } from './windowsTools.js';
 import { githubRepoTool, githubSearchTool } from '../../tools/githubTools.js';
+import { dataTool } from './dataTools.js';
 import { agentTools } from '../agents/jarvisAgents.js';
 
 export function registerAllTools(): void {
@@ -49,6 +50,7 @@ export function registerAllTools(): void {
     ...windowsTools,
     githubSearchTool,
     githubRepoTool,
+    dataTool,
     ...agentTools,
   ]);
 

@@ -90,24 +90,36 @@ console.log('--- The seven permanent specialists ---');
 {
   const specialists = m.registry.all().filter((a) => a.permanent && a.agentId !== 'jarvis');
   const ids = specialists.map((a) => a.agentId).sort();
-  ok('exactly seven permanent specialists', ids.join() === 'browser_agent,coding_agent,github_agent,memory_agent,pc_agent,qa_agent,research_agent', ids.join());
+  ok('exactly seven permanent specialists', ids.join() === 'browser_agent,coding_agent,data_agent,memory_agent,pc_agent,qa_agent,research_agent', ids.join());
   ok('all at depth 1 under JARVIS and READY', specialists.every((a) => a.depth === 1 && a.parentAgentId === 'jarvis' && a.status === 'READY'));
   ok('no specialist has a denied tool', specialists.every((a) => a.permissions.tools.every((t) => !AGENT_DENIED_TOOLS.includes(t.split(':')[0]))));
   ok('scopes contain only registered tools', specialists.every((a) => a.permissions.tools.every((t) => toolRegistryV2.has(t.split(':')[0]))));
   const risk = Object.fromEntries(specialists.map((a) => [a.agentId, a.permissions.maxRisk]));
-  ok('risk ceilings: research/browser/QA/memory 1, PC/coding 2, GitHub 3',
-    risk['research_agent'] === 1 && risk['browser_agent'] === 1 && risk['qa_agent'] === 1 && risk['memory_agent'] === 1
-    && risk['pc_agent'] === 2 && risk['coding_agent'] === 2 && risk['github_agent'] === 3, JSON.stringify(risk));
+  ok('risk ceilings: data 0; research/browser/verification/memory 1; desktop 2; engineering 3',
+    risk['data_agent'] === 0 && risk['research_agent'] === 1 && risk['browser_agent'] === 1 && risk['qa_agent'] === 1 && risk['memory_agent'] === 1
+    && risk['pc_agent'] === 2 && risk['coding_agent'] === 3, JSON.stringify(risk));
+  const names = Object.fromEntries(specialists.map((a) => [a.agentId, a.name]));
+  ok('the seven have the requested names', names['research_agent'] === 'Research & Intelligence Agent'
+    && names['coding_agent'] === 'Software Engineering & Code Execution Agent' && names['browser_agent'] === 'Browser & Web Operations Agent'
+    && names['pc_agent'] === 'Desktop & System Operations Agent' && names['memory_agent'] === 'Memory & Personalization Agent'
+    && names['data_agent'] === 'Data & Problem-Solving Agent' && names['qa_agent'] === 'Verification, Security & Reliability Agent', JSON.stringify(names));
   ok('the Memory agent cannot spawn; the others can', specialists.every((a) => a.permissions.canSpawn === (a.agentId !== 'memory_agent')));
   ok('each has an Agent Card with its skill', specialists.every((a) => m.registry.agentCard(a.agentId)?.skills[0]?.id === a.agentId));
   ok('worker roles are defined but have no agents until needed', WORKER_ROLES.every((w) => m.registry.hasRole(w.role) && !m.registry.get(w.role)) && SPECIALIST_ROLES.length === 7);
-  const gh = m.registry.get('github_agent')!;
+  const eng = m.registry.get('coding_agent')!;
   const research = m.registry.get('research_agent')!;
-  ok('git_push is in the GitHub agent\'s scope (the registry still asks for approval)', checkCall(gh.permissions, 'git_push', {}, toolRegistryV2).allowed);
+  ok('git_push is in the Engineering agent\'s scope (the registry still asks for approval)', checkCall(eng.permissions, 'git_push', {}, toolRegistryV2).allowed);
   ok('git_push is not in the Research agent\'s scope', checkCall(research.permissions, 'git_push', {}, toolRegistryV2).code === 'AGENT_SCOPE_DENIED');
-  ok('only allowed git actions: status yes, commit no, for the Coding agent',
-    checkCall(m.registry.get('coding_agent')!.permissions, 'git', { action: 'status' }, toolRegistryV2).allowed
-    && !checkCall(m.registry.get('coding_agent')!.permissions, 'git', { action: 'commit' }, toolRegistryV2).allowed);
+  ok('every tool the GitHub agent had is now with the Engineering agent',
+    ['github_search', 'github_repo', 'git:status', 'git:log', 'git:branches', 'git:diff', 'git_overview', 'git:commit', 'git:switch', 'git_push']
+      .every((t) => eng.permissions.tools.includes(t)), eng.permissions.tools.join(','));
+  ok('only listed git actions: status and commit yes, reset no, for the Engineering agent',
+    checkCall(eng.permissions, 'git', { action: 'status' }, toolRegistryV2).allowed
+    && checkCall(eng.permissions, 'git', { action: 'commit' }, toolRegistryV2).allowed
+    && !checkCall(eng.permissions, 'git', { action: 'reset' }, toolRegistryV2).allowed);
+  ok('the Verification agent cannot write, commit or push', ['write_file', 'git_push'].every((t) => !checkCall(m.registry.get('qa_agent')!.permissions, t, {}, toolRegistryV2).allowed)
+    && !checkCall(m.registry.get('qa_agent')!.permissions, 'git', { action: 'commit' }, toolRegistryV2).allowed);
+  ok('the Data agent holds only read-only tools (risk 0)', m.registry.get('data_agent')!.permissions.maxRisk === 0);
 }
 
 console.log('\n--- Tool loop: the model picks tools from the scope; the registry runs them ---');
@@ -151,17 +163,17 @@ console.log('\n--- A request with independent parts goes to workers ---');
   ok('the workers got a narrower, read-only scope', workerScope.maxRisk === 0 && workerScope.tools.every((t) => ['browser_state', 'browser_read_page', 'browser_page_structure'].includes(t)), workerScope.tools.join(','));
 }
 
-console.log('\n--- The GitHub agent: research goes to the research flow, chores to the tool loop ---');
+console.log('\n--- The Engineering agent (GitHub merged in): research goes to the research flow, chores to the tool loop ---');
 {
-  const h = await m.startRootTask({ request: 'cdp libs', specialistRole: 'github_agent', task: { description: 'Find TypeScript libraries for the Chrome DevTools Protocol' } });
+  const h = await m.startRootTask({ request: 'cdp libs', specialistRole: 'coding_agent', task: { description: 'Find TypeScript libraries for the Chrome DevTools Protocol' } });
   const r = await h.result;
-  const kids = m.spawnedBy(h.rootTaskId, 'github_agent').map((k) => k.role).sort();
+  const kids = m.spawnedBy(h.rootTaskId, 'coding_agent').map((k) => k.role).sort();
   ok('a research request created discovery and analysis workers', kids.join() === 'repo_code_analysis_worker,repo_discovery_worker', kids.join());
   ok('and ranked the repository it found', ((r.specialist.data?.['ranked'] as { fullName: string }[]) ?? [])[0]?.fullName === 'cdp-org/cdp-kit');
   calls.length = 0;
-  const h2 = await m.startRootTask({ request: 'git status', specialistRole: 'github_agent', task: { description: 'Show the local repository status USE:git_overview' } });
+  const h2 = await m.startRootTask({ request: 'git status', specialistRole: 'coding_agent', task: { description: 'Show the local repository status USE:git_overview' } });
   await h2.result;
-  ok('a repository chore used the tool loop', calls.includes('git_overview') && m.spawnedBy(h2.rootTaskId, 'github_agent').length === 0);
+  ok('a repository chore used the tool loop', calls.includes('git_overview') && m.spawnedBy(h2.rootTaskId, 'coding_agent').length === 0);
 }
 
 globalThis.fetch = realFetch;

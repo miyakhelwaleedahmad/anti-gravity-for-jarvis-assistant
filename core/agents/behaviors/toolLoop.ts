@@ -53,7 +53,8 @@ function isAbort(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
 }
 
-async function runLoop(ctx: AgentContext, task: string, opts: ToolLoopOptions): Promise<{ answer: string; calls: number; failures: string[]; note?: string }> {
+/** One model-driven tool loop over `task` (exported for behaviours that split a request themselves). */
+export async function runLoop(ctx: AgentContext, task: string, opts: ToolLoopOptions): Promise<{ answer: string; calls: number; failures: string[]; note?: string }> {
   const names = toolNames(ctx);
   const defs = toolRegistryV2.getLLMDefinitions(names);
   const allowedActions = ctx.agent.permissions.tools.filter((t) => t.includes(':'));

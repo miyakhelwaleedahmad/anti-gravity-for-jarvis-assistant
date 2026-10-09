@@ -3,16 +3,22 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * The seven permanent specialists under JARVIS, and the worker roles they may
  * create. These are the only permanent agents; everything else is a temporary
- * worker that exists for one task.
+ * worker that exists for one task (docs/agents/SEVEN_AGENT_DESIGN.md).
  *
- *   research_agent  browser_agent  pc_agent  coding_agent
- *   github_agent    qa_agent       memory_agent
+ *   research_agent  Research & Intelligence
+ *   coding_agent    Software Engineering & Code Execution (includes GitHub)
+ *   browser_agent   Browser & Web Operations
+ *   pc_agent        Desktop & System Operations
+ *   memory_agent    Memory & Personalization
+ *   data_agent      Data & Problem-Solving
+ *   qa_agent        Verification, Security & Reliability
  *
  * A role's `tools` is the most that kind of agent may ever use; an agent gets
  * the intersection with its parent's scope (permissions.ts), and every call
- * still passes the risk engine and the approval gate. Risk ceilings:
- * research/browser/QA/memory 1, PC/coding 2, GitHub 3 (git push asks for
- * approval). Session control and messaging tools are never given to agents.
+ * still passes the risk engine and the approval gate. Risk ceilings: data 0;
+ * research, browser, memory, verification 1; desktop 2; engineering 3 (write,
+ * commit and push ask for approval). Session control and messaging tools are
+ * never given to agents.
  */
 
 import type { AgentManager } from './agentManager.js';
@@ -23,6 +29,7 @@ import {
 } from './behaviors/research.js';
 import { toolLoopBehavior, type FallbackRule } from './behaviors/toolLoop.js';
 import { keywords } from './behaviors/common.js';
+import { DATA_WORKER_ROLE, dataSpecialist, dataWorker } from './behaviors/data.js';
 import type { AgentBehavior } from './registry.js';
 
 const V = '1.0.0';
@@ -41,7 +48,6 @@ const CODING_RULES: FallbackRule[] = [
   { pattern: /project|build|server|script|code/i, tool: 'dev_status', args: () => ({}) },
 ];
 const GITHUB_RULES: FallbackRule[] = [
-  { pattern: /status|branch|commit|local|repo/i, tool: 'git_overview', args: () => ({}) },
   { pattern: /find|search|project|repositor/i, tool: 'github_search', args: (t) => ({ ...query(t), sort: 'stars', limit: 5 }) },
 ];
 const QA_RULES: FallbackRule[] = [
@@ -64,18 +70,25 @@ function worker(def: Omit<AgentRoleDefinition, 'permanent' | 'version' | 'canSpa
 const loop = (purpose: string, fallbackRules: FallbackRule[], workerRole?: string): AgentBehavior =>
   toolLoopBehavior({ purpose, fallbackRules, ...(workerRole ? { workerRole } : {}) });
 
-/** GitHub specialist: research questions go through the research flow; repository chores through the tool loop. */
-const githubSpecialist: AgentBehavior = {
+const ENGINEERING_PURPOSE = 'You are the Software Engineering & Code Execution Agent: you read, explain, test and (with approval) change code '
+  + 'in the user\'s project, and handle git and GitHub. Report changed files and test results exactly.';
+
+/**
+ * Software Engineering: a request to find GitHub projects goes through the
+ * GitHub research flow (it was the GitHub Agent's); everything else through the tool loop.
+ */
+const engineeringSpecialist: AgentBehavior = {
   run(ctx) {
     return /\b(find|search|best|compare|recommend|alternatives?|which)\b/i.test(ctx.task.description)
+      && /\b(git ?hub|repositor(?:y|ies)|repos|librar(?:y|ies)|projects?|packages?|frameworks?)\b/i.test(ctx.task.description)
       ? githubResearchAgent.run(ctx)
-      : loop('You are the GitHub Agent: repositories, branches, commits, pull requests, issues, CI and GitHub research.', GITHUB_RULES).run(ctx);
+      : loop(ENGINEERING_PURPOSE, [...CODING_RULES, ...GITHUB_RULES], 'code_analysis_worker').run(ctx);
   },
 };
 
 export const SPECIALIST_ROLES: AgentRoleDefinition[] = [
   specialist({
-    role: RESEARCH_ROLES.research, name: 'Research Agent',
+    role: RESEARCH_ROLES.research, name: 'Research & Intelligence Agent',
     description: 'Researches questions on GitHub and the web, compares sources, checks facts and writes a sourced answer.',
     capabilities: ['research', 'web_research', 'github_research', 'fact_verification', 'synthesis', 'source_comparison'],
     supportedTaskTypes: ['research', 'comparison', 'fact_check'],
@@ -86,57 +99,61 @@ export const SPECIALIST_ROLES: AgentRoleDefinition[] = [
     behavior: researchSpecialist,
   }),
   specialist({
-    role: 'browser_agent', name: 'Browser Agent',
+    role: 'browser_agent', name: 'Browser & Web Operations Agent',
     description: 'Reads and navigates the Chrome debugging browser: tabs, page text, page structure, screenshots.',
     capabilities: ['browser', 'page_reading', 'navigation'],
     supportedTaskTypes: ['browse', 'read_page'],
     tools: ['browser_state', 'browser_read_page', 'browser_page_structure', 'get_browser_tabs', 'is_tab_open', 'browser_navigate', 'browser_scroll', 'browser_screenshot', 'browser_tab:new', 'browser_tab:switch', 'control_browser:list', 'control_browser:focus', 'control_browser:open_url'],
     maxRisk: 1, allowedChildRoles: ['browser_page_worker'],
     examples: ['What do my open tabs say about the project deadline?'],
-    behavior: loop('You are the Browser Agent: you read and navigate the user\'s Chrome debugging profile.', BROWSER_RULES, 'browser_page_worker'),
+    behavior: loop('You are the Browser & Web Operations Agent: you read and navigate the user\'s Chrome debugging profile and check that each action happened.', BROWSER_RULES, 'browser_page_worker'),
   }),
   specialist({
-    role: 'pc_agent', name: 'PC Agent',
-    description: 'Observes and operates Windows: open apps and windows, system state, focusing and opening apps.',
+    role: 'pc_agent', name: 'Desktop & System Operations Agent',
+    description: 'Observes and operates Windows: open apps and windows, system state, focusing and opening apps. Sensitive actions ask for approval.',
     capabilities: ['windows', 'apps', 'system_state'],
     supportedTaskTypes: ['observe_pc', 'operate_pc'],
     tools: ['get_system_info', 'get_system_state', 'get_pc_state', 'get_open_apps', 'get_active_window', 'is_app_open', 'system_overview', 'windows_overview', 'ui_elements', 'get_jarvis_service_status', 'open_app', 'control_app:open', 'control_app:focus', 'control_window:focus', 'control_window:minimize', 'control_window:maximize', 'screenshot'],
     maxRisk: 2, allowedChildRoles: ['pc_inspect_worker'],
     examples: ['Which apps are open and which one is using the most memory?'],
-    behavior: loop('You are the PC Agent: you observe and operate the user\'s Windows PC.', PC_RULES, 'pc_inspect_worker'),
+    behavior: loop('You are the Desktop & System Operations Agent: you observe and operate the user\'s Windows PC and verify each outcome.', PC_RULES, 'pc_inspect_worker'),
   }),
   specialist({
-    role: 'coding_agent', name: 'Coding Agent',
-    description: 'Reads and explains code, checks the project state, git changes and dev scripts; writes files with approval.',
-    capabilities: ['coding', 'code_reading', 'code_analysis'],
-    supportedTaskTypes: ['explain_code', 'code_review', 'edit_code'],
-    tools: ['read_file', 'files:list', 'files:search', 'files:compare', 'explain_code', 'dev_status', 'git:status', 'git:diff', 'git:log', 'git:branches', 'git_overview', 'dev:scripts', 'dev:servers', 'write_file', 'diagnose_app'],
-    maxRisk: 2, allowedChildRoles: ['code_analysis_worker'],
-    examples: ['Explain what core/orchestrator.ts does'],
-    behavior: loop('You are the Coding Agent: you read, explain and (with approval) change code in the user\'s project.', CODING_RULES, 'code_analysis_worker'),
+    role: 'coding_agent', name: 'Software Engineering & Code Execution Agent',
+    description: 'Reads, explains, tests and (with approval) changes code; git and GitHub: branches, commits, pushes, GitHub research. '
+      + 'Writing, committing and pushing ask for approval.',
+    capabilities: ['coding', 'code_reading', 'code_analysis', 'testing', 'git', 'github', 'github_research'],
+    supportedTaskTypes: ['explain_code', 'code_review', 'edit_code', 'run_tests', 'git', 'github_research'],
+    tools: ['read_file', 'files:list', 'files:search', 'files:compare', 'explain_code', 'dev_status', 'dev:scripts', 'dev:servers', 'dev:run',
+      'git:status', 'git:diff', 'git:log', 'git:branches', 'git:commit', 'git:switch', 'git_overview', 'git_push',
+      'github_search', 'github_repo', 'write_file', 'diagnose_app'],
+    maxRisk: 3, allowedChildRoles: ['code_analysis_worker', 'test_runner_worker', RESEARCH_ROLES.discovery, RESEARCH_ROLES.codeAnalysis],
+    examples: ['Explain what core/orchestrator.ts does', 'Find TypeScript libraries for Chrome DevTools Protocol', 'What changed in git recently?'],
+    behavior: engineeringSpecialist,
   }),
   specialist({
-    role: 'github_agent', name: 'GitHub Agent',
-    description: 'Repositories, branches, commits, pull requests, issues, CI and GitHub research. Pushing asks for approval.',
-    capabilities: ['github', 'github_research', 'git'],
-    supportedTaskTypes: ['github_research', 'git'],
-    tools: ['github_search', 'github_repo', 'git:status', 'git:log', 'git:branches', 'git:diff', 'git_overview', 'git:commit', 'git:switch', 'git_push'],
-    maxRisk: 3, allowedChildRoles: [RESEARCH_ROLES.discovery, RESEARCH_ROLES.codeAnalysis],
-    examples: ['Find TypeScript libraries for Chrome DevTools Protocol'],
-    behavior: githubSpecialist,
+    role: 'data_agent', name: 'Data & Problem-Solving Agent',
+    description: 'Exact calculations, statistics, comparisons and log analysis; splits independent analyses across workers and combines them.',
+    capabilities: ['data_analysis', 'calculation', 'comparison', 'log_analysis'],
+    supportedTaskTypes: ['calculate', 'analyze_data', 'compare', 'analyze_logs'],
+    tools: ['data_tools', 'read_file', 'files:search'],
+    maxRisk: 0, allowedChildRoles: [DATA_WORKER_ROLE],
+    examples: ['What is the average of 12, 15, 19 and 30?', 'Summarise the errors in this log'],
+    behavior: dataSpecialist,
   }),
   specialist({
-    role: 'qa_agent', name: 'QA Agent',
-    description: 'Runs and reads the project\'s checks and tests, and diagnoses failures.',
-    capabilities: ['testing', 'qa', 'diagnosis'],
-    supportedTaskTypes: ['run_tests', 'diagnose'],
-    tools: ['dev_status', 'dev:scripts', 'dev:run', 'read_file', 'files:search', 'git:status', 'git:diff', 'diagnose_app'],
+    role: 'qa_agent', name: 'Verification, Security & Reliability Agent',
+    description: 'Independently checks results, evidence and code changes: runs checks and tests, reviews diffs, reports defects. '
+      + 'It cannot approve actions or change anything.',
+    capabilities: ['verification', 'testing', 'qa', 'diagnosis', 'security_review'],
+    supportedTaskTypes: ['verify', 'run_tests', 'diagnose', 'review'],
+    tools: ['dev_status', 'dev:scripts', 'dev:run', 'read_file', 'files:search', 'git:status', 'git:diff', 'diagnose_app', 'github_repo', 'web_search'],
     maxRisk: 1, allowedChildRoles: ['test_runner_worker'],
-    examples: ['Run the type check and tell me what fails'],
-    behavior: loop('You are the QA Agent: you run checks and tests of the user\'s project and explain failures.', QA_RULES, 'test_runner_worker'),
+    examples: ['Run the type check and tell me what fails', 'Check the sources behind this research result'],
+    behavior: loop('You are the Verification, Security & Reliability Agent: you check other agents\' results and the project\'s tests independently and report defects; you never change anything.', QA_RULES, 'test_runner_worker'),
   }),
   specialist({
-    role: 'memory_agent', name: 'Memory Agent',
+    role: 'memory_agent', name: 'Memory & Personalization Agent',
     description: 'Searches JARVIS\'s memory and documents, and stores relations the user asks to keep.',
     capabilities: ['memory', 'knowledge'],
     supportedTaskTypes: ['recall', 'remember'],
@@ -193,6 +210,11 @@ export const WORKER_ROLES: AgentRoleDefinition[] = [
     role: 'code_analysis_worker', name: 'Code Analysis Worker', description: 'Reads and explains one part of the code.',
     capabilities: ['code_reading'], supportedTaskTypes: [], tools: ['read_file', 'files:list', 'files:search', 'explain_code'], maxRisk: 0, allowedChildRoles: [],
     behavior: loop('You read one part of the code and explain it.', CODING_RULES),
+  }),
+  worker({
+    role: DATA_WORKER_ROLE, name: 'Data Analysis Worker', description: 'Does one calculation or analysis.',
+    capabilities: ['calculation', 'data_analysis'], supportedTaskTypes: [], tools: ['data_tools'], maxRisk: 0, allowedChildRoles: [],
+    behavior: dataWorker,
   }),
   worker({
     role: 'test_runner_worker', name: 'Test Runner Worker', description: 'Runs one check or test script.',
