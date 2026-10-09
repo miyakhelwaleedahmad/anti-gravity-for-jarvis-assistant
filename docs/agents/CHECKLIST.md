@@ -41,20 +41,24 @@ Legend: `[x]` done and tested · `[~]` existed before 7A, re-verified · `[ ]` n
 - [x] Gate: same run as Phase 2
 
 ## Phase 4: the seven specialists
-- [ ] Research: unchanged recursive flow
-- [ ] Software Engineering: code + GitHub tools; push approval-gated
-- [ ] Browser: existing CDP tools only
-- [ ] Desktop: diagnostics worker added
-- [ ] Memory: retrieval and consistency workers
-- [ ] Data: calculate, stats, compare, log summary
-- [ ] Verification: evidence worker; no tool above risk 1
-- [ ] Gate: typecheck + full suite green
+- [x] Research: recursive flow unchanged (`recursiveResearchExampleTest` 32/0)
+- [x] Software Engineering: code + GitHub tools; write, commit and push go through the approval gate
+- [x] Browser: existing CDP tools only; no second browser runtime
+- [x] Desktop: "why … not working" parts go to System Diagnostics Workers (read-only, risk 0)
+- [x] Memory: Consistency Worker checks ADD / UPDATE / NONE before storing (mem0 pattern, no second store); Retrieval Workers for searches
+- [x] Data: calculate, stats, compare, log summary
+- [x] Verification: Evidence Check Worker re-reads a cited GitHub source; the agent cannot write, commit, push or approve
+- [x] Every specialist can create its own workers; each worker's tools are a subset of its parent's
+- [x] Gate: typecheck clean; suite 109 passed / 0 failed / 9 skipped
 
 ## Phase 5: verification and dashboard
-- [ ] Verification pass after research/data/engineering results
-- [ ] Advisory and time-capped; verifier failure never blocks the answer
-- [ ] Result report and status show the verdict
-- [ ] Gate: typecheck + full suite green
+- [x] Verification pass after research, data and engineering results (and any result with conflicts)
+- [x] Checks: finished, answered, citations present, high-confidence research findings sourced, conflicts settled, confidence backed by evidence, confidence allows for failed tools, cited GitHub source re-read
+- [x] Advisory and time-capped (`JARVIS_AGENT_VERIFY_TIMEOUT_MS`, default 20 s; `JARVIS_AGENT_VERIFY=0` turns it off); if the check cannot run, the answer is still reported as "not verified"
+- [x] A result with issues is not stored in long-term memory, and the spoken reply says problems were found
+- [x] Console report shows the verdict and each failed check; status questions stay on the user's task
+- [x] Verification agents appear on the dashboard like other agents (existing health registration)
+- [x] Gate: typecheck clean; suite 109 passed / 0 failed / 9 skipped
 
 ## Phase 6: regression and release
 - [ ] Full suite and typecheck

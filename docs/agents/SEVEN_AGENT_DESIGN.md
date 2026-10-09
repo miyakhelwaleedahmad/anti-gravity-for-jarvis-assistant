@@ -101,7 +101,9 @@ The per-root workspace stays the shared store; there is no global mutable memory
 
 After a root task completes, JARVIS asks the Verification agent to check the result when it matters: research, data and engineering results, or any result with conflicts.
 
-- It checks: sources exist for findings, unresolved conflicts, confidence vs evidence, and tool failures reported as limitations. When the role's tools allow it, it can spot-check one source.
+- It runs as its own root task on `qa_agent` and is given only the result (answer, findings, sources, conflicts, limitations, confidence), not the workspace.
+- Rule checks (`core/agents/behaviors/verify.ts`): finished; answered; every cited source present; high-confidence research findings have a source; no unsettled conflict; confidence ≥ 0.8 only with evidence; confidence ≥ 0.8 not kept when tools failed. An Evidence Check Worker re-reads one cited GitHub repository and compares the licence the answer states.
+- A result with issues is not stored in long-term memory.
 - It returns `verified | issues | unverified` with notes. The result is presented either way, with the notes, so the verifier is **not a single point of failure**. It has a time cap (`JARVIS_AGENT_VERIFY_TIMEOUT_MS`, default 20 s) and can be turned off (`JARVIS_AGENT_VERIFY=0`).
 - It holds no tool above risk 1 and has no way to answer an approval.
 

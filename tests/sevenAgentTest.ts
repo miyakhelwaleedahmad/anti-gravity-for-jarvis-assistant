@@ -10,6 +10,10 @@
  *   Phase 2  assignment/acceptance/request-reply/failure/delegation messages,
  *            duplicate and stale messages dropped, messages cannot grant
  *            tools, versioned artifacts, approvals bound to agent and task.
+ *   Phase 4  Memory (consistency check before storing), Desktop (diagnostics
+ *            workers) and Verification (evidence re-read) workers.
+ *   Phase 5  the verification pass: rules, verdicts, the evidence worker,
+ *            JARVIS's pass over a real result, and the pass failing safely.
  *
  * The model is scripted (or down) and nothing reaches the network.
  */
@@ -25,7 +29,17 @@ process.env['JARVIS_DATA_ROOT'] = workspaceDir;
 process.chdir(workspaceDir);
 
 const realFetch = globalThis.fetch;
-globalThis.fetch = (async () => { throw new Error('network is off in this test'); }) as typeof fetch;
+// Offline: one stand-in GitHub repository for the Evidence Check Worker; everything else fails.
+globalThis.fetch = (async (input: string | URL | Request) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  if (url.startsWith('https://api.github.com/repos/acme/fast-tool')) {
+    if (url.endsWith('/readme')) return new Response('# fast-tool', { status: 200 });
+    if (url.endsWith('/contents/')) return json([{ name: 'LICENSE', type: 'file' }]);
+    return json({ full_name: 'acme/fast-tool', html_url: 'https://github.com/acme/fast-tool', description: 'A tool', stargazers_count: 10, language: 'TypeScript', license: { spdx_id: 'MIT' }, topics: [], pushed_at: new Date().toISOString(), archived: false });
+  }
+  throw new Error('network is off in this test');
+}) as typeof fetch;
 
 const { registerAllTools } = await import('../core/tools/index.js');
 const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');
@@ -85,7 +99,7 @@ console.log('--- Phase 1: the seven roles, registered once ---');
   registerAgentRoles(m2);
   ok('a fresh manager (a restart) has the same seven, once each',
     m2.registry.all().filter((a) => a.permanent && a.agentId !== 'jarvis').map((a) => a.agentId).sort().join() === expected);
-  ok('every specialist can create workers', m.registry.all().filter((a) => a.permanent && a.agentId !== 'jarvis').every((a) => a.permissions.canSpawn || a.agentId === 'memory_agent'));
+  ok('every specialist can create workers', m.registry.all().filter((a) => a.permanent && a.agentId !== 'jarvis').every((a) => a.permissions.canSpawn && m.registry.role(a.role).allowedChildRoles.length > 0));
   ok('data_tools is registered with risk 0', toolRegistryV2.has('data_tools') && toolRegistryV2.riskOf('data_tools', { action: 'calculate' }) === 0);
 }
 
@@ -308,6 +322,101 @@ console.log('\n--- Phase 2: messages, artifacts, approvals ---');
     `${JSON.stringify(asked)} vs ${pushers.map((p) => `${p.agentId}/${p.taskId}`).join(',')}`);
   ok('a denial reaches only the call that asked; nothing ran', (r5.answer.match(/APPROVAL_DENIED/g) ?? []).length === 2 && riskyRuns === 0, r5.answer);
   offAll();
+}
+
+console.log('\n--- Phase 4: Memory, Desktop and Verification workers ---');
+{
+  const { proposeMemoryOperation, parseFacts, factToRemember } = await import('../core/agents/behaviors/memory.js');
+  const { memoryManager } = await import('../memory/memoryManager.js');
+  const stored = ['my exam is on Friday at nine', 'my sister lives in Lahore'];
+  (memoryManager as unknown as { searchFacts: unknown }).searchFacts = async () => stored.map((fact, i) => ({ id: `f${i}`, fact, importance: 5 }));
+
+  ok('mem0-style proposal: same fact → NONE, related → UPDATE, new → ADD',
+    proposeMemoryOperation('my exam is on Friday at nine', stored).operation === 'NONE'
+    && proposeMemoryOperation('my exam is on Monday at nine', stored).operation === 'UPDATE'
+    && proposeMemoryOperation('I prefer dark mode in VS Code', stored).operation === 'ADD',
+    JSON.stringify(['my exam is on Monday at nine', 'I prefer dark mode in VS Code'].map((f) => proposeMemoryOperation(f, stored))));
+  ok('search_memory lines are read back as facts', JSON.stringify(parseFacts('1. [importance: 5] a fact\n2. [importance: 3] another')) === '["a fact","another"]'
+    && parseFacts('No relevant facts found in memory.').length === 0);
+  ok('"remember that …" is recognised', factToRemember('Please remember that my exam is on Friday.') === 'my exam is on Friday');
+
+  calls.length = 0;
+  const h = await m.startRootTask({ request: 'remember', specialistRole: 'memory_agent', task: { description: 'Remember that my exam is on Friday at nine' } });
+  const r = await h.result;
+  const kids = m.spawnedBy(h.rootTaskId, 'memory_agent');
+  ok('the Memory agent asked a Consistency Worker before storing', kids.length === 1 && kids[0]!.role === 'memory_consistency_worker', kids.map((k) => k.role).join(','));
+  ok('an already-known fact is not stored again', /already remember/.test(r.answer) && !calls.includes('save_relation'), r.answer);
+  const consistency = m.agentOf(h.rootTaskId, kids[0]!.agentId)!;
+  ok('the Consistency Worker can only read memory', consistency.permissions.tools.join() === 'search_memory' && consistency.permissions.maxRisk === 0);
+
+  const h2 = await m.startRootTask({ request: 'remember', specialistRole: 'memory_agent', task: { description: 'Remember that I prefer dark mode in VS Code' } });
+  const r2 = await h2.result;
+  ok('a new fact is proposed as ADD (stored only through save_relation and the registry)', (r2.specialist.data?.['proposal'] as { operation?: string })?.operation === 'ADD', JSON.stringify(r2.specialist.data));
+
+  modelDown = false;
+  const h3 = await m.startRootTask({ request: 'diagnose', specialistRole: 'pc_agent', task: { description: 'why is the local server not working; why is Chrome so slow' } });
+  const r3 = await h3.result;
+  modelDown = true;
+  const dkids = m.spawnedBy(h3.rootTaskId, 'pc_agent');
+  ok('the Desktop agent sent "why … not working" parts to System Diagnostics Workers', dkids.length === 2 && dkids.every((k) => k.role === 'system_diagnostics_worker'), dkids.map((k) => k.role).join(',') + ' ' + r3.status);
+  ok('diagnostics workers are read-only (risk 0)', dkids.every((k) => m.agentOf(h3.rootTaskId, k.agentId)!.permissions.maxRisk === 0));
+}
+
+console.log('\n--- Phase 5: independent verification ---');
+{
+  const { checkResult, verdictOf, repoOf } = await import('../core/agents/behaviors/verify.js');
+  const { shouldVerify, verifyRootResult, verificationReport, completionSpeech, verificationInput } = await import('../core/agents/jarvisAgents.js');
+  const base = { specialistRole: 'research_agent', status: 'COMPLETED', answer: 'fast-tool is the best fit.', confidence: 0.7, conflicts: [], limitations: [] };
+
+  const good = checkResult({ ...base, findings: [{ text: 'fast-tool is MIT', sourceIds: ['s1'], confidence: 0.8 }], sources: [{ id: 's1', title: 'fast-tool', url: 'https://github.com/acme/fast-tool' }] });
+  ok('a sourced, settled result is verified', verdictOf(good) === 'verified', JSON.stringify(good.filter((c) => !c.ok)));
+  const unsourced = checkResult({ ...base, findings: [{ text: 'X is fastest', sourceIds: [], confidence: 0.9 }], sources: [] });
+  ok('a research claim with high confidence and no source is an issue', verdictOf(unsourced) === 'issues' && unsourced.some((c) => c.name === 'sourced' && !c.ok));
+  const dangling = checkResult({ ...base, findings: [{ text: 'Y', sourceIds: ['gone'], confidence: 0.5 }], sources: [] });
+  ok('a finding citing a missing source is an issue', dangling.some((c) => c.name === 'citations' && !c.ok));
+  const conflicted = checkResult({ ...base, findings: [], sources: [], conflicts: [{ subject: 'fast-tool', attribute: 'licence', status: 'unresolved' }] });
+  ok('an unsettled conflict is an issue', conflicted.some((c) => c.name === 'conflicts' && !c.ok));
+  const overconfident = checkResult({ ...base, specialistRole: 'data_agent', confidence: 0.9, findings: [], sources: [] });
+  ok('high confidence with no evidence is an issue', overconfident.some((c) => c.name === 'confidence' && !c.ok));
+  const hidden = checkResult({ ...base, confidence: 0.9, findings: [{ text: 'a', sourceIds: [], confidence: 0.5 }], sources: [], limitations: ['Tool refused or failed: web_search'] });
+  ok('high confidence despite a failed tool is an issue', hidden.some((c) => c.name === 'failures weighed' && !c.ok));
+  const fallback = checkResult({ ...base, confidence: 0.9, findings: [{ text: 'a', sourceIds: [], confidence: 0.5 }], sources: [], limitations: ['Planning: the model was not available (503); rules were used instead.'] });
+  ok('a model falling back to rules is not counted as a tool failure', fallback.every((c) => c.name !== 'failures weighed' || c.ok));
+  ok('an unfinished task is "unverified"', verdictOf(checkResult({ ...base, status: 'TIMED_OUT', findings: [], sources: [] })) === 'unverified');
+  ok('GitHub URLs are read as owner/name', repoOf('https://github.com/acme/fast-tool/tree/main') === 'acme/fast-tool' && repoOf('https://example.com/x') === undefined);
+
+  // The Verification agent re-reads a cited GitHub source with an Evidence Check Worker.
+  const claim = { ...base, answer: 'fast-tool (GPL-3.0) is the best fit.', findings: [{ text: 'fast-tool fits', sourceIds: ['s1'], confidence: 0.8 }], sources: [{ id: 's1', title: 'fast-tool', url: 'https://github.com/acme/fast-tool' }] };
+  const hv = await m.startRootTask({ request: 'verify', specialistRole: 'qa_agent', task: { description: 'Verify the research result', input: { verify: claim } } });
+  const rv = await hv.result;
+  const v = rv.specialist.data?.['verification'] as { verdict: string; checks: { name: string; ok: boolean; note: string }[] } | undefined;
+  const vk = m.spawnedBy(hv.rootTaskId, 'qa_agent');
+  ok('the Verification agent created an Evidence Check Worker', vk.length === 1 && vk[0]!.role === 'evidence_check_worker', vk.map((k) => k.role).join(','));
+  ok('it caught the wrong licence in the answer (MIT on GitHub, GPL-3.0 in the answer)', v?.verdict === 'issues' && v.checks.some((c) => c.name === 'source re-read' && !c.ok && /MIT/.test(c.note)), JSON.stringify(v?.checks.find((c) => c.name === 'source re-read')));
+  ok('the worker held only github_repo', m.agentOf(hv.rootTaskId, vk[0]!.agentId)!.permissions.tools.join() === 'github_repo');
+
+  // JARVIS's verification pass over a real Data agent result.
+  const hd = await m.startRootTask({ request: 'average', specialistRole: 'data_agent', task: { description: 'What is the average of 4, 8 and 12?' } });
+  const rd = await hd.result;
+  ok('data, research and engineering results are verified; others are not', shouldVerify(rd)
+    && !shouldVerify({ ...rd, specialist: { ...rd.specialist, role: 'browser_agent' } })
+    && !shouldVerify({ ...rd, specialist: { ...rd.specialist, role: 'qa_agent' } })
+    && !shouldVerify({ ...rd, status: 'FAILED' }));
+  process.env['JARVIS_AGENT_VERIFY'] = '0';
+  ok('JARVIS_AGENT_VERIFY=0 turns the pass off', !shouldVerify(rd));
+  delete process.env['JARVIS_AGENT_VERIFY'];
+  const vd = await verifyRootResult(rd, 'average', m);
+  ok('the Data agent\'s exact result is verified', vd?.verdict === 'verified', JSON.stringify(vd?.checks.filter((c) => !c.ok)));
+  ok('the report shows the verdict', verificationReport(vd, true).some((l) => /^Verification: verified \(\d+\/\d+ checks passed/.test(l)));
+  ok('the verifier saw only the result, not the workspace', Object.keys(verificationInput(rd)).sort().join() === 'answer,confidence,conflicts,findings,limitations,sources,specialistRole,status');
+
+  // The verifier is not a single point of failure.
+  const broken = new AgentManager(agentEvents, { ...loadAgentLimits({}) }); // no roles: the check cannot start
+  const none = await verifyRootResult(rd, 'average', broken);
+  ok('when the check cannot run, the result is still reported, marked not verified', none === undefined
+    && verificationReport(none, true).join(' ').includes('not verified')
+    && completionSpeech(rd, none).startsWith('Sir, the Data Agent has finished.'));
+  ok('a result with issues says so when spoken', /found problems/.test(completionSpeech(rd, { verdict: 'issues', checks: [], issues: ['x'], checkedBy: 'qa_agent', at: 0 })));
 }
 
 globalThis.fetch = realFetch;

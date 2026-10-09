@@ -30,6 +30,10 @@ import {
 import { toolLoopBehavior, type FallbackRule } from './behaviors/toolLoop.js';
 import { keywords } from './behaviors/common.js';
 import { DATA_WORKER_ROLE, dataSpecialist, dataWorker } from './behaviors/data.js';
+import {
+  MEMORY_CONSISTENCY_ROLE, MEMORY_RETRIEVAL_ROLE, memoryConsistencyWorker, memoryRetrievalWorker, memorySpecialist,
+} from './behaviors/memory.js';
+import { EVIDENCE_WORKER_ROLE, evidenceCheckWorker, verifyBehaviorRun } from './behaviors/verify.js';
 import type { AgentBehavior } from './registry.js';
 
 const V = '1.0.0';
@@ -54,10 +58,11 @@ const QA_RULES: FallbackRule[] = [
   { pattern: /test|build|check|script|lint/i, tool: 'dev_status', args: () => ({}) },
   { pattern: /fail|error|crash|broken/i, tool: 'diagnose_app', args: () => ({}) },
 ];
-const MEMORY_RULES: FallbackRule[] = [
-  { pattern: /.*/, tool: 'search_memory', args: (t) => query(t) },
-  { pattern: /document|file|notes|pdf/i, tool: 'search_documents', args: (t) => query(t) },
+const DIAGNOSTICS_RULES: FallbackRule[] = [
+  { pattern: /.*/, tool: 'diagnose_app', args: () => ({}) },
+  { pattern: /system|cpu|memory|ram|disk|slow/i, tool: 'system_overview', args: () => ({}) },
 ];
+const DIAGNOSIS = /\b(diagnos\w*|not working|crash\w*|broken|fails?|failing|error|slow|hang\w*|frozen|why)\b/i;
 
 function specialist(def: Omit<AgentRoleDefinition, 'permanent' | 'version' | 'canSpawn'> & { canSpawn?: boolean }): AgentRoleDefinition {
   return { ...def, permanent: true, version: V, canSpawn: def.canSpawn ?? def.allowedChildRoles.length > 0 };
@@ -83,6 +88,26 @@ const engineeringSpecialist: AgentBehavior = {
       && /\b(git ?hub|repositor(?:y|ies)|repos|librar(?:y|ies)|projects?|packages?|frameworks?)\b/i.test(ctx.task.description)
       ? githubResearchAgent.run(ctx)
       : loop(ENGINEERING_PURPOSE, [...CODING_RULES, ...GITHUB_RULES], 'code_analysis_worker').run(ctx);
+  },
+};
+
+const DESKTOP_PURPOSE = 'You are the Desktop & System Operations Agent: you observe and operate the user\'s Windows PC and verify each outcome.';
+
+/** Desktop: "why is X not working" goes to diagnostics workers, other parts to inspection workers. */
+const desktopSpecialist: AgentBehavior = {
+  run(ctx) {
+    return DIAGNOSIS.test(ctx.task.description)
+      ? loop(DESKTOP_PURPOSE, [...DIAGNOSTICS_RULES, ...PC_RULES], 'system_diagnostics_worker').run(ctx)
+      : loop(DESKTOP_PURPOSE, PC_RULES, 'pc_inspect_worker').run(ctx);
+  },
+};
+
+/** Verification: a result handed over in input.verify is checked by rules; anything else (tests, reviews) by the tool loop. */
+const verificationSpecialist: AgentBehavior = {
+  run(ctx) {
+    return ctx.input['verify']
+      ? verifyBehaviorRun(ctx)
+      : loop('You are the Verification, Security & Reliability Agent: you check other agents\' results and the project\'s tests independently and report defects; you never change anything.', QA_RULES, 'test_runner_worker').run(ctx);
   },
 };
 
@@ -113,10 +138,10 @@ export const SPECIALIST_ROLES: AgentRoleDefinition[] = [
     description: 'Observes and operates Windows: open apps and windows, system state, focusing and opening apps. Sensitive actions ask for approval.',
     capabilities: ['windows', 'apps', 'system_state'],
     supportedTaskTypes: ['observe_pc', 'operate_pc'],
-    tools: ['get_system_info', 'get_system_state', 'get_pc_state', 'get_open_apps', 'get_active_window', 'is_app_open', 'system_overview', 'windows_overview', 'ui_elements', 'get_jarvis_service_status', 'open_app', 'control_app:open', 'control_app:focus', 'control_window:focus', 'control_window:minimize', 'control_window:maximize', 'screenshot'],
-    maxRisk: 2, allowedChildRoles: ['pc_inspect_worker'],
-    examples: ['Which apps are open and which one is using the most memory?'],
-    behavior: loop('You are the Desktop & System Operations Agent: you observe and operate the user\'s Windows PC and verify each outcome.', PC_RULES, 'pc_inspect_worker'),
+    tools: ['get_system_info', 'get_system_state', 'get_pc_state', 'get_open_apps', 'get_active_window', 'is_app_open', 'system_overview', 'windows_overview', 'ui_elements', 'get_jarvis_service_status', 'diagnose_app', 'open_app', 'control_app:open', 'control_app:focus', 'control_window:focus', 'control_window:minimize', 'control_window:maximize', 'screenshot'],
+    maxRisk: 2, allowedChildRoles: ['pc_inspect_worker', 'system_diagnostics_worker'],
+    examples: ['Which apps are open and which one is using the most memory?', 'Why is my local server not working?'],
+    behavior: desktopSpecialist,
   }),
   specialist({
     role: 'coding_agent', name: 'Software Engineering & Code Execution Agent',
@@ -148,19 +173,19 @@ export const SPECIALIST_ROLES: AgentRoleDefinition[] = [
     capabilities: ['verification', 'testing', 'qa', 'diagnosis', 'security_review'],
     supportedTaskTypes: ['verify', 'run_tests', 'diagnose', 'review'],
     tools: ['dev_status', 'dev:scripts', 'dev:run', 'read_file', 'files:search', 'git:status', 'git:diff', 'diagnose_app', 'github_repo', 'web_search'],
-    maxRisk: 1, allowedChildRoles: ['test_runner_worker'],
+    maxRisk: 1, allowedChildRoles: ['test_runner_worker', EVIDENCE_WORKER_ROLE],
     examples: ['Run the type check and tell me what fails', 'Check the sources behind this research result'],
-    behavior: loop('You are the Verification, Security & Reliability Agent: you check other agents\' results and the project\'s tests independently and report defects; you never change anything.', QA_RULES, 'test_runner_worker'),
+    behavior: verificationSpecialist,
   }),
   specialist({
     role: 'memory_agent', name: 'Memory & Personalization Agent',
-    description: 'Searches JARVIS\'s memory and documents, and stores relations the user asks to keep.',
-    capabilities: ['memory', 'knowledge'],
+    description: 'Searches JARVIS\'s memory and documents, and stores what the user asks to keep after checking it is not already known.',
+    capabilities: ['memory', 'knowledge', 'personalization'],
     supportedTaskTypes: ['recall', 'remember'],
     tools: ['search_memory', 'search_documents', 'save_relation', 'ingest_documents'],
-    maxRisk: 1, allowedChildRoles: [], canSpawn: false,
-    examples: ['What do you remember about my Python project?'],
-    behavior: loop('You are the Memory Agent: you search what JARVIS remembers and the user\'s documents.', MEMORY_RULES),
+    maxRisk: 1, allowedChildRoles: [MEMORY_RETRIEVAL_ROLE, MEMORY_CONSISTENCY_ROLE],
+    examples: ['What do you remember about my Python project?', 'Remember that my exam is on Friday'],
+    behavior: memorySpecialist,
   }),
 ];
 
@@ -210,6 +235,23 @@ export const WORKER_ROLES: AgentRoleDefinition[] = [
     role: 'code_analysis_worker', name: 'Code Analysis Worker', description: 'Reads and explains one part of the code.',
     capabilities: ['code_reading'], supportedTaskTypes: [], tools: ['read_file', 'files:list', 'files:search', 'explain_code'], maxRisk: 0, allowedChildRoles: [],
     behavior: loop('You read one part of the code and explain it.', CODING_RULES),
+  }),
+  worker({
+    role: 'system_diagnostics_worker', name: 'System Diagnostics Worker', description: 'Finds why one app, server or part of the PC is not working; proposes repairs, runs none.',
+    capabilities: ['diagnosis', 'system_state'], supportedTaskTypes: [], tools: ['diagnose_app', 'system_overview', 'get_system_info', 'get_jarvis_service_status'], maxRisk: 0, allowedChildRoles: [],
+    behavior: loop('You find out why one thing on the PC is not working and report the cause and the proposed repair. You change nothing.', DIAGNOSTICS_RULES),
+  }),
+  worker({
+    role: EVIDENCE_WORKER_ROLE, name: 'Evidence Check Worker', description: 'Re-reads one cited source and compares it with the answer.',
+    capabilities: ['fact_verification'], supportedTaskTypes: [], tools: ['github_repo'], maxRisk: 1, allowedChildRoles: [], behavior: evidenceCheckWorker,
+  }),
+  worker({
+    role: MEMORY_RETRIEVAL_ROLE, name: 'Memory Retrieval Worker', description: 'Searches memory or documents for one thing.',
+    capabilities: ['memory'], supportedTaskTypes: [], tools: ['search_memory', 'search_documents'], maxRisk: 0, allowedChildRoles: [], behavior: memoryRetrievalWorker,
+  }),
+  worker({
+    role: MEMORY_CONSISTENCY_ROLE, name: 'Memory Consistency Worker', description: 'Checks a new fact against memory: ADD, UPDATE or NONE. Never writes.',
+    capabilities: ['memory'], supportedTaskTypes: [], tools: ['search_memory'], maxRisk: 0, allowedChildRoles: [], behavior: memoryConsistencyWorker,
   }),
   worker({
     role: DATA_WORKER_ROLE, name: 'Data Analysis Worker', description: 'Does one calculation or analysis.',

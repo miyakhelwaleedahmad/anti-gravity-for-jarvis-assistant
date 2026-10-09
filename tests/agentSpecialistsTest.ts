@@ -103,7 +103,7 @@ console.log('--- The seven permanent specialists ---');
     && names['coding_agent'] === 'Software Engineering & Code Execution Agent' && names['browser_agent'] === 'Browser & Web Operations Agent'
     && names['pc_agent'] === 'Desktop & System Operations Agent' && names['memory_agent'] === 'Memory & Personalization Agent'
     && names['data_agent'] === 'Data & Problem-Solving Agent' && names['qa_agent'] === 'Verification, Security & Reliability Agent', JSON.stringify(names));
-  ok('the Memory agent cannot spawn; the others can', specialists.every((a) => a.permissions.canSpawn === (a.agentId !== 'memory_agent')));
+  ok('every specialist can create its own workers', specialists.every((a) => a.permissions.canSpawn && m.registry.role(a.role).allowedChildRoles.length > 0));
   ok('each has an Agent Card with its skill', specialists.every((a) => m.registry.agentCard(a.agentId)?.skills[0]?.id === a.agentId));
   ok('worker roles are defined but have no agents until needed', WORKER_ROLES.every((w) => m.registry.hasRole(w.role) && !m.registry.get(w.role)) && SPECIALIST_ROLES.length === 7);
   const eng = m.registry.get('coding_agent')!;

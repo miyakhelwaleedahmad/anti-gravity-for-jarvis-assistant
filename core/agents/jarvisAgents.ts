@@ -14,6 +14,8 @@
  *
  * Also: the specialists are registered with the Agent Manager, the health
  * dashboard shows active agents, key events are logged to the console,
+ * results of research, data and engineering work are checked by the
+ * Verification agent before they are reported (advisory, time-capped),
  * high-confidence findings are kept in long-term memory, root tasks left
  * RUNNING by a restart are marked INTERRUPTED, and the optional A2A HTTP
  * endpoint starts when JARVIS_A2A_PORT and JARVIS_A2A_TOKEN are set.
@@ -26,6 +28,7 @@ import { A2AHttpServer, A2AServer, InProcessA2AClient, userMessage } from './a2a
 import { registerAgentRoles, SPECIALIST_ROLES } from './specialists.js';
 import { configWarnings, limitEnvNames } from './config.js';
 import { isTerminal, type A2ATask, type AgentEvent, type LifecycleState } from './types.js';
+import type { Verification, VerificationInput } from './behaviors/verify.js';
 
 const SPECIALISTS = SPECIALIST_ROLES.map((r) => r.role);
 
@@ -187,11 +190,13 @@ const SPEAKER: Record<string, string> = {
   qa_agent: 'Verification Agent',
 };
 
-export function completionSpeech(result: RootResult): string {
+export function completionSpeech(result: RootResult, verification?: Verification): string {
   const who = SPEAKER[result.specialist.role] ?? 'The agents';
   switch (result.status) {
-    case 'COMPLETED':
-      return `Sir, the ${who} has finished. ${firstSentences(result.answer)} The full report is in the console.`;
+    case 'COMPLETED': {
+      const checked = verification?.verdict === 'issues' ? ' The Verification Agent found problems with it; they are listed there.' : '';
+      return `Sir, the ${who} has finished. ${firstSentences(result.answer)} The full report is in the console.${checked}`;
+    }
     case 'CANCELLED':
       // "Stopped" was already said when the user stopped it; speak again only if there is something to report.
       return result.findings.length ? `Sir, before the ${who} was stopped it had ${result.findings.length} findings; they are in the console.` : '';
@@ -218,8 +223,77 @@ export function resultReport(result: RootResult): string {
 }
 
 /** Keeps the answer and up to three strong findings in long-term memory. */
-export async function promoteToMemory(result: RootResult, request: string): Promise<number> {
+// ─── Verification pass ───────────────────────────────────────────────────────
+
+/** Results of these specialists are checked before they are reported. */
+const VERIFIED_ROLES = new Set(['research_agent', 'data_agent', 'coding_agent']);
+
+/** Root tasks JARVIS started to verify a result; status questions are about the user's tasks, not these. */
+const verificationRoots = new Set<string>();
+
+function verifyTimeoutMs(): number {
+  const n = Number(process.env['JARVIS_AGENT_VERIFY_TIMEOUT_MS']);
+  return Number.isFinite(n) && n >= 500 && n <= 300_000 ? n : 20_000;
+}
+
+/** Whether a finished root task gets the Verification agent's check. */
+export function shouldVerify(result: RootResult): boolean {
+  if (process.env['JARVIS_AGENT_VERIFY'] === '0') return false;
+  if (result.status !== 'COMPLETED' || result.specialist.role === 'qa_agent') return false;
+  return VERIFIED_ROLES.has(result.specialist.role) || result.conflicts.length > 0;
+}
+
+/** The parts of a result the verifier reads. */
+export function verificationInput(result: RootResult): VerificationInput {
+  return {
+    specialistRole: result.specialist.role,
+    status: result.status,
+    answer: result.answer,
+    confidence: result.confidence,
+    findings: result.findings.map((f) => ({ text: f.text, sourceIds: f.sourceIds, confidence: f.confidence })),
+    sources: result.sources.map((s) => ({ id: s.id, title: s.title, ...(s.url ? { url: s.url } : {}) })),
+    conflicts: result.conflicts.map((c) => ({ subject: c.subject, attribute: c.attribute, status: c.status })),
+    limitations: result.limitations,
+  };
+}
+
+/**
+ * Runs the Verification agent on a finished result as its own root task.
+ * Undefined when it could not run or finish in time; the result is then
+ * reported as not verified, never held back.
+ */
+export async function verifyRootResult(result: RootResult, request: string, manager = agentManager): Promise<Verification | undefined> {
+  try {
+    const h = await manager.startRootTask({
+      request: `Verify: ${request.slice(0, 200)}`,
+      specialistRole: 'qa_agent',
+      task: { description: `Verify the ${SPEAKER[result.specialist.role] ?? result.specialist.role}'s result`, input: { verify: verificationInput(result) } },
+      timeoutMs: verifyTimeoutMs(),
+    });
+    verificationRoots.add(h.rootTaskId);
+    const r = await h.result;
+    return r.status === 'COMPLETED' ? (r.specialist.data?.['verification'] as Verification | undefined) : undefined;
+  } catch (err) {
+    console.warn(`[Agents] Verification did not run: ${(err as Error).message}`);
+    return undefined;
+  }
+}
+
+/** Console lines for a verification. */
+export function verificationReport(v: Verification | undefined, ran: boolean): string[] {
+  if (!ran) return [];
+  if (!v) return ['', 'Verification: not verified (the check did not finish).'];
+  return ['', `Verification: ${v.verdict} (${v.checks.filter((c) => c.ok).length}/${v.checks.length} checks passed, by ${v.checkedBy})`,
+    ...v.checks.filter((c) => !c.ok).map((c) => `  ✗ ${c.name}: ${c.note}`)];
+}
+
+export async function promoteToMemory(result: RootResult, request: string, verification?: Verification): Promise<number> {
   if (result.status !== 'COMPLETED' || process.env['JARVIS_AGENT_MEMORY'] === '0') return 0;
+  // A result the verifier found problems with is not kept as fact.
+  if (verification?.verdict === 'issues') {
+    console.log('[Agents] Not stored in long-term memory: the Verification agent found issues.');
+    return 0;
+  }
   let stored = 0;
   try {
     const { memoryManager } = await import('../../memory/memoryManager.js');
@@ -250,9 +324,9 @@ function clip(text: string, max: number): string {
   return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), max - 15)).trim()}…`;
 }
 
-/** The root task a question is about: the running one, else the latest. */
+/** The root task a question is about: the user's running one, else their latest. */
 function currentRoot(): string | undefined {
-  const runs = agentManager.rootRuns().sort((a, b) => b.startedAt - a.startedAt);
+  const runs = agentManager.rootRuns().filter((r) => !verificationRoots.has(r.rootTaskId)).sort((a, b) => b.startedAt - a.startedAt);
   return runs.find((r) => !r.endedAt)?.rootTaskId ?? runs[0]?.rootTaskId;
 }
 
@@ -361,10 +435,12 @@ export const delegateTaskTool: AgentTool = {
     const name = SPEAKER[specialist] ?? specialist;
     void waitForRoot(rootTaskId).then(async (result) => {
       if (!result) return;
-      console.log(`\n${resultReport(result)}\n`);
-      const stored = await promoteToMemory(result, task);
+      const check = shouldVerify(result);
+      const verification = check ? await verifyRootResult(result, task) : undefined;
+      console.log(`\n${[resultReport(result), ...verificationReport(verification, check)].join('\n')}\n`);
+      const stored = await promoteToMemory(result, task, verification);
       if (stored) console.log(`[Agents] Kept ${stored} item(s) from this task in long-term memory.`);
-      const speech = completionSpeech(result);
+      const speech = completionSpeech(result, verification);
       if (speech) await speak(speech);
     });
     return JSON.stringify({
