@@ -522,6 +522,40 @@ export function agentSettings(): Record<string, string> {
   return out;
 }
 
+/** Spoken agent names → specialist ids ("ask the data agent to …"). */
+const SPOKEN_AGENT: [RegExp, string][] = [
+  [/^research(?: and intelligence)?$/, 'research_agent'],
+  [/^(?:data|maths?|calculation)$/, 'data_agent'],
+  [/^(?:software|engineering|software engineering|coding|code|github)$/, 'coding_agent'],
+  [/^(?:browser|web)$/, 'browser_agent'],
+  [/^(?:desktop|pc|system)$/, 'pc_agent'],
+  [/^memory$/, 'memory_agent'],
+  [/^(?:verification|qa|security)$/, 'qa_agent'],
+];
+
+/** The specialist id for a spoken agent name, e.g. "engineering" → coding_agent. */
+export function specialistForName(name: string): string | undefined {
+  const n = name.trim().toLowerCase();
+  return SPOKEN_AGENT.find(([re]) => re.test(n))?.[1];
+}
+
+/**
+ * An explicit hand-over, for the orchestrator's fixed route:
+ *   "ask the data agent to work out …"  → that specialist
+ *   "delegate: …" / "in the background, …" → the specialist chooseSpecialist picks
+ * Anything else is not an explicit hand-over.
+ */
+export function explicitDelegation(text: string): { specialist: string; task: string } | undefined {
+  const t = text.trim().replace(/[.!?]+$/, '');
+  const named = /^(?:please\s+)?(?:ask|tell|have|get|use)\s+(?:the\s+|your\s+)?([a-z ]+?)\s+agent(?:\s+to)?[,:]?\s+(.{3,})$/i.exec(t);
+  if (named) {
+    const specialist = specialistForName(named[1]!);
+    return specialist ? { specialist, task: named[2]!.trim() } : undefined;
+  }
+  const open = /^(?:please\s+)?(?:delegate(?:\s+this)?|in the background)[,:]?\s+(.{3,})$/i.exec(t);
+  return open ? { specialist: chooseSpecialist(open[1]!), task: open[1]!.trim() } : undefined;
+}
+
 /**
  * A request plainly phrased as research about software projects, for the
  * orchestrator's fixed route: "research …", or find / compare / recommend /

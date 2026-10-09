@@ -121,7 +121,7 @@ Changed:
 | `tests/a2aProtocolTest.ts` | 56 passed, 0 failed |
 | `tests/agentSpecialistsTest.ts` | 31 passed, 0 failed |
 | `tests/recursiveResearchExampleTest.ts` | 32 passed, 0 failed |
-| `tests/jarvisAgentIntegrationTest.ts` | 42 passed, 0 failed |
+| `tests/jarvisAgentIntegrationTest.ts` | 50 passed, 0 failed (after the hand-over routes) |
 | `npx tsx tests/runAll.ts --ci` | 109 passed, 0 failed, 9 skipped |
 | `npx tsc --noEmit` | clean |
 | GitHub CI run #32 on `cde774a` | typecheck clean; 110 passed, 0 failed, 8 skipped (CI has PowerShell 7, so `windowsScriptsTest` ran); Python checks passed |
@@ -164,7 +164,7 @@ npm run dev
 
 Then say, one at a time:
 
-- "Jarvis, what is the average of 12, 15, 19 and 30?" (Data agent, no model needed)
+- "Jarvis, ask the data agent to work out the average of 12, 15, 19 and 30" (Data agent, no model needed). Only research questions go to the agents on their own; for the others say "ask the <research | data | engineering | browser | desktop | memory | verification> agent to …", or start with "in the background,".
 - "Jarvis, find the best GitHub projects for giving JARVIS browser awareness" (Research, then Verification; the console shows `Verification: …`)
 - "Jarvis, remember that my exam is on Friday", then the same again (the second time: already remembered)
 - "Jarvis, what are your agents doing?" while a task runs

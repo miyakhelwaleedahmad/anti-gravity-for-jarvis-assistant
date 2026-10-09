@@ -115,6 +115,21 @@ console.log('--- Fixed routes ---');
     const route = r(text);
     ok(`"${text}" → ${type}${target ? ` (${target})` : ''}`, route?.type === type && (target === undefined || route?.target === target), JSON.stringify(route));
   }
+  const handOvers: [string, string, string][] = [
+    ['ask the data agent to work out 15% of 240', 'data_agent', 'work out 15% of 240'],
+    ['Ask the engineering agent to explain core/orchestrator.ts', 'coding_agent', 'explain core/orchestrator.ts'],
+    ['tell the memory agent to remember that my exam is on Friday', 'memory_agent', 'remember that my exam is on Friday'],
+    ['use the desktop agent to check why my server is not working', 'pc_agent', 'check why my server is not working'],
+    ['ask the verification agent to run the type check', 'qa_agent', 'run the type check'],
+    ['in the background, what is the average of 12, 15 and 30?', 'data_agent', 'what is the average of 12, 15 and 30'],
+  ];
+  for (const [text, specialist, task] of handOvers) {
+    const route = r(text);
+    ok(`"${text}" → ${specialist}`, route?.type === 'delegate' && route.specialist === specialist && route.target === task, JSON.stringify(route));
+  }
+  ok('"ask the pizza agent to …" is not a hand-over', r('ask the pizza agent to order food')?.type !== 'delegate');
+  ok('"what subagents did the data agent create" uses the new names', r('what subagents did the data agent create')?.target === 'spawns|data_agent'
+    && r('what workers did the github agent create')?.target === 'spawns|coding_agent');
   ok('"open youtube" still opens an app', r('open youtube')?.type === 'open_app');
   ok('"stop" is still the speech stop', r('stop')?.type === 'stop');
   ok('"investigate why my app is not working" is not research', r('investigate why my app is not working')?.type !== 'delegate');

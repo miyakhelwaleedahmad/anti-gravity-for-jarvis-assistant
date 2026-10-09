@@ -37,7 +37,7 @@ import { llmConfig } from '../config/llmconfig.js';
 import { conversationBus } from './conversationBus.js';
 import { registerAllTools } from './tools/index.js';
 import { SkillLoader } from './skillLoader.js';
-import { isResearchRequest } from './agents/jarvisAgents.js';
+import { explicitDelegation, isResearchRequest, specialistForName } from './agents/jarvisAgents.js';
 import type { ILLMMessage, ILLMToolCall } from '../bridge/llmTypes.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -647,7 +647,7 @@ export class JarvisOrchestrator {
           const message = result?.success ? parseJson(result.output)?.message : undefined;
           this.speak(typeof message === 'string' ? message : failureReply(result, 'I could not stop the agents, sir.'));
         } else if (route.type === 'delegate' && route.target) {
-          const result = await runRoutedTool('delegate_task', { task: route.target });
+          const result = await runRoutedTool('delegate_task', { task: route.target, ...(route.specialist ? { specialist: route.specialist } : {}) });
           const message = result?.success ? parseJson(result.output)?.message : undefined;
           this.speak(typeof message === 'string' ? `On it, sir. ${message}` : failureReply(result, 'I could not start the agents, sir.'));
         } else if (route.type === 'list_capabilities') {
@@ -1735,7 +1735,7 @@ export class JarvisOrchestrator {
    * ⚡ Fast-path for known "open/launch/start X", greetings, status, time commands.
    * Returns a DeterministicRoute structure if matched; null means fall through to LLM.
    */
-  public matchDeterministicCommand(input: string): { type: string; target?: string; reply: string } | null {
+  public matchDeterministicCommand(input: string): { type: string; target?: string; reply: string; specialist?: string } | null {
     const normalized = normalizeVoiceInput(input);
     const clean = normalized.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
 
@@ -2449,18 +2449,21 @@ const BROWSER_TABS_PHRASES = new Set([
  * research", and plain research requests, which go straight to the Research
  * Agent without a planning call. `clean` is lower case without punctuation.
  */
-function matchAgentRoute(clean: string, original: string): { type: string; target?: string; reply: string } | null {
+function matchAgentRoute(clean: string, original: string): { type: string; target?: string; reply: string; specialist?: string } | null {
   const status = (q: string) => ({ type: 'agent_status', target: q, reply: '' });
   if (/^(how many|how much) (sub ?)?(agents|workers) (are|is) (running|working|active)/.test(clean)) return status('count');
   if (/\b(show|display|give|tell)( me)? (the |your )?task (tree|graph)\b|^task (tree|graph)$/.test(clean)) return status('tree');
   if (/^what (has|have|did) (each|the|your) (worker|workers|agent|agents|sub ?agents?) (discovered|found|find|discover)/.test(clean)) return status('findings');
   if (/^(which|what) (agents?|workers?|sub ?agents?) (failed|have failed|are waiting|is waiting|are stuck|are blocked)/.test(clean)) return status('failures');
   if (/^how much (work )?(remains|is left|is remaining)|^how much of the (research|task|work) is (left|done)/.test(clean)) return status('remaining');
-  const spawns = /^(what|which) (sub ?agents|subagents|workers|agents) did (the |your )?(research|browser|pc|coding|github|qa|memory) agent (create|make|start|spawn)/.exec(clean);
-  if (spawns) return status(`spawns|${spawns[4]}_agent`);
+  const spawns = /^(what|which) (sub ?agents|subagents|workers|agents) did (the |your )?([a-z ]+?) agent (create|make|start|spawn)/.exec(clean);
+  if (spawns && specialistForName(spawns[4]!)) return status(`spawns|${specialistForName(spawns[4]!)}`);
   if (/^what (are|is) (your|the) (agents?|sub ?agents|workers) (doing|up to|working on)|^(agent|agents) status$|^status of (the |your )?agents$/.test(clean)) return status('summary');
   if (/^(stop|cancel|abort|end) (this|the|that|your) (research|agents|agent work|background task|delegated task)$/.test(clean)) return { type: 'agent_stop', target: 'latest', reply: '' };
   if (/^(stop|cancel|abort) (all|all the|all your) (agents|research|background tasks)$/.test(clean)) return { type: 'agent_stop', target: 'all', reply: '' };
+  // "Ask the data agent to …", "delegate: …", "in the background, …": an explicit hand-over.
+  const handOver = explicitDelegation(original);
+  if (handOver) return { type: 'delegate', target: handOver.task, specialist: handOver.specialist, reply: '' };
   if (isResearchRequest(clean)) return { type: 'delegate', target: original.trim(), reply: '' };
   return null;
 }
