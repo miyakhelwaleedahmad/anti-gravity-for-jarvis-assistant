@@ -61,8 +61,8 @@ Legend: `[x]` done and tested · `[~]` existed before 7A, re-verified · `[ ]` n
 - [x] Gate: typecheck clean; suite 109 passed / 0 failed / 9 skipped
 
 ## Phase 6: regression and release
-- [ ] Full suite and typecheck
-- [ ] Diff reviewed; no feature removed
-- [ ] Docs updated
-- [ ] Committed and pushed to `claude/jarvis-repair`; CI green
+- [x] Full suite 109 passed / 0 failed / 9 skipped (skips need Windows, PowerShell 7, Redis, a live LLM API, the bridge token or the Python venv); typecheck clean
+- [x] Diff reviewed against `d41caa4`: no tool, route, test or public interface removed; `github_agent` folded into `coding_agent` with every tool
+- [x] Docs updated: `docs/agents/*`, `docs/upgrade/MULTI_AGENT_SYSTEM.md`
+- [x] Committed and pushed to `claude/jarvis-repair` (CI result in the final report)
 - [owner] `npm run dev`, then try the voice commands in the final report on the Windows PC

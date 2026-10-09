@@ -65,17 +65,19 @@ flowchart TD
 
 ### Seven permanent specialists
 
-These live at depth 1, under JARVIS.
+These live at depth 1, under JARVIS. Since the seven-agent realignment the set matches the requested roles: the GitHub agent was merged into Software Engineering and a Data agent was added. Design, research and checklist: [`docs/agents/`](../agents/SEVEN_AGENT_DESIGN.md).
 
-| Agent | What it does | Tools (the most it may use) | Risk ceiling | May create |
+| Id | Agent | What it does | Risk ceiling | May create |
 |---|---|---|---|---|
-| Research | Web and GitHub research, comparison, fact checks, sourced synthesis | `web_search`, `deep_search`, `github_search`, `github_repo`, `search_memory`, `search_documents` | 1 | GitHub, Web and Architecture research agents; Fact Check worker |
-| Browser | Reads and navigates the Chrome debugging profile | browser state, read, structure, navigate, scroll, screenshot, open or switch tab | 1 | Browser Page workers |
-| PC | Observes Windows; opens and focuses apps and windows | observation tools, `open_app`, `control_app:open/focus`, `control_window:focus/minimize/maximize` | 2 | PC Inspection workers |
-| Coding | Reads and explains code, project state, git changes; writes with approval | `read_file`, `files:list/search/compare`, `explain_code`, `dev_status`, `git:status/diff/log/branches`, `write_file` | 2 | Code Analysis workers |
-| GitHub | GitHub research, local git work; push needs approval | `github_search`, `github_repo`, `git:*` (read and commit/switch), `git_push` | 3 | Discovery and Code Analysis workers |
-| QA | Runs checks and tests, diagnoses failures | `dev_status`, `dev:scripts/run`, `read_file`, `diagnose_app` | 1 | Test Runner workers |
-| Memory | Searches memory and documents; stores relations | `search_memory`, `search_documents`, `save_relation`, `ingest_documents` | 1 | — |
+| `research_agent` | Research & Intelligence | Web and GitHub research, comparison, fact checks, sourced synthesis | 1 | GitHub, Web and Architecture research agents; Fact Check worker |
+| `coding_agent` | Software Engineering & Code Execution | Code reading and changes, tests, git and GitHub (write, commit, push ask for approval) | 3 | Code Analysis, Test Runner, Discovery and Code Analysis workers |
+| `browser_agent` | Browser & Web Operations | Reads and navigates the Chrome debugging profile | 1 | Browser Page workers |
+| `pc_agent` | Desktop & System Operations | Observes and operates Windows; diagnoses what is not working | 2 | PC Inspection and System Diagnostics workers |
+| `memory_agent` | Memory & Personalization | Searches memory and documents; checks a fact is new before storing it | 1 | Memory Retrieval and Memory Consistency workers |
+| `data_agent` | Data & Problem-Solving | Exact calculations, statistics, comparisons, log analysis (`data_tools`) | 0 | Data Analysis workers |
+| `qa_agent` | Verification, Security & Reliability | Checks other agents' results and the project's tests; changes nothing | 1 | Test Runner and Evidence Check workers |
+
+The full tool list of each role is in `core/agents/specialists.ts`.
 
 ### Worker roles
 
@@ -91,8 +93,13 @@ The worker roles are:
 - Fact Check Worker
 - Browser Page Worker
 - PC Inspection Worker
+- System Diagnostics Worker
 - Code Analysis Worker
 - Test Runner Worker
+- Evidence Check Worker
+- Memory Retrieval Worker
+- Memory Consistency Worker
+- Data Analysis Worker
 
 ## Lifecycle
 
@@ -292,7 +299,11 @@ Budgets are charged to a task and all its ancestors, so the root budget bounds t
 
 Children get minimal context: their task, the input the parent chose, and the results of their dependencies.
 
-When a root task completes, its answer and up to three findings with confidence ≥ 0.75 are stored with `memoryManager.rememberFact` (source `agents`).
+When a root task completes, its answer and up to three findings with confidence ≥ 0.75 are stored with `memoryManager.rememberFact` (source `agents`), unless the Verification agent found issues with it.
+
+## Verification pass
+
+Research, data and engineering results (and any result with a conflict) are checked by the Verification agent before JARVIS reports them: rule checks over the result, and a re-read of one cited GitHub source. The verdict is advice. A result is reported either way, as verified, with its issues listed, or as not verified when the check could not run. `JARVIS_AGENT_VERIFY=0` turns the pass off; `JARVIS_AGENT_VERIFY_TIMEOUT_MS` (default 20000) caps it. Details: [`docs/agents/SEVEN_AGENT_DESIGN.md`](../agents/SEVEN_AGENT_DESIGN.md) §6.
 
 ## Tests
 
@@ -300,7 +311,8 @@ When a root task completes, its answer and up to three findings with confidence 
 |---|---|
 | `tests/agentRuntimeTest.ts` | 102: factory checks, lifecycle, concurrency and model-call limits, dependencies and cycles, recursion and the depth limit, child and global limits, permission inheritance and escalation, cancellation, failure isolation and retries, parent failure and orphans, deadlines and stalls, budgets, duplicates, conflicts, real-time sharing, messages, discovery, agent-aware approvals, configuration, interrupted archives |
 | `tests/a2aProtocolTest.ts` | 56: Agent Cards, blocking and non-blocking SendMessage, streaming, SubscribeToTask, follow-ups, the messaging rule, ListTasks, protocol errors, the HTTP binding (token, Host, Origin, A2A-Version, SSE) |
-| `tests/agentSpecialistsTest.ts` | 27: the seven specialists, risk ceilings, tool loop through the real registry, refusals, the rule fallback, splitting among workers, GitHub routing |
+| `tests/agentSpecialistsTest.ts` | 31: the seven specialists and their names, risk ceilings, GitHub tools kept after the merge, tool loop through the real registry, refusals, the rule fallback, splitting among workers, GitHub routing |
+| `tests/sevenAgentTest.ts` | 86: the seven-agent realignment: no duplicate roles, `data_tools` safety, the Data agent's parallel workers, message kinds and guards, versioned artifacts, approvals bound to agent and task, Memory/Desktop/Verification workers, the verification pass |
 | `tests/recursiveResearchExampleTest.ts` | 32: the full research example with real tools and an offline network, the same with no model, and "stop this research" |
 | `tests/jarvisAgentIntegrationTest.ts` | 42: the orchestrator's routes, the background delegation and spoken result, memory promotion, the dashboard, stop, the planner, the A2A endpoint |
 
@@ -311,5 +323,6 @@ When a root task completes, its answer and up to three findings with confidence 
 - **Low GitHub limits without a token.** Unauthenticated GitHub allows about 10 searches a minute and 60 other requests an hour.
 - **The free Gemini tier is slow.** It allows only a few requests per minute. A research task makes 4 model calls (plan, GitHub queries, one deep analysis, final answer), plus one per extra repository read in depth; the rest is rules and tools.
 - **Approvals queue.** Approvals are shown one at a time. A background agent that needs one waits behind any other approval.
+- **Verification delays the spoken result** by the time the check takes (rules are instant; the GitHub re-read is one request; capped at 20 s). It also uses one of the `JARVIS_AGENT_MAX_ROOT_TASKS` slots while it runs; when none is free, the result is reported as not verified.
 - **The archive grows.** `data/agents/` keeps one file per root task and nothing prunes it.
 - **The A2A HTTP endpoint is local.** It serves this machine only: no push notifications, no OAuth, no gRPC.

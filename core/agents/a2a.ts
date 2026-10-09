@@ -219,6 +219,7 @@ export class A2AServer {
       }];
       for (const m of ws?.messages ?? []) {
         if (m.taskId !== task.taskId && m.to !== task.agentId) continue;
+        if (m.kind === 'assignment') continue; // the request above is the assignment
         history.push({
           messageId: m.id, contextId: task.rootTaskId, taskId: task.taskId,
           role: m.from === task.agentId ? 'ROLE_AGENT' : 'ROLE_USER',
