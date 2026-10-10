@@ -82,6 +82,8 @@ interface Result {
   status: 'pass' | 'fail' | 'timeout' | 'skipped';
   ms: number;
   reason?: string;
+  /** For a failure: its FAIL lines and last lines, so a CI log shows what broke. */
+  detail?: string[];
 }
 
 /**
@@ -135,11 +137,15 @@ function runOne(file: string, name: string): Promise<Result> {
       } else if (code === 0) {
         resolve({ name, status: 'pass', ms });
       } else {
-        const lastMeaningful = output
-          .split('\n')
+        const lines = output.split('\n');
+        const lastMeaningful = lines
           .filter((l) => /FAIL|Error|error:/i.test(l))
           .slice(-1)[0];
-        resolve({ name, status: 'fail', ms, ...(lastMeaningful ? { reason: lastMeaningful.trim().slice(0, 160) } : {}) });
+        // The failing checks and the end of the output; the rest of a test's
+        // output is not kept, which left CI failures impossible to read.
+        const failLines = lines.filter((l) => /^\s*(FAIL|✗|❌)/.test(l)).slice(0, 40);
+        const detail = [...failLines, '  …', ...lines.filter((l) => l.trim()).slice(-15)].map((l) => l.slice(0, 300));
+        resolve({ name, status: 'fail', ms, detail, ...(lastMeaningful ? { reason: lastMeaningful.trim().slice(0, 160) } : {}) });
       }
     });
   });
@@ -194,6 +200,7 @@ async function main(): Promise<void> {
     console.log('\nReal failures:');
     for (const r of realFailures) {
       console.log(`  - ${r.name}${r.reason ? `: ${r.reason}` : ''}`);
+      for (const l of r.detail ?? []) console.log(`      ${l}`);
     }
     process.exit(1);
   }
