@@ -64,6 +64,84 @@ Legend: **D** = confirmed defect (to fix) · **N** = naming or log noise (to fix
 | 19 | PowerShell observer 15 s timeout: the first query of a session compiles a C# helper and gets 15 s (later ones 4 s). At startup it competes with the models loading. A late answer is discarded safely. Whether it repeats could not be checked without Windows | U |
 | 20 | NodeBridge probe in `healthChecker` reports healthy whenever the object exists, even with no TTS/STT client connected | D |
 
-## 5. Changes
+## 5. Changes (after implementation)
 
-See the end of this report (filled in after implementation).
+Five commits on `claude/jarvis-repair` (`e872e48`, `dbe3c0d`, `c1eecd7`, `cf75e46`, and this report). No dependency was added; no data store was changed or reset.
+
+| Finding | Change | Files |
+|---|---|---|
+| 1 | Pipelines renamed `brain_to_llm`, `brain_to_memory`, `vector_memory`. The old names are still accepted everywhere through `canonicalPipeline()`, so older callers and alerts keep working. Spoken alerts use `pipelineLabel()` ("Gemini language model") | `self_healing/pipelineRegistry.ts`, `healthChecker.ts`, `pipelineWatchdog.ts`, `fsWatcher.ts`, `alertManager.ts`, `memory/memoryManager.ts` |
+| 2 | Vector memory and the memory manager report to separate pipelines | `self_healing/healthChecker.ts` |
+| 3 | LLM errors classified by HTTP status (auth, rate_limit, timeout, network, server, model, bad_request, bad_response). The probe counts a 429 as reachable; a failed probe is counted once | `bridge/llmStatus.ts` (new), `healthChecker.ts`, `groqProvider.ts` |
+| 4, 5 | One LLM status record, written by every request, the probe and the router; the dashboard reads it. A failure shows only while it is newer than the last success and belongs to the configured provider. When nothing is known from the last 3 min, the dashboard starts a background model-list check and never waits on the network | `bridge/llmStatus.ts`, `groqProvider.ts`, `monitoring/healthManager.ts` |
+| 6 | `ping()` checks the fast model too | `bridge/groqProvider.ts` |
+| — | Found while testing: the error after the last retry dropped the HTTP status, so a 503 was "request failed". It now keeps the status | `bridge/groqProvider.ts` |
+| 7 | An unsupported `JARVIS_LLM_PROVIDER` or reasoning effort is a WARNING | `config/configValidator.ts` |
+| 8 | Fallback answers recorded and shown: "Gemini failed (server 500); answered by fallback provider" | `bridge/modelRouter.ts`, `llmStatus.ts` |
+| 10 | "Model loading" logged once per loading phase, not on every 300 ms poll | `memory/vectorMemorySupervisor.ts` |
+| 11, 12 | `ServiceStatus` and `PipelineStatus` gained `loading`. The dashboard shows *loading* (with seconds) instead of *online, 0 vectors* or *probe timed out* | `monitoring/healthManager.ts`, `runtimeDashboard.ts`, `pipelineRegistry.ts`, `vectorMemorySupervisor.ts` |
+| — | **Found with the real service**: when the model fails to load, it answered 503 "not ready" forever, so it looked like loading. It now reports `model_state: failed` with the reason; the supervisor, health checker and dashboard say "failed to load (…)" | `memory/vectorMemory.py`, `vectorMemorySupervisor.ts`, `healthChecker.ts`, `healthManager.ts` |
+| 13, 14 | Heal plan for vector memory (its supervisor restarts it); the tool-registry heal plan now matches | `pipelineWatchdog.ts`, `selfHealingManager.ts` |
+| 15 | tts.py sends `speaking_delay` (extra time = the retry's timeout) before a synthesis retry. The bridge passes it to `agentStateMachine.noteSpeechDelayed()`, which restarts the deadline with the extra time (capped at 30 s) and re-arms the mic guard. The watchdog is neither removed nor lengthened by default | `voice/tts.py`, `bridge/nodeBridge.ts`, `core/agentStateMachine.ts` |
+| 17 | `goalManager.init()` runs once; later callers wait for it | `core/goalManager.ts` |
+| 18 | The log says "40 built-in tools registered; skills load next" and "26 skill(s) loaded: 66 tools in total" | `core/tools/index.ts`, `core/orchestrator.ts` |
+| 20 | The bridge probe needs a listening WebSocket server | `bridge/nodeBridge.ts` (`isListening()`), `healthChecker.ts` |
+
+## 6. Tests executed
+
+| Test | Result |
+|---|---|
+| `tests/providerHealthTest.ts` (new; real local HTTP server answering like Gemini) | 55 passed, 0 failed |
+| `tests/vectorReadinessTest.ts` (new; real HTTP server on :8000) | 20 passed, 0 failed |
+| `tests/ttsRetryWatchdogTest.ts` (new) | 14 passed, 0 failed |
+| `tests/goalManagerInitTest.ts` (new) | 2 passed, 0 failed. **Both failed on the old code**: 2 initialisations, goal lost |
+| `tests/startupRegistrationTest.ts` (new) | 5 passed, 0 failed (40 + 26 = 66, unique) |
+| `tests/python/test_tts_retry_delay.py` (new, added to CI) | 12 passed, 0 failed |
+| `tests/python/test_vector_service_startup.py` (+ blocked-download case) | 23 passed, 0 failed |
+| `tests/python/test_vector_persistence.py` | 23 passed, 0 failed |
+| Related existing: llmProviderConfig 37, llmClientBehaviour 41, providerFailover 13, faultInjection 13, speakingWatchdogQueue 16, ttsLifecycleState 6, ttsSpeakingLifecycle 8, stopClearsTtsQueue 4, voiceApproval 27, bargeInProcessing 4, vectorSupervisorDashboard 8, vectorStartupGate 12, goalRuntimeMigration 16, dataRootIsolation 18, redaction 51, secretSinks 23, parallelizationTimeoutAudit | all passed |
+| Full suite `npx tsx tests/runAll.ts --ci` | **114 passed, 0 failed, 9 skipped**; the skipped tests need Windows, PowerShell 7, Redis, a live LLM API, the bridge token or the Python venv |
+| `npx tsc --noEmit` | clean |
+| `python -m compileall memory voice vision bridge` | clean |
+
+Real vector service, run here with sentence-transformers. The model download is blocked in this sandbox (HTTP 403). Over 240 s, `/liveness` and `/stats` answered in 1–9 ms and `/health` returned 503. The service stayed "not ready" after the load had failed, which led to the fix above. Embedding and search were checked with the stand-in encoder in the Python tests, not with the real model.
+
+## 7. Remaining risks and what could not be verified
+
+- **Live Gemini/Groq**: no key in this environment; provider behaviour was tested against a local server that answers like Gemini. Run JARVIS on your PC to see the live dashboard row.
+- **Real embedding model**: not loaded here (download blocked). Check on your PC with the `/liveness` and search commands below.
+- **First edge-tts timeout** (finding 16): the cold first connection to Microsoft's speech service. The fix makes the retry safe; it does not make the first attempt faster. Not reproduced here (no Windows audio, no edge-tts network).
+- **PowerShell 15 s first-query timeout** (finding 19): not reproduced without Windows. If it repeats after startup (not only once), send the log lines around `PS query timed out`.
+- The dashboard's LLM row is "not checked yet" for the first seconds after start, until the first request or background check finishes.
+
+## 8. Commands to verify on Windows (CMD)
+
+Stop JARVIS first (the vector test needs port 8000 free), then in the project folder:
+
+```
+git pull origin claude/jarvis-repair
+npx tsx tests\providerHealthTest.ts
+npx tsx tests\vectorReadinessTest.ts
+npx tsx tests\ttsRetryWatchdogTest.ts
+npx tsx tests\goalManagerInitTest.ts
+.venv\Scripts\python tests\python\test_tts_retry_delay.py
+npm test -- --ci
+```
+
+Each test file ends with `=== Results: N passed, 0 failed ===` (55, 20, 14, 2, 12). The last command ends with `0 failed`.
+
+Then start JARVIS with `npm run dev` and check the log:
+
+- `[ToolRegistry] 40 built-in tools registered; skills load next.` and later `26 skill(s) loaded into ToolRegistry: 66 tools in total.`
+- `[GoalManager] ✅ Initialized` appears **once**
+- `[VectorSupervisor] Embedding model loading (/health 503)…` appears **once**, then `✅ Vector memory is online.`
+- no `brain_to_groq` anywhere; the dashboard's LLM row reads `Gemini · model: gemini-3.5-flash · OK …s ago`
+
+While JARVIS runs, in a second CMD window (read-only, adds nothing to memory):
+
+```
+curl http://127.0.0.1:8000/liveness
+curl -X POST http://127.0.0.1:8000/search -H "Content-Type: application/json" -d "{\"query\":\"what do I like\",\"top_k\":3}"
+```
+
+The first should show `"model_state":"ready"`; the second returns your closest stored facts.
