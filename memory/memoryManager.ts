@@ -476,7 +476,7 @@ export class MemoryManager {
           await this.db.write();
           resolve();
         } catch (err) {
-          pipelineRegistry.recordFailure("groq_to_memory", String(err));
+          pipelineRegistry.recordFailure("brain_to_memory", String(err));
           reject(err);
         }
       }, this.WRITE_DEBOUNCE_MS);

@@ -17,6 +17,8 @@
 import { llmConfig } from "../config/llmconfig.js";
 import type { ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall } from "./llmTypes.js";
 import { AdaptiveLruCache } from "../core/adaptiveRamManager.js";
+import { llmStatus } from "./llmStatus.js";
+import { pipelineRegistry, LLM_PIPELINE } from "../self_healing/pipelineRegistry.js";
 import crypto from "crypto";
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -57,6 +59,20 @@ function createRequestSignal(parentSignal?: AbortSignal): { signal: AbortSignal;
   };
 }
 
+/**
+ * Every request's outcome goes to the shared LLM status (dashboard) and the
+ * LLM pipeline (self-healing). A rate limit means the provider answered, and a
+ * cancelled request is the caller's choice, so neither counts as a pipeline failure.
+ */
+function noteOk(): void {
+  llmStatus.recordSuccess("request");
+  pipelineRegistry.recordSuccess(LLM_PIPELINE);
+}
+function noteFail(err: unknown): void {
+  const c = llmStatus.recordFailure(err, "request");
+  if (c.kind !== "rate_limit" && c.kind !== "aborted") pipelineRegistry.recordFailure(LLM_PIPELINE, `${c.kind}: ${c.message}`);
+}
+
 /** Display name of the configured provider, for logs and errors. */
 const PROVIDER_LABEL = () => (llmConfig.provider === "gemini" ? "Gemini" : "Groq");
 const TAG = () => `[LLM:${llmConfig.provider}]`;
@@ -67,6 +83,15 @@ export class LLMHttpError extends Error {
     super(message);
     this.name = "LLMHttpError";
   }
+}
+
+/**
+ * The error after the last retry. It keeps the last HTTP status, so a 503 is
+ * still reported as a server error (it became a plain "request failed").
+ */
+function allAttemptsFailed(prefix: string, lastError: Error | null): Error {
+  const message = `${prefix}. Last error: ${lastError?.message ?? "unknown"}`;
+  return lastError instanceof LLMHttpError ? new LLMHttpError(lastError.status, message) : new Error(message);
 }
 
 /** The provider's own error message, shortened; never the request (it holds the key header). */
@@ -185,7 +210,7 @@ export class GroqProvider implements ILLMProvider {
   }
 
   async chat(request: ILLMRequest): Promise<ILLMResponse> {
-    this.checkCircuit();
+    try { this.checkCircuit(); } catch (err) { noteFail(err); throw err; }
 
     // Phase 7: Check response cache for non-streaming identical requests
     const cacheKey = GroqProvider.hashRequest(request);
@@ -203,6 +228,7 @@ export class GroqProvider implements ILLMProvider {
     }
 
     const promise = this._chatInternal(request, cacheKey);
+    promise.then(() => noteOk(), (err) => noteFail(err));
     GroqProvider.inFlight.set(cacheKey, promise);
     // `.finally()` would return a second promise that rejects with nobody
     // listening — an unhandled rejection on every failed call.
@@ -337,10 +363,20 @@ export class GroqProvider implements ILLMProvider {
       return result;
     }
 
-    throw new Error(`${TAG()} All ${MAX_ATTEMPTS} attempts failed. Last error: ${lastError?.message ?? "unknown"}`);
+    throw allAttemptsFailed(`${TAG()} All ${MAX_ATTEMPTS} attempts failed`, lastError);
   }
 
   async *streamChat(request: ILLMRequest): AsyncGenerator<string, void, unknown> {
+    try {
+      yield* this._streamInternal(request);
+      noteOk();
+    } catch (err) {
+      noteFail(err);
+      throw err;
+    }
+  }
+
+  private async *_streamInternal(request: ILLMRequest): AsyncGenerator<string, void, unknown> {
     this.checkCircuit();
 
     const fastModel = sanitizeModel(llmConfig.fastModel);
@@ -396,7 +432,7 @@ export class GroqProvider implements ILLMProvider {
     }
 
     if (!response) {
-      throw new Error(`${TAG()} All ${MAX_ATTEMPTS} stream attempts failed. Last error: ${lastError?.message ?? "unknown"}`);
+      throw allAttemptsFailed(`${TAG()} All ${MAX_ATTEMPTS} stream attempts failed`, lastError);
     }
     if (!response.body) throw new Error("No response body");
 
@@ -439,6 +475,19 @@ export class GroqProvider implements ILLMProvider {
    * spent its token budget thinking.
    */
   async ping(signal?: AbortSignal): Promise<{ modelFound: boolean; models: number }> {
+    // Only the LLM status here: the caller (health checker, self-heal) records
+    // the pipeline result itself, and doing both counted every failed probe twice.
+    try {
+      const result = await this._ping(signal);
+      llmStatus.recordSuccess("probe");
+      return result;
+    } catch (err) {
+      llmStatus.recordFailure(err, "probe");
+      throw err;
+    }
+  }
+
+  private async _ping(signal?: AbortSignal): Promise<{ modelFound: boolean; models: number }> {
     const requestSignal = createRequestSignal(signal);
     let res: Response;
     try {
@@ -453,13 +502,19 @@ export class GroqProvider implements ILLMProvider {
       throw new LLMHttpError(res.status, `${PROVIDER_LABEL()} /models returned ${res.status}: ${await readErrorText(res)}`);
     }
     const data = await res.json() as { data?: Array<{ id?: string }> };
-    const ids = (data.data ?? []).map((m) => m.id ?? "");
-    // Gemini lists "models/gemini-3.5-flash"; Groq lists the bare id.
-    const modelFound = ids.some((id) => id === llmConfig.model || id.endsWith(`/${llmConfig.model}`));
-    if (!modelFound) {
-      throw new Error(`${PROVIDER_LABEL()} does not offer the model "${llmConfig.model}" (JARVIS_BRAIN_MODEL). Check the name.`);
+    if (!Array.isArray(data?.data)) {
+      throw new Error(`${PROVIDER_LABEL()} /models answered without a model list (unexpected JSON).`);
     }
-    return { modelFound, models: ids.length };
+    const ids = data.data.map((m) => m.id ?? "");
+    // Gemini lists "models/gemini-3.5-flash"; Groq lists the bare id.
+    const offered = (model: string) => ids.some((id) => id === model || id.endsWith(`/${model}`));
+    // Both models: a wrong fast model used to show up only when a 429 switched to it.
+    for (const [model, field] of [[llmConfig.model, "JARVIS_BRAIN_MODEL"], [llmConfig.fastModel, "JARVIS_FAST_MODEL"]] as const) {
+      if (!offered(model)) {
+        throw new Error(`${PROVIDER_LABEL()} does not offer the model "${model}" (${field}). Check the name.`);
+      }
+    }
+    return { modelFound: true, models: ids.length };
   }
 }
 

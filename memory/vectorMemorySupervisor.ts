@@ -72,6 +72,8 @@ class VectorMemorySupervisor {
   private proc: ChildProcess | null = null;
   private restartCount = 0;
   private healthy = false;
+  /** The server answers but its model is not ready yet (/health 503 or /liveness OK). */
+  private loading = false;
   private running = false;
   private healthTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt: number | null = null;
@@ -135,12 +137,36 @@ class VectorMemorySupervisor {
       this.proc = null;
     }
     this.healthy = false;
+    this.loading = false;
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────
 
   isHealthy(): boolean { return this.healthy; }
   isStartupReady(): boolean { return this._startupReady; }
+
+  /**
+   * One word for the service's condition, for health reports:
+   *   ready    /health answered 200: search and embedding work
+   *   loading  the server answers but its model is still loading, or the
+   *            process was started less than STARTUP_WAIT_MS ago — expected,
+   *            not a failure
+   *   down     running but not answering, or out of restarts
+   *   stopped  never started (or stopped)
+   */
+  state(now = Date.now()): 'ready' | 'loading' | 'down' | 'stopped' {
+    if (this.healthy) return 'ready';
+    if (!this.running) return 'stopped';
+    if (this.restartCount >= MAX_RESTARTS) return 'down';
+    if (this.loading) return 'loading';
+    if (this.startedAt !== null && now - this.startedAt < STARTUP_WAIT_MS) return 'loading';
+    return 'down';
+  }
+
+  /** Seconds since the current process started, or 0. */
+  loadingSeconds(now = Date.now()): number {
+    return this.startedAt ? Math.round((now - this.startedAt) / 1000) : 0;
+  }
   /** True while the supervisor owns the service (started and not stopped). */
   isRunning(): boolean { return this.running; }
   getRestartCount(): number { return this.restartCount; }
@@ -322,6 +348,7 @@ class VectorMemorySupervisor {
       console.warn(`[VectorSupervisor] Process exited (code=${code}, signal=${signal})`);
       this.proc = null;
       this.healthy = false;
+      this.loading = false;
       this.notifyPipelineFailure(`Process exited: code=${code}`);
 
       if (isDependencyError) {
@@ -344,6 +371,7 @@ class VectorMemorySupervisor {
     this.proc.on('error', (err) => {
       console.error(`[VectorSupervisor] Spawn error: ${err.message}`);
       this.healthy = false;
+      this.loading = false;
     });
 
     await this.waitForStartupHealth();
@@ -370,6 +398,7 @@ class VectorMemorySupervisor {
       if (res.ok) {
         const wasUnhealthy = !this.healthy;
         this.healthy = true;
+        this.loading = false;
 
         // Resolve the startup readiness gate on first healthy signal
         if (!this._startupReady) {
@@ -396,7 +425,11 @@ class VectorMemorySupervisor {
       // Server IS alive — don't mark as unhealthy yet.
       // The model may still be warming up.
       if (res.status === 503) {
-        console.log('[VectorSupervisor] /health returned 503 — model still loading. Server is alive.');
+        // Said once per loading phase: the startup poll runs every 300 ms and
+        // used to print this line up to ~66 times for one normal model load.
+        if (!this.loading) console.log('[VectorSupervisor] Embedding model loading (/health 503). The server is up; waiting for the model.');
+        this.loading = true;
+        this.reportLoading();
         return false;
       }
     } catch {
@@ -409,7 +442,9 @@ class VectorMemorySupervisor {
         clearTimeout(lt);
         if (lr.ok) {
           // Server is alive but /health failed — model probably loading
-          console.log('[VectorSupervisor] /health unreachable but /liveness OK — model may be loading.');
+          if (!this.loading) console.log('[VectorSupervisor] /health unreachable but /liveness OK — model may be loading.');
+          this.loading = true;
+          this.reportLoading();
           return false;
         }
       } catch {
@@ -417,6 +452,7 @@ class VectorMemorySupervisor {
       }
     }
 
+    this.loading = false;
     if (this.healthy) {
       this.healthy = false;
       console.warn('[VectorSupervisor] ⚠️  Vector memory health check failed.');
@@ -449,6 +485,13 @@ class VectorMemorySupervisor {
   }
 
   // ── Pipeline registry integration ──────────────────────────────────────────
+
+  /** Loading is not a failure: the pipeline shows "loading" until the first success. */
+  private reportLoading(): void {
+    import('../self_healing/pipelineRegistry.js').then(({ pipelineRegistry }) => {
+      pipelineRegistry.recordLoading('vector_memory');
+    }).catch(() => {});
+  }
 
   private notifyPipelineFailure(reason: string): void {
     import('../self_healing/pipelineRegistry.js').then(({ pipelineRegistry }) => {

@@ -20,6 +20,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import { dataRoot } from '../core/workspaceRoot.js';
+import { canonicalPipeline, pipelineLabel } from './pipelineRegistry.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -82,6 +83,7 @@ export class AlertManager extends EventEmitter {
     message: string,
     source = 'unknown'
   ): Alert {
+    pipeline = canonicalPipeline(pipeline); // old names (brain_to_groq, groq_to_memory) still accepted
     const key      = this._key(severity, pipeline, message);
     const now      = Date.now();
     const cooldown = this.cooldowns.get(key) ?? 0;
@@ -158,7 +160,7 @@ export class AlertManager extends EventEmitter {
   /** Get alerts for a specific pipeline */
   getForPipeline(pipeline: string, n = 10): Alert[] {
     return this.history
-      .filter(a => a.pipeline === pipeline)
+      .filter(a => a.pipeline === canonicalPipeline(pipeline))
       .slice(-n)
       .reverse();
   }
@@ -209,8 +211,8 @@ export class AlertManager extends EventEmitter {
     }
 
     const voiceMsg = alert.severity === 'critical'
-      ? `Sir, a critical failure has been detected in my ${alert.pipeline} pipeline. ${message}`
-      : `Sir, I've detected a warning in my ${alert.pipeline} system.`;
+      ? `Sir, a critical failure has been detected in my ${pipelineLabel(alert.pipeline)} system. ${message}`
+      : `Sir, I've detected a warning in my ${pipelineLabel(alert.pipeline)} system.`;
 
     try {
       this._bridge!.speakToClients(voiceMsg);

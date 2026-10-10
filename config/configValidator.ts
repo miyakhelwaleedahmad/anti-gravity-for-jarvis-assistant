@@ -75,8 +75,18 @@ export class ConfigValidator {
       });
     }
 
+    // A value JARVIS ignores (an unsupported provider or reasoning effort) is a
+    // warning: the setting does not do what it says. Explanations stay INFO.
     for (const note of llm.notes) {
-      issues.push({ level: 'INFO', field: 'JARVIS_LLM_PROVIDER', message: note, fix: 'No action needed unless this is not what you intended.' });
+      const ignored = /is not groq or gemini|is not one of/.test(note);
+      issues.push({
+        level: ignored ? 'WARNING' : 'INFO',
+        field: /REASONING/.test(note) ? 'JARVIS_LLM_REASONING_EFFORT' : 'JARVIS_LLM_PROVIDER',
+        message: note,
+        fix: !ignored ? 'No action needed unless this is not what you intended.'
+          : /REASONING/.test(note) ? 'Use none, minimal, low, medium, high or off.'
+            : 'Use JARVIS_LLM_PROVIDER=gemini or groq (or leave it empty).',
+      });
     }
 
     // A model left over from the other provider fails on the first request.

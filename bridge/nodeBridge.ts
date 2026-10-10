@@ -111,6 +111,11 @@ export class NodeBridge {
     return this.latestScreenFrame;
   }
 
+  /** Whether the WebSocket server is up (voice clients can connect). */
+  isListening(): boolean {
+    return this.wss !== null;
+  }
+
   getReadyClients(): string[] {
     return Array.from(this.readyClients.keys());
   }

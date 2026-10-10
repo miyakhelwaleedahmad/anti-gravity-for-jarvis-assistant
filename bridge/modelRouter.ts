@@ -2,6 +2,7 @@ import { llmConfig } from "../config/llmconfig.js";
 import { groqProvider } from "./groqProvider.js";
 import { openaiProvider } from "./openaiProvider.js";
 import type { ILLMMessage, ILLMProvider, ILLMRequest, ILLMResponse } from "./llmTypes.js";
+import { llmStatus } from "./llmStatus.js";
 import { redact } from "../security/redactor.js";
 
 /**
@@ -87,7 +88,10 @@ export class ModelRouter {
       try {
         const response = await provider.chat(request);
         if (name !== order[0]) {
-          console.warn(`[ModelRouter] Primary provider failed; answered by fallback "${name}".`);
+          // Visible on the dashboard too (bridge/llmStatus.ts), not only in the log.
+          const reason = (lastError as Error)?.message ?? "failed";
+          console.warn(`[ModelRouter] ${order[0]} failed (${reason.slice(0, 120)}); answered by the fallback "${name}".`);
+          llmStatus.recordFallback(order[0]!, name, reason);
         }
         return response;
       } catch (err) {

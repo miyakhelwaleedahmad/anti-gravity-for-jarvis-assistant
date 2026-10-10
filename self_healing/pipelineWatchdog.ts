@@ -4,7 +4,7 @@
  * A watchdog that runs every 60 seconds and checks for stale pipelines.
  */
 
-import { pipelineRegistry } from "./pipelineRegistry.js";
+import { pipelineRegistry, canonicalPipeline, LLM_PIPELINE, MEMORY_PIPELINE, VECTOR_PIPELINE } from "./pipelineRegistry.js";
 import { selfHealingManager } from "./selfHealingManager.js";
 import { EventEmitter } from "events";
 import { conversationBus } from "../core/conversationBus.js";
@@ -14,13 +14,16 @@ interface HealAction {
   target: string;
 }
 
-const PIPELINE_HEAL_MAP: Record<string, HealAction> = {
+export const PIPELINE_HEAL_MAP: Record<string, HealAction> = {
   "wake_to_stt":       { action: "restart_process", target: "wakeword" },
   "stt_to_brain":      { action: "restart_process", target: "stt" },
   "brain_to_tts":      { action: "restart_process", target: "tts" },
-  "brain_to_groq":     { action: "retry_connection", target: "groq" },
-  "groq_to_memory":    { action: "reinit_memory",    target: "memoryManager" },
+  // The configured provider (Gemini or Groq); see bridge/groqProvider.ts ping().
+  [LLM_PIPELINE]:      { action: "retry_connection", target: "llm" },
+  [MEMORY_PIPELINE]:   { action: "reinit_memory",    target: "memoryManager" },
   "memory_to_context": { action: "reinit_memory",    target: "memoryManager" },
+  // Its supervisor restarts the process with backoff; the watchdog only reports.
+  [VECTOR_PIPELINE]:   { action: "supervised",       target: "vectorMemorySupervisor" },
   "tool_execution":    { action: "reload_tools",     target: "toolRegistryV2" },
   // "reflection_loop" removed: voice/reflectionEngine.py does not exist, so the
   // recovery action could only ever fail (JARVIS-018).
@@ -58,7 +61,8 @@ export class PipelineWatchdog extends EventEmitter {
     const report = pipelineRegistry.getHealth();
 
     for (const [pipeline, health] of Object.entries(report)) {
-      if (health.status === "unknown" || this.activeHeals.has(pipeline)) continue;
+      // Unknown (never reported) and loading (starting up) are not failures.
+      if (health.status === "unknown" || health.status === "loading" || this.activeHeals.has(pipeline)) continue;
 
       let newStatus = health.status;
 
@@ -94,7 +98,7 @@ export class PipelineWatchdog extends EventEmitter {
     this.activeHeals.add(pipeline);
     pipelineRegistry.incrementHealAttempts(pipeline);
     
-    const actionPlan = PIPELINE_HEAL_MAP[pipeline];
+    const actionPlan = PIPELINE_HEAL_MAP[canonicalPipeline(pipeline)];
     if (!actionPlan) {
       console.error(`[Watchdog] No heal plan mapped for pipeline '${pipeline}'`);
       this.activeHeals.delete(pipeline);

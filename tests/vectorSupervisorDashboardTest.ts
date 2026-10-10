@@ -49,7 +49,7 @@ async function runTest() {
 
   assert(vectorHealth !== undefined, 'HealthManager probe includes vector_memory service');
   assert(
-    vectorHealth.status === 'online' || vectorHealth.status === 'degraded',
+    vectorHealth.status === 'online' || vectorHealth.status === 'degraded' || vectorHealth.status === 'loading',
     `Vector service status reported valid state (got: "${vectorHealth.status}", detail: "${vectorHealth.detail}")`
   );
   assert(

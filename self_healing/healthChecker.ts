@@ -8,12 +8,19 @@
  * a pipeline completely collapses.
  *
  * Probed subsystems:
- *   - LLM API (Groq or Gemini) — lists models; costs no generation quota
+ *   - LLM API (the configured provider, Gemini or Groq) — lists models; costs
+ *     no generation quota. A rate limit counts as reachable; other failures
+ *     are classified by HTTP status (bridge/llmStatus.ts), not by message text
  *   - Redis             — PING command via ioredis
- *   - Vector Memory     — checks if the supervisor process is alive
+ *   - Vector Memory     — the supervisor's state; "loading" while the model
+ *                         loads is reported as loading, not as a failure
  *   - Memory Manager    — verifies in-memory DB is initialized
  *   - Tool Registry     — verifies at least 1 tool is registered
- *   - NodeBridge        — checks WebSocket server is bound
+ *   - NodeBridge        — the WebSocket server is listening (not only that the object exists)
+ *
+ * Each subsystem reports to its own pipeline. Vector Memory and Memory
+ * Manager used to share one, so in a round where one failed and the other
+ * passed, the result depended on which finished last.
  *
  * Each probe result is fed into:
  *   1. PipelineRegistry  — recordSuccess() / recordFailure()
@@ -24,7 +31,7 @@
  * During active conversation the probe round is skipped.
  */
 
-import { pipelineRegistry } from './pipelineRegistry.js';
+import { pipelineRegistry, LLM_PIPELINE, MEMORY_PIPELINE, VECTOR_PIPELINE } from './pipelineRegistry.js';
 import { failureAnalytics } from './failureAnalytics.js';
 import { alertManager } from './alertManager.js';
 import { conversationBus } from '../core/conversationBus.js';
@@ -43,6 +50,12 @@ export interface ProbeResult {
   ok: boolean;
   latencyMs: number;
   error?: string;
+  /** Starting up (e.g. a model loading): neither a success nor a failure. */
+  loading?: boolean;
+  /** Not started on purpose or not installed: nothing to record (not "healthy"). */
+  inactive?: boolean;
+  /** For the LLM probe: the kind of failure (auth, rate_limit, timeout, …). */
+  kind?: string;
 }
 
 // ─── HealthChecker ────────────────────────────────────────────────────────────
@@ -100,7 +113,7 @@ export class HealthChecker {
     const results: ProbeResult[] = [];
 
     const probes: Array<() => Promise<ProbeResult>> = [
-      () => this._probeGroq(),
+      () => this._probeLLM(),
       () => this._probeRedis(),
       () => this._probeVectorMemory(),
       () => this._probeMemoryManager(),
@@ -127,6 +140,15 @@ export class HealthChecker {
   }
 
   private _handleProbeResult(result: ProbeResult): void {
+    if (result.inactive) {
+      console.log(`[HealthChecker]   – ${result.subsystem}: ${result.error ?? 'not running'}`);
+      return;
+    }
+    if (result.loading) {
+      pipelineRegistry.recordLoading(result.pipeline);
+      console.log(`[HealthChecker]   ◌ ${result.subsystem}: ${result.error ?? 'loading'}`);
+      return;
+    }
     if (result.ok) {
       pipelineRegistry.recordSuccess(result.pipeline);
       failureAnalytics.record(result.pipeline, 'recovery', `Probe OK in ${result.latencyMs}ms`);
@@ -150,30 +172,34 @@ export class HealthChecker {
    * thinking model (Gemini) a 1-token reply always came back empty, so the probe
    * reported a healthy API as down.
    */
-  private async _probeGroq(): Promise<ProbeResult> {
+  private async _probeLLM(): Promise<ProbeResult> {
     const t0 = Date.now();
     const { llmConfig } = await import('../config/llmconfig.js');
     const subsystem = `LLM API (${llmConfig.provider})`;
     try {
       const { groqProvider } = await import('../bridge/groqProvider.js');
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+      const timer = setTimeout(() => ctrl.abort(new Error('LLM_TIMEOUT')), PROBE_TIMEOUT_MS);
       try {
         await groqProvider.ping(ctrl.signal);
       } finally {
         clearTimeout(timer);
       }
-      return { subsystem, pipeline: 'brain_to_groq', ok: true, latencyMs: Date.now() - t0 };
+      return { subsystem, pipeline: LLM_PIPELINE, ok: true, latencyMs: Date.now() - t0 };
     } catch (err) {
-      const e = err instanceof Error ? err.message : String(err);
-      // Rate-limit errors are not a health failure — the API is reachable
-      const ok = e.includes('rate-limited') || e.includes('circuit broken') || e.includes('(429)');
+      const { classifyLLMError } = await import('../bridge/llmStatus.js');
+      const c = classifyLLMError(err);
+      // A rate limit means the API answered: reachable, so not a health failure.
+      // (This used to look for "(429)" in the text; the model-list error says
+      // "returned 429", so a rate-limited provider was reported as down.)
+      const ok = c.kind === 'rate_limit';
       return {
         subsystem,
-        pipeline: 'brain_to_groq',
+        pipeline: LLM_PIPELINE,
         ok,
+        kind: c.kind,
         latencyMs: Date.now() - t0,
-        error: ok ? undefined : e.slice(0, 120),
+        error: ok ? undefined : `${c.kind}: ${c.message.slice(0, 120)}`,
       };
     }
   }
@@ -200,17 +226,16 @@ export class HealthChecker {
     const t0 = Date.now();
     try {
       const { vectorMemorySupervisor } = await import('../memory/vectorMemorySupervisor.js');
-      const ready = vectorMemorySupervisor?.isStartupReady?.() ?? true;
-      return {
-        subsystem: 'Vector Memory',
-        pipeline: 'groq_to_memory',
-        ok: ready,
-        latencyMs: Date.now() - t0,
-        error: ready ? undefined : 'supervisor not ready',
-      };
+      const state = vectorMemorySupervisor.state();
+      const base = { subsystem: 'Vector Memory', pipeline: VECTOR_PIPELINE, latencyMs: Date.now() - t0 };
+      if (state === 'ready') return { ...base, ok: true };
+      if (state === 'loading') return { ...base, ok: false, loading: true, error: `embedding model loading (${vectorMemorySupervisor.loadingSeconds()} s)` };
+      // Not started (e.g. Python dependencies missing): lexical search is used; not a fault to heal.
+      if (state === 'stopped') return { ...base, ok: true, inactive: true, error: 'not running (lexical search fallback)' };
+      return { ...base, ok: false, error: 'service down' };
     } catch (err) {
       const e = err instanceof Error ? err.message : String(err);
-      return { subsystem: 'Vector Memory', pipeline: 'groq_to_memory', ok: false, latencyMs: Date.now() - t0, error: e.slice(0, 120) };
+      return { subsystem: 'Vector Memory', pipeline: VECTOR_PIPELINE, ok: false, latencyMs: Date.now() - t0, error: e.slice(0, 120) };
     }
   }
 
@@ -220,10 +245,10 @@ export class HealthChecker {
       const { memoryManager } = await import('../memory/memoryManager.js');
       const stats = memoryManager.getStats?.();
       const ok    = stats !== undefined && stats !== null;
-      return { subsystem: 'MemoryManager', pipeline: 'groq_to_memory', ok, latencyMs: Date.now() - t0, error: ok ? undefined : 'getStats returned null' };
+      return { subsystem: 'MemoryManager', pipeline: MEMORY_PIPELINE, ok, latencyMs: Date.now() - t0, error: ok ? undefined : 'getStats returned null' };
     } catch (err) {
       const e = err instanceof Error ? err.message : String(err);
-      return { subsystem: 'MemoryManager', pipeline: 'groq_to_memory', ok: false, latencyMs: Date.now() - t0, error: e.slice(0, 120) };
+      return { subsystem: 'MemoryManager', pipeline: MEMORY_PIPELINE, ok: false, latencyMs: Date.now() - t0, error: e.slice(0, 120) };
     }
   }
 
@@ -244,9 +269,10 @@ export class HealthChecker {
     const t0 = Date.now();
     try {
       const { nodeBridge } = await import('../bridge/nodeBridge.js');
-      // NodeBridge is ok if it's not null — no active network call needed
-      const ok = nodeBridge !== null && nodeBridge !== undefined;
-      return { subsystem: 'NodeBridge', pipeline: 'brain_to_tts', ok, latencyMs: Date.now() - t0, error: ok ? undefined : 'nodeBridge not initialized' };
+      // The server must be listening; an existing object alone said nothing.
+      // Whether TTS/STT clients are connected is shown on the dashboard per service.
+      const ok = !!nodeBridge && nodeBridge.isListening();
+      return { subsystem: 'NodeBridge', pipeline: 'brain_to_tts', ok, latencyMs: Date.now() - t0, error: ok ? undefined : 'WebSocket server not listening' };
     } catch (err) {
       const e = err instanceof Error ? err.message : String(err);
       return { subsystem: 'NodeBridge', pipeline: 'brain_to_tts', ok: false, latencyMs: Date.now() - t0, error: e.slice(0, 120) };

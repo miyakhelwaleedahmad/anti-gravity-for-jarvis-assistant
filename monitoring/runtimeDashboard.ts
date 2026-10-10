@@ -32,6 +32,7 @@ function statusColor(s: ServiceStatus): string {
   switch (s) {
     case 'online':   return GREEN;
     case 'degraded': return YELLOW;
+    case 'loading':  return CYAN;
     case 'offline':  return RED;
     default:         return DIM;
   }
@@ -41,6 +42,7 @@ function statusIcon(s: ServiceStatus): string {
   switch (s) {
     case 'online':   return '●';
     case 'degraded': return '◐';
+    case 'loading':  return '◌';
     case 'offline':  return '○';
     default:         return '?';
   }

@@ -8,8 +8,9 @@
  *
  * Probes:
  *   - Redis (ioredis ping)
- *   - Vector Memory (HTTP GET /stats on port 8000)
- *   - LLM (reads env config — no live ping to avoid cost)
+ *   - Vector Memory (the supervisor's state; HTTP GET /stats on port 8000 once ready)
+ *   - LLM (bridge/llmStatus.ts: the last request or probe to the configured
+ *     provider; a background model-list check when nothing recent is known)
  *   - Tool Registry (count check)
  *   - STT / TTS / WakeWord (process existence via pipelineRegistry)
  *   - Memory (process.memoryUsage)
@@ -23,7 +24,8 @@ import { dataRoot } from '../core/workspaceRoot.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ServiceStatus = 'online' | 'offline' | 'degraded' | 'unknown';
+/** `loading`: starting up and expected to come online (e.g. a model loading); not a failure. */
+export type ServiceStatus = 'online' | 'offline' | 'degraded' | 'loading' | 'unknown';
 
 export interface ServiceHealth {
   name: string;
@@ -53,6 +55,9 @@ export interface HealthSnapshot {
   activeAgents: string[];
   overallStatus: ServiceStatus;
 }
+
+/** How old the last LLM result may be before the dashboard starts a fresh check. */
+const LLM_RECHECK_MS = 3 * 60_000;
 
 // ─── HealthManager ────────────────────────────────────────────────────────────
 
@@ -113,6 +118,17 @@ class HealthManager {
       // If supervisor confirms vector service is healthy, ensure circuit breaker is cleared
       if (vectorMemorySupervisor.isHealthy() && memoryManager.isVectorCircuitOpen) {
         memoryManager.resetVectorCircuit();
+      }
+
+      // While the embedding model loads the server answers /stats with "0
+      // vectors", which used to show as online before search worked.
+      if (vectorMemorySupervisor.state() === 'loading') {
+        return {
+          name: 'vector_memory',
+          status: 'loading',
+          detail: `embedding model loading (${vectorMemorySupervisor.loadingSeconds()} s); lexical search meanwhile`,
+          checkedAt: Date.now(),
+        };
       }
 
       if (memoryManager.isVectorCircuitOpen && !vectorMemorySupervisor.isHealthy()) {
@@ -181,17 +197,28 @@ class HealthManager {
 
   // ── Probe: LLM ─────────────────────────────────────────────────────────────
 
+  private llmCheckRunning = false;
+
+  /**
+   * The configured provider's real state: the last request or probe that
+   * worked or failed (bridge/llmStatus.ts). It used to say "online" whenever a
+   * key was set, so a rejected key or an exhausted quota still showed online.
+   * When nothing is known from the last LLM_RECHECK_MS, a model-list check
+   * (no generation quota) starts in the background; this probe never waits
+   * for the network.
+   */
   private async probeLLM(): Promise<ServiceHealth> {
     try {
-      const { llmConfig } = await import('../config/llmconfig.js');
-      // The key of the provider in use (XAI_API_KEY is not used by JARVIS).
-      const hasKey = !!llmConfig.apiKey;
-      return {
-        name: 'llm',
-        status: hasKey ? 'online' : 'degraded',
-        detail: hasKey ? `${llmConfig.provider} · model: ${llmConfig.model}` : `missing ${llmConfig.provider === 'gemini' ? 'GEMINI_API_KEY' : 'GROQ_API_KEY'}`,
-        checkedAt: Date.now(),
-      };
+      const { llmStatus } = await import('../bridge/llmStatus.js');
+      if (llmStatus.snapshot().hasKey && llmStatus.isStale(LLM_RECHECK_MS) && !this.llmCheckRunning) {
+        this.llmCheckRunning = true;
+        import('../bridge/groqProvider.js')
+          .then(({ groqProvider }) => groqProvider.ping(AbortSignal.timeout(5_000)))
+          .catch(() => { /* recorded in llmStatus */ })
+          .finally(() => { this.llmCheckRunning = false; });
+      }
+      const h = llmStatus.health();
+      return { name: 'llm', status: h.status, detail: h.detail, checkedAt: Date.now() };
     } catch {
       return { name: 'llm', status: 'unknown', detail: 'config unavailable', checkedAt: Date.now() };
     }
@@ -304,7 +331,7 @@ class HealthManager {
 
     // Memory components (redis + vector_memory) - online or active fallback
     const memoryServices = [services.redis, services.vector_memory];
-    const isCoreMemoryFunctional = memoryServices.every(s => s && (s.status === 'online' || s.status === 'degraded'));
+    const isCoreMemoryFunctional = memoryServices.every(s => s && (s.status === 'online' || s.status === 'degraded' || s.status === 'loading'));
 
     let overallStatus: ServiceStatus = 'degraded';
     if (isCoreOnline && isCoreMemoryFunctional) {

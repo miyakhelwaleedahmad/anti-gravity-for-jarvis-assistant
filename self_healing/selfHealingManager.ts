@@ -221,7 +221,8 @@ export class SelfHealingManager extends EventEmitter {
     console.log(`[SelfHeal] Executing action '${actionPlan.action}' on '${actionPlan.target}' for broken pipeline '${pipeline}'`);
 
     try {
-      if (actionPlan.action === "retry_connection" && actionPlan.target === "groq") {
+      // "groq" is the old target name for the same thing: the configured LLM provider.
+      if (actionPlan.action === "retry_connection" && (actionPlan.target === "llm" || actionPlan.target === "groq")) {
         // A model listing, not a generated reply: no quota spent, and it cannot
         // come back empty because a thinking model used its token budget.
         console.log(`[SelfHeal] Checking the LLM API...`);
@@ -234,10 +235,21 @@ export class SelfHealingManager extends EventEmitter {
         await memoryManager.init();
         pipelineRegistry.recordSuccess(pipeline);
       } 
-      else if (actionPlan.action === "reload_tools" && actionPlan.target === "toolExecutor") {
-        console.log(`[SelfHeal] Reloading ToolExecutor...`);
-        // toolRegistryV2.reload() not needed in V2
-        pipelineRegistry.recordSuccess(pipeline);
+      else if (actionPlan.action === "reload_tools") {
+        // The plan names "toolRegistryV2"; this branch checked "toolExecutor", so it never ran.
+        // Tools are registered once at startup; the check is that they still are.
+        const { toolRegistryV2 } = await import("../core/toolRegistryV2.js");
+        const count = toolRegistryV2.names().length;
+        if (count > 0) {
+          console.log(`[SelfHeal] Tool registry holds ${count} tools; pipeline '${pipeline}' healed.`);
+          pipelineRegistry.recordSuccess(pipeline);
+        } else {
+          console.warn("[SelfHeal] Tool registry is empty; restart JARVIS to register the tools.");
+        }
+      }
+      else if (actionPlan.action === "supervised") {
+        // Vector memory: vectorMemorySupervisor restarts the Python service itself.
+        console.log(`[SelfHeal] '${pipeline}' is restarted by its own supervisor (${actionPlan.target}); nothing to do here.`);
       } 
       else if (actionPlan.action === "restart_process" || actionPlan.action === "restart_script") {
         let foundLabel = null;
