@@ -230,6 +230,7 @@ export class HealthChecker {
       const base = { subsystem: 'Vector Memory', pipeline: VECTOR_PIPELINE, latencyMs: Date.now() - t0 };
       if (state === 'ready') return { ...base, ok: true };
       if (state === 'loading') return { ...base, ok: false, loading: true, error: `embedding model loading (${vectorMemorySupervisor.loadingSeconds()} s)` };
+      if (state === 'failed') return { ...base, ok: false, error: `embedding model failed to load: ${vectorMemorySupervisor.getModelError()}` };
       // Not started (e.g. Python dependencies missing): lexical search is used; not a fault to heal.
       if (state === 'stopped') return { ...base, ok: true, inactive: true, error: 'not running (lexical search fallback)' };
       return { ...base, ok: false, error: 'service down' };

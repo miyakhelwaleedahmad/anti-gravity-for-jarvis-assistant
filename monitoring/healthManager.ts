@@ -131,6 +131,15 @@ class HealthManager {
         };
       }
 
+      if (vectorMemorySupervisor.state() === 'failed') {
+        return {
+          name: 'vector_memory',
+          status: 'degraded',
+          detail: `embedding model failed to load (${vectorMemorySupervisor.getModelError()}); lexical search fallback`,
+          checkedAt: Date.now(),
+        };
+      }
+
       if (memoryManager.isVectorCircuitOpen && !vectorMemorySupervisor.isHealthy()) {
         return {
           name: 'vector_memory',

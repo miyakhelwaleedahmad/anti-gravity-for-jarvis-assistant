@@ -65,7 +65,7 @@ class _Encoder:
 
 
 def install_fake_sentence_transformers(behaviour):
-    """behaviour: 'cached' | 'not_cached' | 'old_version'."""
+    """behaviour: 'cached' | 'not_cached' | 'old_version' | 'download_blocked'."""
     calls.clear()
 
     if behaviour == "old_version":
@@ -77,8 +77,10 @@ def install_fake_sentence_transformers(behaviour):
         class SentenceTransformer(_Encoder):
             def __init__(self, model_name_or_path=None, local_files_only=False, **kwargs):
                 calls.append({"local_files_only": local_files_only})
-                if behaviour == "not_cached" and local_files_only:
+                if behaviour in ("not_cached", "download_blocked") and local_files_only:
                     raise OSError("model not found in the local cache")
+                if behaviour == "download_blocked":
+                    raise OSError("403 Forbidden")
                 time.sleep(LOAD_SECONDS)
 
     fake = types.ModuleType("sentence_transformers")
@@ -132,7 +134,8 @@ async def cached_scenario():
     await cm.__aenter__()
     entered = time.time() - t0
     ok("startup returns before the model has loaded", entered < LOAD_SECONDS / 2, f"{entered:.2f}s")
-    ok("/liveness answers at once, model not ready", mod.api_liveness() == {"status": "alive", "model_ready": False})
+    ok("/liveness answers at once, model not ready, state loading",
+       mod.api_liveness() == {"status": "alive", "model_ready": False, "model_state": "loading"}, str(mod.api_liveness()))
     ok("/health is 503 while loading", (await status_of(asyncio.to_thread(mod.api_health))) == 503)
     ok("/embed is 503 while loading", (await status_of(mod.api_embed(mod.EmbedReq(text="early")))) == 503)
 
@@ -207,6 +210,31 @@ async def old_version_scenario():
 
 asyncio.run(old_version_scenario())
 ok("one plain load after the TypeError", len(calls) == 1, str(calls))
+
+print("\n--- The download is blocked: reported as failed, not loading forever ---")
+install_fake_sentence_transformers("download_blocked")
+mod, _ = fresh_module()
+
+
+async def blocked_scenario():
+    from fastapi import HTTPException
+    cm = mod.lifespan(mod.app)
+    await cm.__aenter__()
+    t0 = time.time()
+    while mod.api_liveness().get("model_state") == "loading" and time.time() - t0 < 5:
+        await asyncio.sleep(0.05)
+    live = mod.api_liveness()
+    ok("/liveness says failed, with the reason", live.get("model_state") == "failed" and "403 Forbidden" in live.get("model_error", ""), str(live))
+    try:
+        mod.api_health()
+        ok("/health is 503 with state failed", False, "answered 200")
+    except HTTPException as exc:
+        ok("/health is 503 with state failed (not just 'not ready')", exc.status_code == 503 and exc.detail.get("state") == "failed", str(exc.detail))
+    ok("the model is not marked ready", not mod._model_ready)
+    await cm.__aexit__(None, None, None)
+
+
+asyncio.run(blocked_scenario())
 
 print(f"\n=== Results: {passed} passed, {failed} failed ===")
 sys.exit(1 if failed else 0)

@@ -74,6 +74,8 @@ class VectorMemorySupervisor {
   private healthy = false;
   /** The server answers but its model is not ready yet (/health 503 or /liveness OK). */
   private loading = false;
+  /** The server reported that its model could not be loaded (e.g. a blocked download). */
+  private modelError: string | null = null;
   private running = false;
   private healthTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt: number | null = null;
@@ -138,6 +140,7 @@ class VectorMemorySupervisor {
     }
     this.healthy = false;
     this.loading = false;
+    this.modelError = null;
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────
@@ -154,14 +157,18 @@ class VectorMemorySupervisor {
    *   down     running but not answering, or out of restarts
    *   stopped  never started (or stopped)
    */
-  state(now = Date.now()): 'ready' | 'loading' | 'down' | 'stopped' {
+  state(now = Date.now()): 'ready' | 'loading' | 'failed' | 'down' | 'stopped' {
     if (this.healthy) return 'ready';
     if (!this.running) return 'stopped';
+    if (this.modelError) return 'failed';
     if (this.restartCount >= MAX_RESTARTS) return 'down';
     if (this.loading) return 'loading';
     if (this.startedAt !== null && now - this.startedAt < STARTUP_WAIT_MS) return 'loading';
     return 'down';
   }
+
+  /** Why the model could not be loaded, as the server reported it; null otherwise. */
+  getModelError(): string | null { return this.modelError; }
 
   /** Seconds since the current process started, or 0. */
   loadingSeconds(now = Date.now()): number {
@@ -349,6 +356,7 @@ class VectorMemorySupervisor {
       this.proc = null;
       this.healthy = false;
       this.loading = false;
+      this.modelError = null;
       this.notifyPipelineFailure(`Process exited: code=${code}`);
 
       if (isDependencyError) {
@@ -399,6 +407,7 @@ class VectorMemorySupervisor {
         const wasUnhealthy = !this.healthy;
         this.healthy = true;
         this.loading = false;
+        this.modelError = null;
 
         // Resolve the startup readiness gate on first healthy signal
         if (!this._startupReady) {
@@ -425,6 +434,19 @@ class VectorMemorySupervisor {
       // Server IS alive — don't mark as unhealthy yet.
       // The model may still be warming up.
       if (res.status === 503) {
+        // The server says whether the model is still loading or failed to load.
+        const body = await res.json().catch(() => null) as { detail?: { state?: string; error?: string } } | null;
+        if (body?.detail?.state === 'failed') {
+          const reason = String(body.detail.error ?? 'unknown error').slice(0, 200);
+          if (this.modelError !== reason) {
+            console.error(`[VectorSupervisor] Embedding model failed to load: ${reason}. Lexical search is used instead. ` +
+              'Check the network or the model cache, then restart JARVIS.');
+            this.notifyPipelineFailure(`model failed to load: ${reason}`);
+          }
+          this.modelError = reason;
+          this.loading = false;
+          return false;
+        }
         // Said once per loading phase: the startup poll runs every 300 ms and
         // used to print this line up to ~66 times for one normal model load.
         if (!this.loading) console.log('[VectorSupervisor] Embedding model loading (/health 503). The server is up; waiting for the model.');
@@ -441,6 +463,14 @@ class VectorMemorySupervisor {
         const lr = await fetch(LIVENESS_URL, { signal: lc.signal });
         clearTimeout(lt);
         if (lr.ok) {
+          const live = await lr.json().catch(() => null) as { model_state?: string; model_error?: string } | null;
+          if (live?.model_state === 'failed') {
+            const reason = String(live.model_error ?? 'unknown error').slice(0, 200);
+            if (this.modelError !== reason) this.notifyPipelineFailure(`model failed to load: ${reason}`);
+            this.modelError = reason;
+            this.loading = false;
+            return false;
+          }
           // Server is alive but /health failed — model probably loading
           if (!this.loading) console.log('[VectorSupervisor] /health unreachable but /liveness OK — model may be loading.');
           this.loading = true;

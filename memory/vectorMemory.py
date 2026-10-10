@@ -44,6 +44,10 @@ for _noisy in ("httpx", "httpcore", "huggingface_hub", "urllib3"):
 
 _model = None
 _model_ready = False
+# Why the model could not be loaded, if it could not (e.g. "OSError: 403
+# Forbidden" when the download is blocked). Without it a failed load looked
+# like loading forever: /health kept answering 503 "not ready".
+_model_error: Optional[str] = None
 _startup_time: float = 0.0
 _request_count: int = 0
 
@@ -108,11 +112,12 @@ async def _load_model_in_background() -> None:
     _model_ready turns true only after the restore, so every endpoint keeps
     answering 503 ("loading") until searches would see the full store.
     """
-    global _model_ready
+    global _model_ready, _model_error
     log.info("[Startup] Loading embedding model in the background...")
     try:
         await asyncio.to_thread(_get_model)
     except Exception as e:
+        _model_error = f"{e.__class__.__name__}: {e}"[:200]
         log.error(f"[Startup] FATAL: Could not load embedding model: {e}")
         return
 
@@ -675,17 +680,30 @@ def api_stats():
     return _memory.stats()
 
 
+def _model_state() -> str:
+    """ready | loading | failed"""
+    return "ready" if _model_ready else ("failed" if _model_error else "loading")
+
+
 @app.get("/liveness")
 def api_liveness():
-    """Liveness probe — returns 200 if uvicorn is responding at all."""
-    return {"status": "alive", "model_ready": _model_ready}
+    """Liveness probe — returns 200 if uvicorn is responding at all, with the model's state."""
+    body = {"status": "alive", "model_ready": _model_ready, "model_state": _model_state()}
+    if _model_error:
+        body["model_error"] = _model_error
+    return body
 
 
 @app.get("/health")
 def api_health():
-    """Readiness probe — returns 200 only after the model is loaded."""
+    """Readiness probe — returns 200 only after the model is loaded.
+
+    503 either way until then; the detail says whether it is still loading or
+    has failed, so a failed load is not mistaken for a slow one.
+    """
     if not _model_ready:
-        raise HTTPException(status_code=503, detail="Model not ready")
+        detail = {"state": _model_state(), **({"error": _model_error} if _model_error else {})}
+        raise HTTPException(status_code=503, detail=detail)
     stats = _memory.stats()
     uptime_s = round(time.time() - _startup_time, 1) if _startup_time else 0
     return {
