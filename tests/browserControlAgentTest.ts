@@ -149,6 +149,9 @@ const base = `http://127.0.0.1:${(site.address() as net.AddressInfo).port}`;
 
 const chrome = await startChromium(`${base}/app`);
 process.env['JARVIS_CDP_PORT'] = String(chrome.port);
+// DevTools answers before the first page has loaded, and the steps below find
+// the tab by its title ("Shop"), so wait for the page (up to 15 s).
+for (let i = 0; i < 150 && !(await listPages(chrome.port)).some((p) => p.title === 'Shop'); i++) await sleep(100);
 
 /** A raw DevTools evaluation in the page — the test's own eyes, not JARVIS's. */
 async function inPage(urlPart: string, expression: string): Promise<any> {

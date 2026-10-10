@@ -38,6 +38,9 @@ import { conversationBus } from './conversationBus.js';
 import { registerAllTools } from './tools/index.js';
 import { SkillLoader } from './skillLoader.js';
 import { explicitDelegation, isResearchRequest, specialistForName } from './agents/jarvisAgents.js';
+import { delegationFit, goalIntent, parseGoalRequest, withoutBackgroundPhrase } from './delegationRouting.js';
+import { matchDesktopRoute } from './desktopRouting.js';
+import { parseItems } from './agents/behaviors/news.js';
 import type { ILLMMessage, ILLMToolCall } from '../bridge/llmTypes.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -277,10 +280,7 @@ export class JarvisOrchestrator {
 
     if (shouldCreateGoal) {
       goalPromise = goalManager.createGoal(input, source).then(g => {
-        g.status = 'in_progress';
-        g.startedAt = Date.now();
-        g.updatedAt = Date.now();
-        goalManager.persistNow?.().catch(() => {});
+        goalManager.transition(g, 'in_progress', 'request started', { quiet: true });
         this.activeGoal = g;
         goal = g;
         return g;
@@ -418,15 +418,20 @@ export class JarvisOrchestrator {
     }
   }
 
+  /**
+   * Marks the orchestrator ready for requests. It is event-driven: it runs
+   * when a request arrives. Work that continues without a request — stored
+   * goals, schedules, retries — is the Goal Runtime's (core/goalRuntime.ts).
+   */
   startLoop(): void {
     if (this.isLoopRunning) return;
     this.isLoopRunning = true;
-    console.log('[Orchestrator] ♾️  Autonomy loop active.');
+    console.log('[Orchestrator] Ready for requests (event-driven; background goals run in the Goal Runtime).');
   }
 
   stopLoop(): void {
     this.isLoopRunning = false;
-    console.log('[Orchestrator] ⏹️  Autonomy loop stopped.');
+    console.log('[Orchestrator] ⏹️  Stopped taking requests.');
   }
 
   getState(): AgentState {
@@ -650,6 +655,32 @@ export class JarvisOrchestrator {
           const result = await runRoutedTool('delegate_task', { task: route.target, ...(route.specialist ? { specialist: route.specialist } : {}) });
           const message = result?.success ? parseJson(result.output)?.message : undefined;
           this.speak(typeof message === 'string' ? `On it, sir. ${message}` : failureReply(result, 'I could not start the agents, sir.'));
+        } else if (route.type === 'goal_status') {
+          const result = await runRoutedTool('goal_status', {});
+          const [first, ...rest] = (result?.output ?? '').split('\n');
+          if (rest.length) console.log(`[Orchestrator] Goals:\n${rest.join('\n')}`);
+          this.speak(result?.success && first ? first : 'I could not read the goals, sir.');
+        } else if (route.type === 'goal_control' && route.target) {
+          const [action, goalRef] = route.target.split('|');
+          const result = await runRoutedTool('goal_control', { action, goal: goalRef });
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? `${body.error} Sir.` : failureReply(result, 'I could not change that goal, sir.'));
+        } else if (route.type === 'goal_create' && route.target) {
+          const g = JSON.parse(route.target) as { kind: string; objective: string; scheduleText?: string };
+          const result = await runRoutedTool('goal_create', { objective: g.objective, kind: g.kind, ...(g.scheduleText ? { schedule: g.scheduleText } : {}) });
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? `I could not record that goal: ${body.error}` : failureReply(result, 'I could not record that goal, sir.'));
+        } else if ((route.type === 'youtube_search' || route.type === 'youtube_play' || route.type === 'site_search') && route.target) {
+          const d = JSON.parse(route.target) as Record<string, string>;
+          const args = route.type === 'youtube_search' ? { query: d['query'], open: d['open'] }
+            : route.type === 'youtube_play' ? { action: d['action'] } : { site: d['site'], query: d['query'] };
+          const result = await runRoutedTool(route.type, args);
+          this.speak(desktopReply(route.type, d, result));
+        } else if (route.type === 'youtube_trending' && route.target) {
+          const d = JSON.parse(route.target) as { region?: string; category?: string };
+          const result = await runRoutedTool('youtube_trending', { ...(d.region ? { region: d.region } : {}), ...(d.category ? { category: d.category } : {}) });
+          if (result?.success && !/^\s*Error/.test(result.output)) console.log(`[Orchestrator] YouTube:\n${result.output}`);
+          this.speak(trendingReply(result));
         } else if (route.type === 'list_capabilities') {
           // Through the registry like any tool call; the full list goes to the console.
           const result = await runRoutedTool('list_capabilities', {});
@@ -1758,6 +1789,10 @@ export class JarvisOrchestrator {
     const agentRoute = matchAgentRoute(clean, input.trim().replace(/^(?:(?:hey|ok|okay)\s+)?jarvis[\s,.:!-]+/i, '').replace(/[\s,]+please[.!?]*$/i, ''));
     if (agentRoute) return agentRoute;
 
+    // YouTube and site searches on screen, and what is trending (core/desktopRouting.ts).
+    const desktop = matchDesktopRoute(input);
+    if (desktop) return { type: desktop.type, target: JSON.stringify(desktop), reply: '' };
+
     // ── Pre-defined Mappings ──────────────────────────────────────────────────
     if (clean === 'close youtube') {
       return { type: 'close_browser_tab', target: 'youtube', reply: 'Closing YouTube, sir.' };
@@ -2094,9 +2129,29 @@ export class JarvisOrchestrator {
     if (HISTORY_QUESTION.test(clean)) {
       addIfRegistered('action_history');
     }
-    // Larger work for the specialist agents, and questions about them (core/agents).
-    if (/\b(research|investigate|compare|comparison|in the background|delegate|specialist)\b/.test(clean)) {
+    // Larger work for the specialist agents, and questions about them (core/agents):
+    // offered when the request is substantial (core/delegationRouting.ts); the planner decides.
+    if (/\b(research|investigate|compare|comparison|in the background|delegate|specialist)\b/.test(clean) || delegationFit(clean).delegate) {
       addIfRegistered('delegate_task');
+    }
+    // Goals the Goal Runtime keeps working on (core/goalTools.ts).
+    if (goalIntent(clean)) {
+      addIfRegistered('goal_create', 'goal_status', 'goal_control');
+    }
+    // YouTube on screen; news and trending in the background.
+    if (/\byou ?tube\b/.test(clean) && /\b(search|find|play|watch|video|videos|results|look)\b/.test(clean) && clean.split(/\s+/).length > 2) {
+      addIfRegistered('youtube_search', 'youtube_play');
+    }
+    if (/\b(news|latest|headlines|trending|this week|today'?s|developments)\b/.test(clean)) {
+      addIfRegistered('news_search');
+    }
+    if (/\b(trending|popular)\b/.test(clean) && /\b(you ?tube|videos?)\b/.test(clean)) {
+      addIfRegistered('youtube_trending');
+    }
+    // A site's results on screen: "open Wikipedia and search for X", "search X on Amazon" (with a query, not "search Google").
+    if (/\b(google|bing|wikipedia|amazon|reddit|stack ?overflow|duckduckgo)\b/.test(clean)
+      && /\b(?:open|go to|show)\b.*\bsearch\b|\bsearch \w+ for \w+|\bsearch .+ on \w+/.test(clean) && clean.split(/\s+/).length >= 4) {
+      addIfRegistered('site_search');
     }
     if (/\b(agents?|sub ?agents|workers?)\b/.test(clean)) {
       addIfRegistered('agent_status', 'cancel_agent_task');
@@ -2461,9 +2516,23 @@ function matchAgentRoute(clean: string, original: string): { type: string; targe
   if (/^what (are|is) (your|the) (agents?|sub ?agents|workers) (doing|up to|working on)|^(agent|agents) status$|^status of (the |your )?agents$/.test(clean)) return status('summary');
   if (/^(stop|cancel|abort|end) (this|the|that|your) (research|agents|agent work|background task|delegated task)$/.test(clean)) return { type: 'agent_stop', target: 'latest', reply: '' };
   if (/^(stop|cancel|abort) (all|all the|all your) (agents|research|background tasks)$/.test(clean)) return { type: 'agent_stop', target: 'all', reply: '' };
+  // Background goals (core/goalRuntime.ts): status, control, and goals asked for in plain words.
+  if (/^(?:what are|show|list|tell me)(?: me)? (?:your|my|the) (?:background )?goals$|^(?:goals|goal status|my goals|status of (?:my|the|your) goals)$|^how (?:are|is) (?:my|the|your) goals? (?:going|doing)$/.test(clean)) {
+    return { type: 'goal_status', reply: '' };
+  }
+  const control = /^(pause|resume|continue|cancel|stop|confirm|approve) (?:the |my |that |this )?goal(?: (?:called |named |about )?(.+))?$/.exec(clean);
+  if (control) {
+    const action = ({ continue: 'resume', stop: 'pause', approve: 'confirm' } as Record<string, string>)[control[1]!] ?? control[1]!;
+    return { type: 'goal_control', target: `${action}|${control[2] ?? 'latest'}`, reply: '' };
+  }
+  const goal = parseGoalRequest(original);
+  if (goal) return { type: 'goal_create', target: JSON.stringify(goal), reply: '' };
   // "Ask the data agent to …", "delegate: …", "in the background, …": an explicit hand-over.
   const handOver = explicitDelegation(original);
   if (handOver) return { type: 'delegate', target: handOver.task, specialist: handOver.specialist, reply: '' };
+  // "… in the background", "… while I work": background work, unless it acts on the screen.
+  const fit = delegationFit(original);
+  if (fit.background) return { type: 'delegate', target: withoutBackgroundPhrase(original), specialist: fit.specialist, reply: '' };
   if (isResearchRequest(clean)) return { type: 'delegate', target: original.trim(), reply: '' };
   return null;
 }
@@ -2502,6 +2571,43 @@ const CONTINUE_NO = /^(?:no|no thanks|nope|leave it|dont)$/;
 /** How recent a request must be for "continue" to offer it, and how long the offer holds. */
 const CONTINUE_WINDOW_MS = 12 * 60 * 60_000;
 const CONTINUE_OFFER_MS = 60_000;
+
+/** What JARVIS says after a YouTube or site search on screen: what it saw, not only what it did. */
+export function desktopReply(type: string, d: Record<string, string>, result: ToolResult | undefined): string {
+  const r = (result?.output ? parseJson(result.output) : null) as {
+    success?: boolean; did?: string; error?: string; check?: { status: string; evidence: string };
+    results?: { title: string; channel?: string }[]; chosen?: { title: string; channel?: string };
+  } | null;
+  if (!r) return result?.error === 'APPROVAL_DENIED' ? APPROVAL_DENIED_REPLY : 'I could not do that, sir.';
+  if (!r.success) return `I could not do that, sir. ${(r.error ?? '').slice(0, 160)}`;
+  const status = r.check?.status;
+  const evidence = (r.check?.evidence ?? '').replace(/\.$/, '');
+  if (status === 'unverifiable') return `I opened it in your browser, sir, but I could not check it: ${evidence.slice(0, 160)}.`;
+  if (type === 'youtube_search') {
+    if (r.chosen) {
+      const who = r.chosen.channel ? ` by ${r.chosen.channel}` : '';
+      return status === 'verified' ? `Playing "${r.chosen.title.slice(0, 90)}"${who}, sir.` : `I opened "${r.chosen.title.slice(0, 90)}"${who}, sir, but ${evidence}.`;
+    }
+    if (status === 'verified' && r.results?.length) return `Here are the YouTube results for "${(d['query'] ?? '').slice(0, 60)}", sir. The first is "${r.results[0]!.title.slice(0, 90)}".`;
+    return `I opened YouTube for "${(d['query'] ?? '').slice(0, 60)}", sir, but ${evidence || 'I could not read the results'}.`;
+  }
+  if (type === 'youtube_play') return status === 'verified' ? (d['action'] === 'pause' ? 'Paused, sir.' : 'Playing, sir.') : `I tried, sir, but ${evidence}.`;
+  return status === 'verified' ? `Here are the ${d['site']} results for "${(d['query'] ?? '').slice(0, 60)}", sir.` : `I opened ${d['site']}, sir, but ${evidence || 'could not check the page'}.`;
+}
+
+/** The trending answer: the source, then the first three, from the tool's own text. */
+export function trendingReply(result: ToolResult | undefined): string {
+  const out = result?.output ?? '';
+  if (!result?.success || /^\s*Error/.test(out)) return `I can't get trending videos right now, sir. ${out.replace(/^\s*Error:\s*/, '').slice(0, 200)}`;
+  const items = parseItems(out);
+  if (!items.length) return out.split('\n')[0]!.slice(0, 200);
+  const official = /mostPopular/.test(out.split('\n')[0] ?? '');
+  const region = /region (\w{2})/.exec(out)?.[1] ?? '';
+  const top = items.slice(0, 3).map((i) => `${i.n}. ${i.title.slice(0, 70)}${i.meta.split(' · ')[0] ? ` by ${i.meta.split(' · ')[0]}` : ''}`).join('; ');
+  return official
+    ? `On YouTube's most-popular chart${region ? ` for ${region}` : ''} right now, sir: ${top}. The full list is in the console.`
+    : `I don't have YouTube's own chart without a YouTube API key, sir. Video search shows these recent popular videos: ${top}. That is search order, not a ranking; the list is in the console.`;
+}
 
 /** Why a repair step did not run, or failed, in words. */
 function repairFailure(result: ToolResult | undefined): string {

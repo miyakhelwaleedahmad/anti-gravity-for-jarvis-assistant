@@ -314,7 +314,42 @@ const verifyOpenApp: Verifier = async (args, output) => {
   return (await appState(target, true, APP_OPEN_WAIT_MS)) ? verified(`${target} is running`) : failed(`${target} is not running`);
 };
 
+/** goal_create: the goal is in the store, of the kind asked for. */
+const verifyGoalCreate: Verifier = async (args, output) => {
+  let body: { success?: boolean; goalId?: string; kind?: string } = {};
+  try { body = JSON.parse(output); } catch { return unverifiable('the result was not JSON'); }
+  if (!body.success || !body.goalId) return failed('no goal was recorded');
+  const { goalManager } = await import('./goalManager.js');
+  const g = goalManager.getGoal(body.goalId);
+  if (!g) return failed(`goal ${body.goalId} is not in the goal store`);
+  return g.kind === (body.kind ?? args['kind'] ?? g.kind) ? verified(`the goal store holds ${g.id} (${g.kind}, ${g.status})`) : failed(`the stored goal is ${g.kind}, not ${String(body.kind)}`);
+};
+
+/** goal_control: the goal's state changed the way the action says. */
+const verifyGoalControl: Verifier = async (args, output) => {
+  let body: { success?: boolean; goalId?: string } = {};
+  try { body = JSON.parse(output); } catch { return unverifiable('the result was not JSON'); }
+  if (!body.success || !body.goalId) return unverifiable('nothing was changed');
+  const { goalManager } = await import('./goalManager.js');
+  const g = goalManager.getGoal(body.goalId);
+  if (!g) return failed('the goal is no longer in the store');
+  const action = text(args, 'action');
+  const ok: Record<string, () => boolean> = {
+    pause: () => g.status === 'paused',
+    resume: () => !['paused', 'blocked', 'failed', 'cancelled'].includes(g.status),
+    cancel: () => g.status === 'cancelled',
+    confirm: () => g.status === 'completed' || (g.kind === 'permanent' && g.status === 'waiting'),
+    priority: () => g.priority === Math.max(1, Math.min(10, Math.round(Number(args['value'])))),
+    feedback: () => (g.history ?? []).some((h) => h.event === 'feedback'),
+  };
+  const check = ok[action];
+  if (!check) return unverifiable(`no check for "${action}"`);
+  return check() ? verified(`the goal is now ${g.status}${action === 'priority' ? `, priority ${g.priority}` : ''}`) : failed(`the goal is ${g.status}`);
+};
+
 export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> = {
+  goal_create: verifyGoalCreate,
+  goal_control: verifyGoalControl,
   write_file: verifyWriteFile,
   control_file: verifyControlFile,
   save_relation: verifySaveRelation,

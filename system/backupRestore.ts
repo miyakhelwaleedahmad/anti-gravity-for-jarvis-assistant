@@ -11,9 +11,15 @@
  *   3. Configuration   — .env (optional, sanitized — API keys redacted)
  *   4. Tool audit log  — data/logs/tool_audit.log
  *   5. Failure analytics JSONL — data/logs/failure_analytics.jsonl
+ *   6. Goals and lessons — data/runtime/goals.json (core/goalManager.ts)
+ *
+ * Copying a live file is safe: lowdb writes a temporary file and renames it,
+ * so a copy holds either the old or the new version whole. Restoring
+ * replaces live files: stop JARVIS first, or the running process will
+ * overwrite what was restored with what it has in memory.
  *
  * Backup strategy:
- *   - Scheduled: every BACKUP_INTERVAL_MS (default: 6h) while JARVIS runs
+ *   - Scheduled: every JARVIS_BACKUP_INTERVAL_HOURS (default 6; 0 turns it off) while JARVIS runs
  *   - Retention: keep last MAX_BACKUPS backups, delete oldest
  *   - Format: timestamped directory under data/backups/YYYY-MM-DD_HH-MM-SS/
  *   - Restore: replaces live files from the specified backup snapshot
@@ -47,7 +53,17 @@ const BACKUP_TARGETS: Array<{ src: string; label: string }> = [
   { src: 'data/logs/tool_audit.log',            label: 'Tool Audit Log' },
   { src: 'data/logs/failure_analytics.jsonl',   label: 'Failure Analytics' },
   { src: 'data/logs/alerts.jsonl',              label: 'Alert Log' },
+  { src: 'data/runtime/goals.json',             label: 'Goals and lessons' },
 ];
+
+/** The backup interval from JARVIS_BACKUP_INTERVAL_HOURS (default 6 h); 0 means no scheduled backups. */
+export function backupIntervalMs(env: Record<string, string | undefined> = process.env): number {
+  const raw = env['JARVIS_BACKUP_INTERVAL_HOURS'];
+  if (raw === undefined || raw.trim() === '') return BACKUP_INTERVAL_MS;
+  const hours = Number(raw);
+  if (!Number.isFinite(hours) || hours < 0) return BACKUP_INTERVAL_MS;
+  return hours === 0 ? 0 : Math.max(60_000, Math.round(hours * 3_600_000));
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -87,13 +103,21 @@ export class BackupRestore {
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   startScheduled(intervalMs = BACKUP_INTERVAL_MS): void {
-    if (this.schedulerTimer) return;
+    if (this.schedulerTimer || intervalMs <= 0) return;
     this.schedulerTimer = setInterval(async () => {
-      const manifest = await this.createBackup();
-      console.log(`[BackupRestore] ✅ Scheduled backup complete: ${manifest.snapshotId} (${manifest.successCount}/${manifest.totalFiles} files)`);
+      try {
+        const manifest = await this.createBackup();
+        console.log(`[BackupRestore] ✅ Scheduled backup complete: ${manifest.snapshotId} (${manifest.successCount}/${manifest.totalFiles} files)`);
+      } catch (err) {
+        console.warn(`[BackupRestore] Scheduled backup failed: ${(err as Error).message}`);
+      }
     }, intervalMs);
     this.schedulerTimer.unref();
     console.log(`[BackupRestore] 📦 Scheduled backups every ${intervalMs / 3600000}h.`);
+  }
+
+  get isScheduled(): boolean {
+    return this.schedulerTimer !== null;
   }
 
   stopScheduled(): void {
@@ -107,7 +131,9 @@ export class BackupRestore {
 
   async createBackup(): Promise<BackupManifest> {
     const now        = new Date();
-    const snapshotId = this._formatTimestamp(now);
+    // Two backups in the same second (a manual one and a scheduled one) get their own folders.
+    let snapshotId = this._formatTimestamp(now);
+    for (let n = 1; fs.existsSync(path.join(BACKUP_DIR, snapshotId)); n++) snapshotId = `${this._formatTimestamp(now)}-${n}`;
     const snapDir    = path.join(BACKUP_DIR, snapshotId);
 
     console.log(`[BackupRestore] 📦 Creating backup snapshot: ${snapshotId}`);

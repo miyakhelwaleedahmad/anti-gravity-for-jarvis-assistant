@@ -51,14 +51,14 @@ export class BrainLoop {
     if (this.isRunning) return;
     this.isRunning = true;
     orchestrator.startLoop();
-    console.log('[BrainLoop] ♾️  Autonomy loop active. Orchestrator ready.');
+    console.log('[BrainLoop] Request handling ready. Background goals: see [GoalRuntime].');
   }
 
   stop(): void {
     if (!this.isRunning) return;
     this.isRunning = false;
     orchestrator.stopLoop();
-    console.log('[BrainLoop] ⏹️  Autonomy loop stopped.');
+    console.log('[BrainLoop] ⏹️  Request handling stopped.');
   }
 }
 

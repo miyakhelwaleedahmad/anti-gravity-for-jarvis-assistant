@@ -38,6 +38,10 @@ export interface ApprovalRequest {
   agentId?: string;
   taskId?: string;
   rootTaskId?: string;
+  /** The background goal and goal-task the call works for (core/goalRuntime.ts). */
+  goalId?: string;
+  goalTaskId?: string;
+  goalTitle?: string;
   /** Level 4: approved only with `APPROVE <code>` typed in the console. */
   strong: boolean;
   code?: string;
@@ -57,6 +61,10 @@ export interface ApprovalDecision {
   answer?: string;
   /** For `by: 'scope'`: the request whose approval covered this one. */
   partOf?: string;
+  /** The agent root task and goal the decision belongs to, when a background agent asked. */
+  rootTaskId?: string;
+  goalId?: string;
+  goalTaskId?: string;
   at: number;
 }
 
@@ -183,6 +191,7 @@ export function buildApprovalRequest(input: {
   source?: ApprovalSource;
   agent?: string;
   agentIds?: { agentId: string; taskId: string; rootTaskId: string };
+  goal?: { goalId: string; goalTaskId: string; title: string };
 }): ApprovalRequest {
   const key = input.action ? `${input.tool} ${input.action}` : String(input.tool ?? '');
   const action = ACTION_TITLES[key]
@@ -207,6 +216,7 @@ export function buildApprovalRequest(input: {
     source: input.source ?? 'cli',
     ...(input.agent ? { agent: oneLine(input.agent, 120) } : {}),
     ...(input.agentIds ? { agentId: input.agentIds.agentId, taskId: input.agentIds.taskId, rootTaskId: input.agentIds.rootTaskId } : {}),
+    ...(input.goal ? { goalId: input.goal.goalId, goalTaskId: input.goal.goalTaskId, goalTitle: oneLine(input.goal.title, 100) } : {}),
     strong,
     ...(strong ? { code: newCode() } : {}),
     createdAt: Date.now(),
@@ -238,6 +248,7 @@ export function formatApprovalRequest(r: ApprovalRequest, timeoutSecs: number): 
     `  ACTION:           ${r.action}`,
     `  WHY:              ${r.why}`,
     ...(r.agent ? [`  ASKED BY AGENT:   ${r.agent}`] : []),
+    ...(r.goalId ? [`  FOR GOAL:         ${r.goalTitle ?? ''} (${r.goalId}, task ${r.goalTaskId})`] : []),
     `  TARGET:           ${r.target}`,
     `  EXPECTED EFFECT:  ${r.expectedEffect}`,
     `  RISK:             ${risk}`,
@@ -270,8 +281,9 @@ export function spokenApprovalRequest(r: ApprovalRequest): string {
   }
   // A background agent's request says which agent asks, by its own name.
   const asker = r.agent ? `the ${r.agent.split(' › ').pop()} needs` : 'I need';
+  const forGoal = r.goalTitle ? ` for the goal "${oneLine(r.goalTitle, 60)}"` : '';
   return [
-    `Sir, ${asker} your approval to ${r.action.toLowerCase()}${target}.`,
+    `Sir, ${asker} your approval to ${r.action.toLowerCase()}${target}${forGoal}.`,
     `Risk level ${r.risk}.`,
     SPOKEN_REVERSIBILITY[r.reversibility],
     // Ends on "cancel": an echo of the last word can only deny.

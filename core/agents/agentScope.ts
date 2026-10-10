@@ -21,6 +21,15 @@ export interface AgentScopeInfo {
   /** The user's words that started the root task. */
   request: string;
   source: 'voice' | 'cli';
+  /** The goal and goal-task the root task works for (core/goalRuntime.ts), if any. */
+  goal?: GoalRef;
+}
+
+/** A goal-task an agent's work belongs to: approvals and results name it. */
+export interface GoalRef {
+  goalId: string;
+  goalTaskId: string;
+  title: string;
 }
 
 const store = new AsyncLocalStorage<AgentScopeInfo>();

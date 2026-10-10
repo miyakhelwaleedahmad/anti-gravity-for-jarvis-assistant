@@ -55,6 +55,11 @@ export function getAgentPath(): string | undefined {
   return currentAgentScope()?.agentPath;
 }
 
+/** The goal-task the current agent works for (core/goalRuntime.ts); undefined otherwise. */
+export function getGoalContext(): { goalId: string; goalTaskId: string; title: string } | undefined {
+  return currentAgentScope()?.goal;
+}
+
 /** Ids of the agent, task and root task making the current call; undefined outside agents. */
 export function getAgentIds(): { agentId: string; taskId: string; rootTaskId: string } | undefined {
   const a = currentAgentScope();

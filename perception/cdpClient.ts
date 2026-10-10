@@ -250,14 +250,20 @@ function scriptFailure(details: NonNullable<EvaluateResult<unknown>['exceptionDe
  * expression never comes from the model. `timeoutMs` bounds the whole call;
  * a busy or frozen page fails with a plain message.
  */
-export async function evaluateFixed<T>(session: CdpSession, expression: string, timeoutMs = 5_000): Promise<T> {
+export async function evaluateFixed<T>(
+  session: CdpSession,
+  expression: string,
+  timeoutMs = 5_000,
+  /** userGesture: run as if the user had clicked (media play()); awaitPromise: wait for a promise the script returns. */
+  opts: { userGesture?: boolean; awaitPromise?: boolean } = {},
+): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   const left = () => Math.max(1, deadline - Date.now());
   const contextId = await isolatedWorld(session, timeoutMs);
   let result: EvaluateResult<T>;
   try {
     result = await session.send('Runtime.evaluate', {
-      expression, contextId, returnByValue: true, awaitPromise: false, timeout: left(),
+      expression, contextId, returnByValue: true, awaitPromise: !!opts.awaitPromise, userGesture: !!opts.userGesture, timeout: left(),
     }, left() + 500);
   } catch (err) {
     throw pageTimeout(err, timeoutMs);

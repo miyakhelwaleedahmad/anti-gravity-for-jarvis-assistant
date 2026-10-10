@@ -68,6 +68,12 @@ const SPEECH_MAX_MS = 90_000;
 const QUEUE_END_GRACE_MS = 1_000;
 const HISTORY_LIMIT = 50;
 /**
+ * A request from background goal work (core/goalRuntime.ts) takes typed
+ * answers only this long after it appears: it can turn up while the user is
+ * answering something else, and a late "yes" meant for that must not approve it.
+ */
+const ANSWER_GRACE_MS = Number(process.env['JARVIS_APPROVAL_GRACE_MS'] ?? 1500);
+/**
  * Lines already waiting in the console when the gate starts reading it were
  * typed before the request was shown; they arrive within this time and are
  * dropped (an Enter pressed while JARVIS loaded denied a request on the
@@ -81,6 +87,8 @@ interface Pending {
   voice: boolean;
   /** Spoken answers count from here: JARVIS has finished asking. */
   listeningFrom: number;
+  /** Typed answers count from here (ANSWER_GRACE_MS). */
+  consoleFrom: number;
   expiresAt: number;
   toldVoiceCannot?: boolean;
   settle: (answer: string | null) => void;
@@ -167,7 +175,12 @@ export class ApprovalGate {
   /** A line typed while a request is displayed. True when it was taken as the answer. */
   offerConsoleAnswer(line: string): boolean {
     const p = this.pending;
-    if (!p?.console || Date.now() > p.expiresAt) return false;
+    const now = Date.now();
+    if (!p?.console || now > p.expiresAt) return false;
+    if (now < p.consoleFrom) {
+      console.log(`[ApprovalGate] "${line.slice(0, 20)}" was typed as the request appeared; it is not taken as the answer. Answer again.`);
+      return true; // swallowed: neither an answer nor a command
+    }
     p.settle(line);
     return true;
   }
@@ -214,6 +227,11 @@ export class ApprovalGate {
   pendingSummary(): string | undefined {
     const r = this.pending?.request;
     return r ? `${r.action} — ${r.target} (level ${r.risk})` : undefined;
+  }
+
+  /** The request on display (a copy), with its goal and agent ids, if one waits for an answer. */
+  pendingRequest(): ApprovalRequest | undefined {
+    return this.pending ? { ...this.pending.request } : undefined;
   }
 
   /** The latest decisions, oldest first. */
@@ -272,6 +290,8 @@ export class ApprovalGate {
       by: outcome.by,
       ...(outcome.answer !== undefined ? { answer: redact(outcome.answer).slice(0, 40) } : {}),
       ...(partOf ? { partOf } : {}),
+      ...(request.rootTaskId ? { rootTaskId: request.rootTaskId } : {}),
+      ...(request.goalId ? { goalId: request.goalId, goalTaskId: request.goalTaskId } : {}),
       at: Date.now(),
     };
     this.history.push(decision);
@@ -288,10 +308,12 @@ export class ApprovalGate {
     const answer = new Promise<string | null>((r) => { resolve = r; });
     let timer: NodeJS.Timeout | undefined;
     let settled = false;
+    const grace = request.goalId ? ANSWER_GRACE_MS : 0;
     const pending: Pending = {
       request,
       ...channels,
       listeningFrom: Number.POSITIVE_INFINITY,
+      consoleFrom: Date.now() + grace,
       expiresAt: Number.POSITIVE_INFINITY,
       settle: (value) => {
         if (settled) return;

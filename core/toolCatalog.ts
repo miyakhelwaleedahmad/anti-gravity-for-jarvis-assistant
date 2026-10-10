@@ -187,6 +187,53 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     effect: 'Stops delegated agent work and every agent below it.',
     output: { format: 'json', description: 'success, message, stopped' },
   },
+  youtube_search: {
+    category: 'BROWSER', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Opens YouTube search results in a new Chrome tab; with open=first/best, opens that video there and checks it plays.',
+    output: { format: 'json', description: BROWSER_RESULT },
+  },
+  youtube_play: withActions(
+    { category: 'BROWSER', reversible: 'yes', external: 'none',
+      effect: 'Plays or pauses the video in the YouTube tab.',
+      output: { format: 'json', description: BROWSER_RESULT } },
+    {
+      play: { risk: 1, reversible: 'yes', effect: 'Starts the video in the YouTube tab.' },
+      pause: { risk: 1, reversible: 'yes', effect: 'Pauses the video in the YouTube tab.' },
+    }),
+  site_search: {
+    category: 'BROWSER', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Opens a website\'s search results in a new Chrome tab.',
+    output: { format: 'json', description: BROWSER_RESULT },
+  },
+  news_search: {
+    category: 'NETWORK', risk: 1, reversible: 'yes', external: 'query',
+    effect: 'Sends the query to the news search service; opens nothing on screen.',
+    output: { format: 'text', description: 'Articles: title, link, source, date; with the retrieval time' },
+  },
+  youtube_trending: {
+    category: 'NETWORK', risk: 1, reversible: 'yes', external: 'query',
+    effect: 'Reads YouTube\'s most-popular chart (YouTube Data API) or, without a key, recent video search results; opens nothing on screen.',
+    output: { format: 'text', description: 'Videos with source, region and retrieval time' },
+  },
+  goal_create: {
+    category: 'SYSTEM', risk: 1, reversible: 'yes', external: 'none',
+    effect: 'Records a goal that JARVIS works on in the background; each action its agents take is checked and approved on its own.',
+    output: { format: 'json', description: 'success, message, goalId, kind, schedule' },
+  },
+  goal_status: observation('Reads the background goals: running work, approvals and reviews waiting, blocked goals, retries, schedule, progress.',
+    { format: 'text', description: 'A sentence to say, then one line per goal' }, 'SYSTEM'),
+  goal_control: withActions(
+    { category: 'SYSTEM', reversible: 'partial', external: 'none',
+      effect: 'Pauses, resumes, cancels, confirms or re-prioritises a background goal, or records feedback on it.',
+      output: { format: 'json', description: JSON_RESULT } },
+    {
+      pause: { risk: 1, reversible: 'yes', effect: 'Stops the goal\'s work until it is resumed.' },
+      resume: { risk: 1, reversible: 'yes', effect: 'Lets the goal run again.' },
+      cancel: { risk: 1, reversible: 'no', effect: 'Stops the goal for good.' },
+      confirm: { risk: 1, reversible: 'no', effect: 'Accepts a finished result that waited for review.' },
+      priority: { risk: 1, reversible: 'yes', effect: 'Changes which goals run first.' },
+      feedback: { risk: 0, reversible: 'yes', effect: 'Stores the correction as a lesson for later goals.' },
+    }),
   github_search: {
     category: 'NETWORK', risk: 1, reversible: 'yes', external: 'query',
     effect: 'Sends the search query to the GitHub API (read-only).',

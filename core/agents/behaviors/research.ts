@@ -26,6 +26,7 @@ import type { AgentOutcome, ChildResult } from '../types.js';
 import {
   askJson, callJson, clamp01, keywords, languageFit, licenseScore, mean, monthsSince, relevance, untrusted,
 } from './common.js';
+import { currentEventsResearch, isCurrentEvents } from './news.js';
 
 export const RESEARCH_ROLES = {
   research: 'research_agent',
@@ -494,6 +495,8 @@ const CHILD_CAPABILITIES: Record<string, string[]> = {
 export const researchSpecialist: AgentBehavior = {
   async run(ctx) {
     const question = ctx.task.description;
+    // Current events need dated news, not GitHub projects (behaviors/news.ts).
+    if (isCurrentEvents(question)) return currentEventsResearch(ctx, question);
     const allowed = Object.keys(CHILD_CAPABILITIES);
     const plan = await askJson(ctx, {
       system: 'You are the Research Agent of JARVIS, a voice assistant written in Node.js/TypeScript for Windows with a Chrome DevTools Protocol browser layer. '

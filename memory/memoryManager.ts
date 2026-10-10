@@ -59,6 +59,8 @@ export interface LongTermFact {
   // ── PHASE 2: Conflict Resolution ───────────────────────────────────────
   confidence: number;    // 0.0 to 1.0 — confidence in this fact
   version: number;       // increments on updates/merges
+  /** Decay has been applied up to this time (decayMemory runs on a schedule). */
+  decayedThrough?: number;
 }
 
 interface MemoryDB {
@@ -927,19 +929,22 @@ export class MemoryManager {
   }
 
   /**
-   * PHASE 1: Memory decay — call periodically (e.g. once per session start).
+   * PHASE 1: Memory decay — call periodically (the Goal Runtime's hourly
+   * housekeeping, and once at startup).
    * Reduces importance of facts that haven't been accessed recently.
    *
-   * Decay formula: importance -= decayAmount per day since lastAccessed
+   * Decay formula: importance -= decayPerDay for each day a fact goes unseen,
+   * counted once: each run decays only the time since the last run (or since
+   * the fact was last seen), so running it often does not decay faster.
    * Facts that drop below minImportance (1.0) are removed entirely.
    */
   async decayMemory(
     decayPerDay = 0.1,
-    minImportance = 1.0
+    minImportance = 1.0,
+    now = Date.now(),
   ): Promise<{ decayed: number; removed: number }> {
     this.ensureInit();
 
-    const now = Date.now();
     const ONE_DAY_MS = 86_400_000;
     let decayed = 0;
     let removed = 0;
@@ -956,8 +961,11 @@ export class MemoryManager {
 
       if (daysSinceSeen < 1) return true; // Less than a day old — no decay
 
-      const decay = decayPerDay * daysSinceSeen;
+      // Only the days not yet decayed: seen again since the last run → from then.
+      const from = Math.max(lastSeen, fact.decayedThrough ?? lastSeen);
+      const decay = decayPerDay * Math.max(0, (now - from) / ONE_DAY_MS);
       fact.importance = Math.max(0, fact.importance - decay);
+      fact.decayedThrough = now;
       decayed++;
 
       if (fact.importance < minImportance) {

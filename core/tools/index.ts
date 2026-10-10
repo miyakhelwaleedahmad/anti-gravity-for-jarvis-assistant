@@ -23,6 +23,9 @@ import { windowsTools } from './windowsTools.js';
 import { githubRepoTool, githubSearchTool } from '../../tools/githubTools.js';
 import { dataTool } from './dataTools.js';
 import { agentTools } from '../agents/jarvisAgents.js';
+import { goalTools } from '../goalTools.js';
+import { youtubeTools } from './youtubeTools.js';
+import { webResearchTools } from './webResearchTools.js';
 
 export function registerAllTools(): void {
   toolRegistryV2.registerMany([
@@ -52,9 +55,12 @@ export function registerAllTools(): void {
     githubRepoTool,
     dataTool,
     ...agentTools,
+    ...goalTools,
+    ...youtubeTools,
+    ...webResearchTools,
   ]);
 
-  // Skills (skills/*) register later, so the dashboard's count is higher (e.g. 40 here, 66 there).
+  // Skills (skills/*) register later, so the dashboard's count is higher (e.g. 48 here, 74 there).
   console.log(`[ToolRegistry] ${toolRegistryV2.names().length} built-in tools registered; skills load next.`);
   console.log(`[ToolRegistry] Tools: ${toolRegistryV2.names().join(', ')}`);
 }

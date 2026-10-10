@@ -55,6 +55,7 @@ const HOST_DEPENDENT: Record<string, () => string | undefined> = {
   browserControlAgentTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   errorRecoveryTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   scenarioIntegrationTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
+  desktopControlTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   windowsScriptsTest: () => (findPwsh() ? undefined : 'PowerShell 7, pwsh (JARVIS_TEST_PWSH)'),
 };
 

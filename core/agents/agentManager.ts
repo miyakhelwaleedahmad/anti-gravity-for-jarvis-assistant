@@ -37,7 +37,7 @@ import { PrioritySemaphore } from './semaphore.js';
 import { checkCall, deriveChildScope, isSubsetScope, rootScope, type ToolInfoSource } from './permissions.js';
 import { decideSpawn, type SpawnDecision, type SpawnDecisionInput } from './spawnPolicy.js';
 import { similarity } from './similarity.js';
-import { runAsAgent } from './agentScope.js';
+import { runAsAgent, type GoalRef } from './agentScope.js';
 import {
   BudgetExceededError, SpawnRejectedError,
   type AgentContext, type ChildHandle, type SpawnRequest,
@@ -66,6 +66,8 @@ export interface RootTaskInput {
   priority?: number;
   timeoutMs?: number;
   budget?: Partial<ResourceBudget>;
+  /** The goal-task this root task works for (core/goalRuntime.ts). */
+  goal?: GoalRef;
 }
 
 /** What JARVIS receives when a root task ends. */
@@ -105,6 +107,7 @@ interface RootRun {
   /** Snapshot of the task records once the root has ended. */
   tasks?: AgentTaskRecord[];
   archivePath?: string;
+  goal?: GoalRef;
 }
 
 interface Budget {
@@ -266,6 +269,7 @@ export class AgentManager {
     const run: RootRun = {
       rootTaskId, request: input.request, source: input.source ?? 'cli', workspace,
       startedAt: now, status: 'RUNNING', agents: new Map([[JARVIS_AGENT_ID, this.registry.get(JARVIS_AGENT_ID)!]]),
+      ...(input.goal ? { goal: input.goal } : {}),
     };
     this.runs.set(rootTaskId, run);
     const rb = this.limits.rootBudget;
@@ -653,6 +657,7 @@ export class AgentManager {
       const work = runAsAgent({
         rootTaskId: task.rootTaskId, taskId: task.taskId, agentId: agent.agentId,
         agentPath: this.registry.path(agent.agentId), request: run.request, source: run.source,
+        ...(run.goal ? { goal: run.goal } : {}),
       }, () => behavior.run(ctx));
       outcome = await raceAbort(work, signal);
       status = 'COMPLETED';
@@ -1052,6 +1057,7 @@ export class AgentManager {
         rootTaskId: run.rootTaskId,
         request: run.request,
         source: run.source,
+        ...(run.goal ? { goal: run.goal } : {}),
         status: run.endedAt ? run.status : 'RUNNING',
         startedAt: run.startedAt,
         endedAt: run.endedAt,

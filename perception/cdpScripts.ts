@@ -309,3 +309,68 @@ export const FILE_NAMES_FN = String.raw`function (css) {
   const el = find(css);
   return el instanceof HTMLInputElement && el.files ? Array.from(el.files).map((f) => f.name) : null;
 }`;
+
+// ─── YouTube (control/youtubeControl.ts) ─────────────────────────────────────
+// They only read the page, except VIDEO_PLAY_SCRIPT / VIDEO_PAUSE_SCRIPT, which
+// call play() / pause() on the page's own video element. YouTube changes its
+// markup, so the results script takes any /watch?v= link in the results area,
+// the title from the link's title / aria-label / text, and skips ads.
+
+/** The search results on screen: [{ title, url, channel, meta }], at most 12, in page order. */
+export const YOUTUBE_RESULTS_SCRIPT = `(() => {
+  const root = document.querySelector('ytd-search, ytd-section-list-renderer, #contents') || document.body;
+  const out = [];
+  const seen = new Set();
+  const anchors = root.querySelectorAll('a[href*="/watch?v="]');
+  for (const a of anchors) {
+    if (out.length >= 12) break;
+    if (a.closest('ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, [is-ad]')) continue;
+    const href = a.getAttribute('href') || '';
+    const m = /[?&]v=([\\w-]{11})/.exec(href);
+    if (!m || seen.has(m[1])) continue;
+    const box = a.closest('ytd-video-renderer, ytd-rich-item-renderer, yt-lockup-view-model, ytd-compact-video-renderer, ytd-grid-video-renderer') || a.parentElement;
+    const titleEl = (box && box.querySelector('#video-title, a#video-title-link, h3 a, .yt-lockup-metadata-view-model-wiz__title')) || a;
+    const title = (titleEl.getAttribute('title') || titleEl.getAttribute('aria-label') || titleEl.textContent || '').replace(/\\s+/g, ' ').trim();
+    if (!title) continue;
+    seen.add(m[1]);
+    const channelEl = box && box.querySelector('ytd-channel-name a, #channel-name a, .yt-content-metadata-view-model-wiz__metadata-text');
+    const metaEl = box && box.querySelector('#metadata-line, .inline-metadata-item, .yt-content-metadata-view-model-wiz__metadata-row:last-child');
+    out.push({
+      title: title.slice(0, 200),
+      url: location.origin + '/watch?v=' + m[1],
+      channel: channelEl ? (channelEl.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80) : '',
+      meta: metaEl ? (metaEl.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80) : '',
+    });
+  }
+  return out;
+})()`;
+
+/** The page's main video: whether it exists, is paused, and how far it has played. */
+export const VIDEO_STATE_SCRIPT = `(() => {
+  const v = document.querySelector('video');
+  const t = document.querySelector('h1.ytd-watch-metadata, h1.title, #title h1');
+  return {
+    hasVideo: !!v,
+    paused: v ? v.paused : true,
+    ended: v ? v.ended : false,
+    currentTime: v ? v.currentTime : 0,
+    title: ((t && t.textContent) || document.title || '').replace(/\\s+/g, ' ').trim().slice(0, 200),
+    url: location.href,
+  };
+})()`;
+
+/** Starts the page's main video (run with a user gesture, as a click would). */
+export const VIDEO_PLAY_SCRIPT = `(() => {
+  const v = document.querySelector('video');
+  if (!v) return 'no video';
+  const p = v.play();
+  return p && typeof p.then === 'function' ? p.then(() => 'playing', (e) => 'blocked: ' + (e && e.name || 'error')) : 'playing';
+})()`;
+
+/** Pauses the page's main video. */
+export const VIDEO_PAUSE_SCRIPT = `(() => {
+  const v = document.querySelector('video');
+  if (!v) return 'no video';
+  v.pause();
+  return 'paused';
+})()`;

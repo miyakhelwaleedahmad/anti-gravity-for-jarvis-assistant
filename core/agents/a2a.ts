@@ -309,6 +309,17 @@ export class A2AServer {
     const { text, data, urls } = readMessage(message);
     if (!text) throw new A2AError(A2A_ERRORS.INVALID_PARAMS, 'The message needs a text part with the request.');
     const meta = (message.metadata?.['jarvis'] ?? {}) as Record<string, unknown>;
+    // The goal a task works for, and a smaller budget, are accepted only from
+    // JARVIS itself (the Goal Runtime, in process), never over HTTP: they
+    // label approval requests and must not be claimed by an outside caller.
+    const inproc = caller.kind === 'user' && caller.via === 'inproc';
+    const g = meta['goal'] as Record<string, unknown> | undefined;
+    const goal = inproc && g && typeof g['goalId'] === 'string' && typeof g['goalTaskId'] === 'string'
+      ? { goalId: g['goalId'], goalTaskId: g['goalTaskId'], title: String(g['title'] ?? '') } : undefined;
+    const b = meta['budget'] as Record<string, unknown> | undefined;
+    const budget = inproc && b && typeof b === 'object'
+      ? Object.fromEntries((['llmCalls', 'toolCalls', 'tokens'] as const).filter((k) => typeof b[k] === 'number' && (b[k] as number) >= 0).map((k) => [k, b[k] as number]))
+      : undefined;
     const handle = await this.manager.startRootTask({
       request: text,
       source: meta['source'] === 'voice' ? 'voice' : 'cli',
@@ -316,6 +327,8 @@ export class A2AServer {
       task: { description: text, input: { ...data, ...(urls.length ? { urls } : {}) } },
       ...(typeof meta['priority'] === 'number' ? { priority: meta['priority'] } : {}),
       ...(typeof meta['timeoutMs'] === 'number' ? { timeoutMs: meta['timeoutMs'] } : {}),
+      ...(goal ? { goal } : {}),
+      ...(budget && Object.keys(budget).length ? { budget } : {}),
     }).catch((err: Error & { code?: string; reasons?: string[] }) => {
       throw new A2AError(A2A_ERRORS.UNSUPPORTED_OPERATION, err.message, { code: err.code, reasons: err.reasons });
     });

@@ -65,6 +65,12 @@ function pad(s: string, len: number): string {
 class RuntimeDashboard {
   private timer: ReturnType<typeof setInterval> | null = null;
   private logEnabled = false;
+  /** One line about background goals, set by core/goalService.ts when the Goal Runtime runs. */
+  private goalSummary: (() => string) | undefined;
+
+  setGoalSummary(fn: (() => string) | undefined): void {
+    this.goalSummary = fn;
+  }
 
   /** Start auto-refresh. intervalMs default = 15 000 (15s). */
   start(intervalMs = 15_000, enableLog = false): void {
@@ -154,6 +160,11 @@ class RuntimeDashboard {
     // Active agents
     const agents = snap.activeAgents.length > 0 ? snap.activeAgents.join(', ') : 'none';
     lines.push(`${CYAN}│${RESET}  ${BOLD}ACTIVE AGENTS:${RESET} ${DIM}${agents.substring(0, 42)}${RESET}${' '.repeat(Math.max(0, 44 - agents.length))}${CYAN}│${RESET}`);
+
+    // Background goals (core/goalRuntime.ts)
+    let goals = 'Goal Runtime not running';
+    try { if (this.goalSummary) goals = this.goalSummary(); } catch { goals = 'goal status unavailable'; }
+    lines.push(`${CYAN}│${RESET}  ${BOLD}GOALS:${RESET} ${DIM}${goals.substring(0, 51)}${RESET}${' '.repeat(Math.max(0, 52 - goals.length))}${CYAN}│${RESET}`);
 
     lines.push(`${CYAN}└${'─'.repeat(60)}┘${RESET}`);
     lines.push('');

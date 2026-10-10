@@ -158,8 +158,13 @@ const ROUTES: [RegExp, string][] = [
 const DATA_REQUEST = /\d\s*%|\b(calculate|compute|work out|average|mean|median|sum of|total of|percent(?:age)?|statistics|stats|standard deviation)\b|\d\s*[-+*/^%×÷]\s*\d|\b(analy[sz]e|summari[sz]e)\b.*\blogs?\b/i;
 
 /** The specialist for a request: data for numbers and logs, verification when asked to check, research for find/compare/best questions. */
+/** "Analyse these numbers: 10, 12, 15": a list of three or more numbers to analyse. */
+const NUMBER_LIST = /\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?){2,}/;
+const ANALYSE_WORDS = /\b(analy[sz]e|analysis|trend|statistic\w*|growth|average|spread)\b/i;
+
 export function chooseSpecialist(task: string): string {
   if (DATA_REQUEST.test(task)) return 'data_agent';
+  if (NUMBER_LIST.test(task) && ANALYSE_WORDS.test(task)) return 'data_agent';
   // "Verify the research result" is a verification request, not research.
   if (/^\s*(please\s+)?(verify|validate|double[- ]check|fact[- ]check)\b/i.test(task)) return 'qa_agent';
   if (/\b(research|investigate|compare|comparison|best|recommend|alternatives?|find (?:me )?(?:the )?(?:best|good|top))\b/i.test(task)) return 'research_agent';

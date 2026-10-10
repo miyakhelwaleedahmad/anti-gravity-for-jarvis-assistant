@@ -8,8 +8,9 @@
  *   - agentStateMachine handles interrupt state (via systemController shim)
  *   - All voice pipeline events still work exactly as before
  *   - Self-healing, watchdog, fsWatcher unchanged
- *   - Reflection is now inline TypeScript (see core/reflectionEngine.ts)
- *     The Python reflectionEngine.py is still scheduled as a backup summary job
+ *   - Reflection is inline TypeScript: core/reflectionEngine.ts for each
+ *     request, core/goalLearning.ts across goals. The old 30-minute Python job
+ *     (voice/reflectionEngine.py, which no longer exists) was removed.
  */
 
 import 'dotenv/config';
@@ -25,7 +26,6 @@ import { memoryManager }   from './memory/memoryManager.js';
 import { nodeBridge }      from './bridge/nodeBridge.js';
 import { orchestrator, normalizeVoiceInput }    from './core/orchestrator.js';
 import { brainLoop }       from './core/brainLoop.js';
-import { terminalTools }   from './core/terminalTools.js';
 import { conversationBus } from './core/conversationBus.js';
 import { agentStateMachine, AgentState } from './core/agentStateMachine.js';
 import { evaluateEcho }    from './core/voiceEchoFilter.js';
@@ -53,9 +53,11 @@ import { vectorMemorySupervisor } from './memory/vectorMemorySupervisor.js';
 import { systemStateObserver }    from './perception/systemStateObserver.js';
 import { healthManager }          from './monitoring/healthManager.js';
 import { ensureAgentSystem, shutdownAgentSystem } from './core/agents/jarvisAgents.js';
+import { startGoalRuntime, stopGoalRuntime } from './core/goalService.js';
+import { backupIntervalMs, backupRestore } from './system/backupRestore.js';
+import { goalStatusText } from './core/goalTools.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const VOICE_DIR  = path.join(__dirname, 'voice');
 
 // ─── Global Error Handlers ────────────────────────────────────────────────────
 
@@ -329,7 +331,15 @@ async function startJarvis() {
       systemStateObserver.start();
       runtimeDashboard.start(60_000, true);
       // The specialist agents (core/agents); the A2A endpoint only if JARVIS_A2A_PORT is set.
-      ensureAgentSystem({ startHttp: true }).catch((err) => console.warn('[JARVIS] Agent system did not start:', err));
+      // Then the Goal Runtime, which runs stored goals through those agents.
+      ensureAgentSystem({ startHttp: true })
+        .catch((err) => console.warn('[JARVIS] Agent system did not start:', err))
+        .then(() => startGoalRuntime())
+        .catch((err) => console.warn('[JARVIS] Goal Runtime did not start; goals are kept and run at the next start:', err));
+      // Snapshots of memory, goals and logs (data/backups); JARVIS_BACKUP_INTERVAL_HOURS=0 turns them off.
+      const every = backupIntervalMs();
+      if (every > 0) backupRestore.startScheduled(every);
+      else console.log('[BackupRestore] Scheduled backups are off (JARVIS_BACKUP_INTERVAL_HOURS=0).');
     });
 
     // Register barge-in hook to clear voice command queue
@@ -742,33 +752,6 @@ async function startJarvis() {
     pipelineWatchdog.start();
     fsWatcher.start(__dirname);
 
-    // 6. Backup reflection schedule (Python — every 30 min, idle-aware)
-    //    The primary reflection is now inline in core/reflectionEngine.ts (runs every task).
-    //    This remains as a periodic summary / long-term consolidation job.
-    const REFLECTION_INTERVAL_MS = 30 * 60 * 1000;
-    const reflectionScript = path.join(VOICE_DIR, 'reflectionEngine.py');
-
-    function scheduleReflection() {
-      setTimeout(async () => {
-        if (!conversationBus.isIdle) {
-          console.log('[Reflection] ⏸  Deferred — JARVIS is not idle. Retry in 30 min.');
-        } else {
-          console.log('[JARVIS] 🧘 Running periodic Python reflection cycle...');
-          try {
-            const result = await terminalTools.runPython(reflectionScript);
-            if (!result.success) {
-              console.warn('[JARVIS] Reflection engine exited with error:', result.stderr);
-            }
-          } catch (err) {
-            console.warn('[JARVIS] Reflection engine failed:', err);
-          }
-        }
-        // DISABLED: scheduleReflection();
-      }, REFLECTION_INTERVAL_MS);
-    }
-
-    // DISABLED: scheduleReflection();
-
     const totalStartupTime = Date.now() - startTime;
 
     console.log('==================================================');
@@ -792,9 +775,10 @@ async function startJarvis() {
     console.log('   Task Graph Engine:    ACTIVE');
     console.log('   Reflection Engine:    ACTIVE');
     console.log('   Agent Memory:         ACTIVE');
+    console.log('   Goal Runtime:         starting after the agents (see [GoalRuntime])');
     console.log('===================================');
 
-    nodeBridge.speakToClients('JARVIS version 2 is online, sir. Autonomous systems are fully operational.');
+    nodeBridge.speakToClients('JARVIS version 2 is online, sir.');
 
     startCLI();
 
@@ -846,6 +830,15 @@ function startCLI() {
       return;
     }
 
+    // "goals" / "goal status": every goal; "goal <id or words>": that goal in detail.
+    if (input.toLowerCase() === 'goals' || /^goal \S/i.test(input) && !/^goal (?:control|create)\b/i.test(input)) {
+      const rest = input.slice(5).trim();
+      const which = input.toLowerCase() === 'goals' || /^status$/i.test(rest) ? undefined : rest;
+      console.log(goalStatusText(which));
+      rl.prompt();
+      return;
+    }
+
     if (input.toLowerCase() === 'tools') {
       const { toolRegistryV2 } = await import('./core/toolRegistryV2.js');
       console.log('[JARVIS] Registered tools:', toolRegistryV2.names().join(', '));
@@ -886,18 +879,25 @@ async function shutdown(signal = 'manual') {
   }
 
   try {
-    // Fail any in-progress goals so they don't stay stale
-    const activeGoals = goalManager.getActiveGoals();
+    // Unfinished requests are saved as paused so they do not replay by
+    // themselves. Temporary, permanent and recurring goals keep their state:
+    // the Goal Runtime released its claims when it stopped, and continues them
+    // at the next start.
+    const activeGoals = goalManager.getActiveGoals(['request']);
     for (const goal of activeGoals) {
       console.log(`[JARVIS] 💾 Saving goal "${goal.id}" as paused...`);
-      await goalManager.updateGoalStatus(goal.id, 'paused');
+      await goalManager.updateGoalStatus(goal.id, 'paused', {}, 'JARVIS shut down');
     }
-    console.log(`[JARVIS] ✅ ${activeGoals.length} goal(s) saved.`);
+    await goalManager.flush();
+    console.log(`[JARVIS] ✅ ${activeGoals.length} request goal(s) saved.`);
   } catch (err) {
     console.error('[JARVIS] ⚠️  Goal persistence failed:', err);
   }
 
-  // 2. Stop subsystems (non-throwing)
+  // 2. Stop subsystems (non-throwing). The Goal Runtime first: it stops its
+  //    agents and records what was interrupted before the agent system goes.
+  try { await stopGoalRuntime(); } catch {}
+  try { backupRestore.stopScheduled(); } catch {}
   try { await shutdownAgentSystem(); } catch {}
   try { systemStateObserver.stop(); } catch {}
   try { selfHealingManager.stopHealthChecks(); } catch {}

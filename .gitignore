@@ -87,6 +87,9 @@ data/vector/*
 # Episodic memory log — runtime data, never commit.
 data/episodes.jsonl
 
+# Agent task archives (requests and results; read by the goal runtime on restart) — runtime data, never commit.
+data/agents/
+
 # Live runtime state is written ONLY under data/runtime/, which is ignored.
 #
 # data/goals.json, memory/taskHistory.json, memory/userMemory.json and
