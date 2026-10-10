@@ -256,6 +256,6 @@ console.log('\n--- 8. A window close is never taken on trust (Step C) ---');
 }
 
 process.chdir(os.tmpdir());
-fs.rmSync(workspace, { recursive: true, force: true });
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process; the runner clears its temp folder */ }
 console.log(`\n=== ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

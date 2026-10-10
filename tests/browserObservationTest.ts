@@ -156,12 +156,17 @@ ok('…within 2.5 s', down.ms < 2500, `${down.ms}ms`);
 
 const chrome = await startChromium(`${base}/form`);
 process.env['JARVIS_CDP_PORT'] = String(chrome.port);
+// DevTools answers before a page has loaded; the checks below read titles, so
+// wait for each page's title (up to 15 s) instead of a fixed pause.
+const waitForTitle = async (title: string) => {
+  for (let i = 0; i < 150 && !(await listPages(chrome.port)).some((p) => p.title === title); i++) await new Promise((r) => setTimeout(r, 100));
+};
 try {
-  await new Promise((r) => setTimeout(r, 500));
+  await waitForTitle('Account settings');
   const formTab = (await listPages(chrome.port)).find((p) => p.url.endsWith('/form'))!;
   const created = await fetch(`http://127.0.0.1:${chrome.port}/json/new?${base}/table`, { method: 'PUT' });
   const tableTab = (await created.json()) as { id: string };
-  await new Promise((r) => setTimeout(r, 800));
+  await waitForTitle('Price table');
 
   console.log('\n--- 3. browser_state ---');
   await fetch(`http://127.0.0.1:${chrome.port}/json/activate/${formTab.id}`);
@@ -251,7 +256,7 @@ try {
 
   console.log('\n--- 6. A hostile page ---');
   await fetch(`http://127.0.0.1:${chrome.port}/json/new?${base}/hostile`, { method: 'PUT' });
-  await new Promise((r) => setTimeout(r, 800));
+  await waitForTitle('Hostile page');
   const hostileText = unwrap((await run('browser_read_page', { tab: 'hostile' })).output);
   ok('replaced built-ins (slice, Array.from, JSON, innerText) do not change the text read',
     hostileText?.title === 'Hostile page' && /Real hostile text/.test(hostileText?.text ?? '')
@@ -308,6 +313,7 @@ try {
   console.log('\n--- 9. A frozen page ---');
   const frozenRes = await fetch(`http://127.0.0.1:${chrome.port}/json/new?${base}/frozen`, { method: 'PUT' });
   const frozenTab = (await frozenRes.json()) as any;
+  await waitForTitle('Frozen page');
   await new Promise((r) => setTimeout(r, 1200));
   let frozenError = '';
   const t0 = Date.now();
@@ -327,6 +333,6 @@ try {
   site.close();
 }
 
-fs.rmSync(workspace, { recursive: true, force: true });
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process; the runner clears its temp folder */ }
 console.log(`\n=== ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

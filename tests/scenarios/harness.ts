@@ -151,7 +151,7 @@ export async function createWorld(): Promise<World> {
       await chrome.stop().catch(() => undefined);
       await site.close().catch(() => undefined);
       process.chdir(os.tmpdir());
-      fs.rmSync(base, { recursive: true, force: true });
+      try { fs.rmSync(base, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process */ }
     },
   };
 }

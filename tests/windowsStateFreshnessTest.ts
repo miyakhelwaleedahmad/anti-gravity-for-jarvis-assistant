@@ -142,6 +142,6 @@ ok('a window handle is used as given, without reading any window list', viaHandl
 
 session.stop();
 psSession.stop();
-fs.rmSync(dir, { recursive: true, force: true });
+try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process; the runner clears its temp folder */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

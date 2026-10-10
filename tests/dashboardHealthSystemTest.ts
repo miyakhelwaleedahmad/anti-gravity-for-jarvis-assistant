@@ -41,8 +41,9 @@ async function runTest() {
   const dirPath = path.dirname(stateFilePath);
   assert(fs.existsSync(dirPath), 'Runtime data directory exists');
 
-  // Allow observer 500ms to poll and write
-  await new Promise((r) => setTimeout(r, 600));
+  // The observer writes the file on its write interval (5 s by default), after
+  // a poll has filled the state: wait for it, up to 10 s.
+  for (let i = 0; i < 50 && !fs.existsSync(stateFilePath); i++) await new Promise((r) => setTimeout(r, 200));
 
   assert(fs.existsSync(stateFilePath), 'system_state.json was created on disk');
   const rawState = fs.readFileSync(stateFilePath, 'utf8');

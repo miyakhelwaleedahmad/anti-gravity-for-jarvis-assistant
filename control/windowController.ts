@@ -77,6 +77,11 @@ export class WindowController {
   }
 
   public async closeCurrentWindow(): Promise<string> {
+    // Permission first, as closeWindow does: without it the refusal depended on
+    // whether a window list could be read (a busy PowerShell gave none).
+    if (!permissionSession.checkPermission(2, 'Close the current window')) {
+      throw new Error('Permission Level 2 required.');
+    }
     const winState = await getWindowsState();
     const active = winState.activeWindow;
     if (!active.hwnd || active.hwnd === '0x0') {

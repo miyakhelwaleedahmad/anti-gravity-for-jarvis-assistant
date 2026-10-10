@@ -23,8 +23,31 @@ import * as fs from 'fs';
 import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
-import { getWorkspaceRoot } from '../core/workspaceRoot.js';
+import { getWorkspaceRoot, isProtectedSystemPath } from '../core/workspaceRoot.js';
 import { findChromium, findPwsh } from './chromeHelper.js';
+
+/**
+ * The tests' temp folder. On Windows the user's temp folder is under AppData,
+ * which JARVIS treats as a system folder, so every test that works in a temp
+ * folder was refused there (on the owner's PC, 10 of them). The tests, and
+ * this runner, then use a folder of their own in the home folder; JARVIS's own
+ * rules are unchanged. Folders older than a day left by an earlier run (a file
+ * still in use when a test ended) are removed.
+ */
+function useTestTempFolder(): string | undefined {
+  if (!isProtectedSystemPath(os.tmpdir())) return undefined;
+  const root = path.join(os.homedir(), '.jarvis-test-tmp');
+  fs.mkdirSync(root, { recursive: true });
+  for (const name of fs.readdirSync(root)) {
+    const p = path.join(root, name);
+    try {
+      if (Date.now() - fs.statSync(p).mtimeMs > 24 * 3_600_000) fs.rmSync(p, { recursive: true, force: true });
+    } catch { /* still in use */ }
+  }
+  // os.tmpdir() reads these on every call, here and in each test process.
+  for (const name of ['TEMP', 'TMP', 'TMPDIR']) process.env[name] = root;
+  return root;
+}
 
 /**
  * Tests that need something this repository cannot provide on its own.
@@ -134,7 +157,17 @@ function runOne(file: string, name: string): Promise<Result> {
       removeDataRoot(dataRoot);
       const ms = Date.now() - started;
       if (signal === 'SIGKILL') {
-        resolve({ name, status: 'timeout', ms });
+        // Whether the checks finished (a results line) tells a test that hung
+        // after its last check (a connection or child process still open)
+        // from one still working when it was stopped.
+        const lines = output.split('\n').filter((l) => l.trim());
+        const results = lines.filter((l) => /=== .*(passed|Results)|BENCHMARK SUMMARY/.test(l)).slice(-1)[0];
+        const detail = [
+          results ? `  the checks finished (${results.trim().slice(0, 120)}) but the process did not exit` : '  stopped while still running its checks; its last lines:',
+          ...lines.filter((l) => /^\s*(FAIL|✗|❌)/.test(l)).slice(0, 20),
+          ...lines.slice(-10),
+        ].map((l) => l.slice(0, 300));
+        resolve({ name, status: 'timeout', ms, detail });
       } else if (code === 0) {
         resolve({ name, status: 'pass', ms });
       } else {
@@ -157,6 +190,8 @@ async function main(): Promise<void> {
   const ciMode = args.includes('--ci');
   const filterArg = args.find((a) => a.startsWith('--filter='));
   const filter = filterArg ? filterArg.split('=')[1] ?? '' : '';
+  const tempFolder = useTestTempFolder();
+  if (tempFolder) console.log(`Temp folder for the tests: ${tempFolder} (this PC's temp folder is one JARVIS refuses as a system folder; on Windows it is under AppData).`);
 
   const testsDir = path.join(getWorkspaceRoot(), 'tests');
   const files = fs

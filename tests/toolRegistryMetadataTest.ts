@@ -176,6 +176,6 @@ ok('and a warning naming it', warnings.some((w) => w.includes('test_undescribed_
 
 try { await memoryManager.flush(); } catch { /* best effort */ }
 process.chdir(os.tmpdir());
-fs.rmSync(workspace, { recursive: true, force: true });
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process; the runner clears its temp folder */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

@@ -302,6 +302,6 @@ console.log('\n--- 5. Planner ---');
   ok('"run the tests" offers dev', offered('run the tests').includes('dev'));
 }
 
-fs.rmSync(base, { recursive: true, force: true });
+try { fs.rmSync(base, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process; the runner clears its temp folder */ }
 console.log(`\n=== ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

@@ -104,4 +104,6 @@ console.log(`  ℹ️  focusApp result: ${focusResult.substring(0, 80)}`);
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 cleanupTestNotepad();
-if (failed > 0) process.exit(1);
+// Exit explicitly: on Windows the PowerShell session's pipes stay open and
+// can keep a finished test running until the runner's 2-minute limit.
+process.exit(failed > 0 ? 1 : 0);

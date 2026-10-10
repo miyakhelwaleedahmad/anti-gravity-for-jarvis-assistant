@@ -114,16 +114,24 @@ async function say(input: string, script: typeof plans = []): Promise<{ reply: s
  * `level` sets both the tool's floor and its risk, so that neither permission
  * check is what the check is about.
  */
-async function withTool<T>(name: string, patch: { level?: number; execute?: (args: any) => Promise<string> }, fn: () => Promise<T>): Promise<T> {
+async function withTool<T>(name: string, patch: { level?: number; execute?: (args: any) => Promise<string>; verify?: () => Promise<{ status: string; evidence: string }> }, fn: () => Promise<T>): Promise<T> {
   const tool = toolRegistryV2.get(name)! as any;
-  const saved = { execute: tool.execute, requiredLevel: tool.requiredLevel, meta: tool.meta };
+  const saved = { execute: tool.execute, requiredLevel: tool.requiredLevel, meta: tool.meta, verify: tool.verify };
   if (patch.level !== undefined) {
     tool.requiredLevel = patch.level;
     tool.meta = { ...tool.meta, risk: patch.level, actions: undefined };
   }
   if (patch.execute) tool.execute = patch.execute;
-  try { return await fn(); } finally { tool.execute = saved.execute; tool.requiredLevel = saved.requiredLevel; tool.meta = saved.meta; }
+  if (patch.verify) tool.verify = patch.verify;
+  try { return await fn(); } finally { tool.execute = saved.execute; tool.requiredLevel = saved.requiredLevel; tool.meta = saved.meta; tool.verify = saved.verify; }
 }
+
+/**
+ * For a stand-in desktop tool: on Windows the real after-action check looks at
+ * the desktop with a fresh PowerShell (many seconds on a slow PC) for an app a
+ * stand-in never opened.
+ */
+const standInCheck = async () => ({ status: 'unverifiable', evidence: 'the tool is a stand-in in this test' });
 
 console.log('\n=== Registry and Repair Honesty Test ===\n');
 
@@ -184,7 +192,7 @@ console.log('\n--- 3. Skills show their allowed actions; invented ones are refus
   ok('control_app tells the model its actions', JSON.stringify(actions) === '["open","close","focus","restart"]', JSON.stringify(actions));
 
   const seen: string[] = [];
-  await withTool('control_app', { level: 0, execute: async (args) => { seen.push(String(args.action)); return '{"success":true}'; } }, async () => {
+  await withTool('control_app', { level: 0, verify: standInCheck, execute: async (args) => { seen.push(String(args.action)); return '{"success":true}'; } }, async () => {
     const bad = await toolRegistryV2.execute('control_app', { action: 'launch', target: 'notepad' });
     ok('an invented action is refused before the skill runs', !bad.success && /must be one of/.test(bad.error ?? '') && seen.length === 0, bad.error);
     const mixed = await toolRegistryV2.execute('control_app', { action: 'Close', target: 'notepad' });
@@ -192,7 +200,7 @@ console.log('\n--- 3. Skills show their allowed actions; invented ones are refus
   });
 
   seen.length = 0;
-  const r = await withTool('control_app', { level: 0, execute: async (args) => { seen.push(String(args.action)); return '{"success":true,"message":"Opened notepad."}'; } },
+  const r = await withTool('control_app', { level: 0, verify: standInCheck, execute: async (args) => { seen.push(String(args.action)); return '{"success":true,"message":"Opened notepad."}'; } },
     () => say('bring up notepad for me now', [
       [{ name: 'control_app', args: { action: 'launch', target: 'notepad' } }],
       [{ name: 'control_app', args: { action: 'open', target: 'notepad' } }],
@@ -310,6 +318,6 @@ console.log('\n--- 10. A command given while JARVIS is speaking is not cancelled
 
 try { await memoryManager.flush(); } catch { /* best effort */ }
 process.chdir(os.tmpdir());
-fs.rmSync(workspace, { recursive: true, force: true });
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process; the runner clears its temp folder */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

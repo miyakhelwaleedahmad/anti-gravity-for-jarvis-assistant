@@ -221,12 +221,17 @@ if (engine) {
 console.log('\n--- 4. Through the registry ---');
 fullControl(false);
 let ran = 0;
+// The tool is a stand-in, so its after-action check is too: on Windows the
+// real check looks for Notepad in front, which a stand-in never opens.
+const controlApp = toolRegistryV2.get('control_app') as any;
+const savedVerify = controlApp.verify;
+controlApp.verify = async () => ({ status: 'unverifiable', evidence: 'the tool is a stand-in in this test' });
 await withTool('control_app', async () => { ran++; return '{"success":true}'; }, async () => {
   const focus = await toolRegistryV2.execute('control_app', { action: 'focus', target: 'notepad' });
   ok('control_app focus runs at the default level, no approval', focus.success && ran === 1 && prompts === 0, `${focus.error ?? ''} ran=${ran} prompts=${prompts}`);
   const close = await toolRegistryV2.execute('control_app', { action: 'close', target: 'notepad' });
   ok('control_app close is refused without full control mode', !close.success && close.error === 'PERMISSION_DENIED' && ran === 1, close.output);
-});
+}).finally(() => { controlApp.verify = savedVerify; });
 
 fullControl(true);
 let innerAnswer: boolean | undefined;
@@ -376,6 +381,6 @@ ok('explain_code refuses .env', !env.success && !env.output.includes('not-a-real
 try { await memoryManager.flush(); } catch { /* best effort */ }
 permissionSession.shutdown?.();
 process.chdir(os.tmpdir());
-fs.rmSync(workspace, { recursive: true, force: true });
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process; the runner clears its temp folder */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

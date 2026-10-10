@@ -48,10 +48,26 @@ export function sectionsFor(tool: string): ObservedSection[] {
   return [];
 }
 
+/** A step refused before it acted (permission, risk, approval, arguments): nothing on the PC changed. */
+const NEVER_RAN = /^(PERMISSION_DENIED|RISK_REFUSED|APPROVAL_DENIED|RATE_LIMITED|ABORTED)\b|^Argument "[^"]+" |^Invalid arguments for tool/;
+
+/**
+ * How long a failure waits for the new look, as planning does: on a slow
+ * Windows PC the window list (PowerShell) took up to 15 s, and the reply
+ * waited for it. A longer look finishes in the background.
+ */
+const OBSERVE_BUDGET_MS = 1_500;
+
 /** Read again, now, the parts of the world the failed step touched. */
 export async function observeFailure(node: TaskNode): Promise<ObservedSection[]> {
   const sections = sectionsFor(node.tool);
-  if (sections.length) await worldState.refresh(sections, 0);
+  if (!sections.length || NEVER_RAN.test(String(node.error ?? ''))) return [];
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([
+    worldState.refresh(sections, 0).catch(() => undefined),
+    new Promise<void>((resolve) => { timer = setTimeout(resolve, OBSERVE_BUDGET_MS); }),
+  ]);
+  clearTimeout(timer);
   return sections;
 }
 
