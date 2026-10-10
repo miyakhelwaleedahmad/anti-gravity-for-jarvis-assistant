@@ -55,3 +55,6 @@ jobs:
 
       - name: Vector service startup and write-queue tests
         run: python tests/python/test_vector_service_startup.py
+
+      - name: TTS synthesis retry tells JARVIS it needs more time
+        run: python tests/python/test_tts_retry_delay.py

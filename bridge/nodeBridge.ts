@@ -49,7 +49,7 @@ export interface VisionFrameData {
 }
 
 export interface BridgeMessage {
-  type: "tts" | "stt_result" | "wake_word" | "command" | "response" | "error" | "status" | "client_ready" | "hardware_error" | "speaking_start" | "speaking_end" | "listen_start" | "vision_frame" | "vision_start" | "vision_stop";
+  type: "tts" | "stt_result" | "wake_word" | "command" | "response" | "error" | "status" | "client_ready" | "hardware_error" | "speaking_start" | "speaking_end" | "speaking_delay" | "listen_start" | "vision_frame" | "vision_start" | "vision_stop";
   payload: any;
   id?: string;
 }
@@ -305,6 +305,11 @@ export class NodeBridge {
             this.handleSpeakingLifecycleSignal("speaking_end", msg.payload);
             return;
           }
+          // tts.py is retrying a synthesis that timed out: more time is needed.
+          if (msg.type === "speaking_delay") {
+            this.handleSpeakingDelay(msg.payload);
+            return;
+          }
 
           if (msg.type === "wake_word") {
             console.log(`[NodeBridge] 🔍 Ready clients at wake word: ${[...this.readyClients.keys()].join(", ") || "NONE"}`);
@@ -422,6 +427,16 @@ export class NodeBridge {
 
   onBridgeEvent(event: BridgeEvent, handler: (...args: any[]) => void): void {
     this._bridgeEvents.on(event, handler);
+  }
+
+  /** TTS needs more time (a synthesis retry): extend the SPEAKING watchdog and the mic guard. */
+  handleSpeakingDelay(payload: any = {}): void {
+    const extraMs = Number(payload?.extra_ms);
+    const reason = typeof payload?.reason === "string" ? payload.reason.slice(0, 40) : "tts_delay";
+    if (!Number.isFinite(extraMs) || extraMs <= 0) return;
+    console.log(`[NodeBridge] RX type=speaking_delay role=tts (${reason}, +${Math.round(extraMs)} ms)`);
+    agentStateMachine.noteSpeechDelayed(extraMs, reason);
+    conversationBus.noteSpeechQueued();
   }
 
   handleSpeakingLifecycleSignal(type: "speaking_start" | "speaking_end", payload: any = {}): void {

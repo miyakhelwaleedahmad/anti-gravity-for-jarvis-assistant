@@ -213,6 +213,24 @@ export class AgentStateMachine extends EventEmitter {
     }
   }
 
+  /**
+   * TTS is taking longer than estimated for a known reason (a synthesis
+   * retry after a timeout). The SPEAKING watchdog was armed when the text was
+   * sent, and its estimate allows ~1 s for synthesis; a 5 s timeout plus a
+   * retry used it up, so it fired during normal speech and reopened the mic
+   * while JARVIS was about to talk. The extra time is added and the running
+   * deadline restarted; a TTS that dies still trips the watchdog.
+   */
+  noteSpeechDelayed(extraMs: number, reason = 'tts_delay'): void {
+    const extra = Math.max(0, Math.min(extraMs, 30_000));
+    if (!extra) return;
+    this._pendingSpeechMs = Math.min(this._pendingSpeechMs + extra, MAX_SPEAKING_WATCHDOG_MS);
+    if (this._state === AgentState.SPEAKING && this._speakingWatchdog !== null) {
+      console.log(`[AgentStateMachine] TTS delayed (${reason}, +${extra} ms); SPEAKING watchdog extended to ${this.speakingWatchdogMs()} ms.`);
+      this._armSpeakingWatchdog();
+    }
+  }
+
   /** The TTS queue is empty (speaking_end) or was cleared by a stop command. */
   noteSpeechFinished(): void {
     this._pendingSpeechMs = 0;

@@ -136,12 +136,14 @@ class TTSEngine:
             self._mixer_available = False
         return self._mixer_available
 
-    async def _send_lifecycle_event(self, event_type: str, reason: str = "") -> bool:
+    async def _send_lifecycle_event(self, event_type: str, reason: str = "", extra: Optional[dict] = None) -> bool:
         ws = self.websocket
         if ws is None:
             log.warning(f"Cannot send {event_type}: websocket is not connected.")
             return False
         payload = {"reason": reason} if reason else {}
+        if extra:
+            payload.update(extra)
         try:
             await ws.send(json.dumps({"type": event_type, "payload": payload}))
             log.info(f"Sent {event_type}{f' ({reason})' if reason else ''}.")
@@ -223,6 +225,14 @@ class TTSEngine:
                     f"TTS synthesis timeout on attempt {attempt}/{2} "
                     f"({timeout}s). {'Retrying...' if attempt == 1 else 'Giving up.'}"
                 )
+                if attempt == 1:
+                    # JARVIS armed its speaking watchdog when it sent the text,
+                    # allowing ~1 s for synthesis. It restarts the deadline from
+                    # this message, so the extra time is the retry's own limit.
+                    await self._send_lifecycle_event(
+                        "speaking_delay", "synthesis_retry",
+                        {"extra_ms": int(TTS_EDGE_RETRY_TIMEOUT * 1000)},
+                    )
 
             except asyncio.CancelledError:
                 synth_task.cancel()
@@ -235,6 +245,9 @@ class TTSEngine:
                 log.error(f"Synthesis error on attempt {attempt}: {exc}")
                 if attempt == 2:
                     return False
+                await self._send_lifecycle_event(
+                    "speaking_delay", "synthesis_retry", {"extra_ms": int(TTS_EDGE_RETRY_TIMEOUT * 1000)},
+                )
 
             # ── INTERRUPT CHECK 2: after failed attempt ───────────────────────
             if self._interrupt_flag:
