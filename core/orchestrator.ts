@@ -127,7 +127,7 @@ export class JarvisOrchestrator {
     const skillLoader = new SkillLoader(skillsDir);
     skillLoader.loadSkills().then(count => {
       if (count > 0) {
-        console.log(`[Orchestrator] 🎯 ${count} skill(s) loaded into ToolRegistry.`);
+        console.log(`[Orchestrator] 🎯 ${count} skill(s) loaded into ToolRegistry: ${toolRegistryV2.names().length} tools in total.`);
       }
 
       // Phase 7: Pre-warm context + tool caches immediately after skill load

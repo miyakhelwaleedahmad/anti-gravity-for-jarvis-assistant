@@ -72,6 +72,8 @@ interface GoalDB {
 export class GoalManager {
   private db!: Low<GoalDB>;
   private initialized = false;
+  /** The one initialisation; later callers wait for it (see init()). */
+  private initPromise: Promise<void> | null = null;
   private readonly MAX_STORED_GOALS = 100; // Rolling window — avoid unbounded growth
 
   // OPT-2: Debounced disk writes — multiple rapid goal status changes collapse
@@ -101,7 +103,22 @@ export class GoalManager {
     }
   }
 
-  async init(): Promise<void> {
+  /**
+   * Opens the goal store once. jarvis.ts and the Orchestrator constructor both
+   * call this at startup; without the guard each call opened a new database on
+   * the same file and re-read it, so a goal created in between was lost.
+   */
+  init(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this._init().catch((err) => {
+        this.initPromise = null; // a failed start may be retried
+        throw err;
+      });
+    }
+    return this.initPromise;
+  }
+
+  private async _init(): Promise<void> {
     // Live goals are written to data/runtime/goals.json, which is gitignored.
     //
     // They used to live at data/goals.json, a file that is tracked in git and

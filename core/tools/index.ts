@@ -54,6 +54,7 @@ export function registerAllTools(): void {
     ...agentTools,
   ]);
 
-  console.log(`[ToolRegistry] All built-in tools registered. Total: ${toolRegistryV2.names().length}`);
+  // Skills (skills/*) register later, so the dashboard's count is higher (e.g. 40 here, 66 there).
+  console.log(`[ToolRegistry] ${toolRegistryV2.names().length} built-in tools registered; skills load next.`);
   console.log(`[ToolRegistry] Tools: ${toolRegistryV2.names().join(', ')}`);
 }
