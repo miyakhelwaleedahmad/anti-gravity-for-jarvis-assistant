@@ -100,6 +100,17 @@ export function validateDeveloperCommand(command: string): { allowed: boolean; r
     return { allowed: false, reason: 'Shell metacharacters are blocked for run_command.' };
   }
 
+  // SEC-20: on Windows the command runs under cmd.exe, where ^ escapes the
+  // next character (so the checks below read something other than what runs),
+  // %NAME% and %NAME:~a,b% insert environment variables, and ! does the same
+  // with delayed expansion. None of the allow-listed commands needs them.
+  if (/[\^!]/.test(normalized) || /%[A-Za-z_][\w()]*(?:%|:~)/.test(normalized)) {
+    return {
+      allowed: false,
+      reason: 'cmd.exe reads ^, ! and %NAME% as escapes and variables, so they are blocked for run_command (use HEAD~1 rather than HEAD^).',
+    };
+  }
+
   for (const pattern of DANGEROUS_COMMAND_PATTERNS) {
     if (pattern.test(normalized)) {
       return { allowed: false, reason: `Command matches blocked pattern: ${pattern.toString()}` };

@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { approvedFolders } from '../control/fileController.js';
+import { isSecretFile as isSecretFileName } from './secretFiles.js';
 import { getWorkspaceRoot, isForeignWindowsAbsolute, isPathInside, isProtectedSystemPath, realPathOf } from '../core/workspaceRoot.js';
 
 export type PathCheck = { ok: true; path: string; real: string } | { ok: false; reason: string };
@@ -23,8 +24,6 @@ export const OUTSIDE_APPROVED =
 const EXECUTABLE = /\.(exe|dll|bat|cmd|ps1|psm1|vbs|vbe|jse|wsf|wsh|msi|msp|scr|com|lnk|reg|hta|cpl)$/i;
 /** Source and configuration files: changes are approved each time (as control_file does). */
 const SOURCE_OR_CONFIG = /\.(ts|tsx|js|jsx|mjs|cjs|json|py|yml|yaml|toml|ini|cfg|config)$|(^|[\\/])(package\.json|tsconfig[^\\/]*)$/i;
-/** Keys and credentials: changed only with approval, searched by name only. */
-const SECRET_FILE = /(^|[\\/])(\.env(\.[^\\/]*)?|id_[a-z0-9]+(\.pub)?|credentials(\.json)?|[^\\/]*\.(pem|key|p12|pfx|kdbx|ppk))$/i;
 
 export function realApprovedFolders(): string[] {
   return approvedFolders().map((root) => {
@@ -55,13 +54,11 @@ export function isExecutable(p: string): boolean {
   return EXECUTABLE.test(p);
 }
 
-export function isSecretFile(p: string): boolean {
-  return SECRET_FILE.test(p);
-}
+export { isSecretFile, SECRET_FILE_REFUSAL } from './secretFiles.js';
 
 /** Risk of creating or changing `p`: temp .txt 1, other files 2, source/config/keys 3. */
 export function changeLevel(p: string, tmpRoot: string): 1 | 2 | 3 {
-  if (SECRET_FILE.test(p) || SOURCE_OR_CONFIG.test(p)) return 3;
+  if (isSecretFileName(p) || SOURCE_OR_CONFIG.test(p)) return 3;
   const real = realPathOf(p);
   if (path.extname(p).toLowerCase() === '.txt' && isPathInside(realPathOf(tmpRoot), real)) return 1;
   return 2;

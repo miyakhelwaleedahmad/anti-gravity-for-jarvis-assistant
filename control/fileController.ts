@@ -17,6 +17,7 @@ import {
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { rollbackManager } from './rollbackManager.js';
+import { isSecretFile, SECRET_FILE_REFUSAL } from '../security/secretFiles.js';
 
 /**
  * Directories control_file may operate in (also used by the risk engine).
@@ -107,12 +108,12 @@ export class FileController {
   public async readFile(filePath: string): Promise<string> {
     try {
       this.ensureApproved(filePath, 'readFile');
-      // Prevent reading `.env` keys aloud or in stdout if it has sensitive info
-      const content = await fs.promises.readFile(filePath, 'utf-8');
-      if (filePath.endsWith('.env')) {
-        return '(Protected Environment File Content)';
+      // Keys, tokens and passwords are not read at all: `.env` and files named
+      // for what they hold (SEC-14). Only `.env` itself was caught before.
+      if (filePath.endsWith('.env') || isSecretFile(filePath)) {
+        return `Error reading file: ${SECRET_FILE_REFUSAL}`;
       }
-      return content;
+      return await fs.promises.readFile(filePath, 'utf-8');
     } catch (err: any) {
       return `Error reading file: ${err.message}`;
     }

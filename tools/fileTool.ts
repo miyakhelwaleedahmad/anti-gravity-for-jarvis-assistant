@@ -11,6 +11,7 @@ import path from 'path';
 import { approvalGate } from '../security/approvalGate.js';
 import { securityAuditLogger } from '../security/securityAuditLogger.js';
 import { isEnvFile, resolveWorkspacePath } from '../security/workspacePathPolicy.js';
+import { isSecretFile, SECRET_FILE_REFUSAL } from '../security/secretFiles.js';
 
 // ─── Path Safety ─────────────────────────────────────────────────────────────
 
@@ -50,6 +51,12 @@ export const fileReadTool: AgentTool = {
     const pathCheck = resolveWorkspacePath(filePath, 'read', 'read_file');
     if (!pathCheck.allowed || !pathCheck.resolvedPath) {
       return `Error: read_file denied - ${pathCheck.reason}`;
+    }
+
+    // Keys, tokens and passwords: their text would go to the model (SEC-14).
+    if (isEnvFile(pathCheck.resolvedPath) || isSecretFile(pathCheck.resolvedPath)) {
+      securityAuditLogger.denied(pathCheck.resolvedPath, 'HIGH_RISK', 'Secret file read refused.', 'read_file');
+      return `Error: read_file denied - ${SECRET_FILE_REFUSAL}`;
     }
 
     if (signal?.aborted) throw new Error('ABORTED');

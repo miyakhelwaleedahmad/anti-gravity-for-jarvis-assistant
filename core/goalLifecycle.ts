@@ -39,6 +39,19 @@ export type GoalStatus =
 export type GoalKind = 'request' | 'temporary' | 'permanent' | 'recurring';
 
 export const GOAL_KINDS: readonly GoalKind[] = ['request', 'temporary', 'permanent', 'recurring'];
+
+/**
+ * The kind goal_create gives a goal from its arguments: the one named, else
+ * recurring when the schedule repeats, else temporary. The risk engine reads
+ * the same (SEC-13).
+ */
+export function goalKindFromArgs(args: Record<string, unknown>): 'temporary' | 'permanent' | 'recurring' {
+  const named = String(args['kind'] ?? '');
+  if (named === 'temporary' || named === 'permanent' || named === 'recurring') return named;
+  return args['schedule'] && /every|daily|weekday|hourly|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(String(args['schedule']))
+    ? 'recurring'
+    : 'temporary';
+}
 export const TERMINAL_GOAL_STATUSES: ReadonlySet<GoalStatus> = new Set(['completed', 'failed', 'cancelled', 'expired']);
 
 const ACTIVE: GoalStatus[] = ['planning', 'ready', 'executing', 'in_progress', 'waiting', 'retry'];

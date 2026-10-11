@@ -18,7 +18,7 @@ import { randomBytes } from 'crypto';
 import type { AgentTool } from '../core/toolRegistryV2.js';
 import type { Verifier } from '../core/verifiers.js';
 import { dataRoot, getWorkspaceRoot } from '../core/workspaceRoot.js';
-import { checkFilePath, isApprovedRoot, isExecutable, isSecretFile } from '../security/fsPolicy.js';
+import { checkFilePath, isApprovedRoot, isExecutable, isSecretFile, SECRET_FILE_REFUSAL } from '../security/fsPolicy.js';
 
 type CheckStatus = 'verified' | 'failed' | 'unverifiable';
 interface Check { status: CheckStatus; evidence: string }
@@ -212,6 +212,8 @@ export function unifiedDiff(a: string, b: string, labelA: string, labelB: string
 function compare(aArg: unknown, bArg: unknown): Record<string, unknown> {
   const a = need(aArg);
   const b = need(bArg);
+  // A diff shows the contents (SEC-14).
+  if (isSecretFile(a) || isSecretFile(b)) throw new NotDone(SECRET_FILE_REFUSAL);
   const left = readText(a);
   const right = readText(b);
   if (left === right) return { same: true, diff: '' };

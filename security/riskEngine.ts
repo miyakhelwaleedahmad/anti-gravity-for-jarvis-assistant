@@ -23,6 +23,7 @@ import { isEnvFile } from './workspacePathPolicy.js';
 import { describeElement, lookupRef } from '../perception/browserRefs.js';
 import { NOT_OBSERVED, NO_CREDENTIALS, navigationLevel, normalizeUrl, uploadPathProblem, urlProblem, wordsLevel } from './browserPolicy.js';
 import { obfuscationReason, obfuscationRefusal, readableCommand } from './commandObfuscation.js';
+import { goalKindFromArgs } from '../core/goalLifecycle.js';
 import { getAgentPath, getRequestText } from '../core/traceContext.js';
 import { changeLevel, checkFilePath, isApprovedRoot, isExecutable } from './fsPolicy.js';
 import { pushTargetSync, repoProblem } from '../tools/gitTools.js';
@@ -48,6 +49,8 @@ export interface RiskAssessment {
   refused?: string;
   /** Session level the call needs before approval is offered. */
   needsSession: number;
+  /** Ask the owner even below level 3 (SEC-13: a goal that keeps running). */
+  askOwner?: string;
 }
 
 /**
@@ -145,6 +148,7 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
   const reasons = [`${callLabel(tool, action)} is risk ${call.baseRisk} in its metadata`];
   let refused: string | undefined;
   let needsSession: number | undefined;
+  let askOwner: string | undefined;
   // The level of run_command, temp writes and YouTube tabs comes from the
   // arguments, as the controllers already treat them; everywhere else an
   // argument can only raise it.
@@ -233,6 +237,21 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
     case 'enable_full_control_session':
       needsSession = 0; // this call is how full control mode is turned on
       break;
+    case 'goal_create': {
+      // A goal JARVIS keeps working on, on a schedule or with the screen and
+      // browser, acts in the background long after this request (SEC-13):
+      // the owner says yes once, when it is created. Its agents' actions are
+      // still checked one by one.
+      const kind = goalKindFromArgs(args);
+      const desktop = args['allow_desktop'] === true || args['allow_desktop'] === 'true';
+      if (kind !== 'temporary' || desktop) {
+        raise(2, kind !== 'temporary' ? `a ${kind} goal keeps running in the background` : 'a goal allowed to use the screen and browser');
+        needsSession = 0;
+        askOwner = kind !== 'temporary' ? `${kind} goal` : 'goal using the desktop';
+      }
+      target = `${kind}: ${text(args, 'objective').slice(0, 120)}${args['schedule'] ? ` (${text(args, 'schedule')})` : ''}`;
+      break;
+    }
     // Browser actions (security/browserPolicy.ts). Element actions name an
     // element JARVIS has looked at; its kind and label decide the level.
     case 'browser_navigate':
@@ -395,6 +414,7 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
     reasons,
     ...(refused ? { refused } : {}),
     needsSession: needsSession ?? (level >= 2 ? 2 : 0),
+    ...(askOwner ? { askOwner } : {}),
   };
 }
 
@@ -420,5 +440,5 @@ export function decide(
           message: `${callLabel(a.tool, a.action)} needs full control mode (risk level ${a.level}).`,
         };
   }
-  return a.level >= 3 ? { outcome: 'approve', grantsLevel: 0 } : { outcome: 'allow' };
+  return a.level >= 3 || a.askOwner ? { outcome: 'approve', grantsLevel: 0 } : { outcome: 'allow' };
 }

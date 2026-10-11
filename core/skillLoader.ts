@@ -17,6 +17,7 @@ import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { toolRegistryV2 } from './toolRegistryV2.js';
 import type { AgentTool, ToolMeta } from './toolRegistryV2.js';
+import { readTrustList, untrustedReason, type TrustList } from './skillTrust.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +56,10 @@ export class SkillLoader {
   private degradedSkills = new Set<string>();
   /** Phase 5: max ms to wait for a skill module import() before giving up */
   private readonly IMPORT_TIMEOUT_MS = 5_000;
+  /** skills/trusted-skills.json, read once per load (SEC-16). */
+  private trust: TrustList | null = null;
+  /** Folders refused because they are not trusted. */
+  readonly refused: string[] = [];
 
   constructor(skillsDir: string) {
     this.skillsDir = skillsDir;
@@ -67,10 +72,15 @@ export class SkillLoader {
     }
 
     const entries = fs.readdirSync(this.skillsDir, { withFileTypes: true });
-    const subDirs = entries.filter(e => e.isDirectory()).map(e => path.join(this.skillsDir, e.name));
+    // Links count too: untrustedReason() refuses them with a reason.
+    const subDirs = entries.filter(e => e.isDirectory() || e.isSymbolicLink()).map(e => path.join(this.skillsDir, e.name));
+    this.trust = readTrustList(this.skillsDir);
 
     await Promise.all(subDirs.map(dirPath => this.loadSkillFromDirectory(dirPath)));
 
+    if (this.refused.length > 0) {
+      console.warn(`[SkillLoader] ⛔ ${this.refused.length} skill folder(s) not trusted, not loaded: ${this.refused.join(', ')}.`);
+    }
     if (this.failedCount > 0) {
       console.warn(`[SkillLoader] ⚠️  ${this.failedCount} skill(s) failed to load and are marked degraded.`);
     }
@@ -82,6 +92,14 @@ export class SkillLoader {
     const descPath = path.join(dirPath, 'description.json');
 
     if (!fs.existsSync(descPath)) return;
+
+    // SEC-16: only folders the owner trusts become tools (core/skillTrust.ts).
+    const distrust = untrustedReason(this.skillsDir, dirPath, this.trust);
+    if (distrust) {
+      console.warn(`[SkillLoader] ⛔ Skill folder "${path.basename(dirPath)}" not loaded: ${distrust}`);
+      this.refused.push(path.basename(dirPath));
+      return;
+    }
 
     let desc: SkillDescription;
     if (this.metadataCache.has(descPath)) {

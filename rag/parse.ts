@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isSecretFile, SECRET_FILE_REFUSAL } from '../security/secretFiles.js';
 
 export const SUPPORTED_EXTENSIONS = new Set(['.txt', '.md', '.markdown', '.json', '.csv', '.log']);
 const RECOGNISED_BUT_UNSUPPORTED = new Set(['.pdf', '.docx', '.doc', '.pptx', '.xlsx']);
@@ -27,6 +28,10 @@ export function isSupported(filePath: string): boolean {
 
 export function parseFile(filePath: string): ParseResult {
   const ext = path.extname(filePath).toLowerCase();
+
+  // A file named for keys or passwords is not indexed: its text would be
+  // offered to the model with every matching question (SEC-14).
+  if (isSecretFile(filePath)) return { ok: false, reason: SECRET_FILE_REFUSAL };
 
   if (RECOGNISED_BUT_UNSUPPORTED.has(ext)) {
     return {

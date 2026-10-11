@@ -15,7 +15,7 @@
  */
 
 import type { AgentTool } from './toolRegistryV2.js';
-import type { GoalSchedule } from './goalLifecycle.js';
+import { goalKindFromArgs, type GoalSchedule } from './goalLifecycle.js';
 import { goalKind, goalManager, isManaged, type Goal } from './goalManager.js';
 import { describeSchedule, localTimeZone, scheduleProblem } from './goalSchedule.js';
 import { goalLearning } from './goalLearning.js';
@@ -209,7 +209,7 @@ export const goalCreateTool: AgentTool = {
   fallbacks: [],
   async execute(args) {
     await goalManager.init();
-    const kind = (['temporary', 'permanent', 'recurring'].includes(String(args['kind'])) ? args['kind'] : (args['schedule'] && /every|daily|weekday|hourly|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(String(args['schedule'])) ? 'recurring' : 'temporary')) as 'temporary' | 'permanent' | 'recurring';
+    const kind = goalKindFromArgs(args);
     let schedule: GoalSchedule | undefined;
     if (args['schedule']) {
       const s = parseSchedule(String(args['schedule']), args['timezone'] ? String(args['timezone']) : undefined);

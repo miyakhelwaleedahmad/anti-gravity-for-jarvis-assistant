@@ -10,8 +10,13 @@
  */
 
 import { execa } from "execa";
+import * as fs from "fs";
+import * as path from "path";
 import type { RecoveryAction } from "./recoveryPlanner.js";
 import { fallbackRouter } from "./fallbackRouter.js";
+import { approvalGate } from "../security/approvalGate.js";
+import { childEnv } from "../system/childEnv.js";
+import { getWorkspaceRoot } from "../core/workspaceRoot.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +29,8 @@ export interface ExecutionResult {
 
 // ─── Safety allowlist for pip packages ────────────────────────────────────────
 
+// SEC-15: difflib was listed, but it is part of Python: "pip install difflib"
+// fetches whatever a stranger publishes under that name on PyPI.
 const SAFE_PACKAGES = new Set([
   "SpeechRecognition",
   "pyaudio",
@@ -33,8 +40,29 @@ const SAFE_PACKAGES = new Set([
   "numpy",
   "websockets",
   "pyttsx3",
-  "difflib",
 ]);
+
+/**
+ * The version rule requirements.txt gives a package ("edge-tts>=6.1.9"), or
+ * null when it has none. Installs follow the project's file, not "latest".
+ */
+export function requirementFor(pkg: string, requirementsText: string): string | null {
+  const wanted = pkg.toLowerCase().replace(/_/g, "-");
+  for (const raw of requirementsText.split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, "").trim();
+    const m = /^([A-Za-z0-9_.-]+)\s*((?:==|>=|~=|<=|>|<)[^;\s]+(?:\s*,\s*(?:==|>=|~=|<=|>|<)[^;\s]+)*)\s*$/.exec(line);
+    if (m && m[1]!.toLowerCase().replace(/_/g, "-") === wanted) return `${m[1]}${m[2]!.replace(/\s+/g, "")}`;
+  }
+  return null;
+}
+
+/** JARVIS's own Python (the .venv its voice and memory services run in), or null. */
+export function venvPython(root = getWorkspaceRoot()): string | null {
+  const p = process.platform === "win32"
+    ? path.join(root, ".venv", "Scripts", "python.exe")
+    : path.join(root, ".venv", "bin", "python3");
+  return fs.existsSync(p) ? p : null;
+}
 
 // ─── RepairExecutor ───────────────────────────────────────────────────────────
 
@@ -99,12 +127,40 @@ export class RepairExecutor {
       );
     }
 
-    console.log(`[RepairExecutor] pip install ${packages.join(" ")}…`);
+    // SEC-15: only the versions requirements.txt names, only into JARVIS's
+    // .venv (REL-08: the system Python is not where the services run), and
+    // only with the owner's yes — this downloads and runs code from PyPI.
+    const root = getWorkspaceRoot();
+    let requirements = "";
+    try { requirements = fs.readFileSync(path.join(root, "requirements.txt"), "utf8"); } catch { /* none */ }
+    const specs = packages.map((p) => requirementFor(p, requirements));
+    const unpinned = packages.filter((_, i) => !specs[i]);
+    if (unpinned.length > 0) {
+      return this.result(action, false, "", `BLOCKED: no version in requirements.txt for: ${unpinned.join(", ")}`);
+    }
+    const python = venvPython(root);
+    if (!python) {
+      return this.result(action, false, "", "BLOCKED: JARVIS's .venv was not found; install the Python packages with the setup steps (pip install -r requirements.txt inside .venv).");
+    }
+    const command = `${path.relative(root, python)} -m pip install ${specs.join(" ")}`;
+    const approved = await approvalGate.requestApproval(
+      "Install Python package",
+      `Install: ${specs.join(" ")}`,
+      "HIGH_RISK",
+      `A JARVIS module failed because ${packages.join(", ")} is missing. Installing downloads it from PyPI: ${command}`,
+    );
+    if (!approved) {
+      return this.result(action, false, "", `Not installed: the owner did not approve. To install it yourself: ${command}`);
+    }
+
+    console.log(`[RepairExecutor] ${command}…`);
     try {
-      const pythonExe = process.platform === "win32" ? "python" : "python3";
-      const result = await execa(pythonExe, ["-m", "pip", "install", ...packages], {
+      const result = await execa(python, ["-m", "pip", "install", "--disable-pip-version-check", "--no-input", ...specs!.map(String)], {
         timeout: 120_000,
         reject: false,
+        cwd: root,
+        env: childEnv(),
+        extendEnv: false,
       });
 
       const success = result.exitCode === 0;

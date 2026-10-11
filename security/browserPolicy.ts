@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { approvedFolders } from '../control/fileController.js';
 import { isPathInside, isProtectedSystemPath } from '../core/workspaceRoot.js';
+import { isSecretFile } from './secretFiles.js';
 
 export const NOT_OBSERVED =
   'JARVIS acts only on page elements it has looked at: read the page with browser_page_structure, then use one of its references.';
@@ -126,7 +127,7 @@ export function uploadPathProblem(file: string): string | undefined {
   if (isProtectedSystemPath(real) || !realRoots().some((root) => isPathInside(root, real))) {
     return 'JARVIS uploads files only from your approved folders (the JARVIS folder, Desktop, Documents, Downloads, temp).';
   }
-  if (SENSITIVE_FILE.test(real) || SENSITIVE_FOLDER.test(real)) return 'JARVIS does not upload keys, passwords or credential files.';
+  if (SENSITIVE_FILE.test(real) || SENSITIVE_FOLDER.test(real) || isSecretFile(real) || isSecretFile(file)) return 'JARVIS does not upload keys, passwords or credential files.';
   const stat = fs.statSync(real);
   if (!stat.isFile()) return 'Only a file can be uploaded, not a folder.';
   if (stat.size > MAX_UPLOAD_BYTES) return `${path.basename(real)} is larger than 100 MB.`;

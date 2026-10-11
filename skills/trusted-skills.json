@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "skills": {
+    "automation": "7366b2ea0fc9a8d6c9515a25cc24e7a8f18fa523386d52e095dd39f1426671f8",
+    "cancel_current_action": "732b50286cd4493358cdc0ef99e71cc274f6be481b4e645edaf7231f3af210fe",
+    "coding": "0da13fa53f05883198f02bd48204bac107c478f2fed96c138d40d6ffcda5dfcd",
+    "control_app": "c3683214011126b69d39fc2dfda6277ebe01b6438fe4e976fef8857d1e674446",
+    "control_browser": "635cf93f5ebeadf9eaf2b157964ceef3c78cc6d567276da44aab254a6b1b1a9d",
+    "control_file": "6761bc9c427f6a7995056a77be2437f6b5da3b1493f9e8e8ff7173568fdd66ab",
+    "control_keyboard": "ff17f4678186e8e38cf53c1ac69404847e4f8ae20b3b3870038ef146c0c3b883",
+    "control_mouse": "b61cd236d408134c6df449c767c7f879eaf85527b0506993e90007d779a535e8",
+    "control_process": "6fc896fe89fd0e49bd05613639e428f6407abcdddddf911b825fe5f071d653d3",
+    "control_system": "a81f99ac6a6a13c3fd87fbf71adbfe3101f34c821e8286890c9484298f4a5ea5",
+    "control_window": "f98c8924154232bb249d8af77f0776c62c3161f0121201842f7b903d439349f1",
+    "disable_full_control_session": "418ce26021eb5cdaff983cc919453858b2000013a1324625b15e3a57b8bfa33c",
+    "enable_full_control_session": "3408ef47c3cd9dd9f00270dcf9ce83428807455a48fdd7c8e74ce6b94867fa9b",
+    "get_active_window": "51c383fae2f7ace4abb4084da6b8047ba66a6fc246c970216672841b25b41eb8",
+    "get_browser_tabs": "9f7680dc63df4bad3e9737491ba922cd46b0c24ba56de57d0bd363bf5c1c4a8d",
+    "get_jarvis_service_status": "56bf6c2c5d8b069fd0fa142a09b161d5d9c8edf8e5f0be9a20d759d39da5e52e",
+    "get_open_apps": "f7cc14f2e0a411c7a04999ed03b248e373ea5703265df994bed85b1704ab9428",
+    "get_pc_state": "12a859a52e9ebb9d266855f7e350a95b364c6cc8fef68ab250dc8b0860984ea1",
+    "get_permission_status": "84e909957632b1a2b1ed5c75a649fe769d25047c9f473b979fecfe3f7a9ae4f8",
+    "get_system_state": "189a7d085a45b3cc5e8dd8eaec5139ca1e7c412b2e95f8a12d88a841f977a100",
+    "ingest_documents": "dd94490c1f9c8f7dd58b4988be86995c8294468820ae940947478d4fcfa50d9b",
+    "is_app_open": "fb528be7c30df748450afa7dd8d56e0df26f11bb39ad9c8221f6f29257c1e0ae",
+    "is_tab_open": "d5ef49a05560236a11e30e5dfe20a2bbe990adbba11fe830efd0de7b0939daba",
+    "search": "5ac2d04236b9650021ab2aac279470f66657700007795035a76e866fed1955bc",
+    "search_documents": "df8754d0105d25960597dcf1ede3d61ab805dae96b3c39724f49ed7f3d9f9b93",
+    "weather": "1293a476a083808d789e7189a8711da94fcdecf52629d2411dd6c92a06a623d8"
+  }
+}

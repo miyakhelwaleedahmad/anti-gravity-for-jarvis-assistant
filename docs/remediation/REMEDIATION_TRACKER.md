@@ -6,6 +6,10 @@ Statuses: `OPEN` · `IN_PROGRESS` · `FIXED_AND_TESTED` · `ALREADY_FIXED` · `N
 
 Baseline at `30605cf` (Linux, Node 22): `pnpm test:ci` → 124 passed · 0 failed · 9 skipped; `tsc --noEmit` clean.
 
+Phase gates (Linux, Node 22, `npx tsx tests/runAll.ts --ci`):
+- Phase 1: 127 passed · 0 failed · 9 skipped.
+- Phase 2: 142 passed · 0 failed · 9 skipped; Python: vector persistence 23, vector startup 23, vector access 33, TTS retry 12 — all pass; `tsc --noEmit` clean.
+
 | Finding ID | Current status | Evidence | Planned change | Tests | Dependencies | Result |
 |---|---|---|---|---|---|---|
 | BUG-02 | FIXED_AND_TESTED | Reproduced with a state-faithful TTS stand-in: `errorRecoveryTest` 11 pass / 4 fail, `ILLEGAL TRANSITION SPEAKING -> EXECUTING / PLANNING`, "unexpected error" after successful repairs | `orchestrator.announce()` for progress messages (no state change); `speak()` only for the reply; `speechStartMovesState()` — TTS playback start moves the state only from IDLE/INTERRUPTED | `tests/errorRecoveryTest.ts` (real `speak()`, `tests/fakeTts.ts`, no-failure-phrase assertions) 18/18; `tests/speechStateTest.ts` 10/10 | TEST-02 | Phase 1 commit |
@@ -23,14 +27,14 @@ Baseline at `30605cf` (Linux, Node 22): `pnpm test:ci` → 124 passed · 0 faile
 | SEC-09 | FIXED_AND_TESTED | Reproduced: a level-1 call whose primary failed ran a level-3 fallback with no check of its own (old code: 6/13) | Registering a fallback riskier than its primary (highest risk or permission floor) throws, in either order; at run time a fallback riskier for these arguments than the call's cleared level is not used; a skill refused this way is skipped, the others load | `tests/fallbackPolicyTest.ts` 13/13 (JARVIS's three real fallbacks still register) | — | Phase 2 commit |
 | SEC-10 | FIXED_AND_TESTED | Reproduced: `bcd^edit` rated 3 instead of 4; `shut^down`, ``Stop-Comp`uter``, `'Stop-'+'Computer'`, `spsv windefend` passed the blocklist | `security/commandObfuscation.ts`: escapes or quotes inside a bare word, Invoke-Expression, FromBase64String, -EncodedCommand, `[char]` codes, joined literals, `%VAR:~`, computed calls are refused (risk engine and admin controller), with the command read plainly in the message; all checks also read the plain form; Defender rules accept aliases and spacing | `tests/commandObfuscationTest.ts` 53/53 (14 disguised, 11 ordinary commands not flagged) | — | Phase 2 commit |
 | SEC-12 | FIXED_AND_TESTED | Reproduced: 120 minutes asked → 120 granted; extensions added up to 120 each with no total | `MAX_SESSION_MINUTES = 30` for activation, the skill and extensions (never more than 30 left); bad numbers clamped | `tests/fullControlLimitTest.ts` §1–3 | — | Phase 2 commit |
-| SEC-13 | OPEN | | | | | |
-| SEC-14 | OPEN | | | | | |
-| SEC-15 | OPEN | | | | REL-08 | |
-| SEC-16 | OPEN | | | | | |
+| SEC-13 | FIXED_AND_TESTED | Reproduced: a recurring goal ("post on my behalf", every hour) was recorded with no question (old code: 3/12) | `goal_create` for a permanent or recurring goal (named, or a repeating schedule) or one allowed to use the desktop is level 2 and asks the owner once, without needing full control (`askOwner` in the risk assessment); the question shows kind, objective and schedule. One-off goals unchanged | `tests/goalApprovalTest.ts` 12/12; all goal tests pass | — | Phase 2 commit |
+| SEC-14 | FIXED_AND_TESTED | Reproduced: `read_file` returned the text of `github my persnal tokens.txt` and of `.env`; `control_file` caught only names ending in `.env`; indexing and upload accepted it | `security/secretFiles.ts`: secret files also recognised by whole words in text-like file names (token(s), secret(s), password(s), credentials, api key, private key, recovery codes, seed phrase…); `read_file`, `files compare`, `control_file` read, document indexing and browser upload refuse them. The owner's own file is not touched: moving it into `.env` is a step for the owner (REMAINING_RISKS) | `tests/secretFileTest.ts` 32/32 (old code: 25/32) | — | Phase 2 commit |
+| SEC-15 | FIXED_AND_TESTED | Confirmed in code (not run: it would install from PyPI): unapproved `pip install` of an unpinned name into the system Python, JARVIS's keys in its environment, `difflib` (standard library) on the list | `difflib` removed; only versions named in requirements.txt; only into JARVIS's `.venv` (none: nothing installed); owner asked first, the refusal gives the command; `childEnv()` | `tests/selfHealInstallTest.ts` 10/10 (stand-in `.venv` Python records its call) | REL-08 | Phase 2 commit |
+| SEC-16 | FIXED_AND_TESTED | Reproduced: a folder placed in `skills/` with a description claiming risk 0 was registered as a tool | `skills/trusted-skills.json` lists trusted folders with a SHA-256 of each description.json (CRLF-normalised); unknown, changed or linked folders are not loaded, with the command to trust them (`npx tsx scripts/trustSkills.ts <folder>`); no list → nothing loads | `tests/skillTrustTest.ts` 10/10 (all 26 repository skills trusted) | — | Phase 2 commit |
 | SEC-17 | FIXED_AND_TESTED | Same root cause as SEC-04 for `control_browser open_url` and `browser_tab new` | Same `navigationLevel()` on all three navigation paths | `tests/navigationPolicyTest.ts` | SEC-18 | Phase 2 commit |
 | SEC-18 | FIXED_AND_TESTED | Reproduced on the old service: a cross-site `text/plain` POST /clear with no token answered 200 and emptied the store (2 → 0) | Token header `X-JARVIS-Token` required on every route but /liveness (JARVIS_VECTOR_TOKEN, else a kept owner-only token in data/security/vector_token, shared by both sides); any Origin header refused; POST bodies must be JSON; /docs and /openapi off; JARVIS's clients send the token; service started with `childEnv` + its own settings | `tests/python/test_vector_access.py` 33/33 (whole ASGI app; refused requests leave count and contents unchanged); `tests/vectorAuthTest.ts` 14/14 (token file, env, spawn env, Python reads the same token) | — | Phase 2 commit |
 | SEC-19 | FIXED_AND_TESTED | Reproduced: a session file edited to expire in 2099 restored full control for ~38 million minutes | Restore refuses an expiry more than 30 min away, a session longer than 30 min, a start in the future, or a non-numeric expiry; logs it, writes the base level back. No HMAC: its key would sit in the same folder as the file | `tests/fullControlLimitTest.ts` §4 (20/20 total) | — | Phase 2 commit |
-| SEC-20 | OPEN | | | | SEC-06 | |
+| SEC-20 | FIXED_AND_TESTED | Reproduced: the run_command allow-list passed `git log --format=%OPENAI_API_KEY%`, `%PATH:~0,20%`, `HEAD^`, `!TEMP!` | `^`, `!`, `%NAME%` and `%NAME:~` refused by the allow-list (cmd.exe escapes and variables); `git log --format=%h %s` and `HEAD~1` still pass. Run on Linux; the cmd.exe behaviour itself is not exercised on real Windows here | `tests/cmdMetacharTest.ts` 19/19 (old: 8/19) | SEC-06 | Phase 2 commit |
 | BUG-01 | OPEN | | | | | |
 | REL-02 | OPEN | | | | | |
 | REL-03 | OPEN | | | | | |
@@ -38,7 +42,7 @@ Baseline at `30605cf` (Linux, Node 22): `pnpm test:ci` → 124 passed · 0 faile
 | REL-05 | OPEN | | | | ARCH-03 | |
 | REL-06 | OPEN | | | | | |
 | REL-07 | OPEN | | | | | |
-| REL-08 | OPEN | | | | | |
+| REL-08 | FIXED_AND_TESTED | Self-heal ran `python`/`python3` (system Python), not the `.venv` the services run in | Fixed with SEC-15: installs only with `.venv`'s Python; without a `.venv` nothing is installed and the reply says so | `tests/selfHealInstallTest.ts` §2–3 | SEC-15 | Phase 2 commit |
 | REL-09 | OPEN | | | | | |
 | HYP-02 | OPEN | | | | | |
 | PERF-02 | OPEN | | | | | |
