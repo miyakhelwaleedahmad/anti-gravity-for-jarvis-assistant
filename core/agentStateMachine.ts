@@ -471,3 +471,17 @@ export class AgentStateMachine extends EventEmitter {
 }
 
 export const agentStateMachine = new AgentStateMachine();
+
+/**
+ * A transition a caller may skip when it is not allowed from the current
+ * state, recorded instead of swallowed (ARCH-07: four call sites used an empty
+ * `catch {}`, so a refused transition left no trace of where it came from).
+ */
+export function tryTransition(to: AgentState, context: string): boolean {
+  try {
+    return agentStateMachine.transition(to);
+  } catch (err) {
+    console.warn(`[AgentStateMachine] ${context}: transition to ${to} refused from ${agentStateMachine.currentState} (${err instanceof Error ? err.message.slice(0, 120) : String(err)}).`);
+    return false;
+  }
+}

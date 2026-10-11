@@ -20,8 +20,13 @@ export interface FakeTts {
   idle(): Promise<void>;
 }
 
-export function installFakeTts(orchestrator: any, nodeBridge: any, playMs = 5): FakeTts {
-  const spoken: string[] = [];
+/**
+ * `spoken`: an array of the caller's to record into. `awaitPlayback`: each
+ * orchestrator.process() call also waits for its speech to finish playing, as
+ * a person waits for the reply before speaking again (otherwise the next
+ * request arrives while JARVIS is still SPEAKING and is a barge-in).
+ */
+export function installFakeTts(orchestrator: any, nodeBridge: any, playMs = 5, spoken: string[] = [], awaitPlayback = false): FakeTts {
   let playing = 0;
   orchestrator.config.voiceEnabled = true;
   nodeBridge.sendToRole = () => true;
@@ -31,10 +36,14 @@ export function installFakeTts(orchestrator: any, nodeBridge: any, playMs = 5): 
     setTimeout(() => nodeBridge.handleSpeakingLifecycleSignal('speaking_start', {}), 0);
     setTimeout(() => { playing--; nodeBridge.handleSpeakingLifecycleSignal('speaking_end', {}); }, playMs);
   };
-  return {
-    spoken,
-    async idle() {
-      for (let i = 0; i < 200 && playing > 0; i++) await new Promise((r) => setTimeout(r, 5));
-    },
+  const idle = async () => {
+    for (let i = 0; i < 200 && playing > 0; i++) await new Promise((r) => setTimeout(r, 5));
   };
+  if (awaitPlayback) {
+    const process = orchestrator.process.bind(orchestrator);
+    orchestrator.process = async (...args: unknown[]) => {
+      try { return await process(...args); } finally { await idle(); }
+    };
+  }
+  return { spoken, idle };
 }

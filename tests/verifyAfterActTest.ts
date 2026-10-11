@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { installFakeTts } from './fakeTts.js';
 
 const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-verify-'));
@@ -70,7 +71,8 @@ modelRouter.chat = async (req: any) => {
 };
 modelRouter.streamChat = async function* () { yield 'Done, sir.'; } as any;
 let spoken: string[] = [];
-(orchestrator as any).speak = (t: string) => { spoken.push(t); };
+// TEST-02: the real speak() and state machine, with a stand-in for tts.py.
+installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, spoken, true);
 
 async function withTool<T>(name: string, body: (args: any) => Promise<string>, fn: () => Promise<T>): Promise<T> {
   const tool = toolRegistryV2.get(name)! as any;
@@ -89,7 +91,7 @@ const notes = path.join(workspace, 'notes.txt');
 const written = await toolRegistryV2.execute('write_file', { filePath: 'notes.txt', content: 'buy milk\n' });
 ok('write_file is checked: verified', written.success && written.verification?.status === 'verified', written.verification?.evidence);
 plans = [[{ name: 'write_file', args: { filePath: 'todo.txt', content: 'call mum' } }]];
-spoken = [];
+spoken.length = 0;
 await orchestrator.process('write call mum into todo.txt', 'cli');
 ok('the reply says it was checked', /I checked: todo\.txt holds the 8 characters written/.test(spoken.join(' ')), spoken.join(' | '));
 const todo = path.join(workspace, 'todo.txt');
@@ -102,7 +104,7 @@ await withTool('write_file', async () => { runs++; return 'File written: ghost.t
   ok('the step fails with VERIFICATION_FAILED', !ghost.success && ghost.error === 'VERIFICATION_FAILED' && /ghost\.txt is not there/.test(ghost.output), ghost.output);
   runs = 0;
   plans = [[{ name: 'write_file', args: { filePath: 'ghost.txt', content: 'boo' } }]];
-  spoken = [];
+  spoken.length = 0;
   await orchestrator.process('write boo into ghost.txt', 'cli');
   ok('the reply says it could not be confirmed', spoken.join(' ') === 'I tried, sir, but I could not confirm it worked: ghost.txt is not there.', spoken.join(' | '));
   ok('and it was not retried', runs === 1, `${runs} run(s)`);

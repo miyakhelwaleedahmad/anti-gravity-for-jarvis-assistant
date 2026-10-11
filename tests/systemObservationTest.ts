@@ -26,6 +26,7 @@ import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { installFakeTts } from './fakeTts.js';
 
 const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-observe-'));
@@ -59,7 +60,8 @@ let llmCalls = 0;
 modelRouter.chat = async () => { llmCalls++; return { content: 'Done, sir.' } as any; };
 modelRouter.streamChat = async function* () { llmCalls++; yield 'Done, sir.'; } as any;
 let spoken: string[] = [];
-(orchestrator as any).speak = (t: string) => { spoken.push(t); };
+// TEST-02: the real speak() and state machine, with a stand-in for tts.py.
+installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, spoken, true);
 
 async function run(tool: string, args: Record<string, unknown> = {}) {
   const t0 = Date.now();
@@ -213,18 +215,18 @@ console.log('\n--- 4b. The planner is offered these tools ---');
 }
 
 console.log('\n--- 5. Spoken answers from real readings, no LLM request ---');
-llmCalls = 0; spoken = [];
+llmCalls = 0; spoken.length = 0;
 await orchestrator.process('system status', 'voice');
 ok('"system status" reads the machine', /^CPU at \d+ percent, [\d.]+ of [\d.]+ GB memory free/.test(spoken.join(' ')) && llmCalls === 0,
   `${spoken.join(' | ')} / llm=${llmCalls}`);
 ok('…and no longer says "All systems are operational"', !spoken.join(' ').includes('All systems are operational'));
 process.env['JARVIS_DEV_PORTS'] = `${webPort},${closedPort}`;
-llmCalls = 0; spoken = [];
+llmCalls = 0; spoken.length = 0;
 await orchestrator.process('is my backend running', 'voice');
 ok('"is my backend running" checks the ports', spoken.join(' ') === `One local server is running, sir: port ${webPort} answers 200.` && llmCalls === 0,
   `${spoken.join(' | ')} / llm=${llmCalls}`);
 server.close();
-llmCalls = 0; spoken = [];
+llmCalls = 0; spoken.length = 0;
 await orchestrator.process('is my backend running', 'voice');
 ok('…and says so when nothing is running', /^No development server is running on the usual ports, sir/.test(spoken.join(' ')) && llmCalls === 0, spoken.join(' | '));
 delete process.env['JARVIS_DEV_PORTS'];

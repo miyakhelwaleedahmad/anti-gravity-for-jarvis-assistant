@@ -85,6 +85,9 @@ const HOST_DEPENDENT: Record<string, () => string | undefined> = {
 /** What `name` needs that this host is missing, or undefined if nothing is. */
 function missingPrerequisite(name: string): string | undefined {
   if (process.platform === 'win32' && PROVIDED_BY_WINDOWS.has(name)) return undefined;
+  // Live provider tests run only when asked (TEST-01): they need keys, cost
+  // requests and depend on the network, so they are never on by default.
+  if (ENVIRONMENT_DEPENDENT[name] === 'a reachable LLM API' && process.env['JARVIS_LIVE_TESTS'] === '1') return undefined;
   return ENVIRONMENT_DEPENDENT[name] ?? HOST_DEPENDENT[name]?.();
 }
 
@@ -97,7 +100,7 @@ function missingPrerequisite(name: string): string | undefined {
 const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
 
 /** Not a test — a helper imported by other tests. */
-const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll', 'chromeHelper', 'fakeTts']);
+const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll', 'chromeHelper', 'fakeTts', 'replyChecks']);
 
 const TIMEOUT_MS = Number(process.env['JARVIS_TEST_TIMEOUT_MS'] ?? 120_000);
 

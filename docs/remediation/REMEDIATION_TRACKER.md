@@ -8,6 +8,7 @@ Baseline at `30605cf` (Linux, Node 22): `pnpm test:ci` → 124 passed · 0 faile
 
 Phase gates (Linux, Node 22, `npx tsx tests/runAll.ts --ci`):
 - Phase 1: 127 passed · 0 failed · 9 skipped.
+- Final (Phases 4–5): 150 passed · 0 failed · 9 skipped, under c8 coverage (85.5% lines of loaded files); Python tests pass; `tsc --noEmit` clean.
 - Phase 3: 148 passed · 0 failed · 9 skipped; `tsc --noEmit` clean.
 - Phase 2: 142 passed · 0 failed · 9 skipped; Python: vector persistence 23, vector startup 23, vector access 33, TTS retry 12 — all pass; `tsc --noEmit` clean.
 
@@ -46,11 +47,24 @@ Phase gates (Linux, Node 22, `npx tsx tests/runAll.ts --ci`):
 | REL-08 | FIXED_AND_TESTED | Self-heal ran `python`/`python3` (system Python), not the `.venv` the services run in | Fixed with SEC-15: installs only with `.venv`'s Python; without a `.venv` nothing is installed and the reply says so | `tests/selfHealInstallTest.ts` §2–3 | SEC-15 | Phase 2 commit |
 | REL-09 | BLOCKED | No Windows machine here; the last Windows run (owner's PC, before `30605cf`) had 103 pass / 24 fail | Owner to run `pnpm test` and `pnpm verify:windows` on the PC (steps in REMEDIATION_REPORT.md) | — | Windows PC | — |
 | HYP-02 | FIXED_AND_TESTED | Confirmed: with skill loading slowed to 1.5 s, the first request was planned with 3 tools and no skills (old: 1/3) | `process()` waits for the skill load (at most 10 s, then plans with what is there) | `tests/skillLoadOrderTest.ts` 3/3 | — | Phase 3 commit |
-| PERF-02 | OPEN | | | | | |
+| PERF-02 | DOCUMENTED | Needs validation: foreground requests and background goals/research share one provider quota; not measured here (needs real keys and the owner's usage) | No change. To measure on the PC: count 429 replies in `logs` during a running goal. Option for later: pause background agents while a spoken request is in flight | — | live keys | — |
 | PERF-03 | FIXED_AND_TESTED | Confirmed: 15 s PLANNING watchdog vs 3 attempts × 10 s; a 0.5 s watchdog with 0.3 s attempts resets PLANNING mid-retry in the test | `config/llmTiming.ts`: one source for attempts and timeout; watchdog default = 3 × timeout + 2 s (32 s), never below 15 s; a lower set value is kept with a warning; `.env.example` no longer sets 20000 | `tests/llmTimingTest.ts` 13/13 | — | Phase 3 commit |
-| PERF-04 | OPEN | | | | ARCH-09 | |
-| PERF-05 | OPEN | | | | | |
-| PERF-07 | OPEN | | | | | |
-| ARCH-01 … ARCH-09 | OPEN | | | | | |
-| TEST-01 … TEST-04 | OPEN | | | | | |
-| OPS-01 … OPS-03 | OPEN | | | | | |
+| PERF-04 | DOCUMENTED | Measured here (Linux, SSD): writing one 2.1 MB agent archive with `writeFileSync` blocks the event loop ~29 ms (5 in a row: 107 ms) | No change: below audible jitter here; on a slow disk it can be several times longer. Change to async writes if the owner hears stutter after big agent runs | measurement in TEST_RESULTS.md | ARCH-09 | — |
+| PERF-05 | DOCUMENTED | Needs the owner's PC: agent concurrency plus local STT and embeddings on an old CPU | No change; profile with Task Manager during a goal run (REMEDIATION_REPORT.md) | — | Windows PC | — |
+| PERF-07 | DOCUMENTED | Confirmed in code: lexical fallback scans every fact | No change: the vector index is the normal path; the scan runs only when it is down. Index the fallback if the fact count grows past tens of thousands | — | — | — |
+| ARCH-01 | DOCUMENTED | orchestrator.ts is ~2,900 lines with routing, planning, execution, reflection and replies | Not split during a security repair (the brief: preserve the architecture). Split plan in REMAINING_RISKS.md; the converted tests (TEST-02) and the new request-level tests are the safety net for it | — | TEST-02 | — |
+| ARCH-02 | DOCUMENTED | Two health systems, three buses, two memory front ends | Ownership choice recorded in REMAINING_RISKS.md; no code change | — | — | — |
+| ARCH-03 | DOCUMENTED | Mutable singletons shared by foreground, goals and agents | The concrete bugs it caused were fixed per request (REL-04/05, SEC-08 scope); a general request context is a larger change, listed in REMAINING_RISKS.md | `requestScopeTest`, `nestedApprovalTest` | — | — |
+| ARCH-04 | DOCUMENTED | The risk engine imports tool and controller modules | New policy code went into `security/` (secretFiles, commandObfuscation, untrustedText); the existing imports are listed for a later move | — | — | — |
+| ARCH-05 | DOCUMENTED | No single table of which layer decides | Ownership table in REMEDIATION_REPORT.md (registry → risk engine → approval gate → controller) | — | — | — |
+| ARCH-06 | FIXED_AND_TESTED | Confirmed: 13/28 "low-risk" and 29/36 "simple" names were not tools; `addIfRegistered('weather')` named a folder, not a tool | Lists moved to `core/toolNameLists.ts` with only registered names (no behaviour change: unregistered names never matched); stale name removed | `tests/toolNameListsTest.ts` 4/4 (every listed or requested name is registered) | — | Phase 4 commit |
+| ARCH-07 | FIXED_AND_TESTED (transitions) / DOCUMENTED (rest) | 5 state transitions were wrapped in empty `catch {}` | `tryTransition()` reports the caller and both states; all 5 sites use it. The other empty catches and `console.*` calls are left (each needs its own review) | `tests/transitionLoggingTest.ts` 5/5 | — | Phase 4 commit |
+| ARCH-08 | FIXED_AND_TESTED (docs) | `.env.example` lacked `GITHUB_TOKEN`, pointed Chrome at `W:\`, set a planning watchdog below the retry budget; README claimed rollback | Documented `GITHUB_TOKEN`, `JARVIS_VECTOR_TOKEN`, `JARVIS_VOICE_APPROVAL_MAX_RISK`; `%USERPROFILE%` path; watchdog line emptied; README corrected. Old root reports left in place (not deleted) | docs only | — | Phase 4 commit |
+| ARCH-09 | DOCUMENTED | 139 sync fs calls; measured in PERF-04 | See PERF-04 | — | PERF-04 | — |
+| TEST-01 | BLOCKED (written, not run in CI) | CI had no Windows job, no coverage, no live job | `.github/workflows/ci.yml`: Windows job, c8 coverage step + artifact, `workflow_dispatch` live-provider job (`JARVIS_LIVE_TESTS=1`); `runAll` runs live tests only with that variable. Coverage was run here (TEST_RESULTS.md); the workflow itself runs only after a push, which was not authorised | local coverage run | push | Phase 4 commit |
+| TEST-02 | FIXED_AND_TESTED | 10 tests replaced `speak()` with a recorder (no state machine) | 9 now use `tests/fakeTts.ts` (real `speak()`, playback through the bridge, each request waits for its reply). The failures this first produced were harness issues (array reassigned, next request sent mid-reply), not product bugs. `voiceApprovalTest` keeps its own speaker model (documented in the file) | the 9 converted tests pass | — | Phase 4 commit |
+| TEST-03 | FIXED_AND_TESTED | Injection tests only read source text | Behavioural test through synthesis and the next plan | `tests/promptInjectionFlowTest.ts` (SEC-03) | SEC-03 | Phase 2 commit |
+| TEST-04 | FIXED_AND_TESTED | Replies with "unexpected error" still passed substring checks | `tests/replyChecks.ts` (`FAILURE_PHRASE`, `noFailurePhrase`, `saysOnly`) used in `errorRecoveryTest` and the success paths of `scenarioIntegrationTest` | both pass | — | Phase 4 commit |
+| OPS-01 | DOCUMENTED | No management UI | Design only, as instructed (REMAINING_RISKS.md §Control Center): local, token-protected, same patterns as SEC-01/SEC-18; not built | — | — | — |
+| OPS-02 | DOCUMENTED | All listeners are loopback; no remote-access model | Requirements before any non-loopback exposure in REMAINING_RISKS.md §Remote access; nothing exposed | — | — | — |
+| OPS-03 | FIXED_AND_TESTED | No way to forget a fact | `forget_memory` (SEC-05) | `tests/memoryForgetTest.ts` 16/16 | SEC-05 | Phase 2 commit |

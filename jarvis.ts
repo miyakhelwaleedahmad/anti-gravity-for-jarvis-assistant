@@ -27,7 +27,7 @@ import { nodeBridge }      from './bridge/nodeBridge.js';
 import { orchestrator, normalizeVoiceInput }    from './core/orchestrator.js';
 import { brainLoop }       from './core/brainLoop.js';
 import { conversationBus } from './core/conversationBus.js';
-import { agentStateMachine, AgentState, speechStartMovesState } from './core/agentStateMachine.js';
+import { agentStateMachine, AgentState, speechStartMovesState, tryTransition } from './core/agentStateMachine.js';
 import { evaluateEcho }    from './core/voiceEchoFilter.js';
 import { mergePendingVoiceContinuation, shouldUseContinuationContext, accumulateContinuationFragment } from './core/voiceContinuation.js';
 import { queuedCommandMaxAgeMs, DROPPED_COMMAND_NOTICE, followUpSeconds, visionEnabled } from './core/voiceSettings.js';
@@ -218,9 +218,7 @@ function drainVoiceInputQueue(): void {
   console.log(`[JARVIS] Draining queued command: "${item.text}"`);
   sttJsLog('STT_QUEUE_DRAINED', item.text);
 
-  try {
-    agentStateMachine.transition(AgentState.PROCESSING_STT);
-  } catch {}
+  tryTransition(AgentState.PROCESSING_STT, 'queued voice command');
 
   orchestrator.process(item.text, 'voice').catch(err => {
     console.error('[Voice] Queued command execution error:', err);
@@ -482,7 +480,7 @@ async function startJarvis() {
           if (!hasCommand) {
             isSttListening = true;
             takeMic(MicOwner.STT, 'interrupt_listen');
-            try { agentStateMachine.transition(AgentState.LISTENING); } catch {}
+            tryTransition(AgentState.LISTENING, 'resume listening');
             console.log('[JARVIS] Requesting STT listen_start after interrupt');
             const listenStarted = nodeBridge.sendListenStart();
             if (!listenStarted) {
@@ -500,7 +498,7 @@ async function startJarvis() {
           if (!isSttListening) {
             isSttListening = true;
             takeMic(MicOwner.STT, 'wake_no_command');
-            try { agentStateMachine.transition(AgentState.LISTENING); } catch {}
+            tryTransition(AgentState.LISTENING, 'resume listening');
             console.log('[JARVIS] Wake word detected; requesting STT listen_start');
             const listenStarted = nodeBridge.sendListenStart();
             if (!listenStarted) {

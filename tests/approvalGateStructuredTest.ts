@@ -25,6 +25,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { installFakeTts } from './fakeTts.js';
 
 const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-approval-'));
@@ -288,7 +289,8 @@ modelRouter.chat = async (req: any) => {
   return { content: '{"failureClass":"unknown","repairStrategy":"abort","context":""}' } as any;
 };
 modelRouter.streamChat = async function* () { llmCalls++; yield 'Done, sir.'; } as any;
-(orchestrator as any).speak = () => {};
+// TEST-02: the real speak() and state machine, with a stand-in for tts.py.
+installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, [], true);
 permissionSession.activateFullControl(5, 'cli');
 let ran = 0;
 printed.length = 0;

@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { installFakeTts } from './fakeTts.js';
 
 const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-sinks-'));
@@ -87,7 +88,8 @@ modelRouter.registerProvider((modelRouter as any).primary, fakeProvider as any);
 modelRouter.registerProvider('openai', fakeProvider as any);
 
 const spoken: string[] = [];
-(orchestrator as any).speak = (t: string) => { spoken.push(t); };
+// TEST-02: the real speak() and state machine, with a stand-in for tts.py.
+installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, spoken, true);
 
 /** Swap a tool's body for one check, then restore. */
 async function withTool<T>(name: string, body: (args: any) => Promise<string>, fn: () => Promise<T>): Promise<T> {

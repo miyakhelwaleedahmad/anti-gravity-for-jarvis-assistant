@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { installFakeTts } from './fakeTts.js';
 
 const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-risk-'));
@@ -350,12 +351,13 @@ modelRouter.chat = async (req: any) => {
 };
 modelRouter.streamChat = async function* () { llmCalls++; yield 'Done, sir.'; } as any;
 let spoken: string[] = [];
-(orchestrator as any).speak = (t: string) => { spoken.push(t); };
-spoken = [];
+// TEST-02: the real speak() and state machine, with a stand-in for tts.py.
+installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, spoken, true);
+spoken.length = 0;
 await orchestrator.process('close notepad', 'voice');
 ok('"close notepad" without full control: the full-control hint', spoken.join(' ') === denial.FULL_CONTROL_HINT, spoken.join(' | '));
 fullControl(true);
-nextAnswer = false; prompts = 0; ran = 0; spoken = []; llmCalls = 0;
+nextAnswer = false; prompts = 0; ran = 0; spoken.length = 0; llmCalls = 0;
 await withTool('control_process', async () => { ran++; return '{"success":true}'; }, async () => {
   await orchestrator.process('end the frozen notepad process', 'voice');
 });

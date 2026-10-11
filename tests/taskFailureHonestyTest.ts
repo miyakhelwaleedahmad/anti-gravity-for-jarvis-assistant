@@ -26,6 +26,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { installFakeTts } from './fakeTts.js';
 
 // A throwaway workspace: memory and goals written by these requests must never
 // land in the real memory/ and data/ folders. Set before JARVIS modules load.
@@ -80,10 +81,11 @@ modelRouter.chat = async (req: any) => {
 modelRouter.streamChat = async function* () { llmCalls++; yield 'Done, sir.'; } as any;
 
 let spoken: string[] = [];
-(orchestrator as any).speak = (text: string) => { spoken.push(text); };
+// TEST-02: the real speak() and state machine, with a stand-in for tts.py.
+installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, spoken, true);
 
 async function say(input: string, calls: typeof script = []): Promise<{ reply: string; ms: number }> {
-  spoken = []; llmCalls = 0; offered = []; script = calls;
+  spoken.length = 0; llmCalls = 0; offered = []; script = calls;
   const t0 = Date.now();
   await orchestrator.process(input, 'voice');
   return { reply: spoken.join(' | '), ms: Date.now() - t0 };

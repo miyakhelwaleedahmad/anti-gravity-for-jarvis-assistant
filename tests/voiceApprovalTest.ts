@@ -74,6 +74,10 @@ let llmCalls = 0;
 modelRouter.chat = async () => { llmCalls++; return { content: 'Done, sir.' } as any; };
 modelRouter.streamChat = async function* () { llmCalls++; yield 'Done, sir.'; } as any;
 const spoken: string[] = [];
+// TEST-02 exception: this file models the speaker's timing itself (below),
+// which the approval answer window depends on; speak() is recorded here. The
+// real speak() and state machine are exercised by speechStateTest,
+// errorRecoveryTest and the other converted tests.
 (orchestrator as any).speak = (t: string) => { spoken.push(t); };
 
 // The speaker: each thing JARVIS says plays for 150 ms.

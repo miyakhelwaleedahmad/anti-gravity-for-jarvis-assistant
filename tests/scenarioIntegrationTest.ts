@@ -26,6 +26,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { findChromium } from './chromeHelper.js';
 import { answers, createWorld, loadJarvis, PLANTED } from './scenarios/harness.js';
+import { noFailurePhrase } from './replyChecks.js';
 
 if (!findChromium()) {
   console.error('No Chromium or Chrome found (set JARVIS_TEST_CHROME): these scenarios need a real browser.');
@@ -91,7 +92,7 @@ try {
 
   console.log('\n--- 1. "What is currently open in my browser?" ---');
   let out = await say('1 browser contents', 'What is currently open in my browser?');
-  ok('the tabs and the one on screen, in at most three sentences', /4 tabs are open/.test(out.reply) && /On screen: Shop - Home/.test(out.reply) && sentences(out.reply) <= 3, out.reply);
+  ok('the tabs and the one on screen, in at most three sentences', /4 tabs are open/.test(out.reply) && /On screen: Shop - Home/.test(out.reply) && sentences(out.reply) <= 3 && noFailurePhrase(out.reply), out.reply);
   ok('0–1 LLM requests', out.llm <= 1, String(out.llm));
   ok('from a real reading (browser_state in the registry history)', out.calls.some((c) => c.tool === 'browser_state' && c.success));
 
@@ -122,7 +123,7 @@ try {
     JSON.stringify({ action: out.request?.action, why: out.request?.why, risk: out.request?.risk }));
   ok('cancelled: nothing stopped, and JARVIS says what it needed', alive(hungPid ?? 0) && /not approved/i.test(out.reply), out.reply);
   out = await say('3 application not working', "Why isn't my application working?", { answer: () => { approvalGate.offerVoiceAnswer('approve'); } });
-  ok('approved: the old process is gone, a new one answers', !alive(hungPid ?? 0) && await answers(world.api.port) && /started it again/i.test(out.reply), out.reply);
+  ok('approved: the old process is gone, a new one answers', !alive(hungPid ?? 0) && await answers(world.api.port) && /started it again/i.test(out.reply) && noFailurePhrase(out.reply), out.reply);
 
   console.log('\n--- 4. "Continue what I was doing." ---');
   const stopWeb = [[{ name: 'dev', args: { action: 'stop_server', project: world.web.dir } }]];
@@ -137,7 +138,7 @@ try {
   ok('the offer holds for the very next request only: after another request, "yes" runs nothing', /Nothing is waiting/.test(out.reply) && out.calls.length === 0, out.reply);
   await say('4 continue', 'Continue what I was doing.');
   out = await say('4 continue', 'no');
-  ok('"no": it is left alone', /I will leave it/.test(out.reply) && out.calls.length === 0 && await answers(world.web.port), out.reply);
+  ok('"no": it is left alone', /I will leave it/.test(out.reply) && out.calls.length === 0 && await answers(world.web.port) && noFailurePhrase(out.reply), out.reply);
   await say('4 continue', 'Continue what I was doing.');
   out = await say('4 continue', 'yes', { plans: stopWeb, answer: () => { approvalGate.offerVoiceAnswer('approve'); } });
   ok('"yes": the request runs again, its approval asked again, and it is done', out.request?.risk === 2
@@ -154,7 +155,7 @@ try {
   ok('(setup) the user reloads the website tab: Chrome shows an error page',
     await until(async () => (await pageState(webUrl))?.url.startsWith('chrome-error://') ?? false), JSON.stringify(await pageState(webUrl)));
   out = await say('5 website not working', "Check why my website isn't working.");
-  ok('the diagnosis names the server and the tab\'s error', /web/.test(out.reply) && /ERR_CONNECTION_REFUSED|refused/i.test(out.reply), out.reply);
+  ok('the diagnosis names the server and the tab\'s error', /web/.test(out.reply) && /ERR_CONNECTION_REFUSED|refused/i.test(out.reply) && noFailurePhrase(out.reply), out.reply);
   ok('safe repair: the server started (level 1) and the tab reloaded, both through the registry',
     out.calls.some((c) => c.tool === 'dev' && (c.args as any).action === 'start_server' && c.success)
     && out.calls.some((c) => c.tool === 'browser_navigate' && (c.args as any).action === 'reload' && c.success) && out.decisions.length === 0,

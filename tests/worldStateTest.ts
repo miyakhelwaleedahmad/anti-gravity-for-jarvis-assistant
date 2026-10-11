@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { installFakeTts } from './fakeTts.js';
 
 const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-world-'));
@@ -66,7 +67,8 @@ modelRouter.chat = async (req: any) => {
   return { content: '{"failureClass":"tool_error","repairStrategy":"abort","context":"stub"}' } as any;
 };
 modelRouter.streamChat = async function* () { yield 'Done, sir.'; } as any;
-(orchestrator as any).speak = () => {};
+// TEST-02: the real speak() and state machine, with a stand-in for tts.py.
+installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, [], true);
 
 async function withTool<T>(name: string, body: (args: any) => Promise<string>, fn: () => Promise<T>): Promise<T> {
   const tool = toolRegistryV2.get(name)! as any;

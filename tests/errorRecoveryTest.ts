@@ -24,6 +24,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { findChromium, startChromium } from './chromeHelper.js';
+import { FAILURE_PHRASE } from './replyChecks.js';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -101,7 +102,6 @@ const { installFakeTts } = await import('./fakeTts.js');
 const tts = installFakeTts(orchestrator, nodeBridge);
 const spoken = tts.spoken;
 /** A reply that hides a failure behind a passing substring check (TEST-04). */
-const FAILURE_PHRASE = /unexpected error|unable to recover|critical failure|I could not process/i;
 const approvals: any[] = [];
 let answer = true;
 (approvalGate as any).requestApproval = async (request: any) => { approvals.push(request); return answer; };

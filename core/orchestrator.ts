@@ -13,7 +13,7 @@
  *   - Mid-execution     : reflectionEngine.midExecutionCheck() after each batch
  */
 
-import { agentStateMachine, AgentState } from './agentStateMachine.js';
+import { agentStateMachine, AgentState, tryTransition } from './agentStateMachine.js';
 import { UNTRUSTED_RULE, untrusted } from '../security/untrustedText.js';
 import { asRepair, beginTrace, endTrace } from './traceContext.js';
 import { diagnose, MAX_RECOVERY_ROUNDS, observeFailure } from './recoveryPlanner.js';
@@ -55,6 +55,7 @@ import { unifiedContextBuilder } from '../memory/unifiedContextBuilder.js';
 // ── Phase 6: Adaptive planning intelligence ────────────────────────────────
 import { plannerIntelligence } from './plannerIntelligence.js';
 import { taskGraphEngine as _tge } from './taskGraphEngine.js';
+import { LOW_RISK_TOOLS, SIMPLE_REPLY_TOOLS } from './toolNameLists.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -563,10 +564,10 @@ export class JarvisOrchestrator {
       // a new deterministic command arrives mid-execution of a previous one.
       const curSt = agentStateMachine.currentState;
       if (curSt !== AgentState.PLANNING && curSt !== AgentState.EXECUTING) {
-        try { agentStateMachine.transition(AgentState.PLANNING); } catch {}
+        tryTransition(AgentState.PLANNING, 'route to planning');
       }
       if (agentStateMachine.currentState !== AgentState.EXECUTING) {
-        try { agentStateMachine.transition(AgentState.EXECUTING); } catch {}
+        tryTransition(AgentState.EXECUTING, 'route to execution');
       }
       // JARVIS-019: the outcome of these tool calls used to be discarded — the
       // route always reported 'success', so a failed open_app was recorded as a
@@ -883,18 +884,10 @@ export class JarvisOrchestrator {
       // costing 200-800ms even on success. For read/open/info operations that all
       // succeeded, we know the outcome and skip directly to handleSuccess.
       const allNodes = [...graph.nodes.values()];
-      const LOW_RISK_TOOLS = new Set([
-        'open_app', 'get_time', 'get_date', 'get_weather', 'weather',
-        'get_system_info', 'system_info', 'get_system_state', 'get_pc_state',
-        'get_active_window', 'get_browser_tabs', 'get_open_apps', 'is_app_open',
-        'is_tab_open', 'search_memory', 'read_clipboard', 'set_clipboard',
-        'get_volume', 'set_volume', 'get_brightness', 'set_brightness',
-        'calculator', 'calc', 'math', 'web_search', 'deep_search',
-        'read_file', 'explain_code',
-      ]);
+      const lowRisk = new Set(LOW_RISK_TOOLS);
       const allSucceeded = allNodes.every(n => n.status === 'done');
       // Any step whose metadata says it only reads (risk 0) counts too (P8).
-      const allLowRisk   = allNodes.every(n => LOW_RISK_TOOLS.has(n.tool) || toolRegistryV2.riskOf(n.tool, n.args) === 0);
+      const allLowRisk   = allNodes.every(n => lowRisk.has(n.tool) || toolRegistryV2.riskOf(n.tool, n.args) === 0);
 
       if (allSucceeded && allLowRisk) {
         console.log(`[Orchestrator] ⚡ OPT-3: Skipping full reflection for low-risk successful graph.`);
@@ -1482,15 +1475,7 @@ export class JarvisOrchestrator {
 
     // OPT-SYNTH-1: Expanded bypass list — all single-action tools that produce
     // self-contained output don't need a second LLM call to "explain" the result.
-    const simpleTools = [
-      'open_app', 'close_app', 'get_system_info', 'system_info', 'search_memory',
-      'read_file', 'get_weather', 'weather', 'time', 'help', 'stop', 'cancel',
-      'pause', 'resume', 'type_text', 'press_key', 'click', 'scroll', 'move_mouse',
-      'take_screenshot', 'get_clipboard', 'set_clipboard', 'run_command',
-      'get_volume', 'set_volume', 'get_battery', 'get_wifi', 'list_files',
-      'open_url', 'close_tab', 'switch_tab', 'search_web', 'get_active_window',
-      'minimize_window', 'maximize_window', 'focus_window',
-    ];
+    const simpleTools = SIMPLE_REPLY_TOOLS;
     const onlySimpleTools = toolsUsed.every(t => simpleTools.includes(t));
 
     if (onlySimpleTools) {
@@ -2283,7 +2268,7 @@ export class JarvisOrchestrator {
     }
 
     if (/\b(weather|forecast|temperature|rain|humidity)\b/.test(clean)) {
-      addIfRegistered('get_weather', 'weather');
+      addIfRegistered('get_weather');
     }
 
     if (/\b(file|folder|read|write|save|edit|create)\b/.test(clean)) {
