@@ -22,6 +22,7 @@ import { getWorkspaceRoot, isForeignWindowsAbsolute, isPathInside, isProtectedSy
 import { isEnvFile } from './workspacePathPolicy.js';
 import { describeElement, lookupRef } from '../perception/browserRefs.js';
 import { NOT_OBSERVED, NO_CREDENTIALS, navigationLevel, normalizeUrl, uploadPathProblem, urlProblem, wordsLevel } from './browserPolicy.js';
+import { obfuscationReason, obfuscationRefusal, readableCommand } from './commandObfuscation.js';
 import { getAgentPath, getRequestText } from '../core/traceContext.js';
 import { changeLevel, checkFilePath, isApprovedRoot, isExecutable } from './fsPolicy.js';
 import { pushTargetSync, repoProblem } from '../tools/gitTools.js';
@@ -161,15 +162,23 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
     case 'control_system': {
       if (action === 'shell' || action === 'powershell') {
         const command = text(args, 'target');
-        const assessment = permissionManager.assessRisk(command);
-        if (assessment.isBlocked) {
-          refused = assessment.reason;
+        // SEC-10: a command written to hide what it runs is refused; the rules
+        // below read the command as written and as the shell reads it.
+        const hidden = obfuscationReason(command);
+        const forms = [...new Set([command, readableCommand(command)])];
+        const assessments = forms.map((f) => permissionManager.assessRisk(f));
+        const blocked = assessments.find((a) => a.isBlocked);
+        if (hidden) {
+          refused = obfuscationRefusal(command, hidden);
+          set(4, 'hides what it runs');
+        } else if (blocked) {
+          refused = blocked.reason;
           set(4, 'critical command');
         } else {
-          raise(COMMAND_CLASS_LEVEL[assessment.riskLevel], `command class ${assessment.riskLevel}`);
-          const critical = CRITICAL_COMMANDS.find(([pattern]) => pattern.test(command));
+          for (const a of assessments) raise(COMMAND_CLASS_LEVEL[a.riskLevel], `command class ${a.riskLevel}`);
+          const critical = CRITICAL_COMMANDS.find(([pattern]) => forms.some((f) => pattern.test(f)));
           if (critical) raise(4, critical[1]);
-          if (TREE_DELETE.test(command) && namesCriticalFolder(command)) {
+          if (forms.some((f) => TREE_DELETE.test(f) && namesCriticalFolder(f))) {
             refused = 'JARVIS does not delete a drive, a user profile or a Windows system folder.';
           }
         }

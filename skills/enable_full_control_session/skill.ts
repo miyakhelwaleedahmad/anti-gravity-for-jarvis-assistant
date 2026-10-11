@@ -13,7 +13,7 @@
  * so it shows in the session log.
  */
 
-import { permissionSession } from '../../control/permissionSession.js';
+import { clampSessionMinutes, permissionSession } from '../../control/permissionSession.js';
 import { approvalGate } from '../../security/approvalGate.js';
 import { securityAuditLogger } from '../../security/securityAuditLogger.js';
 
@@ -25,7 +25,7 @@ export async function execute(args: Record<string, unknown> = {}): Promise<strin
     ? String(args['source'])
     : 'cli') as 'voice' | 'cli' | 'gui' | 'auto';
 
-  const durationMinutes = Math.min(Math.max(Number(args['durationMinutes'] ?? 10), 1), 120);
+  const durationMinutes = clampSessionMinutes(args['durationMinutes'] ?? 10, 10);
 
   // ── action: status ──────────────────────────────────────────────────────
   if (action === 'status') {

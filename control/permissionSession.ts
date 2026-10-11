@@ -81,6 +81,21 @@ const REVOKE_CHECK_INTERVAL_MS = 10_000;
 /** How early to warn before expiry (ms) */
 const EXPIRY_WARN_AHEAD_MS = 5 * 60_000; // 5 minutes
 
+/**
+ * Longest a full-control session runs, and the most time it may have left
+ * after an extension (SEC-12: the documented 30 minutes; the code allowed 120,
+ * and extensions added up without a limit).
+ */
+export const MAX_SESSION_MINUTES = 30;
+const MAX_SESSION_MS = MAX_SESSION_MINUTES * 60_000;
+
+/** Minutes clamped to 1…MAX_SESSION_MINUTES; anything not a number gets `fallback`. */
+export function clampSessionMinutes(minutes: unknown, fallback = MAX_SESSION_MINUTES): number {
+  const n = Number(minutes);
+  const value = Number.isFinite(n) ? n : fallback;
+  return Math.min(Math.max(value, 1), MAX_SESSION_MINUTES);
+}
+
 /** Permission cache TTL — invalidate if level changes (ms) */
 const CACHE_TTL_MS = 500;
 
@@ -154,7 +169,7 @@ export class PermissionSession extends EventEmitter {
   /**
    * Enable Level 2 Full Control session.
    *
-   * @param durationMinutes  How long the session lasts (1–120 min, default 30)
+   * @param durationMinutes  How long the session lasts (1–30 min, default 30)
    * @param source           Who approved it: 'voice' | 'cli' | 'gui' | 'auto'
    * @param voiceApproved    Set to true when approval came through the voice pipeline
    */
@@ -163,7 +178,7 @@ export class PermissionSession extends EventEmitter {
     source: SessionState['activatedBy'] = 'cli',
     voiceApproved = false,
   ): void {
-    const clampedMinutes = Math.min(Math.max(durationMinutes, 1), 120);
+    const clampedMinutes = clampSessionMinutes(durationMinutes);
     const now = Date.now();
 
     this.currentLevel = 2;
@@ -210,7 +225,7 @@ export class PermissionSession extends EventEmitter {
   /**
    * Extend an active session without requiring re-approval.
    * Only valid while a session is currently active.
-   * Maximum extension is capped so total remaining time ≤ 120 minutes.
+   * The session never has more than MAX_SESSION_MINUTES left afterwards.
    */
   extendSession(additionalMinutes: number): boolean {
     this._checkExpiry();
@@ -219,8 +234,11 @@ export class PermissionSession extends EventEmitter {
       return false;
     }
 
-    const maxExtend = Math.min(additionalMinutes, 120);
-    this.fullControlExpiresAt += maxExtend * 60_000;
+    const asked = Number(additionalMinutes);
+    const requested = Number.isFinite(asked) ? Math.min(Math.max(asked, 0), MAX_SESSION_MINUTES) : 0;
+    const before = this.fullControlExpiresAt;
+    this.fullControlExpiresAt = Math.min(before + requested * 60_000, Date.now() + MAX_SESSION_MS);
+    const maxExtend = Math.max(0, Math.round((this.fullControlExpiresAt - before) / 60_000));
     this._warningSent = false; // reset warn flag so it fires again near new expiry
     this._invalidateCache();
 
@@ -516,19 +534,36 @@ export class PermissionSession extends EventEmitter {
       const raw = fs.readFileSync(SESSION_PERSIST_PATH, 'utf8');
       const state: SessionState = JSON.parse(raw);
 
-      // Only restore if the persisted session is still valid
+      // Only restore if the persisted session is still valid. A session never
+      // has more than MAX_SESSION_MINUTES left, so an expiry further away was
+      // not written by JARVIS (SEC-19): the file is anyone's to edit, and its
+      // expiry used to be trusted whatever it said.
+      const now = Date.now();
+      const expires = state.fullControlExpiresAt;
+      const plausible = typeof expires === 'number' && Number.isFinite(expires)
+        && expires <= now + MAX_SESSION_MS + 60_000
+        && (typeof state.activatedAt !== 'number' || (state.activatedAt <= now && expires - state.activatedAt <= MAX_SESSION_MS + 60_000));
+      if (state.level === 2 && typeof expires === 'number' && now < expires && !plausible) {
+        console.warn(
+          `[PermissionSession] ⚠️  The saved full-control session claims to last until ${new Date(expires).toISOString()}, ` +
+          `more than ${MAX_SESSION_MINUTES} min — not restored; starting at Level ${this.baseLevel}.`,
+        );
+        securityAuditLogger.fullControlSession('restore_refused', false, 'Saved session expiry beyond the session limit; not restored.');
+        this._persistSession(); // writes the base-level state
+        return;
+      }
       if (
         state.level === 2 &&
-        state.fullControlExpiresAt !== null &&
-        Date.now() < state.fullControlExpiresAt
+        typeof expires === 'number' &&
+        now < expires
       ) {
         this.currentLevel = state.level;
-        this.fullControlExpiresAt = state.fullControlExpiresAt;
+        this.fullControlExpiresAt = expires;
         this.activatedAt = state.activatedAt;
         this.activatedBy = state.activatedBy;
         this.sessionId = state.sessionId;
 
-        const expiryStr = new Date(state.fullControlExpiresAt).toLocaleTimeString();
+        const expiryStr = new Date(expires).toLocaleTimeString();
         console.log(
           `[PermissionSession] 🔄 Restored active session: ${state.sessionId} | ` +
           `Expires: ${expiryStr}`

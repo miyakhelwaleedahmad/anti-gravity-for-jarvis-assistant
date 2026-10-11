@@ -196,7 +196,14 @@ export class SkillLoader {
       },
     };
 
-    toolRegistryV2.register(tool);
+    try {
+      toolRegistryV2.register(tool);
+    } catch (err) {
+      // Refused by the registry (a fallback riskier than the skill, SEC-09):
+      // this skill is not loaded; the others are.
+      console.error(`[SkillLoader] ${desc.name} not loaded: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
     this.loadedCount++;
   }
 

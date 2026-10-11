@@ -18,7 +18,7 @@
 
 import * as readline from 'readline';
 import { securityAuditLogger } from './securityAuditLogger.js';
-import { currentApproval } from './approvalScope.js';
+import { currentApproval, coversNested } from './approvalScope.js';
 import {
   buildApprovalRequest,
   classifyVoiceAnswer,
@@ -154,11 +154,17 @@ export class ApprovalGate {
 
     // The registry already asked for this call; the controller it reached
     // (process kill, services, shell) used to ask a second time.
+    // Only when it is the same thing the user approved (SEC-08); anything else
+    // inside the call is asked like any other request.
     const approvedCall = currentApproval();
-    if (approvedCall) {
+    if (approvedCall && coversNested(approvedCall, request)) {
+      if (!request.tool) approvedCall.nestedAnswered = (approvedCall.nestedAnswered ?? 0) + 1;
       console.log(`[ApprovalGate] "${request.action}" is part of the approved ${approvedCall.tool} call — not asking again.`);
       this.record(request, { approved: true, by: 'scope' }, approvedCall.requestId);
       return true;
+    }
+    if (approvedCall) {
+      console.log(`[ApprovalGate] "${request.action}" was asked inside the approved ${approvedCall.tool} call but is not what was approved — asking.`);
     }
 
     // One request on display at a time: parallel steps wait their turn.

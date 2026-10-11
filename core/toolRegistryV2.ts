@@ -28,7 +28,7 @@ import { securityAuditLogger } from '../security/securityAuditLogger.js';
 import { TOOL_CATALOG, deriveMeta } from './toolCatalog.js';
 import { assessRisk, callLabel, decide, level2Policy, type RiskAssessment, type RiskDecision } from '../security/riskEngine.js';
 import { approvalGate } from '../security/approvalGate.js';
-import { runApproved, type ApprovedCall } from '../security/approvalScope.js';
+import { currentApproval, isSameCall, runApproved, withoutApproval, type ApprovedCall } from '../security/approvalScope.js';
 import { getAgentIds, getAgentPath, getGoalContext, getRepairReason, getRequestSource, getRequestText } from './traceContext.js';
 import { buildApprovalRequest } from '../security/approvalRequest.js';
 import { redact, redactDeep } from '../security/redactor.js';
@@ -336,6 +336,10 @@ export class ToolRegistryV2 {
       }
     }
 
+    // SEC-09: a fallback runs with the primary's arguments, after the primary's
+    // checks. One riskier than its primary is refused here.
+    this.checkFallbackRisk(tool);
+
     this.tools.set(tool.name, tool);
     this._llmDefCache = null; // Invalidate cached definitions
 
@@ -406,6 +410,59 @@ export class ToolRegistryV2 {
 
   getMeta(name: string): ToolMeta | undefined {
     return this.tools.get(name)?.meta;
+  }
+
+  /** A tool's highest risk over all its actions (4 without metadata). */
+  private maxRiskOf(tool: AgentTool | undefined): number {
+    const meta = tool?.meta;
+    if (!meta) return 4;
+    const risks = meta.actions ? [meta.risk, ...Object.values(meta.actions).map((a) => a.risk)] : [meta.risk];
+    const max = Math.max(...risks);
+    return meta.external === 'change' ? Math.max(2, max) : max;
+  }
+
+  /**
+   * Throws when `tool` is a fallback riskier than a primary that names it, or
+   * names a fallback riskier than itself: higher highest risk, or a higher
+   * permission floor. Either may be registered first.
+   */
+  private checkFallbackRisk(tool: AgentTool): void {
+    const pairs: Array<[AgentTool, AgentTool]> = [];
+    for (const name of tool.fallbacks ?? []) {
+      const fallback = this.tools.get(name);
+      if (fallback) pairs.push([tool, fallback]);
+    }
+    for (const other of this.tools.values()) {
+      if (other.name !== tool.name && other.fallbacks?.includes(tool.name)) pairs.push([other, tool]);
+    }
+    for (const [primary, fallback] of pairs) {
+      const riskier = this.maxRiskOf(fallback) > this.maxRiskOf(primary);
+      const higherFloor = (fallback.requiredLevel ?? 0) > (primary.requiredLevel ?? 0);
+      if (riskier || higherFloor) {
+        throw new Error(
+          `Tool "${primary.name}" cannot fall back to "${fallback.name}": the fallback is riskier ` +
+          `(risk ${this.maxRiskOf(fallback)} vs ${this.maxRiskOf(primary)}, permission level ` +
+          `${fallback.requiredLevel ?? 0} vs ${primary.requiredLevel ?? 0}) and would run without its own checks.`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Whether a fallback may run for this call: its risk for these arguments is
+   * no higher than the level the call was cleared at (SEC-09).
+   */
+  private fallbackAllowed(primary: AgentTool, name: string, args: Record<string, unknown>, level: number): boolean {
+    const fallback = this.tools.get(name);
+    if (!fallback) return false;
+    try {
+      const fbLevel = assessRisk({ tool: name, args, baseRisk: this.riskOf(name, args) }).level;
+      if (fbLevel <= level && (fallback.requiredLevel ?? 0) <= (primary.requiredLevel ?? 0)) return true;
+      console.warn(`[ToolRegistry] ⛔ Fallback "${name}" for "${primary.name}" is level ${fbLevel} for this call (cleared at ${level}) — not used.`);
+    } catch (err) {
+      console.warn(`[ToolRegistry] ⛔ Fallback "${name}" for "${primary.name}": risk check failed (${err instanceof Error ? err.message : String(err)}) — not used.`);
+    }
+    return false;
   }
 
   /** Tools registered with derived metadata because the catalogue has no entry. */
@@ -582,6 +639,13 @@ export class ToolRegistryV2 {
     args: Record<string, unknown>,
     externalSignal?: AbortSignal
   ): Promise<ToolResult> {
+    // A different call made from inside an approved one (a skill calling the
+    // registry) does not run under that approval: no level grant, and it asks
+    // for its own (SEC-08).
+    const outer = currentApproval();
+    if (outer && !isSameCall(outer, name, args)) {
+      return withoutApproval(() => this.execute(name, args, externalSignal));
+    }
     const start = Date.now();
 
     // 1. Tool exists?
@@ -720,6 +784,8 @@ export class ToolRegistryV2 {
       approvedCall = {
         tool: name, args, level: assessment.level, grantsLevel: decision.grantsLevel,
         approvedAt: Date.now(), requestId: request.id,
+        ...(request.action ? { action: request.action } : {}),
+        target: request.target,
       };
     }
 
@@ -755,7 +821,7 @@ export class ToolRegistryV2 {
     const runUnderLock = async () => {
       // 4. Execute with timeout + abort signal. What a tool returns goes on to
       // the LLM, memory and logs, so credentials in it are replaced here.
-      const ran = redactResult(await this.executeWithFallbacks(tool, args, externalSignal, start));
+      const ran = redactResult(await this.executeWithFallbacks(tool, args, externalSignal, start, level));
       // A reported success counts once its effect has been checked.
       const result = ran.success ? await this.verifyResult(tool, args, ran) : ran;
 
@@ -800,9 +866,12 @@ export class ToolRegistryV2 {
     tool: AgentTool,
     args: Record<string, unknown>,
     externalSignal: AbortSignal | undefined,
-    startTime: number
+    startTime: number,
+    level: number,
   ): Promise<ToolResult> {
-    const chain = [tool.name, ...tool.fallbacks];
+    // Fallbacks run with this call's arguments and approval, so only those no
+    // riskier for them than the call itself (SEC-09).
+    const chain = [tool.name, ...tool.fallbacks.filter((name) => this.fallbackAllowed(tool, name, args, level))];
 
     for (let i = 0; i < chain.length; i++) {
       const toolName = chain[i]!;

@@ -8,6 +8,7 @@
 import { runProcess, stoppedReason } from '../system/processRunner.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
+import { obfuscationReason, obfuscationRefusal, readableCommand } from '../security/commandObfuscation.js';
 
 /**
  * Service names were pasted into a PowerShell command line, so a "name" such
@@ -53,28 +54,40 @@ async function runStoppable(what: string, file: string, args: string[], signal?:
 }
 
 export class AdminController {
+  /** Why a command must not run at all, or null. Checked before anyone is asked. */
+  private refusal(command: string): string | null {
+    // Written to hide what it runs (SEC-10): the checks below could not read it.
+    const hidden = obfuscationReason(command);
+    if (hidden) return obfuscationRefusal(command, hidden);
+    if (this.isDangerousCommand(command)) {
+      return 'Command Blocked: Execution of security-compromising or destructive commands is forbidden.';
+    }
+    return null;
+  }
+
+  /** Checked on the command as written and as the shell reads it (escapes and quotes removed). */
   private isDangerousCommand(command: string): boolean {
-    const lower = command.toLowerCase();
-    // Block disabling security features
-    const blocks = [
-      'disable-netfirewallrule',
-      'netsh advfirewall set',
-      'set-mppreference', // Windows Defender config
-      'stop-service windefend',
-      'sc config windefend',
-      'sc stop windefend',
-      'format-volume',
-      'clear-disk',
-      'initialize-disk',
-      'shutdown',
-      'restart-computer',
-      'stop-computer',
+    const forms = [command.toLowerCase().replace(/\s+/g, ' '), readableCommand(command)];
+    // Block disabling security features. Whitespace and parameter names vary;
+    // spsv is Stop-Service's alias.
+    const blocks: RegExp[] = [
+      /disable-netfirewallrule/,
+      /netsh(\.exe)? advfirewall set/,
+      /(set|add)-mppreference/, // Windows Defender config and exclusions
+      /\b(stop-service|spsv)\b[^;|&]*\bwindefend\b/,
+      /\bsc(\.exe)? (config|stop|delete) windefend\b/,
+      /format-volume/,
+      /clear-disk/,
+      /initialize-disk/,
+      /shutdown/,
+      /restart-computer/,
+      /stop-computer/,
     ];
-    if (blocks.some(b => lower.includes(b))) return true;
+    if (forms.some((f) => blocks.some((b) => b.test(f)))) return true;
     // `format` the disk command — as a word on its own, also as format.com or
     // with a path. A bare substring match also refused harmless commands such
     // as `Get-Date -Format yyyy` and `Get-Process | Format-Table`.
-    return /(^|[\s;&|()'"`\\/])format(\.com|\.exe)?(?=$|[\s;&|()'"`])/.test(lower);
+    return forms.some((f) => /(^|[\s;&|()'"`\\/])format(\.com|\.exe)?(?=$|[\s;&|()'"`])/.test(f));
   }
 
   public async runShellCommand(command: string, signal?: AbortSignal): Promise<string> {
@@ -82,9 +95,8 @@ export class AdminController {
       throw new Error('Permission Level 2 required to run commands.');
     }
 
-    if (this.isDangerousCommand(command)) {
-      throw new Error(`Command Blocked: Execution of security-compromising or destructive commands is forbidden.`);
-    }
+    const refused = this.refusal(command);
+    if (refused) throw new Error(refused);
 
     const approved = await approvalGate.requestApproval('Run Shell Command', `Command: ${command}`);
     if (!approved) {
@@ -100,9 +112,8 @@ export class AdminController {
       throw new Error('Permission Level 2 required to run commands.');
     }
 
-    if (this.isDangerousCommand(command)) {
-      throw new Error(`Command Blocked: Execution of security-compromising or destructive commands is forbidden.`);
-    }
+    const refused = this.refusal(command);
+    if (refused) throw new Error(refused);
 
     const approved = await approvalGate.requestApproval('Run PowerShell Command', `PowerShell: ${command}`);
     if (!approved) {

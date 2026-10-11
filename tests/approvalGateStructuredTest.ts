@@ -139,7 +139,12 @@ if (requestModule.buildApprovalRequest) {
   ok('RISK names the level', /RISK:\s+Level 3 — high/.test(block));
   ok('each request has its own id', build().id !== build().id);
   const spoken = requestModule.spokenApprovalRequest(r) as string;
-  ok('the spoken version asks the question', spoken.includes('Do you approve this action?') && spoken.includes('end process on notepad'), spoken);
+  ok('the spoken version names the action and, at level 3, says to type the approval (SEC-02 default)',
+    spoken.includes('end process on notepad') && /Voice cannot approve this one: type approve/.test(spoken), spoken);
+  process.env['JARVIS_VOICE_APPROVAL_MAX_RISK'] = '3';
+  const spokenAllowed = requestModule.spokenApprovalRequest(r) as string;
+  delete process.env['JARVIS_VOICE_APPROVAL_MAX_RISK'];
+  ok('…and asks the question when voice may approve level 3', spokenAllowed.includes('Do you approve this action?'), spokenAllowed);
 } else {
   ok('approval request module exists', false);
 }
@@ -159,6 +164,10 @@ if (requestModule.buildApprovalRequest) {
 }
 
 console.log('\n--- 3. Spoken answers ---');
+// How a spoken answer is heard and timed, on level-3 requests: the owner's
+// setting allows voice up to level 3 here. The default (voice up to level 2,
+// SEC-02) is tested in tests/voiceApprovalTest.ts.
+process.env['JARVIS_VOICE_APPROVAL_MAX_RISK'] = '3';
 if (requestModule.buildApprovalRequest) {
   // While JARVIS is still asking, "confirm" is its own voice.
   spokenToUser.length = 0;
@@ -224,6 +233,8 @@ if (requestModule.buildApprovalRequest) {
     endTrace();
   }
 }
+
+delete process.env['JARVIS_VOICE_APPROVAL_MAX_RISK'];
 
 console.log('\n--- 4. Level 4 ---');
 if (requestModule.buildApprovalRequest) {
@@ -344,10 +355,10 @@ if (approvalGate) {
   ok('a request that has ended is not shown as WHY later', !why.includes('You asked'), why.trim());
   const inner = await (async () => {
     const { runApproved } = await import('../security/approvalScope.js');
-    return runApproved({ tool: 'control_app', args: {}, level: 3, grantsLevel: 0, approvedAt: Date.now(), requestId: 'apr_outer' } as any,
+    return runApproved({ tool: 'control_app', args: { action: 'close', target: 'code' }, level: 3, grantsLevel: 0, approvedAt: Date.now(), requestId: 'apr_outer' } as any,
       () => approvalGate.requestApproval('Close Protected App', 'Close app: code'));
   })();
-  ok('inside an approved call it is not asked again, and is recorded as part of it',
+  ok('inside the approved call it names, it is not asked again, and is recorded as part of it',
     inner === true && lastDecision()?.by === 'scope' && lastDecision()?.partOf === 'apr_outer');
 }
 
