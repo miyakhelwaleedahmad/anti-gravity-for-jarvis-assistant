@@ -80,6 +80,9 @@ const DEFAULT_CONFIG: OrchestratorConfig = {
  * moving the shared state, and the newer request failed with "unexpected
  * error" (SPEAKING -> OBSERVING).
  */
+/** Longest the first request waits for the skill tools (HYP-02). */
+const SKILLS_WAIT_MS = 10_000;
+
 const requestContext = new AsyncLocalStorage<{ callId: string; signal: AbortSignal }>();
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
@@ -110,7 +113,12 @@ export class JarvisOrchestrator {
   private _loopExecuting = false;
 
   // Phase 1: tracks the active Goal object during a request
-  private activeGoal: Goal | null = null;
+  /**
+   * The goal of each request still running, by its process() call (REL-04).
+   * One shared field was overwritten by an overlapping request and cleared by
+   * whichever finished first, so an interrupt could miss a running goal.
+   */
+  private activeGoals = new Map<string, Goal>();
   private currentProcessCallId: string | null = null;
   private currentAbortController: AbortController | null = null;
   private isConversationEndDeferred = false;
@@ -135,6 +143,12 @@ export class JarvisOrchestrator {
    */
   private continueOffer: { description: string; expires: number } | null = null;
   public onBargeIn: (() => void)[] = [];
+  /**
+   * Settles when the skills are registered (HYP-02). Loading was not awaited:
+   * a request in the first moments was planned without the skill tools
+   * (open_app, control_*, weather…), and the model picked something else.
+   */
+  private skillsReady: Promise<void> = Promise.resolve();
 
   constructor(config: Partial<OrchestratorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -145,7 +159,8 @@ export class JarvisOrchestrator {
     // Load skills from skills/ directory and register as AgentTools
     const skillsDir = path.join(__dirname, '..', 'skills');
     const skillLoader = new SkillLoader(skillsDir);
-    skillLoader.loadSkills().then(count => {
+    // HYP-02: kept, so the first requests wait for the skills (process()).
+    this.skillsReady = skillLoader.loadSkills().then(count => {
       if (count > 0) {
         console.log(`[Orchestrator] 🎯 ${count} skill(s) loaded into ToolRegistry: ${toolRegistryV2.names().length} tools in total.`);
       }
@@ -168,7 +183,7 @@ export class JarvisOrchestrator {
       }).catch(() => {});
     }).catch(err => {
       console.warn('[Orchestrator] Skill loading failed (non-fatal):', err);
-    });
+    }).then(() => undefined);
 
     // OPT-8: Pre-warm the LLM definition cache immediately (before skill load completes)
     Promise.resolve().then(() => toolRegistryV2.getLLMDefinitions()).catch(() => {});
@@ -208,10 +223,8 @@ export class JarvisOrchestrator {
       }
       agentMemory.clearWorkingContext();
       // Phase 1: fail the active goal on interrupt
-      if (this.activeGoal) {
-        goalManager.failGoal(this.activeGoal.id, 'Interrupted by user').catch(() => {});
-        this.activeGoal = null;
-      }
+      for (const g of this.activeGoals.values()) goalManager.failGoal(g.id, 'Interrupted by user').catch(() => {});
+      this.activeGoals.clear();
     });
 
     // Handle deferred conversation end and reset.
@@ -241,6 +254,8 @@ export class JarvisOrchestrator {
    * Called by jarvis.ts for both voice (source='voice') and CLI (source='cli').
    */
   async process(input: string, source: 'cli' | 'voice' = 'cli'): Promise<void> {
+    // The first request waits for the skills, at most SKILLS_WAIT_MS (HYP-02).
+    await this.waitForSkills();
     const callId = Math.random().toString(36).substring(7);
     this.currentProcessCallId = callId;
     // One correlation id per request, so the plan, every tool call and the
@@ -298,7 +313,7 @@ export class JarvisOrchestrator {
     if (shouldCreateGoal) {
       goalPromise = goalManager.createGoal(input, source).then(g => {
         goalManager.transition(g, 'in_progress', 'request started', { quiet: true });
-        this.activeGoal = g;
+        this.activeGoals.set(callId, g);
         goal = g;
         return g;
       }).catch(err => {
@@ -335,7 +350,7 @@ export class JarvisOrchestrator {
             record.failReason ?? (loopOutcome === 'blocked' ? 'blocked by safety policy' : 'agent loop ended without success'),
           ).catch(() => {});
         }
-        this.activeGoal = null;
+        this.activeGoals.delete(callId);
       }
     } catch (err) {
       console.error('[Orchestrator] ❌ Unhandled error in agent loop:', err);
@@ -371,7 +386,7 @@ export class JarvisOrchestrator {
       if (goal) {
         if (approvals.length) goal.metadata = { ...goal.metadata, approvals };
         await goalManager.failGoal(goal.id, errStr).catch(() => {});
-        this.activeGoal = null;
+        this.activeGoals.delete(callId);
       }
     } finally {
       this._loopExecuting = false;
@@ -482,10 +497,8 @@ export class JarvisOrchestrator {
     }
 
     // 2. Fail the active goal so it isn't left as 'in_progress'
-    if (this.activeGoal) {
-      goalManager.failGoal(this.activeGoal.id, reason).catch(() => {});
-      this.activeGoal = null;
-    }
+    for (const g of this.activeGoals.values()) goalManager.failGoal(g.id, reason).catch(() => {});
+    this.activeGoals.clear();
 
     // 3. Interrupt and abort any active task graph
     const graph = taskGraphEngine.getCurrentGraph();
@@ -752,7 +765,7 @@ export class JarvisOrchestrator {
 
     if (!planResult) {
       const isActionRequest = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i.test(input);
-      const isAborted = this.isInterrupted() || this.currentAbortController?.signal.aborted;
+      const isAborted = this.isInterrupted() || this.requestSignal()?.aborted;
       const noAnswer = this.lastPlanOutcome !== 'answered';
 
       if (isAborted || isActionRequest || noAnswer) {
@@ -1272,7 +1285,7 @@ export class JarvisOrchestrator {
       } = {
         model: llmConfig.model,
         messages,
-        signal: this.currentAbortController?.signal,
+        signal: this.requestSignal(),
       };
       if (tools.length > 0) {
         request.tools = tools;
@@ -1341,7 +1354,7 @@ export class JarvisOrchestrator {
     } catch (err) {
       const planningAborted =
         this.isInterrupted() ||
-        this.currentAbortController?.signal.aborted ||
+        this.requestSignal()?.aborted ||
         agentStateMachine.currentState === AgentState.IDLE;
       if (planningAborted) {
         console.warn('[Orchestrator] Planning aborted by watchdog or interrupt. Returning safely to IDLE.');
@@ -1578,7 +1591,7 @@ export class JarvisOrchestrator {
         // Saves ~400–1500ms vs the 32B planning model.
         model: llmConfig.fastModel,
         messages: synthesisMessages,
-        signal: this.currentAbortController?.signal,
+        signal: this.requestSignal(),
         max_tokens: 200,  // OPT-SYNTH-4: cap synthesis at 200 tokens — just a sentence or two
       };
 
@@ -2026,7 +2039,7 @@ export class JarvisOrchestrator {
       model: llmConfig.model,
       messages,
       // no tools mapped, ensuring it only converses
-      signal: this.currentAbortController?.signal,
+      signal: this.requestSignal(),
     };
 
     let firstChunkTime: number | null = null;
@@ -2115,8 +2128,31 @@ export class JarvisOrchestrator {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /** Interrupted, or this request was replaced by a newer one (its own signal aborted). */
+  /** Waits for the skill tools, at most 10 s (a hung import must not block every request). */
+  private async waitForSkills(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const started = Date.now();
+    const finished = await Promise.race([
+      this.skillsReady.then(() => true),
+      new Promise<boolean>((r) => { timer = setTimeout(() => r(false), SKILLS_WAIT_MS); }),
+    ]);
+    if (timer) clearTimeout(timer);
+    const waited = Date.now() - started;
+    if (!finished) console.warn(`[Orchestrator] Skills still loading after ${SKILLS_WAIT_MS} ms; planning without the rest.`);
+    else if (waited > 50) console.log(`[Orchestrator] Waited ${waited} ms for the skills before the first request.`);
+  }
+
   private isInterrupted(): boolean {
     return agentStateMachine.is(AgentState.INTERRUPTED) || requestContext.getStore()?.signal.aborted === true;
+  }
+
+  /**
+   * This request's own abort signal (REL-05). Model calls read
+   * this.currentAbortController, the newest request's: a call made by an
+   * older request after a newer one began was tied to the wrong request.
+   */
+  private requestSignal(): AbortSignal | undefined {
+    return requestContext.getStore()?.signal ?? this.currentAbortController?.signal;
   }
 
   /** A newer process() call has started since this request began. */

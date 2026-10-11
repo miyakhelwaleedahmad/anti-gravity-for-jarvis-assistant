@@ -8,6 +8,7 @@ Baseline at `30605cf` (Linux, Node 22): `pnpm test:ci` → 124 passed · 0 faile
 
 Phase gates (Linux, Node 22, `npx tsx tests/runAll.ts --ci`):
 - Phase 1: 127 passed · 0 failed · 9 skipped.
+- Phase 3: 148 passed · 0 failed · 9 skipped; `tsc --noEmit` clean.
 - Phase 2: 142 passed · 0 failed · 9 skipped; Python: vector persistence 23, vector startup 23, vector access 33, TTS retry 12 — all pass; `tsc --noEmit` clean.
 
 | Finding ID | Current status | Evidence | Planned change | Tests | Dependencies | Result |
@@ -35,18 +36,18 @@ Phase gates (Linux, Node 22, `npx tsx tests/runAll.ts --ci`):
 | SEC-18 | FIXED_AND_TESTED | Reproduced on the old service: a cross-site `text/plain` POST /clear with no token answered 200 and emptied the store (2 → 0) | Token header `X-JARVIS-Token` required on every route but /liveness (JARVIS_VECTOR_TOKEN, else a kept owner-only token in data/security/vector_token, shared by both sides); any Origin header refused; POST bodies must be JSON; /docs and /openapi off; JARVIS's clients send the token; service started with `childEnv` + its own settings | `tests/python/test_vector_access.py` 33/33 (whole ASGI app; refused requests leave count and contents unchanged); `tests/vectorAuthTest.ts` 14/14 (token file, env, spawn env, Python reads the same token) | — | Phase 2 commit |
 | SEC-19 | FIXED_AND_TESTED | Reproduced: a session file edited to expire in 2099 restored full control for ~38 million minutes | Restore refuses an expiry more than 30 min away, a session longer than 30 min, a start in the future, or a non-numeric expiry; logs it, writes the base level back. No HMAC: its key would sit in the same folder as the file | `tests/fullControlLimitTest.ts` §4 (20/20 total) | — | Phase 2 commit |
 | SEC-20 | FIXED_AND_TESTED | Reproduced: the run_command allow-list passed `git log --format=%OPENAI_API_KEY%`, `%PATH:~0,20%`, `HEAD^`, `!TEMP!` | `^`, `!`, `%NAME%` and `%NAME:~` refused by the allow-list (cmd.exe escapes and variables); `git log --format=%h %s` and `HEAD~1` still pass. Run on Linux; the cmd.exe behaviour itself is not exercised on real Windows here | `tests/cmdMetacharTest.ts` 19/19 (old: 8/19) | SEC-06 | Phase 2 commit |
-| BUG-01 | OPEN | | | | | |
-| REL-02 | OPEN | | | | | |
-| REL-03 | OPEN | | | | | |
-| REL-04 | OPEN | | | | ARCH-03 | |
-| REL-05 | OPEN | | | | ARCH-03 | |
-| REL-06 | OPEN | | | | | |
-| REL-07 | OPEN | | | | | |
+| BUG-01 | FIXED_AND_TESTED | Reproduced: A → B → C, A fails; after the repair reset A, B and C stayed "failed: Deadlock", the plan failed (4/9) | A step whose dependency failed is reported "Did not run: it depends on …, which failed" (`blockedBy`); `resetFailedNodes` also resets the steps blocked by it (transitively); a step that failed on its own keeps its failure; a real deadlock is still called one | `tests/taskGraphRepairTest.ts` 9/9; `errorRecoveryTest`, `toolGapAndReplanGuardTest`, `scenarioIntegrationTest` pass | — | Phase 3 commit |
+| REL-02 | FIXED_AND_TESTED | Confirmed in code: both handlers only logged | `system/crashPolicy.ts`: an uncaught exception runs the normal shutdown (memory and goals saved) and exits 1, forced after 10 s; unhandled rejections are logged, 5 within a minute are treated as fatal. `scripts/superviseJarvis.ts` (`pnpm dev:supervised`) restarts after a crash with growing pauses, gives up after 5 in 10 min | `tests/crashPolicyTest.ts` 8/8 (real child processes) | — | Phase 3 commit |
+| REL-03 | FIXED_AND_TESTED | Confirmed: `_isDraining` set and cleared with no await between | Flag removed (it guarded nothing); behaviour unchanged | Covered by the voice queue tests in the full suite | — | Phase 3 commit |
+| REL-04 | FIXED_AND_TESTED | Reproduced: with two overlapping requests, the first one ending cleared `activeGoal` while the second ran (old: 5/6) | `activeGoals` map by request id; interrupt and safeReset fail every running request's goal; each request removes only its own | `tests/requestScopeTest.ts` §1 | ARCH-03 | Phase 3 commit |
+| REL-05 | NOT_REPRODUCED | With overlapping requests each model call already carried its own request's signal (the old code passes the same test); the wrong-signal path needs a call made after a newer request began without an interrupt check in between, and none was found | Hardened anyway: `requestSignal()` reads the request's own signal at the 5 places that read `currentAbortController` | `tests/requestScopeTest.ts` §2 (guard) | ARCH-03 | Phase 3 commit |
+| REL-06 | FIXED_AND_TESTED | Reproduced: a low-risk tool that changes something and throws ran 3 times (old: 3/4) | `safeToRepeat()`: only risk-0 reads and outward queries (web search) get the default retries; any other call runs once unless its tool declares a `retryPolicy` | `tests/retryPolicyTest.ts` 4/4 | — | Phase 3 commit |
+| REL-07 | DOCUMENTED | Confirmed: no tool defines `rollback`, nothing calls `toolRegistryV2.rollback()` or `rollbackManager.rollbackLast()` | Dead registry hook and method removed; README no longer says plans run "with rollback"; rollbackManager header says nothing triggers undo (the file tools' trash is the working undo) | — (no behaviour) | — | Phase 3 commit |
 | REL-08 | FIXED_AND_TESTED | Self-heal ran `python`/`python3` (system Python), not the `.venv` the services run in | Fixed with SEC-15: installs only with `.venv`'s Python; without a `.venv` nothing is installed and the reply says so | `tests/selfHealInstallTest.ts` §2–3 | SEC-15 | Phase 2 commit |
-| REL-09 | OPEN | | | | | |
-| HYP-02 | OPEN | | | | | |
+| REL-09 | BLOCKED | No Windows machine here; the last Windows run (owner's PC, before `30605cf`) had 103 pass / 24 fail | Owner to run `pnpm test` and `pnpm verify:windows` on the PC (steps in REMEDIATION_REPORT.md) | — | Windows PC | — |
+| HYP-02 | FIXED_AND_TESTED | Confirmed: with skill loading slowed to 1.5 s, the first request was planned with 3 tools and no skills (old: 1/3) | `process()` waits for the skill load (at most 10 s, then plans with what is there) | `tests/skillLoadOrderTest.ts` 3/3 | — | Phase 3 commit |
 | PERF-02 | OPEN | | | | | |
-| PERF-03 | OPEN | | | | | |
+| PERF-03 | FIXED_AND_TESTED | Confirmed: 15 s PLANNING watchdog vs 3 attempts × 10 s; a 0.5 s watchdog with 0.3 s attempts resets PLANNING mid-retry in the test | `config/llmTiming.ts`: one source for attempts and timeout; watchdog default = 3 × timeout + 2 s (32 s), never below 15 s; a lower set value is kept with a warning; `.env.example` no longer sets 20000 | `tests/llmTimingTest.ts` 13/13 | — | Phase 3 commit |
 | PERF-04 | OPEN | | | | ARCH-09 | |
 | PERF-05 | OPEN | | | | | |
 | PERF-07 | OPEN | | | | | |

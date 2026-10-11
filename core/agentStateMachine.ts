@@ -19,11 +19,12 @@
  * Watchdog timers:
  *   SPEAKING  → auto-resets to IDLE after SPEAKING_WATCHDOG_MS (default 12s)
  *               Protects against tts.py crashing without sending speaking_end.
- *   PLANNING  → auto-resets to IDLE after PLANNING_WATCHDOG_MS (default 15s)
+ *   PLANNING  → auto-resets to IDLE after PLANNING_WATCHDOG_MS (default: the LLM retry budget, 32 s)
  *               Protects against LLM hanging indefinitely.
  */
 
 import { EventEmitter } from 'events';
+import { planningWatchdogMs } from '../config/llmTiming.js';
 
 // PHASE2-LATENCY-1: Watchdog timeouts reduced to match actual TTS/LLM timeouts.
 const SPEAKING_WATCHDOG_MS = parseInt(
@@ -42,10 +43,8 @@ export function estimateSpeechMs(text: string): number {
   return 1_000 + words * 400;
 }
 
-const PLANNING_WATCHDOG_MS = parseInt(
-  process.env.JARVIS_PLANNING_WATCHDOG_MS ?? '15000',
-  10
-);
+// Derived from the model request's own retries (PERF-03, config/llmTiming.ts).
+const PLANNING_WATCHDOG_MS = planningWatchdogMs();
 
 // ─── State Enum ───────────────────────────────────────────────────────────────
 

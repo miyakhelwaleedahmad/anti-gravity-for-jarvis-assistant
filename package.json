@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx jarvis.ts",
+    "dev:supervised": "tsx scripts/superviseJarvis.ts",
     "build": "tsc",
     "start": "node dist/jarvis.js",
     "clean": "rimraf dist",

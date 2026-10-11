@@ -56,18 +56,18 @@ import { ensureAgentSystem, shutdownAgentSystem } from './core/agents/jarvisAgen
 import { startGoalRuntime, stopGoalRuntime } from './core/goalService.js';
 import { backupIntervalMs, backupRestore } from './system/backupRestore.js';
 import { goalStatusText } from './core/goalTools.js';
+import { createCrashPolicy } from './system/crashPolicy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── Global Error Handlers ────────────────────────────────────────────────────
 
-process.on('uncaughtException', (err) => {
-  console.error('[JARVIS] UNCAUGHT EXCEPTION:', err);
-});
-
-process.on('unhandledRejection', (err) => {
-  console.error('[JARVIS] UNHANDLED PROMISE REJECTION:', err);
-});
+// REL-02: these only logged, and JARVIS went on in an unknown state. An
+// uncaught exception now saves and shuts down with exit code 1; repeated
+// unhandled rejections do the same (system/crashPolicy.ts).
+const crashPolicy = createCrashPolicy({ shutdown: (reason, code) => shutdown(reason, code) });
+process.on('uncaughtException', (err) => crashPolicy.onUncaughtException(err));
+process.on('unhandledRejection', (err) => crashPolicy.onUnhandledRejection(err));
 
 // ─── Phase 4: Mic Ownership State Machine ──────────────────────────────────────────────────────────────
 // Only one subsystem can "own" the microphone at a time:
@@ -123,7 +123,6 @@ interface QueuedVoiceInput {
   timestamp: number;
 }
 const voiceInputQueue: QueuedVoiceInput[] = [];
-let _isDraining = false; // PHASE2-QUEUE-1: drain-lock prevents concurrent races
 
 // ─── JS-Side STT Debug Logging ───────────────────────────────────────────────
 // Part B (TS side): also log STT events from the NodeBridge handler.
@@ -180,13 +179,13 @@ function isCommandLike(text: string): boolean {
 }
 
 function drainVoiceInputQueue(): void {
-  if (_isDraining) return; // PHASE2-QUEUE-1: prevent concurrent drain
+  // REL-03: a `_isDraining` flag was set and cleared with nothing in between
+  // that could run in parallel (this function never awaits), so it guarded
+  // nothing. One item is taken per call.
   if (voiceInputQueue.length === 0) return;
-  _isDraining = true;
 
   const now = Date.now();
   const item = voiceInputQueue.shift();
-  _isDraining = false;
   if (!item) return;
 
   // PHASE2-QUEUE-1: commands that waited too long are discarded. The limit
@@ -857,7 +856,7 @@ function startCLI() {
 // NEW: shutdown hook — double-call guard
 let isShuttingDown = false;
 
-async function shutdown(signal = 'manual') {
+async function shutdown(signal = 'manual', exitCode = 0) {
   if (isShuttingDown) return;   // Prevent double-shutdown
   isShuttingDown = true;
 
@@ -900,8 +899,8 @@ async function shutdown(signal = 'manual') {
   try { conversationBus.shutdown(); } catch {}
   try { nodeBridge.stop(); } catch {}
 
-  console.log('[JARVIS] 👋 JARVIS shut down cleanly. Goodbye, sir.');
-  process.exit(0);
+  console.log(exitCode === 0 ? '[JARVIS] 👋 JARVIS shut down cleanly. Goodbye, sir.' : `[JARVIS] JARVIS stopped after an error (exit code ${exitCode}).`);
+  process.exit(exitCode);
 }
 
 // NEW: Wire process signals for graceful shutdown

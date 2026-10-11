@@ -18,7 +18,7 @@ jarvis.ts                    entry point, voice state machine, process supervisi
       ↓
 core/orchestrator.ts         THE BRAIN — plan → pre-check → execute → observe → reflect → repair
       ↓
-core/taskGraphEngine.ts      runs the plan as a parallel DAG, with retries and rollback
+core/taskGraphEngine.ts      runs the plan as a parallel DAG, with retries (no automatic undo: see REL-07)
       ↓
 core/toolRegistryV2.ts       single dispatch point: schema validation, authz, retry, fallback, caching
       ↓

@@ -20,6 +20,7 @@ import { AdaptiveLruCache } from "../core/adaptiveRamManager.js";
 import { llmStatus } from "./llmStatus.js";
 import { pipelineRegistry, LLM_PIPELINE } from "../self_healing/pipelineRegistry.js";
 import crypto from "crypto";
+import { LLM_MAX_ATTEMPTS, llmTimeoutMs } from '../config/llmTiming.js';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // PHASE1-LLM-1: Retry delay eliminated — blocking sleeps stall the voice pipeline.
 // Server-error retries use a minimal 100ms to avoid tight-spin; all other paths are 0.
 const RETRY_DELAY_MS = 100; // server-error only
-const LLM_TIMEOUT_MS = Number(process.env.JARVIS_LLM_TIMEOUT_MS ?? 10_000);
+const LLM_TIMEOUT_MS = llmTimeoutMs();
 
 /**
  * Model IDs are sent exactly as configured. Groq IDs may contain a slash
@@ -263,7 +264,7 @@ export class GroqProvider implements ILLMProvider {
   }
 
   private async _chatInternal(request: ILLMRequest, cacheKey: string): Promise<ILLMResponse> {
-    const MAX_ATTEMPTS = 3;
+    const MAX_ATTEMPTS = LLM_MAX_ATTEMPTS;
     let lastError: Error | null = null;
     const fastModel = sanitizeModel(llmConfig.fastModel);
     let currentModel = GroqProvider.startModel(sanitizeModel(request.model || llmConfig.model), fastModel);
@@ -383,7 +384,7 @@ export class GroqProvider implements ILLMProvider {
     let currentModel = GroqProvider.startModel(sanitizeModel(request.model || llmConfig.model), fastModel);
     let usedFastModelFor429 = false;
 
-    const MAX_ATTEMPTS = 3;
+    const MAX_ATTEMPTS = LLM_MAX_ATTEMPTS;
     let response: Response | null = null;
     let lastError: Error | null = null;
 

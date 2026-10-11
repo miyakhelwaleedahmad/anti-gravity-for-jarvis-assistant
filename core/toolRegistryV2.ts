@@ -172,12 +172,6 @@ export interface AgentTool {
    * Without one, core/verifiers.ts has the check or the reason there is none.
    */
   verify?: Verifier;
-  /**
-   * Phase 5: optional rollback hook.
-   * Called when the tool succeeded but a downstream step failed and
-   * the orchestrator requests undoing this tool's side effects.
-   */
-  rollback?(args: Record<string, unknown>, executionResult: string): Promise<void>;
   execute(args: Record<string, unknown>, signal?: AbortSignal): Promise<string>;
 }
 
@@ -410,6 +404,15 @@ export class ToolRegistryV2 {
 
   getMeta(name: string): ToolMeta | undefined {
     return this.tools.get(name)?.meta;
+  }
+
+  /** Whether repeating this call after a thrown error cannot do anything twice (REL-06). */
+  safeToRepeat(tool: AgentTool, args: Record<string, unknown>): boolean {
+    const meta = tool.meta;
+    if (!meta) return false;
+    const risk = this.riskOf(tool.name, args);
+    // Reads the PC, or only sends a query out (a web search): nothing changes.
+    return risk === 0 || (meta.external === 'query' && risk <= 1);
   }
 
   /** A tool's highest risk over all its actions (4 without metadata). */
@@ -888,9 +891,14 @@ export class ToolRegistryV2 {
         console.warn(`[ToolRegistry] ⚠️ Tool "${toolName}" is degraded (${metrics.consecutiveFailures} consecutive failures). Attempting anyway.`);
       }
 
-      // Phase 5: resolve retry policy (per-tool overrides default)
+      // Phase 5: resolve retry policy (per-tool overrides default). REL-06:
+      // a call that changes something is not repeated by itself — a thrown
+      // error may come after the change was made. Only calls that read
+      // (risk 0, or a fetch/query) get the default retries; a tool that knows
+      // its changes are safe to repeat says so with its own retryPolicy.
       const policy: RetryPolicy = {
         ...this.DEFAULT_RETRY,
+        ...(this.safeToRepeat(currentTool, args) ? {} : { maxRetries: 0 }),
         ...(currentTool.retryPolicy ?? {}),
       };
 
@@ -1155,24 +1163,6 @@ export class ToolRegistryV2 {
     return { healthy: degradedTools.length === 0, degradedTools, metrics };
   }
 
-  /**
-   * Phase 5: Execute rollback for a previously succeeded tool.
-   * Calls tool.rollback() if defined; no-op otherwise.
-   */
-  async rollback(name: string, args: Record<string, unknown>, executionResult: string): Promise<void> {
-    const tool = this.tools.get(name);
-    if (!tool?.rollback) {
-      console.log(`[ToolRegistry] No rollback defined for "${name}" — skipping.`);
-      return;
-    }
-    try {
-      console.log(`[ToolRegistry] Rolling back "${name}"...`);
-      await tool.rollback(args, executionResult);
-      console.log(`[ToolRegistry] Rollback for "${name}" completed.`);
-    } catch (err) {
-      console.error(`[ToolRegistry] Rollback for "${name}" failed:`, err);
-    }
-  }
 }
 
 // ─── Singleton ────────────────────────────────────────────────────────────────

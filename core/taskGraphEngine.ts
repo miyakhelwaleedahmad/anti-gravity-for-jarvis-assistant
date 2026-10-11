@@ -44,6 +44,8 @@ export interface TaskNode {
   approvals?: ApprovalDecision[];
   /** The check of the call's real effect (core/verifiers.ts). */
   verification?: Verification;
+  /** Never ran because this step failed (BUG-01): reset together with it. */
+  blockedBy?: string;
 }
 
 export interface TaskGraph {
@@ -381,11 +383,36 @@ export class TaskGraphEngine extends EventEmitter {
       const ready = this.getReadyNodes(graph);
 
       if (ready.length === 0) {
-        // Check for deadlock: nodes pending but none ready
+        // Nothing can start. A step whose dependency failed did not run
+        // because of it, which is not a deadlock (BUG-01: it was reported as
+        // one, and a repair that reset the failed step left this one failed).
         const pending = [...graph.nodes.values()].filter(n => n.status === 'pending');
-        if (pending.length > 0) {
-          console.warn(`[TaskGraph] ⚠️  Deadlock: ${pending.length} pending nodes but none are ready. Marking as failed.`);
-          for (const node of pending) {
+        const failedDep = (node: TaskNode, seen = new Set<string>()): TaskNode | undefined => {
+          for (const depId of node.dependencies) {
+            if (seen.has(depId)) continue;
+            seen.add(depId);
+            const dep = graph.nodes.get(depId);
+            if (!dep) continue;
+            // The step that really failed, also through one that did not run.
+            if (dep.status === 'failed') return dep.blockedBy ? graph.nodes.get(dep.blockedBy) ?? dep : dep;
+            if (dep.status === 'pending') { const deeper = failedDep(dep, seen); if (deeper) return deeper; }
+          }
+          return undefined;
+        };
+        const stuck: TaskNode[] = [];
+        for (const node of pending) {
+          const cause = failedDep(node);
+          if (cause) {
+            node.status = 'failed';
+            node.blockedBy = cause.id;
+            node.error = `Did not run: it depends on "${cause.description || cause.tool}", which failed.`;
+          } else {
+            stuck.push(node);
+          }
+        }
+        if (stuck.length > 0) {
+          console.warn(`[TaskGraph] Deadlock: ${stuck.length} pending nodes but none are ready. Marking as failed.`);
+          for (const node of stuck) {
             node.status = 'failed';
             node.error = 'Deadlock: dependencies never resolved';
           }
@@ -402,6 +429,29 @@ export class TaskGraphEngine extends EventEmitter {
 
       await Promise.allSettled(batch.map(node => this.executeNode(node, graph, executor)));
     }
+  }
+
+  /**
+   * Steps that did not run because `nodeId` failed, directly or through
+   * another such step (BUG-01). A step that ran and failed on its own is not
+   * one of them.
+   */
+  blockedDependents(graph: TaskGraph, nodeId: string): TaskNode[] {
+    const out: TaskNode[] = [];
+    const reached = new Set<string>([nodeId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const node of graph.nodes.values()) {
+        if (reached.has(node.id) || node.status !== 'failed' || !node.blockedBy) continue;
+        if (node.dependencies.some((d) => reached.has(d))) {
+          reached.add(node.id);
+          out.push(node);
+          grew = true;
+        }
+      }
+    }
+    return out;
   }
 
   /**

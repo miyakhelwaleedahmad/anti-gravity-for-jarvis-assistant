@@ -21,7 +21,7 @@
  * v2 preserved: LLM fallback for unknown failure classification.
  */
 
-import type { TaskGraph, TaskNode } from './taskGraphEngine.js';
+import { taskGraphEngine, type TaskGraph, type TaskNode } from './taskGraphEngine.js';
 import type { AgentMemory } from '../memory/agentMemory.js';
 import type { ILLMMessage } from '../bridge/llmTypes.js';
 import { toolRegistryV2 } from './toolRegistryV2.js';
@@ -619,9 +619,19 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     for (const id of nodeIds) {
       const node = graph.nodes.get(id);
       if (node && node.status === 'failed') {
+        // The steps that never ran because this one failed run again with it
+        // (BUG-01: they stayed failed, so a repaired plan could not finish).
+        const dependents = taskGraphEngine.blockedDependents(graph, id);
         node.status = 'pending';
         node.error = undefined;
-        console.log(`[Reflection] ♻️  Reset node "${id}" for retry`);
+        node.blockedBy = undefined;
+        console.log(`[Reflection] Reset node "${id}" for retry`);
+        for (const dep of dependents) {
+          dep.status = 'pending';
+          dep.error = undefined;
+          dep.blockedBy = undefined;
+          console.log(`[Reflection] Reset node "${dep.id}" (it waited on "${id}")`);
+        }
       }
     }
     // Reset graph status so execution loop can continue
