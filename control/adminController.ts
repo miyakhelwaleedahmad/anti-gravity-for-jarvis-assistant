@@ -5,7 +5,7 @@
  * strict human-in-the-loop validation (Level 3).
  */
 
-import { execa } from 'execa';
+import { runProcess, stoppedReason } from '../system/processRunner.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 
@@ -40,6 +40,18 @@ function checkNotSecurityService(name: string): void {
   }
 }
 
+/**
+ * Runs an admin command that the caller's signal can stop, with its whole
+ * process tree (REL-01). A stopped command is an error, never a success, and
+ * the action queue does not retry it (it may have done part of its work).
+ */
+async function runStoppable(what: string, file: string, args: string[], signal?: AbortSignal): Promise<{ stdout: string; stderr: string }> {
+  const r = await runProcess(file, args, { signal });
+  const stopped = stoppedReason(r, what);
+  if (stopped) throw new Error(`TIMEOUT: ${stopped}`);
+  return r;
+}
+
 export class AdminController {
   private isDangerousCommand(command: string): boolean {
     const lower = command.toLowerCase();
@@ -65,7 +77,7 @@ export class AdminController {
     return /(^|[\s;&|()'"`\\/])format(\.com|\.exe)?(?=$|[\s;&|()'"`])/.test(lower);
   }
 
-  public async runShellCommand(command: string): Promise<string> {
+  public async runShellCommand(command: string, signal?: AbortSignal): Promise<string> {
     if (!permissionSession.checkPermission(2, `Run shell command: ${command}`)) {
       throw new Error('Permission Level 2 required to run commands.');
     }
@@ -79,11 +91,11 @@ export class AdminController {
       throw new Error('Command execution cancelled by user.');
     }
 
-    const { stdout, stderr } = await execa('cmd.exe', ['/c', command], { reject: false });
+    const { stdout, stderr } = await runStoppable('The command', 'cmd.exe', ['/c', command], signal);
     return `Stdout:\n${stdout}\n\nStderr:\n${stderr}`;
   }
 
-  public async runPowerShell(command: string): Promise<string> {
+  public async runPowerShell(command: string, signal?: AbortSignal): Promise<string> {
     if (!permissionSession.checkPermission(2, `Run PowerShell command: ${command}`)) {
       throw new Error('Permission Level 2 required to run commands.');
     }
@@ -97,11 +109,11 @@ export class AdminController {
       throw new Error('Command execution cancelled by user.');
     }
 
-    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', command], { reject: false });
+    const { stdout, stderr } = await runStoppable('The PowerShell command', 'powershell', ['-NoProfile', '-Command', command], signal);
     return `Stdout:\n${stdout}\n\nStderr:\n${stderr}`;
   }
 
-  public async startService(serviceName: string): Promise<string> {
+  public async startService(serviceName: string, signal?: AbortSignal): Promise<string> {
     const name = checkServiceName(serviceName);
     if (!permissionSession.checkPermission(2, `Start service ${name}`)) {
       throw new Error('Permission Level 2 required.');
@@ -112,11 +124,11 @@ export class AdminController {
       throw new Error('Action cancelled by user.');
     }
 
-    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Start-Service -Name '${name}'`], { reject: false });
+    const { stdout, stderr } = await runStoppable(`Start-Service ${name}`, 'powershell', ['-NoProfile', '-Command', `Start-Service -Name '${name}'`], signal);
     return `Service "${name}" started. Output: ${stdout} ${stderr}`;
   }
 
-  public async stopService(serviceName: string): Promise<string> {
+  public async stopService(serviceName: string, signal?: AbortSignal): Promise<string> {
     const name = checkServiceName(serviceName);
     checkNotSecurityService(name);
     if (!permissionSession.checkPermission(2, `Stop service ${name}`)) {
@@ -128,11 +140,11 @@ export class AdminController {
       throw new Error('Action cancelled by user.');
     }
 
-    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Stop-Service -Name '${name}'`], { reject: false });
+    const { stdout, stderr } = await runStoppable(`Stop-Service ${name}`, 'powershell', ['-NoProfile', '-Command', `Stop-Service -Name '${name}'`], signal);
     return `Service "${name}" stopped. Output: ${stdout} ${stderr}`;
   }
 
-  public async restartService(serviceName: string): Promise<string> {
+  public async restartService(serviceName: string, signal?: AbortSignal): Promise<string> {
     const name = checkServiceName(serviceName);
     checkNotSecurityService(name);
     if (!permissionSession.checkPermission(2, `Restart service ${name}`)) {
@@ -144,7 +156,7 @@ export class AdminController {
       throw new Error('Action cancelled by user.');
     }
 
-    const { stdout, stderr } = await execa('powershell', ['-NoProfile', '-Command', `Restart-Service -Name '${name}'`], { reject: false });
+    const { stdout, stderr } = await runStoppable(`Restart-Service ${name}`, 'powershell', ['-NoProfile', '-Command', `Restart-Service -Name '${name}'`], signal);
     return `Service "${name}" restarted. Output: ${stdout} ${stderr}`;
   }
 }

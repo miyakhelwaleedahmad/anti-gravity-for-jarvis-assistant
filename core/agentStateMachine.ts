@@ -93,6 +93,18 @@ const INTERRUPTIBLE_STATES: ReadonlySet<AgentState> = new Set([
   AgentState.SPEAKING,
 ]);
 
+/**
+ * Whether TTS starting to play (speaking_start from tts.py) moves the state
+ * machine to SPEAKING. Only from IDLE or INTERRUPTED: a request's reply has
+ * already moved it there in orchestrator.speak() before playback starts, so
+ * speech that starts during PLANNING…REPAIRING is a progress message or a
+ * background announcement (an approval prompt for a goal), and moving the
+ * loop to SPEAKING then made its next step illegal (BUG-02, HYP-01).
+ */
+export function speechStartMovesState(state: AgentState): boolean {
+  return state === AgentState.IDLE || state === AgentState.INTERRUPTED;
+}
+
 // ─── Agent State Machine ──────────────────────────────────────────────────────
 
 export class AgentStateMachine extends EventEmitter {

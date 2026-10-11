@@ -97,7 +97,7 @@ function missingPrerequisite(name: string): string | undefined {
 const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
 
 /** Not a test — a helper imported by other tests. */
-const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll', 'chromeHelper']);
+const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll', 'chromeHelper', 'fakeTts']);
 
 const TIMEOUT_MS = Number(process.env['JARVIS_TEST_TIMEOUT_MS'] ?? 120_000);
 

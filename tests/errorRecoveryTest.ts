@@ -94,8 +94,14 @@ const fakeProvider = {
 modelRouter.registerProvider((modelRouter as any).primary, fakeProvider as any);
 modelRouter.registerProvider('openai', fakeProvider as any);
 
-const spoken: string[] = [];
-(orchestrator as any).speak = (t: string) => { spoken.push(t); };
+// The real speak() with a stand-in for tts.py (tests/fakeTts.ts): progress
+// messages and replies go through the state machine as they do at runtime.
+const { nodeBridge } = await import('../bridge/nodeBridge.js');
+const { installFakeTts } = await import('./fakeTts.js');
+const tts = installFakeTts(orchestrator, nodeBridge);
+const spoken = tts.spoken;
+/** A reply that hides a failure behind a passing substring check (TEST-04). */
+const FAILURE_PHRASE = /unexpected error|unable to recover|critical failure|I could not process/i;
 const approvals: any[] = [];
 let answer = true;
 (approvalGate as any).requestApproval = async (request: any) => { approvals.push(request); return answer; };
@@ -117,6 +123,7 @@ async function ask(request: string, plan: Array<{ name: string; args: Record<str
   spoken.length = 0;
   const before = toolRegistryV2.getHistory(500).length;
   await orchestrator.process(request, 'cli');
+  await tts.idle();
   return { said: spoken.join(' | '), calls: historySince(before) };
 }
 
@@ -139,6 +146,7 @@ try {
   let out = await ask('open my web app', [{ name: 'browser_navigate', args: { action: 'go', url: `http://127.0.0.1:${port}/` } }]);
   ok('the failed step is repaired by starting that server, and JARVIS says so',
     /I started the dev server of web on port \d+ first, because nothing answers on port \d+/.test(out.said), out.said);
+  ok('…and the repaired task finished without a failure in the reply (BUG-02, TEST-04)', !FAILURE_PHRASE.test(out.said), out.said);
   ok('the port answers again', await answers(port));
   ok('the page opened in the tab after the repair', (await listPages(chrome.port)).some((p) => p.url === `http://127.0.0.1:${port}/`),
     JSON.stringify((await listPages(chrome.port)).map((p) => p.url)));
@@ -163,13 +171,13 @@ try {
   await sleep(300);
   const newPid = (JSON.parse((await toolRegistryV2.execute('dev', { action: 'servers' })).output)?.servers ?? []).find((s: any) => s.port === port)?.pid;
   ok('approved: the old process is gone, a new server answers, JARVIS says what it did', !alive(holder) && typeof newPid === 'number'
-    && newPid !== holder && await answers(port) && /I stopped the old dev server/.test(out.said), `${holder} → ${newPid}: ${out.said}`);
+    && newPid !== holder && await answers(port) && /I stopped the old dev server/.test(out.said) && !FAILURE_PHRASE.test(out.said), `${holder} → ${newPid}: ${out.said}`);
 
   console.log('\n--- 3. A tab that is not open ---');
   out = await ask('read the about page of my app', [{ name: 'browser_read_page', args: { tab: `127.0.0.1:${port}/about` } }]);
   ok('the address is opened in a new tab, then read', /I opened http:\/\/127\.0\.0\.1:\d+\/about in a new tab first/.test(out.said)
     && (await listPages(chrome.port)).some((p) => p.url === `http://127.0.0.1:${port}/about`)
-    && out.calls.some((c) => c.tool === 'browser_read_page' && c.success), out.said);
+    && out.calls.some((c) => c.tool === 'browser_read_page' && c.success) && !FAILURE_PHRASE.test(out.said), out.said);
 
   console.log('\n--- 4. A file that does not exist ---');
   const missing = path.join(base, 'notes', 'missing.txt');
@@ -204,7 +212,10 @@ try {
     { name: 'browser_page_structure', args: { tab: `127.0.0.1:${port}/flaky-too` } },
   ]);
   ok('a plan likely to fail is planned again, and JARVIS says "likely to fail", not "high-risk"',
-    /Part of my plan is likely to fail, sir: the browser_page_structure step \(Historical failure rate: \d+%\)/.test(out.said) && !/high-risk/i.test(out.said), out.said);
+    /Part of my plan is likely to fail, sir: the browser page structure step \(Historical failure rate: \d+%\)/.test(out.said) && !/high-risk/i.test(out.said), out.said);
+  ok('…and the replanned request ends without "unexpected error" (BUG-02)', !FAILURE_PHRASE.test(out.said), out.said);
+  const { agentStateMachine, AgentState } = await import('../core/agentStateMachine.js');
+  ok('after the request the state machine is back to IDLE, not stuck', agentStateMachine.currentState === AgentState.IDLE, agentStateMachine.currentState);
 } finally {
   await toolRegistryV2.execute('dev', { action: 'stop_server', project: app }).catch(() => undefined);
   await chrome.stop();

@@ -7,6 +7,7 @@ import { conversationBus } from "../core/conversationBus.js";
 import { systemController } from "../core/stateShim.js";
 import { agentStateMachine } from "../core/agentStateMachine.js";
 import http from "http";
+import { createHash, timingSafeEqual } from "crypto";
 
 const LOCALHOST_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const BRIDGE_DEV_MODE = process.env.JARVIS_BRIDGE_DEV_MODE === "true";
@@ -28,11 +29,50 @@ export function getBridgeAuthStatus(): { requiresToken: boolean; devMode: boolea
   };
 }
 
+/** A token longer than this is refused before it is compared. */
+const MAX_TOKEN_LENGTH = 512;
+
+/**
+ * Compared in constant time (SEC-11): both sides are hashed to the same
+ * length first, so neither the length nor a common prefix shows in the time.
+ */
+function sameSecret(given: string, expected: string): boolean {
+  const a = createHash("sha256").update(given, "utf8").digest();
+  const b = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(a, b);
+}
+
 export function isBridgeTokenValid(token: unknown): boolean {
   const isDev = (process.env.JARVIS_BRIDGE_DEV_MODE ?? "false").toLowerCase() === "true";
+  // Dev mode skips the token only: a browser page is refused before this, at
+  // the connection (bridgeOriginAllowed), in every mode (SEC-01).
   if (isDev) return true;
   const validToken = process.env.JARVIS_BRIDGE_TOKEN ?? BRIDGE_TOKEN;
-  return typeof token === "string" && token.length > 0 && token === validToken;
+  if (typeof token !== "string" || token.length === 0 || token.length > MAX_TOKEN_LENGTH) return false;
+  if (!validToken) return false;
+  return sameSecret(token, validToken);
+}
+
+/**
+ * Whether a WebSocket connection may open, from its Origin header (SEC-01).
+ *
+ * JARVIS's clients are its own Python modules (voice/stt.py, tts.py,
+ * wakeWords.py, vision/screen_capture.py); the websockets library sends no
+ * Origin. A browser always sends one, so a web page that tried to reach
+ * ws://127.0.0.1:9000 (to send commands or answer approvals) is refused here,
+ * in token mode and in dev mode alike. JARVIS_BRIDGE_ALLOWED_ORIGINS
+ * (comma-separated, exact) admits a trusted local page if one is ever needed.
+ */
+export function bridgeOriginAllowed(origin: string | undefined, env: Record<string, string | undefined> = process.env): boolean {
+  if (origin === undefined || origin === "") return true;
+  const allowed = (env.JARVIS_BRIDGE_ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean);
+  return allowed.includes(origin);
+}
+
+/** Largest message a client may send (vision frames are the largest). */
+function maxPayloadBytes(): number {
+  const mb = Number(process.env.JARVIS_BRIDGE_MAX_PAYLOAD_MB);
+  return (Number.isFinite(mb) && mb > 0 ? mb : 16) * 1024 * 1024;
 }
 
 
@@ -142,6 +182,13 @@ export class NodeBridge {
     this.wss = new WebSocketServer({
       host: pythonBridgeConfig.host,
       port: pythonBridgeConfig.port,
+      maxPayload: maxPayloadBytes(),
+      // Refuse browser pages before any message is read (SEC-01).
+      verifyClient: (info: { origin?: string; req: http.IncomingMessage }) => {
+        if (bridgeOriginAllowed(info.origin || undefined)) return true;
+        console.warn(`[NodeBridge] ⛔ Refused a WebSocket connection from a web page (Origin: ${String(info.origin).slice(0, 80)}).`);
+        return false;
+      },
     });
 
     const authStatus = BRIDGE_DEV_MODE ? "INSECURE DEV MODE (no token)" : "TOKEN PROTECTED (production)";
@@ -152,9 +199,11 @@ export class NodeBridge {
     // PART B-5: Add health status endpoint
     const healthPort = parseInt(process.env.HEALTH_PORT || "9001", 10);
     const healthServer = http.createServer((req, res) => {
-      if (req.url === "/health") {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(pipelineRegistry.getHealth(), null, 2));
+      if (req.method === "GET" && req.url === "/health") {
+        // Each pipeline's status only: no error text, paths or settings (SEC-11).
+        const status = Object.fromEntries(Object.entries(pipelineRegistry.getHealth()).map(([name, p]) => [name, p.status]));
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(JSON.stringify(status, null, 2));
       } else {
         res.writeHead(404);
         res.end("Not Found");

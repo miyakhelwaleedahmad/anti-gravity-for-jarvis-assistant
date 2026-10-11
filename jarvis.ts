@@ -27,7 +27,7 @@ import { nodeBridge }      from './bridge/nodeBridge.js';
 import { orchestrator, normalizeVoiceInput }    from './core/orchestrator.js';
 import { brainLoop }       from './core/brainLoop.js';
 import { conversationBus } from './core/conversationBus.js';
-import { agentStateMachine, AgentState } from './core/agentStateMachine.js';
+import { agentStateMachine, AgentState, speechStartMovesState } from './core/agentStateMachine.js';
 import { evaluateEcho }    from './core/voiceEchoFilter.js';
 import { mergePendingVoiceContinuation, shouldUseContinuationContext, accumulateContinuationFragment } from './core/voiceContinuation.js';
 import { queuedCommandMaxAgeMs, DROPPED_COMMAND_NOTICE, followUpSeconds, visionEnabled } from './core/voiceSettings.js';
@@ -708,15 +708,8 @@ async function startJarvis() {
     // ── Voice Loop Part 5: Echo Prevention ────────────────────────────────
     conversationBus.on('speaking:start', () => {
       const cur = agentStateMachine.currentState;
-      const speakingAllowedFrom: AgentState[] = [
-        AgentState.IDLE,
-        AgentState.REFLECTING,
-        AgentState.INTERRUPTED,
-      ];
-      if (cur !== AgentState.SPEAKING) {
-        if (speakingAllowedFrom.includes(cur)) {
-          agentStateMachine.transition(AgentState.SPEAKING);
-        }
+      if (cur !== AgentState.SPEAKING && speechStartMovesState(cur)) {
+        agentStateMachine.transition(AgentState.SPEAKING);
       }
       console.log('[JARVIS] 🔇 TTS Started — Pausing mic to prevent echo.');
       // Phase 4: Take mic ownership; prevent WakeWord from re-enabling during playback

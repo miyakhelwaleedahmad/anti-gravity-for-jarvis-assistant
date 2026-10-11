@@ -9,7 +9,8 @@
  * Failures a second attempt cannot fix. A cancelled approval in particular:
  * retrying it asked the user the same question again.
  */
-const FINAL_FAILURE = /safety policy|blocked|ABORTED|User did not confirm|cancelled by user|denied|not approved|Permission Level \d required/i;
+// A command stopped for taking too long may have done part of its work: never run it again (REL-01, REL-06).
+const FINAL_FAILURE = /safety policy|blocked|ABORTED|TIMEOUT|was stopped|User did not confirm|cancelled by user|denied|not approved|Permission Level \d required/i;
 
 export class ActionQueue {
   private queue: Promise<any> = Promise.resolve();

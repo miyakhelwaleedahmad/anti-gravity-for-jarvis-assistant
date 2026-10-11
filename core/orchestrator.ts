@@ -785,7 +785,7 @@ export class JarvisOrchestrator {
         // intent here and act on it after this analysis block, so a genuine
         // replan attempt happens and the guard still bounds it.
         console.warn(`[Orchestrator] ⚠️ PlannerIntelligence: recommendation=replan.`);
-        this.speak(msg);
+        this.announce(msg);
         replanRequest = {
           reason: topIssue?.reasons.join('; ') ?? 'plan confidence below threshold',
         };
@@ -1080,7 +1080,7 @@ export class JarvisOrchestrator {
           };
         }
       }
-      this.speak(`I ${diagnosis.steps.map((s) => s.did).join(' and ')} first, because ${diagnosis.failure}, sir.`);
+      this.announce(`I ${diagnosis.steps.map((s) => s.did).join(' and ')} first, because ${diagnosis.failure}, sir.`);
       reflectionEngine.resetFailedNodes(graph, [node.id]);
       return { kind: 'repaired' };
     }
@@ -1409,7 +1409,7 @@ export class JarvisOrchestrator {
       if (midCheck.signal === 'abort') {
         console.error(`[Orchestrator] 💥 Mid-execution abort: ${midCheck.reason}`);
         taskGraphEngine.interrupt(graph);
-        this.speak(`I detected a critical failure mid-execution and stopped, sir.`);
+        this.announce(`I detected a critical failure mid-execution and stopped, sir.`);
       } else if (midCheck.signal === 'replan') {
         console.warn(`[Orchestrator] ⚠️  Mid-execution replan suggested: ${midCheck.reason}`);
         // Let the repair loop handle it after execution completes
@@ -2353,11 +2353,39 @@ export class JarvisOrchestrator {
     return names[clean] ?? (target.trim() || 'that');
   }
 
+  /**
+   * The request's reply: the state machine moves to SPEAKING, and the request
+   * ends after it. For a message while the task goes on, use announce().
+   */
   public speak(text: string): void {
-    if (!text || !text.trim()) return;
+    const cleanText = this.spokenForm(text);
+    if (!cleanText) return;
+    try {
+      agentStateMachine.safeTransitionToSpeaking();
+    } catch (err) {
+      console.warn(`[Orchestrator] speak() safe state transition failed:`, err);
+    }
+    this.sendSpeech(cleanText);
+  }
+
+  /**
+   * A progress message while the task goes on ("I'll plan it again", "I
+   * restarted the server first"): spoken, but the state machine stays in its
+   * loop state. Moving it to SPEAKING here made the next step's transition
+   * (SPEAKING → EXECUTING / PLANNING) illegal, and a repair that worked ended
+   * in "unexpected error" (BUG-02).
+   */
+  public announce(text: string): void {
+    const cleanText = this.spokenForm(text);
+    if (cleanText) this.sendSpeech(cleanText);
+  }
+
+  /** The text as it is spoken, or '' when nothing should be said. */
+  private spokenForm(text: string): string {
+    if (!text || !text.trim()) return '';
     if (this.isInterrupted()) {
-      console.log(`[Orchestrator] 🛑 speak() blocked: interrupted or replaced by a newer request. Text: "${text.substring(0, 30)}..."`);
-      return;
+      console.log(`[Orchestrator] 🛑 speech blocked: interrupted or replaced by a newer request. Text: "${text.substring(0, 30)}..."`);
+      return '';
     }
 
     // 1. Sanitize <think>...</think> and partial <think> blocks
@@ -2368,34 +2396,31 @@ export class JarvisOrchestrator {
 
     // 2. Remove markdown formatting characters for clean spoken output
     cleanText = cleanText
+      .replace(/(\w)_(?=\w)/g, '$1 ')         // tool_name -> "tool name", not "toolname"
       .replace(/[*_`#~]/g, '')                // formatting characters
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links -> raw text
       .replace(/-\s+/g, '')                   // list hyphens
       .replace(/^\s*[-*+]\s+/gm, '')          // bullet points
       .trim();
 
-    if (!cleanText) return;
+    if (!cleanText) return '';
 
     // 3. Apply concise personality rule: limit verbal response to max 3 sentences
     const sentences = cleanText.split(/(?<=[.!?])\s+/);
     if (sentences.length > 3) {
       cleanText = sentences.slice(0, 3).join(' ') + ' I have printed the full details to the console, sir.';
     }
+    return cleanText;
+  }
 
-    // 4. Ensure the state is SPEAKING
-    try {
-      agentStateMachine.safeTransitionToSpeaking();
-    } catch (err) {
-      console.warn(`[Orchestrator] speak() safe state transition failed:`, err);
-    }
-
-    // 5. Track last spoken text in NodeBridge
+  private sendSpeech(cleanText: string): void {
+    // Track last spoken text in NodeBridge
     nodeBridge.lastTtsText = cleanText;
 
-    // 6. Pause wake word immediately to prevent echo
+    // Pause wake word immediately to prevent echo
     nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'pause' } });
 
-    // 7. Send text to clients via WebSocket
+    // Send text to clients via WebSocket
     if (this.config.voiceEnabled) {
       nodeBridge.speakToClients(cleanText);
     }

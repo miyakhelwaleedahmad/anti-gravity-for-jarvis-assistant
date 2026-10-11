@@ -33,12 +33,19 @@ export interface KernelResult {
   error: string | null;
 }
 
+/** Aborts when either signal does (the caller's budget or the action queue's timeout). */
+function either(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined {
+  const signals = [a, b].filter((x): x is AbortSignal => !!x);
+  return signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+}
+
 export class PcControlKernel {
   private async executeAction(
     actionName: string,
     targetName: string,
     isReadOnly: boolean,
-    runFn: () => Promise<any>
+    /** Gets the action queue's signal (its timeout); a command passes it on to its process (REL-01). */
+    runFn: (signal?: AbortSignal) => Promise<any>
   ): Promise<KernelResult> {
     const t0 = performance.now();
     const permLevel = permissionSession.getCurrentLevel();
@@ -50,7 +57,7 @@ export class PcControlKernel {
         message = await runFn();
       } else {
         // Queue stateful mutations
-        message = await actionQueue.enqueue(actionName, () => runFn());
+        message = await actionQueue.enqueue(actionName, (queueSignal) => runFn(queueSignal));
       }
       
       const durationMs = Math.round(performance.now() - t0);
@@ -371,12 +378,12 @@ export class PcControlKernel {
 
   // ── System/Admin ───────────────────────────────────────────────────────────
 
-  public async runShellCommand(command: string): Promise<KernelResult> {
-    return this.executeAction('runShellCommand', command, false, () => adminController.runShellCommand(command));
+  public async runShellCommand(command: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('runShellCommand', command, false, (qs) => adminController.runShellCommand(command, either(signal, qs)));
   }
 
-  public async runPowerShell(command: string): Promise<KernelResult> {
-    return this.executeAction('runPowerShell', command, false, () => adminController.runPowerShell(command));
+  public async runPowerShell(command: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('runPowerShell', command, false, (qs) => adminController.runPowerShell(command, either(signal, qs)));
   }
 
   public async checkService(serviceName: string): Promise<KernelResult> {
@@ -387,16 +394,16 @@ export class PcControlKernel {
     });
   }
 
-  public async startService(serviceName: string): Promise<KernelResult> {
-    return this.executeAction('startService', serviceName, false, () => adminController.startService(serviceName));
+  public async startService(serviceName: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('startService', serviceName, false, (qs) => adminController.startService(serviceName, either(signal, qs)));
   }
 
-  public async stopService(serviceName: string): Promise<KernelResult> {
-    return this.executeAction('stopService', serviceName, false, () => adminController.stopService(serviceName));
+  public async stopService(serviceName: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('stopService', serviceName, false, (qs) => adminController.stopService(serviceName, either(signal, qs)));
   }
 
-  public async restartService(serviceName: string): Promise<KernelResult> {
-    return this.executeAction('restartService', serviceName, false, () => adminController.restartService(serviceName));
+  public async restartService(serviceName: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('restartService', serviceName, false, (qs) => adminController.restartService(serviceName, either(signal, qs)));
   }
 
   public async getNetworkStatus(): Promise<KernelResult> {

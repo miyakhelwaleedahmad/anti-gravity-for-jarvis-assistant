@@ -59,6 +59,18 @@ const TIMEOUT_BUDGETS: Record<RiskLevel, number> = {
   high:   15_000,  // 15s — high-risk tools should be atomic and fast
 };
 
+/** The budget for `risk`; JARVIS_TOOL_BUDGET_<LOW|MEDIUM|HIGH>_MS overrides it. */
+function budgetMs(risk: RiskLevel): number {
+  const v = Number(process.env[`JARVIS_TOOL_BUDGET_${risk.toUpperCase()}_MS`]);
+  return Number.isFinite(v) && v > 0 ? v : TIMEOUT_BUDGETS[risk];
+}
+
+/** How long a stopped tool gets to finish before the call ends without it. */
+function stopGraceMs(): number {
+  const v = Number(process.env['JARVIS_TOOL_STOP_GRACE_MS']);
+  return Number.isFinite(v) && v >= 0 ? v : 5_000;
+}
+
 // ─── Sandbox ──────────────────────────────────────────────────────────────────
 
 export class ToolExecutionSandbox {
@@ -95,8 +107,9 @@ export class ToolExecutionSandbox {
 
     // ── Compose abort signal (external OR timeout budget) ─────────────────────
     const ac = new AbortController();
-    const budgetMs = TIMEOUT_BUDGETS[risk];
-    const budgetTimer = setTimeout(() => ac.abort(), budgetMs);
+    const budget = budgetMs(risk);
+    let overBudget = false;
+    const budgetTimer = setTimeout(() => { overBudget = true; ac.abort(); }, budget);
 
     if (externalSignal) {
       if (externalSignal.aborted) {
@@ -107,34 +120,51 @@ export class ToolExecutionSandbox {
       externalSignal.addEventListener('abort', () => ac.abort(), { once: true });
     }
 
-    let output = '';
-    let success = false;
-
-    try {
-      output = await tool.execute(args, ac.signal);
-      success = !output.toLowerCase().startsWith('error:');
-      return output;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      output = `Error: ${msg}`;
-      return output;
-    } finally {
+    // The slot is held until the tool has really finished, also when the
+    // caller stopped waiting for it below.
+    const execution = Promise.resolve()
+      .then(() => tool.execute(args, ac.signal))
+      .then((output) => ({ output }), (err: unknown) => ({ output: `Error: ${err instanceof Error ? err.message : String(err)}` }));
+    void execution.then(({ output }) => {
       clearTimeout(budgetTimer);
       this._activeCounts[risk]--;
-      const durationMs = Date.now() - sandboxStart;
-
-      // Audit log for high-risk tools (non-blocking)
       if (risk === 'high') {
         this._writeAuditLog({
           tool: tool.name,
           risk,
           args: this._summariseArgs(args),
-          success,
-          durationMs,
+          success: !output.toLowerCase().startsWith('error:'),
+          durationMs: Date.now() - sandboxStart,
           timestamp: new Date().toISOString(),
         });
       }
+    });
+
+    // Once the signal is aborted (budget or caller), the tool has a short time
+    // to stop — the process tools stop their whole process tree. A tool that
+    // ignores the signal no longer holds the registry's queue and every later
+    // risky action behind it (REL-01): the call ends as a timeout.
+    const gaveUp = new Promise<{ output: string; stuck: true }>((resolve) => {
+      const onAbort = () => {
+        const t = setTimeout(() => resolve({
+          output: `Error: TIMEOUT: Tool "${tool.name}" ${overBudget ? `ran past its ${Math.round(budget / 1000)} s budget` : 'was cancelled'} and did not stop within ${Math.round(stopGraceMs() / 1000)} s; JARVIS stopped waiting for it.`,
+          stuck: true,
+        }), stopGraceMs());
+        void execution.then(() => clearTimeout(t));
+      };
+      if (ac.signal.aborted) onAbort(); else ac.signal.addEventListener('abort', onAbort, { once: true });
+    });
+
+    const settled = await Promise.race([execution, gaveUp]);
+    if ('stuck' in settled) {
+      console.warn(`[ToolSandbox] ⚠️ "${tool.name}" did not stop after its signal; its slot stays taken until it ends.`);
+      return settled.output;
     }
+    if (overBudget && !settled.output.toLowerCase().startsWith('error:')) {
+      // It finished, but only after its budget: the result is real, and late.
+      console.warn(`[ToolSandbox] "${tool.name}" finished after its ${budget} ms budget.`);
+    }
+    return settled.output;
   }
 
   /** Returns current active execution counts per risk level */
