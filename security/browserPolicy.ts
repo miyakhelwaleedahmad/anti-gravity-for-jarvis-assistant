@@ -41,6 +41,60 @@ export function urlProblem(raw: string, allowBlank = false): string | undefined 
   return undefined;
 }
 
+/**
+ * A loopback, private-network, link-local or .local address (SEC-17): local
+ * admin pages (a router, a dev server's /docs, the vector service on :8000)
+ * that a page read by JARVIS could try to make it open.
+ */
+export function isPrivateAddress(raw: string): boolean {
+  let host: string;
+  try { host = new URL(normalizeUrl(raw)).hostname.toLowerCase().replace(/^\[|\]$/g, ''); } catch { return false; }
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host === '0.0.0.0' || host === '::1' || host === '::') return true;
+  if (/^(fc|fd)[0-9a-f]{2}:/.test(host) || host.startsWith('fe80:')) return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  return a === 127 || a === 10 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+}
+
+/** The address's host appears in `text` (the user's request, or an agent's task). */
+export function hostNamedIn(raw: string, text: string | undefined): boolean {
+  if (!text) return false;
+  let host: string;
+  try { host = new URL(normalizeUrl(raw)).hostname.toLowerCase(); } catch { return false; }
+  const t = text.toLowerCase();
+  if (t.includes(host)) return true;
+  // "localhost:3000", "port 3000" for a local server the user asked about.
+  const port = (() => { try { return new URL(normalizeUrl(raw)).port; } catch { return ''; } })();
+  return isPrivateAddress(raw) && !!port && new RegExp(`\\b(?:localhost|port)\\s*:?\\s*${port}\\b`).test(t);
+}
+
+/**
+ * The level of opening `raw` (0 = no change), from where it points and who
+ * asked (SEC-04, SEC-17). Decided here, in code: a web page or document read
+ * along the way cannot lower it.
+ *   - a local or private address the request did not name: 2 (asks)
+ *   - an agent opening a site its task does not name: 2 (an agent's limit is
+ *     1, so it is refused; the agent cannot carry data to a new site)
+ */
+export function navigationLevel(
+  raw: string,
+  requestText: string | undefined,
+  byAgent: boolean,
+  /** A local address JARVIS itself serves (a dev server it started): not a foreign admin page. */
+  trustedLocal: (url: string) => boolean = () => false,
+): { level: 0 | 2; why?: string } {
+  if (!raw || raw === 'about:blank') return { level: 0 };
+  if (isPrivateAddress(raw) && trustedLocal(raw)) return { level: 0 };
+  if (isPrivateAddress(raw) && !hostNamedIn(raw, requestText)) {
+    return { level: 2, why: 'a local or private network address the request did not name' };
+  }
+  if (byAgent && !hostNamedIn(raw, requestText)) {
+    return { level: 2, why: "an agent opening a site its task does not name" };
+  }
+  return { level: 0 };
+}
+
 const LEVEL4_WORDS = /\b(pay|pay now|payment|buy|buy now|purchase|place (?:your |my )?order|complete (?:your |my )?(?:order|purchase)|checkout|check out|donate|transfer|send money|confirm (?:and )?pay(?:ment)?)\b/i;
 const LEVEL3_WORDS = /\b(delete|remove|erase|deactivate|close (?:my |your )?account|unsubscribe|cancel (?:my |your )?(?:subscription|order|plan|account))\b/i;
 const LEVEL2_WORDS = /\b(send|submit|post|publish|share|reply|comment|tweet|upload|save|confirm|apply|sign ?up|register|log ?in|sign ?in|follow|like|subscribe|accept|book|reserve|vote|invite)\b/i;

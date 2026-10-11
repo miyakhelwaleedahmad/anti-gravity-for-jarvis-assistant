@@ -16,6 +16,11 @@ Phase 3 — Memory System Stabilization additions:
 Usage:
     uvicorn vectorMemory:app --host 127.0.0.1 --port 8000
 
+Access (SEC-18): every route except /liveness needs the X-JARVIS-Token header
+(JARVIS_VECTOR_TOKEN, else the token kept in data/security/vector_token, the
+same one memory/vectorAuth.ts uses). Requests carrying an Origin header (web
+pages) are refused, POST bodies must be JSON, and the /docs pages are off.
+
 """
 
 from __future__ import annotations
@@ -25,6 +30,8 @@ import json
 import time
 import asyncio
 import hashlib
+import hmac
+import secrets
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -57,6 +64,59 @@ REQUEST_TIMEOUT_S = float(os.environ.get("VECTOR_REQUEST_TIMEOUT", "30"))
 # ─── Dedup thresholds ────────────────────────────────────────────────────────
 EXACT_DEDUP_ENABLED  = os.environ.get("VECTOR_EXACT_DEDUP", "true").lower() == "true"
 NEAR_DEDUP_THRESHOLD = float(os.environ.get("VECTOR_NEAR_DEDUP_THRESHOLD", "0.97"))
+
+# ─── Access token (SEC-18) ───────────────────────────────────────────────────
+# Any program on the PC, and any web page (a cross-site "simple" POST needs no
+# preflight), could call this service. Now a shared token is required.
+TOKEN_HEADER = "X-JARVIS-Token"
+_DATA_ROOT = os.path.abspath(
+    (os.environ.get("JARVIS_DATA_ROOT") or "").strip()
+    or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+)
+TOKEN_FILE = os.path.join(_DATA_ROOT, "data", "security", "vector_token")
+
+
+def _load_token() -> str:
+    """JARVIS_VECTOR_TOKEN, else the kept token (made, owner-only, if missing)."""
+    from_env = (os.environ.get("JARVIS_VECTOR_TOKEN") or "").strip()
+    if from_env:
+        return from_env
+    try:
+        with open(TOKEN_FILE, "r", encoding="utf-8") as f:
+            kept = f.read().strip()
+        if kept:
+            return kept
+    except FileNotFoundError:
+        pass
+    os.makedirs(os.path.dirname(TOKEN_FILE), exist_ok=True)
+    token = secrets.token_hex(32)
+    try:
+        fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(token)
+        return token
+    except FileExistsError:
+        # JARVIS made it a moment ago: use that one.
+        with open(TOKEN_FILE, "r", encoding="utf-8") as f:
+            return f.read().strip()
+
+
+_api_token_digest: Optional[bytes] = None
+
+
+def _token_ok(given: Optional[str]) -> bool:
+    """Constant-time comparison of hashed tokens. The token is read on first use."""
+    global _api_token_digest
+    if _api_token_digest is None:
+        _api_token_digest = hashlib.sha256(_load_token().encode("utf-8")).digest()
+    if not given or len(given) > 512:
+        return False
+    return hmac.compare_digest(hashlib.sha256(given.encode("utf-8")).digest(), _api_token_digest)
+
+
+# Routes that answer without the token: the supervisor's "is anything on the
+# port" probe. It holds no memory content.
+_OPEN_PATHS = {"/liveness"}
 
 # ─── Default score threshold for search results ──────────────────────────────
 DEFAULT_MIN_SCORE = float(os.environ.get("VECTOR_MIN_SCORE", "0.0"))
@@ -514,7 +574,8 @@ class VectorMemory:
 
 _memory = VectorMemory()
 
-app = FastAPI(title="Vector Memory API", lifespan=lifespan)
+# No /docs, /redoc or /openapi.json: nothing here is for a browser (SEC-18).
+app = FastAPI(title="Vector Memory API", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # ─── Embedding Queue Worker ──────────────────────────────────────────────────
@@ -572,6 +633,25 @@ async def timeout_middleware(request: Request, call_next):
             status_code=504,
             content={"detail": f"Request timed out after {REQUEST_TIMEOUT_S}s"},
         )
+
+
+# ─── Middleware: access (SEC-18) ─────────────────────────────────────────────
+# Registered after the timeout middleware, so it runs first.
+
+@app.middleware("http")
+async def access_middleware(request: Request, call_next):
+    if request.headers.get("origin") is not None:
+        log.warning(f"Refused a browser request: {request.method} {request.url.path}")
+        return JSONResponse(status_code=403, content={"detail": "Requests from web pages are not accepted."})
+    if request.url.path not in _OPEN_PATHS:
+        if not _token_ok(request.headers.get(TOKEN_HEADER)):
+            log.warning(f"Refused a request without the right token: {request.method} {request.url.path}")
+            return JSONResponse(status_code=401, content={"detail": f"Missing or wrong {TOKEN_HEADER}."})
+        if request.method == "POST":
+            ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                return JSONResponse(status_code=415, content={"detail": "POST bodies must be application/json."})
+    return await call_next(request)
 
 
 # ─── Request Models ──────────────────────────────────────────────────────────

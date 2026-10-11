@@ -24,6 +24,7 @@ import { realPathOf } from '../security/fsPolicy.js';
 import { isPathInside } from '../core/workspaceRoot.js';
 import { hasSecret, redact } from '../security/redactor.js';
 import { isSecretFile } from '../security/fsPolicy.js';
+import { childEnv } from '../system/childEnv.js';
 
 type CheckStatus = 'verified' | 'failed' | 'unverifiable';
 interface Check { status: CheckStatus; evidence: string }
@@ -49,7 +50,7 @@ function git(repo: string, args: string[], timeoutMs = READ_MS): Promise<GitRun>
       ['--no-pager', '-c', 'core.fsmonitor=false', '-c', 'color.ui=false', '-C', repo, ...args],
       {
         timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, shell: false,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '', SSH_ASKPASS: '' },
+        env: childEnv({ GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '', SSH_ASKPASS: '' }),
       },
       (err, stdout, stderr) => {
         const code = err ? (typeof (err as any).code === 'number' ? (err as any).code : 1) : 0;
@@ -103,7 +104,7 @@ async function currentBranch(repo: string): Promise<string> {
 /** The branch a push goes to (upstream, else origin/<current>) — synchronous, for the risk engine. */
 export function pushTargetSync(repo: string): string {
   const run = (args: string[]) => execFileSync('git', ['--no-pager', '-c', 'core.fsmonitor=false', '-C', repo, ...args],
-    { timeout: 3_000, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).toString().trim();
+    { timeout: 3_000, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'ignore'], env: childEnv({ GIT_TERMINAL_PROMPT: '0' }) }).toString().trim();
   try {
     return run(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
   } catch {

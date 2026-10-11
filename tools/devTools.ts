@@ -22,6 +22,7 @@ import { devPorts, httpInfo, portOpen } from '../perception/devProbe.js';
 import { isPathInside } from '../core/workspaceRoot.js';
 import { realPathOf } from '../security/fsPolicy.js';
 import { redact } from '../security/redactor.js';
+import { childEnv } from '../system/childEnv.js';
 
 type CheckStatus = 'verified' | 'failed' | 'unverifiable';
 interface Check { status: CheckStatus; evidence: string }
@@ -120,7 +121,7 @@ function runScript(project: string, script: string): Promise<Record<string, unkn
   const { file, args } = scriptCommand(project, script);
   const started = Date.now();
   return new Promise((resolve) => {
-    execFile(file, args, { cwd: project, timeout: RUN_MS, windowsHide: true, shell: false, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, CI: process.env['CI'] ?? '1', FORCE_COLOR: '0' } },
+    execFile(file, args, { cwd: project, timeout: RUN_MS, windowsHide: true, shell: false, maxBuffer: 16 * 1024 * 1024, env: childEnv({ CI: process.env['CI'] ?? '1', FORCE_COLOR: '0' }) },
       (err, stdout, stderr) => {
         const timedOut = !!err && (err as any).killed === true;
         const code = err ? (typeof (err as any).code === 'number' ? (err as any).code : null) : 0;
@@ -233,7 +234,7 @@ async function startServer(project: string, script: string, portArg: unknown): P
   const { file, args } = scriptCommand(project, script);
   const child = spawn(file, args, {
     cwd: project, detached: true, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ...(requested ? { PORT: String(requested) } : {}), BROWSER: 'none', FORCE_COLOR: '0' },
+    env: childEnv({ ...(requested ? { PORT: String(requested) } : {}), BROWSER: 'none', FORCE_COLOR: '0' }),
   });
   if (!child.pid) throw new NotDone('The server process did not start.');
   const server: Server = { pid: child.pid, project, script, startedAt: new Date().toISOString(), child, output: [] };

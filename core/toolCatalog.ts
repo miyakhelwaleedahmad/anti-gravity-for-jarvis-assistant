@@ -278,6 +278,11 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     effect: 'Stores a fact in long-term memory.',
     output: { format: 'text', description: 'Confirmation' },
   },
+  forget_memory: {
+    category: 'MEMORY', risk: 2, reversible: 'no', external: 'none',
+    effect: 'Removes remembered facts from the fact store and the search index.',
+    output: { format: 'json', description: 'JSON: removed facts, factStore, vectorIndex (per fact: deleted or why not), message' },
+  },
   ingest_documents: {
     category: 'MEMORY', risk: 1, reversible: 'partial', external: 'none',
     effect: 'Indexes files or a folder for document search.',

@@ -148,7 +148,8 @@ export class UnifiedContextBuilder {
     const stm = stmRaw as any[];
     const formattedStm = stm
       .slice(-Math.ceil(stmBudget / 60)) // rough msg count estimate
-      .map((m: any) => `[${m.role}] ${m.content}`)
+      // A reply built from tool output keeps that origin (SEC-03): it is evidence, not an instruction.
+      .map((m: any) => `[${m.role}${Array.isArray(m.tags) && m.tags.includes('from_tool_output') ? ', from tool results' : ''}] ${m.content}`)
       .join('\n');
 
     // ── Apply adaptive section budgets ────────────────────────────────────────

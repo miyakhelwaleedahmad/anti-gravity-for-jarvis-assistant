@@ -9,7 +9,7 @@ import { toolRegistryV2 } from '../toolRegistryV2.js';
 import { webSearchTool } from '../../tools/webSearchTool.js';
 import { fileReadTool, fileWriteTool } from '../../tools/fileTool.js';
 import { runCommandTool, getSystemInfoTool } from '../../tools/terminalTool.js';
-import { saveRelationTool, searchMemoryTool } from './memoryTool.js';
+import { forgetMemoryTool, saveRelationTool, searchMemoryTool } from './memoryTool.js';
 import { listCapabilitiesTool } from './capabilityTool.js';
 import { actionHistoryTool } from './historyTool.js';
 import { devStatusTool, gitOverviewTool, systemOverviewTool } from './observationTools.js';
@@ -36,6 +36,7 @@ export function registerAllTools(): void {
     getSystemInfoTool,
     saveRelationTool,
     searchMemoryTool,
+    forgetMemoryTool,
     listCapabilitiesTool,
     actionHistoryTool,
     systemOverviewTool,

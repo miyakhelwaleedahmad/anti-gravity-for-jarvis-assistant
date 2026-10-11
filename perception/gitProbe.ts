@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getWorkspaceRoot, isPathInside, isProtectedSystemPath } from '../core/workspaceRoot.js';
 import { redactDeep } from '../security/redactor.js';
+import { childEnv } from '../system/childEnv.js';
 
 export interface RepoOverview {
   path: string;
@@ -90,7 +91,7 @@ function git(repo: string, args: string[]): Promise<string> {
     execFile(
       'git',
       ['-c', 'core.fsmonitor=false', '-c', 'color.ui=false', '-C', repo, ...args],
-      { timeout: GIT_TIMEOUT_MS, windowsHide: true, maxBuffer: 1024 * 1024, shell: false },
+      { timeout: GIT_TIMEOUT_MS, windowsHide: true, maxBuffer: 1024 * 1024, shell: false, env: childEnv({ GIT_TERMINAL_PROMPT: '0' }) },
       (err, stdout, stderr) => (err ? reject(new Error((stderr || err.message).trim().split('\n')[0])) : resolve(stdout)),
     );
   });

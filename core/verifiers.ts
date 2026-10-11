@@ -92,6 +92,19 @@ const verifySaveRelation: Verifier = async (args) => {
     : failed('it is not in long-term memory');
 };
 
+/** forget_memory: the removed facts are no longer in the fact store; the index's own report counts. */
+const verifyForgetMemory: Verifier = async (_args, output) => {
+  let body: { success?: boolean; removed?: Array<{ id: string }>; vectorIndex?: string[] } = {};
+  try { body = JSON.parse(output); } catch { return unverifiable('the result was not JSON'); }
+  if (!body.success || !body.removed?.length) return failed('nothing was removed');
+  const { memoryManager } = await import('../memory/memoryManager.js');
+  const ids = new Set(body.removed.map((r) => r.id));
+  if (memoryManager.getLongTermFacts(100_000).some((f) => ids.has(f.id))) return failed('a removed fact is still in the fact store');
+  return (body.vectorIndex ?? []).every((v) => v === 'deleted')
+    ? verified(`${ids.size} fact(s) gone from the fact store and the search index`)
+    : failed('the fact is gone from the fact store, but the search index was not updated');
+};
+
 /** How save_relation stores a relation as a fact (core/tools/memoryTool.ts). */
 export function relationFact(args: Record<string, unknown>): string {
   return `${text(args, 'entity1').trim()} ${text(args, 'relation').trim().toUpperCase()} ${text(args, 'entity2').trim()}`;
@@ -353,6 +366,7 @@ export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> 
   write_file: verifyWriteFile,
   control_file: verifyControlFile,
   save_relation: verifySaveRelation,
+  forget_memory: verifyForgetMemory,
   ingest_documents: verifyIngest,
   enable_full_control_session: verifyFullControl(true),
   disable_full_control_session: verifyFullControl(false),

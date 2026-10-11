@@ -238,7 +238,7 @@ export function formatApprovalRequest(r: ApprovalRequest, timeoutSecs: number): 
   const answer = r.strong
     ? [`  Type APPROVE ${r.code} within ${timeoutSecs} s. Voice cannot approve this.`,
        '  Anything else, or no answer, cancels it.']
-    : [`  Type APPROVE, YES or CONFIRM within ${timeoutSecs} s.`,
+    : [`  Type APPROVE, YES or CONFIRM within ${timeoutSecs} s.${voiceMayApprove(r) ? '' : ' Voice cannot approve this one.'}`,
        '  Anything else, or no answer, cancels it.'];
   return [
     '',
@@ -282,6 +282,14 @@ export function spokenApprovalRequest(r: ApprovalRequest): string {
   // A background agent's request says which agent asks, by its own name.
   const asker = r.agent ? `the ${r.agent.split(' › ').pop()} needs` : 'I need';
   const forGoal = r.goalTitle ? ` for the goal "${oneLine(r.goalTitle, 60)}"` : '';
+  if (!voiceMayApprove(r)) {
+    return [
+      `Sir, ${asker} your approval to ${r.action.toLowerCase()}${target}${forGoal}.`,
+      `Risk level ${r.risk}.`,
+      SPOKEN_REVERSIBILITY[r.reversibility],
+      'Voice cannot approve this one: type approve in the console, or say cancel.',
+    ].filter(Boolean).join(' ');
+  }
   return [
     `Sir, ${asker} your approval to ${r.action.toLowerCase()}${target}${forGoal}.`,
     `Risk level ${r.risk}.`,
@@ -289,6 +297,23 @@ export function spokenApprovalRequest(r: ApprovalRequest): string {
     // Ends on "cancel": an echo of the last word can only deny.
     'Do you approve this action? Say approve or cancel.',
   ].filter(Boolean).join(' ');
+}
+
+/**
+ * The highest risk a spoken answer may approve (SEC-02). Speech can come from
+ * a bystander, a video or a song, so by default voice approves only levels
+ * 0-2; level 3 must be typed, level 4 needs the typed code.
+ * JARVIS_VOICE_APPROVAL_MAX_RISK = 0-3 changes it (0 turns voice approval off).
+ */
+export function voiceApprovalMaxRisk(env: Record<string, string | undefined> = process.env): number {
+  const raw = env['JARVIS_VOICE_APPROVAL_MAX_RISK'];
+  const v = raw === undefined || raw.trim() === '' ? NaN : Number(raw);
+  return Number.isInteger(v) && v >= 0 && v <= 3 ? v : 2;
+}
+
+/** Whether a spoken "approve" may settle this request. */
+export function voiceMayApprove(r: ApprovalRequest, env: Record<string, string | undefined> = process.env): boolean {
+  return !r.strong && r.risk <= voiceApprovalMaxRisk(env);
 }
 
 /** A typed answer: approves only the exact words, and for level 4 only the code. */

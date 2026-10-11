@@ -18,13 +18,14 @@ import { validateDeveloperCommand } from '../tools/terminalTool.js';
 import { resolveTargetUrl } from '../skills/automation/skill.js';
 import { isSecurityService } from '../control/adminController.js';
 import { approvedFolders } from '../control/fileController.js';
-import { isForeignWindowsAbsolute, isPathInside, isProtectedSystemPath } from '../core/workspaceRoot.js';
+import { getWorkspaceRoot, isForeignWindowsAbsolute, isPathInside, isProtectedSystemPath } from '../core/workspaceRoot.js';
 import { isEnvFile } from './workspacePathPolicy.js';
 import { describeElement, lookupRef } from '../perception/browserRefs.js';
-import { NOT_OBSERVED, NO_CREDENTIALS, normalizeUrl, uploadPathProblem, urlProblem, wordsLevel } from './browserPolicy.js';
+import { NOT_OBSERVED, NO_CREDENTIALS, navigationLevel, normalizeUrl, uploadPathProblem, urlProblem, wordsLevel } from './browserPolicy.js';
+import { getAgentPath, getRequestText } from '../core/traceContext.js';
 import { changeLevel, checkFilePath, isApprovedRoot, isExecutable } from './fsPolicy.js';
 import { pushTargetSync, repoProblem } from '../tools/gitTools.js';
-import { isJarvisServer, projectProblem, scriptProblem } from '../tools/devTools.js';
+import { isJarvisServer, knownServerOnPort, packageScripts, projectProblem, scriptProblem } from '../tools/devTools.js';
 import { describeUiElement, lookupUiRef } from '../control/uiRefs.js';
 
 const NOT_OBSERVED_UI = 'JARVIS has not looked at that element, or it was more than 10 minutes ago: list the window\'s elements (ui_elements) first.';
@@ -126,6 +127,14 @@ function samePath(a: string, b: string): boolean {
   return !!b && path.resolve(a) === path.resolve(b);
 }
 
+/** A local address on a port where JARVIS started a dev server (SEC-17). */
+function servedByJarvis(url: string): boolean {
+  try {
+    const port = Number(new URL(normalizeUrl(url)).port);
+    return port > 0 && !!knownServerOnPort(port);
+  } catch { return false; }
+}
+
 export function assessRisk(call: { tool: string; args: Record<string, unknown>; baseRisk: RiskTier }): RiskAssessment {
   const { tool, args } = call;
   const action = text(args, 'action').toLowerCase() || undefined;
@@ -206,6 +215,10 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
       if (action === 'close' && /^(about:blank)?$|youtube/i.test(text(args, 'target'))) {
         set(1, 'closing a YouTube or blank tab');
       }
+      if (action === 'open_url') {
+        const nav = navigationLevel(text(args, 'target'), getRequestText(), !!getAgentPath(), servedByJarvis);
+        if (nav.level) raise(nav.level, nav.why ?? 'where it points');
+      }
       break;
     }
     case 'enable_full_control_session':
@@ -217,12 +230,16 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
       if ((action ?? 'go') === 'go') {
         target = normalizeUrl(text(args, 'url')) || undefined;
         refused = urlProblem(text(args, 'url'));
+        const nav = navigationLevel(text(args, 'url'), getRequestText(), !!getAgentPath(), servedByJarvis);
+        if (nav.level) raise(nav.level, nav.why ?? 'where it points');
       }
       break;
     case 'browser_tab':
       if (action === 'new') {
         target = normalizeUrl(text(args, 'url')) || 'a new empty tab';
         refused = urlProblem(text(args, 'url'), true);
+        const nav = navigationLevel(text(args, 'url'), getRequestText(), !!getAgentPath(), servedByJarvis);
+        if (nav.level) raise(nav.level, nav.why ?? 'where it points');
       } else {
         target = text(args, 'tab') || 'the tab on screen';
       }
@@ -345,6 +362,18 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
       target = project;
       if (action === 'run') refused = scriptProblem(project, args['script'], 'run');
       if (action === 'start_server') refused = scriptProblem(project, text(args, 'script') || 'dev', 'server');
+      if (!refused && (action === 'run' || action === 'start_server')) {
+        // A script's name says nothing about what it runs (SEC-07): the
+        // approval and the log show the command itself.
+        const script = text(args, 'script') || 'dev';
+        const body = String(packageScripts(project)[script] ?? '').replace(/\s+/g, ' ').slice(0, 120);
+        target = `${project}: ${script} → ${body}`;
+        // An agent runs code from another project only with the owner's yes
+        // (level 2; an agent limited to 1 is refused).
+        if (getAgentPath() && !isPathInside(getWorkspaceRoot(), project)) {
+          raise(2, 'an agent running a script in a project other than JARVIS');
+        }
+      }
       break;
     }
   }

@@ -14,6 +14,7 @@
  */
 
 import { agentStateMachine, AgentState } from './agentStateMachine.js';
+import { UNTRUSTED_RULE, untrusted } from '../security/untrustedText.js';
 import { asRepair, beginTrace, endTrace } from './traceContext.js';
 import { diagnose, MAX_RECOVERY_ROUNDS, observeFailure } from './recoveryPlanner.js';
 import {
@@ -82,6 +83,22 @@ const DEFAULT_CONFIG: OrchestratorConfig = {
 const requestContext = new AsyncLocalStorage<{ callId: string; signal: AbortSignal }>();
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
+
+/** History tag for a reply built from tool output: it keeps that origin (SEC-03). */
+const FROM_TOOLS = ['from_tool_output'];
+
+/**
+ * A history turn for the model. A reply that was built from tool output is
+ * replayed inside the untrusted wrapper: it may repeat what a web page or a
+ * document said, and it is evidence, not JARVIS's own instruction (SEC-03).
+ */
+function historyMessage(h: { role: string; content: string; tags?: string[] }): ILLMMessage {
+  const role = (h.role === 'user' || h.role === 'assistant' ? h.role : 'user') as ILLMMessage['role'];
+  if (h.tags?.includes(FROM_TOOLS[0]!)) {
+    return { role, content: untrusted('earlier reply built from tool results', h.content) };
+  }
+  return { role, content: h.content };
+}
 
 export class JarvisOrchestrator {
   private config: OrchestratorConfig;
@@ -1145,11 +1162,17 @@ export class JarvisOrchestrator {
 
       unifiedCtxText = unifiedCtx.mergedContext;
       uniTokens = unifiedCtxText.length >> 2;
-      messages.push({ role: 'system', content: unifiedCtxText });
+      // Memory and recent conversation hold text that came from outside (web
+      // pages, documents, agents' research): data for the plan, in a user
+      // message, never a system message (SEC-03).
+      if (unifiedCtxText.trim()) {
+        messages.push({ role: 'system', content: UNTRUSTED_RULE });
+        messages.push({ role: 'user', content: untrusted('memory and recent conversation', unifiedCtxText, 12_000) });
+      }
 
       const recentGoals = goalManager.getRecentGoalContext(4);
       if (recentGoals) {
-        messages.push({ role: 'system', content: recentGoals.length > 800 ? recentGoals.substring(0, 800) + '...' : recentGoals });
+        messages.push({ role: 'user', content: untrusted('recent goals', recentGoals.length > 800 ? recentGoals.substring(0, 800) + '...' : recentGoals) });
       }
     } catch (err) {
       console.warn('[Orchestrator] Unified Memory retrieval failed (non-fatal):', err);
@@ -1161,7 +1184,7 @@ export class JarvisOrchestrator {
     if (workingContext) {
       const workingSummary = `[ACTIVE TASK] Goal: ${workingContext.goal} (Iter: ${workingContext.iteration})`;
       memTokens = workingSummary.length >> 2;
-      messages.push({ role: 'system', content: workingSummary });
+      messages.push({ role: 'user', content: untrusted('active task', workingSummary) });
     }
 
     // World state (P7): the parts this request is about, read again if stale
@@ -1210,7 +1233,7 @@ export class JarvisOrchestrator {
       const h = history[i];
       const tks = h.content.length >> 2;
       if (historyTokens + tks <= 500) {
-        trimmedHistory.unshift({ role: h.role as ILLMMessage['role'], content: h.content });
+        trimmedHistory.unshift(historyMessage(h));
         historyTokens += tks;
       } else {
         break;
@@ -1489,7 +1512,7 @@ export class JarvisOrchestrator {
 
       reply = withCheck(reply, firstNode?.verification);
       console.log(`\n🤖 JARVIS: ${reply}\n`);
-      await agentMemory.addConversationMessage('assistant', reply);
+      await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
       this.speak(reply);
       return;
     }
@@ -1518,7 +1541,7 @@ export class JarvisOrchestrator {
         console.log('[Orchestrator] OPT-SYNTH-2: Short natural output — bypassing synthesis LLM.');
         const reply = withCheck(singleResult, completedNodes[0].verification);
         console.log(`\n🤖 JARVIS: ${reply}\n`);
-        await agentMemory.addConversationMessage('assistant', reply);
+        await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
         // speak() calls safeTransitionToSpeaking() internally — do NOT also
         // call transition(SPEAKING) here or we get a double-transition crash.
         this.speak(reply);
@@ -1530,15 +1553,18 @@ export class JarvisOrchestrator {
     // instead of the full JARVIS system prompt (~350 tokens). Synthesis only converts
     // tool output to a natural sentence — it doesn't need tool rules or persona details.
     // Saves ~320 tokens per synthesis call.
+    // Tool output (web pages, files, search results) is data: it goes in a
+    // user message inside the untrusted wrapper, never in a system message
+    // where it would read as JARVIS's own instructions (SEC-03).
     const synthesisMessages: ILLMMessage[] = [
       {
         role: 'system',
-        content: 'You are JARVIS. Convert the following tool results into a single concise natural-language response. Address the user as "sir". Be brief and direct.',
+        content: `You are JARVIS. Convert the tool results into a single concise natural-language response. Address the user as "sir". Be brief and direct. ${UNTRUSTED_RULE}`,
       },
       { role: 'user', content: originalInput },
       {
-        role: 'system',
-        content: `Tool results:\n\n${toolOutputs}\n\nRespond naturally in 1-2 sentences.`,
+        role: 'user',
+        content: `${untrusted('tool results', toolOutputs, 12_000)}\n\nRespond naturally in 1-2 sentences.`,
       },
     ];
 
@@ -1562,7 +1588,7 @@ export class JarvisOrchestrator {
         const resp = await modelRouter.chat(synthesisRequest);
         const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
-        await agentMemory.addConversationMessage('assistant', reply);
+        await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
         // speak() calls safeTransitionToSpeaking() internally — do NOT also
         // call transition(SPEAKING) here or we get a double-transition crash.
         this.speak(reply);
@@ -1646,7 +1672,7 @@ export class JarvisOrchestrator {
 
       if (!this.isInterrupted()) {
         const cleanReply = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-        await agentMemory.addConversationMessage('assistant', cleanReply);
+        await agentMemory.addConversationMessage('assistant', cleanReply, FROM_TOOLS);
         agentMemory.pushEpisode('task_complete', `Synthesized: ${cleanReply.substring(0, 100)}`, {}, 3);
       }
 
@@ -1656,7 +1682,7 @@ export class JarvisOrchestrator {
         const resp = await modelRouter.chat(request);
         const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
-        await agentMemory.addConversationMessage('assistant', reply);
+        await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
         this.speak(reply);
       } catch (fallbackErr) {
         console.error('[Orchestrator] Fallback synthesis also failed:', fallbackErr);
@@ -1992,7 +2018,7 @@ export class JarvisOrchestrator {
     let history = agentMemory.getConversationHistory(5);
     const messages: ILLMMessage[] = [
       { role: 'system', content: systemPrompt },
-      ...history.map(h => ({ role: h.role as ILLMMessage['role'], content: h.content })),
+      ...history.map(historyMessage),
       { role: 'user', content: input }
     ];
 

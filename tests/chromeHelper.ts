@@ -53,14 +53,14 @@ export interface RunningChrome {
 }
 
 /** Headless, a free debugging port, a throwaway profile; resolves once DevTools answers. */
-export async function startChromium(url = 'about:blank'): Promise<RunningChrome> {
+export async function startChromium(url = 'about:blank', extraArgs: string[] = []): Promise<RunningChrome> {
   const binary = findChromium();
   if (!binary) throw new Error('No Chromium or Chrome found (set JARVIS_TEST_CHROME).');
   const port = await freePort();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-chrome-'));
   const proc = spawn(binary, [
     '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
-    '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-gpu', url,
+    '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-gpu', ...extraArgs, url,
   ], { stdio: 'ignore' });
   for (let i = 0; i < 100; i++) {
     await new Promise((r) => setTimeout(r, 100));

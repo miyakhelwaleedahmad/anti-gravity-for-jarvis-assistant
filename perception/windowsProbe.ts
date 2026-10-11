@@ -18,6 +18,7 @@
 import { execFile } from 'child_process';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { childEnv } from '../system/childEnv.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -54,7 +55,7 @@ export function runPsFile(file: keyof typeof PS_FILES, env: Record<string, strin
   if (process.platform !== 'win32') return Promise.reject(new WindowsOnlyError());
   return new Promise((resolve, reject) => {
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', PS_FILES[file]], {
-      env: { ...process.env, ...env }, timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024, shell: false,
+      env: childEnv(env), timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024, shell: false,
     }, (err, stdout) => {
       const line = String(stdout ?? '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).pop();
       if (line) {

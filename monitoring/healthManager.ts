@@ -21,6 +21,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
 import { dataRoot } from '../core/workspaceRoot.js';
+import { vectorHeaders } from '../memory/vectorAuth.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -153,6 +154,7 @@ class HealthManager {
       // Probe timeout of 2000ms prevents false timeouts on Windows/CPU-constrained environments
       const t = setTimeout(() => controller.abort(), 2000);
       const res = await fetch('http://127.0.0.1:8000/stats', {
+        headers: vectorHeaders(),
         signal: controller.signal,
       });
       clearTimeout(t);

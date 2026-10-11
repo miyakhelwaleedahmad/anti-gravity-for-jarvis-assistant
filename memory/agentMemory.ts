@@ -233,15 +233,16 @@ export class AgentMemory {
     }
   }
 
-  getConversationHistory(limit = 10): { role: string; content: string }[] {
+  getConversationHistory(limit = 10): { role: string; content: string; tags?: string[] }[] {
     return memoryManager.getConversationHistory(limit);
   }
 
   async addConversationMessage(
     role: 'user' | 'assistant' | 'system',
-    content: string
+    content: string,
+    tags?: string[],
   ): Promise<void> {
-    await memoryManager.addMessage(role, content);
+    await memoryManager.addMessage(role, content, tags);
   }
 
   buildSemanticSummary(): string {

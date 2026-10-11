@@ -29,6 +29,30 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import { childEnv, looksSecret } from '../system/childEnv.js';
+import { getVectorToken, vectorHeaders } from './vectorAuth.js';
+
+// ─── The service's environment ───────────────────────────────────────────────
+
+/** Settings vectorMemory.py and its model libraries read (not credentials). */
+const SERVICE_ENV_PREFIXES = ['VECTOR_', 'JARVIS_VECTOR_', 'EMBEDDING_', 'HF_', 'TRANSFORMERS_', 'SENTENCE_TRANSFORMERS_', 'TORCH_', 'OMP_', 'MKL_', 'CUDA_', 'PYTHON'];
+/** The first model download goes through the user's proxy, if they have one. */
+const SERVICE_ENV_NAMES = new Set(['JARVIS_DATA_ROOT', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'REQUESTS_CA_BUNDLE', 'SSL_CERT_FILE', 'CURL_CA_BUNDLE']);
+
+/** The one credential the service uses: the Hugging Face read token for the model download (.env.example). */
+const SERVICE_CREDENTIALS = new Set(['HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN']);
+
+export function vectorServiceEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined) continue;
+    const upper = name.toUpperCase();
+    if (SERVICE_CREDENTIALS.has(upper)) { out[name] = value; continue; }
+    if (looksSecret(name)) continue;
+    if (SERVICE_ENV_NAMES.has(upper) || SERVICE_ENV_PREFIXES.some((p) => upper.startsWith(p))) out[name] = value;
+  }
+  return out;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -202,7 +226,7 @@ class VectorMemorySupervisor {
       const t = setTimeout(() => controller.abort(), 10_000);
       const res = await fetch(BATCH_EMBED_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: vectorHeaders(true),
         body: JSON.stringify({ texts, skip_dedup: skipDedup }),
         signal: controller.signal,
       });
@@ -261,7 +285,7 @@ class VectorMemorySupervisor {
       const t = setTimeout(() => controller.abort(), 1000);
       // Use /liveness instead of /health — always returns 200 if uvicorn is alive,
       // even while the model is still loading (unlike /health which returns 503).
-      const res = await fetch(LIVENESS_URL, { signal: controller.signal });
+      const res = await fetch(LIVENESS_URL, { headers: vectorHeaders(), signal: controller.signal });
       clearTimeout(t);
       // Any HTTP response (200, 503, etc.) means the port is bound
       return res.status >= 200 && res.status < 600;
@@ -303,6 +327,8 @@ class VectorMemorySupervisor {
     this.proc = spawn(python, [VECTOR_SCRIPT], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
+      // The service's token, and no other JARVIS secret (SEC-06, SEC-18).
+      env: childEnv({ JARVIS_VECTOR_TOKEN: getVectorToken(), ...vectorServiceEnv() }),
     });
 
     this.proc.stdout?.on('data', (d) => {
@@ -400,7 +426,7 @@ class VectorMemorySupervisor {
       const controller = new AbortController();
       // 5s timeout — allows for CPU-constrained environments (8GB Windows)
       const t = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(HEALTH_URL, { signal: controller.signal });
+      const res = await fetch(HEALTH_URL, { headers: vectorHeaders(), signal: controller.signal });
       clearTimeout(t);
 
       if (res.ok) {
@@ -460,7 +486,7 @@ class VectorMemorySupervisor {
       try {
         const lc = new AbortController();
         const lt = setTimeout(() => lc.abort(), 2000);
-        const lr = await fetch(LIVENESS_URL, { signal: lc.signal });
+        const lr = await fetch(LIVENESS_URL, { headers: vectorHeaders(), signal: lc.signal });
         clearTimeout(lt);
         if (lr.ok) {
           const live = await lr.json().catch(() => null) as { model_state?: string; model_error?: string } | null;
@@ -585,7 +611,7 @@ class VectorMemorySupervisor {
         const t = setTimeout(() => controller.abort(), 30_000);
         const res = await fetch(DEDUP_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: vectorHeaders(true),
           body: JSON.stringify({ threshold: 0.97 }),
           signal: controller.signal,
         });

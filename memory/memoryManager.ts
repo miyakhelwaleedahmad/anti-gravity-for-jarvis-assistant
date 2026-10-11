@@ -25,6 +25,7 @@ import { spawn, ChildProcess } from "child_process";
 import * as readline from "readline";
 import { graphMemory } from "./graphMemory.js";
 import { redact } from "../security/redactor.js";
+import { vectorHeaders } from "./vectorAuth.js";
 import {
   initRedis,
   cacheVectorResult,
@@ -61,6 +62,35 @@ export interface LongTermFact {
   version: number;       // increments on updates/merges
   /** Decay has been applied up to this time (decayMemory runs on a schedule). */
   decayedThrough?: number;
+  /**
+   * Where the fact came from (SEC-05): the owner said it, JARVIS inferred it,
+   * or it was gathered from outside (web pages, documents, research). Facts
+   * stored before this field existed get it from `source` (factOrigin()).
+   */
+  origin?: FactOrigin;
+}
+
+export type FactOrigin = 'user' | 'agent' | 'external';
+
+/** Sources that are the owner's own words. */
+const USER_SOURCES = new Set(['conversation', 'user', 'user_feedback', 'owner']);
+/** Sources gathered from outside JARVIS (web, documents, agents' research). */
+const EXTERNAL_SOURCES = new Set(['agents', 'research', 'web', 'document', 'documents', 'news']);
+
+/** A fact's origin: its own field, or derived from its source (older facts). */
+export function factOrigin(f: Pick<LongTermFact, 'origin' | 'source'>): FactOrigin {
+  if (f.origin) return f.origin;
+  const source = String(f.source ?? '').toLowerCase();
+  if (USER_SOURCES.has(source)) return 'user';
+  if (EXTERNAL_SOURCES.has(source)) return 'external';
+  return 'agent';
+}
+
+/** What forgetting did, store by store (OPS-03): nothing is reported as gone that was not removed. */
+export interface ForgetReport {
+  removed: Array<{ id: string; fact: string }>;
+  /** The semantic index: 'deleted', 'not running' or the error. */
+  vectorIndex: string[];
 }
 
 interface MemoryDB {
@@ -235,6 +265,8 @@ export class MemoryManager {
           method: isGet ? 'GET' : 'POST',
           headers: {
             'Content-Type': 'application/json',
+            // The service refuses requests without it (SEC-18).
+            ...vectorHeaders(),
             // Connection keep-alive — Node.js reuses the underlying TCP socket
             // instead of creating a new connection per request. Eliminates ~30ms
             // per-request overhead and prevents ephemeral port exhaustion on Windows.
@@ -336,15 +368,22 @@ export class MemoryManager {
   }
 
   async deleteVector(text: string): Promise<void> {
+    await this.deleteVectorReported(text);
+  }
+
+  /** Removes `text` from the semantic index; says what happened instead of only logging it. */
+  async deleteVectorReported(text: string): Promise<string> {
     try {
       const res = await this.vectorRequest('delete', { text });
       if (res?.error) {
         console.warn(`[Memory] Vector delete returned error: ${res.error}`);
-      } else {
-        console.log(`[Memory] Vector deleted: "${text.slice(0, 60)}" (remaining: ${res?.remaining ?? '?'})`);
+        return `error: ${String(res.error).slice(0, 120)}`;
       }
+      console.log(`[Memory] Vector deleted: "${text.slice(0, 60)}" (remaining: ${res?.remaining ?? '?'})`);
+      return 'deleted';
     } catch (err) {
       console.error(`[Memory] deleteVector failed: ${err}`);
+      return `not reachable: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`;
     }
   }
 
@@ -552,10 +591,11 @@ export class MemoryManager {
     return limit ? this.shortTermBuffer.slice(-limit) : [...this.shortTermBuffer];
   }
 
-  getConversationHistory(limit = 10): { role: string; content: string }[] {
+  getConversationHistory(limit = 10): { role: string; content: string; tags?: string[] }[] {
     return this.getShortTerm(limit).map((m) => ({
       role: m.role,
       content: m.content,
+      ...(m.tags?.length ? { tags: m.tags } : {}),
     }));
   }
 
@@ -585,6 +625,7 @@ export class MemoryManager {
       id: this.generateId(),
       fact: cleanFact,
       source,
+      origin: factOrigin({ source }),
       timestamp: Date.now(),
       importance,
       lastAccessed: Date.now(),
@@ -916,10 +957,12 @@ export class MemoryManager {
       })
       .sort((a, b) => b.score - a.score);
 
+    // Gathered or inferred facts say so (SEC-05): a web page's claim stored by
+    // a research agent is not the owner's word, and the plan should know.
+    const ORIGIN_LABEL: Record<FactOrigin, string> = { user: 'from you', agent: 'inferred by JARVIS', external: 'from research, unverified' };
     const lines = ranked.map(({ fact: f }) => {
-      const age = Math.round((now - f.timestamp) / 60_000);
       const accessed = f.accessCount ?? 0;
-      return `• [imp:${f.importance.toFixed(1)}, used:${accessed}x] ${f.fact}`;
+      return `• [imp:${f.importance.toFixed(1)}, used:${accessed}x, ${ORIGIN_LABEL[factOrigin(f)]}] ${f.fact}`;
     });
 
     return [
@@ -995,6 +1038,29 @@ export class MemoryManager {
     }
 
     return { decayed, removed };
+  }
+
+  /**
+   * Forgets facts by id, or those containing `text` (OPS-03). Removed from the
+   * fact store (written before this returns) and from the semantic index; the
+   * report says per fact whether the index removal worked, so a fact still in
+   * the index is never reported as fully gone.
+   */
+  async forgetFacts(match: { id?: string; text?: string }, limit = 5): Promise<ForgetReport | { tooMany: number }> {
+    this.ensureInit();
+    const needle = (match.text ?? '').trim().toLowerCase();
+    const found = this.db.data.longTerm.filter((f) => (match.id && f.id === match.id) || (needle.length >= 3 && f.fact.toLowerCase().includes(needle)));
+    if (found.length > limit) return { tooMany: found.length };
+    const ids = new Set(found.map((f) => f.id));
+    this.db.data.longTerm = this.db.data.longTerm.filter((f) => !ids.has(f.id));
+    await this.db.write();
+    const vectorIndex: string[] = [];
+    for (const f of found) {
+      vectorIndex.push(await this.deleteVectorReported(f.fact));
+      invalidateVectorCache(f.fact).catch(() => {});
+    }
+    invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
+    return { removed: found.map((f) => ({ id: f.id, fact: f.fact })), vectorIndex };
   }
 
   async forgetFact(id: string): Promise<void> {

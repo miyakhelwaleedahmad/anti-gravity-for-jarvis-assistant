@@ -219,7 +219,8 @@ try {
     ok(`opening ${url.slice(0, 22)} is refused`, typeof level('browser_navigate', { action: 'go', url }) === 'string'
       && typeof level('browser_tab', { action: 'new', url }) === 'string');
   }
-  ok('opening an http address: 1', level('browser_navigate', { action: 'go', url: `${base}/next` }) === 1);
+  ok('opening a public http address: 1', level('browser_navigate', { action: 'go', url: 'https://example.com/next' }) === 1);
+  ok('opening a local address the request did not name: 2 (SEC-17)', level('browser_navigate', { action: 'go', url: `${base}/next` }) === 2);
   ok('an element JARVIS has not seen is refused', /acts only on page elements it has looked at/.test(String(level('browser_click', { ref: 'e999999' })))
     && /looked at/.test(String(level('browser_type', { ref: '#user', text: 'x' }))) && /looked at/.test(String(level('browser_scroll', { ref: 'nope' }))));
   const upload = path.join(workspace, 'cv.txt');

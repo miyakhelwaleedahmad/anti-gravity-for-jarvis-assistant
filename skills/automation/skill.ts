@@ -8,6 +8,7 @@
 import { spawn } from 'child_process';
 import { securityAuditLogger } from '../../security/securityAuditLogger.js';
 import { approvalGate } from '../../security/approvalGate.js';
+import { childEnv } from '../../system/childEnv.js';
 
 type OpenAppSource = 'voice' | 'text' | 'llm';
 
@@ -160,6 +161,8 @@ function openTarget(target: string, resolvedTarget: string): Promise<string> {
         detached: true,
         stdio: 'ignore',
         shell: false,
+        // The app JARVIS opens does not get JARVIS's keys and tokens (SEC-06).
+        env: childEnv(),
         ...(platform === 'win32' ? { windowsHide: true } : {})
       });
 

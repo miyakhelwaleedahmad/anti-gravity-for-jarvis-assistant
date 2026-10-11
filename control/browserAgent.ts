@@ -30,7 +30,7 @@ import {
 } from '../perception/cdpScripts.js';
 import { describeElement, forgetTab, lookupRef, type ElementKind, type ObservedElement } from '../perception/browserRefs.js';
 import { findTab } from '../perception/browserState.js';
-import { NOT_OBSERVED, NO_CREDENTIALS, normalizeUrl, realUploadPath, uploadPathProblem, urlProblem } from '../security/browserPolicy.js';
+import { NOT_OBSERVED, NO_CREDENTIALS, isPrivateAddress, normalizeUrl, realUploadPath, uploadPathProblem, urlProblem } from '../security/browserPolicy.js';
 import { redact } from '../security/redactor.js';
 import { dataRoot, getWorkspaceRoot } from '../core/workspaceRoot.js';
 
@@ -416,6 +416,20 @@ export async function navigate(args: { action?: unknown; url?: unknown; tab?: un
         try {
           if (new URL(loaded.state!.url).host !== new URL(url).host) evidence += ' (the site sent it on to another address)';
         } catch { /* not comparable */ }
+        // Checked again where it ended (SEC-17): a public page that sends the
+        // tab on to a local or private address (a router, a local admin page)
+        // is not followed; the tab is cleared.
+        const landed = loaded.state?.url ?? '';
+        if (landed && isPrivateAddress(landed) && !isPrivateAddress(url)) {
+          await withSession(target, (s) => s.send('Page.navigate', { url: 'about:blank' }, 5_000)).catch(() => undefined);
+          forgetTab(target.id);
+          await waitForPage(target.id, (p) => p.url === 'about:blank').catch(() => undefined);
+          return {
+            target: clean(target.title, 80), did,
+            check: failed(`the site sent the tab on to a local network address (${clean(landed, 80)}); JARVIS did not stay there and cleared the tab`),
+            page: { url: 'about:blank', title: '' },
+          };
+        }
       }
       return { target: clean(target.title, 80), did, check: verified(evidence), page: pageOf(loaded.state) };
     });

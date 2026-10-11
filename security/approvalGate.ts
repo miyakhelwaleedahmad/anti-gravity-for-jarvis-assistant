@@ -29,6 +29,7 @@ import {
   type ApprovalDecision,
   type ApprovalRequest,
   type ApprovalSource,
+  voiceMayApprove,
 } from './approvalRequest.js';
 import { redact } from './redactor.js';
 import { currentTaskNode } from '../core/taskContext.js';
@@ -212,10 +213,13 @@ export class ApprovalGate {
       p.settle(`${VOICE_PREFIX}${text}`);
       return false;
     }
-    if (kind === 'approve' && p.request.strong) {
+    if (kind === 'approve' && !voiceMayApprove(p.request)) {
+      // Heard, and not enough: the request stays pending for a typed answer (SEC-02).
       if (!p.toldVoiceCannot) {
         p.toldVoiceCannot = true;
-        this.speak('Voice cannot approve this one, sir. Type the code shown in the console.');
+        this.speak(p.request.strong
+          ? 'Voice cannot approve this one, sir. Type the code shown in the console.'
+          : 'Voice cannot approve this one, sir. Type approve in the console.');
       }
       return true;
     }
@@ -268,7 +272,7 @@ export class ApprovalGate {
     const spoken = raw.startsWith(VOICE_PREFIX);
     const answer = spoken ? raw.slice(VOICE_PREFIX.length) : raw;
     const approved = spoken
-      ? !request.strong && classifyVoiceAnswer(answer) === 'approve'
+      ? voiceMayApprove(request) && classifyVoiceAnswer(answer) === 'approve'
       : isConsoleApproval(answer, request);
     console.log(approved ? '  Approved by user.\n' : '  Denied by user input.\n');
     this.record(request, { approved, by: spoken ? 'voice' : 'console', answer });

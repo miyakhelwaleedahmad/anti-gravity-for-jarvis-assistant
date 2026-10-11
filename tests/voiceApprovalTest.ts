@@ -272,7 +272,38 @@ console.log('\n--- 6. A slow speaker that queues, as on the owner\'s PC ---');
     risk: 3, reason: 'test', source: 'voice',
   });
   const question = requests.spokenApprovalRequest(full);
-  ok('the spoken question does not read out code ({"durationMinutes":15,...})', !/[{}"]/.test(question) && /full control mode/.test(question) && /Say approve or cancel\.$/.test(question), question);
+  ok('the spoken question does not read out code ({"durationMinutes":15,...})', !/[{}"]/.test(question) && /full control mode/.test(question) && /type approve in the console, or say cancel\.$/.test(question), question);
+
+  console.log('\n--- SEC-02: what voice may approve ---');
+  ok('by default voice approves levels 0-2, not 3 or 4', requests.voiceApprovalMaxRisk({}) === 2
+    && requests.voiceMayApprove(build(2), {}) && !requests.voiceMayApprove(build(3), {}) && !requests.voiceMayApprove(build(4), {}));
+  ok('JARVIS_VOICE_APPROVAL_MAX_RISK changes it (0-3; level 4 never by voice; nonsense keeps 2)',
+    requests.voiceMayApprove(build(3), { JARVIS_VOICE_APPROVAL_MAX_RISK: '3' }) && !requests.voiceMayApprove(build(4), { JARVIS_VOICE_APPROVAL_MAX_RISK: '3' })
+    && !requests.voiceMayApprove(build(1), { JARVIS_VOICE_APPROVAL_MAX_RISK: '0' }) && requests.voiceApprovalMaxRisk({ JARVIS_VOICE_APPROVAL_MAX_RISK: '9' }) === 2);
+  const level3 = requests.spokenApprovalRequest(build(3));
+  ok('a level-3 request says voice cannot approve it and to type approve', /Voice cannot approve this one: type approve in the console, or say cancel\./.test(level3), level3);
+
+  // A spoken "yes" to a level-3 request: heard, not enough, still pending.
+  let settled: boolean | undefined;
+  asked = approvalGate.requestApproval(build(3));
+  void asked.then((v) => { settled = v; });
+  await whenListening();
+  const heardYes = approvalGate.offerVoiceAnswer('yes');
+  await sleep(100);
+  ok('a spoken "yes" to a level-3 request is taken (not run as a command) and leaves it pending', heardYes && settled === undefined && !!(approvalGate as any).pending);
+  approvalGate.offerVoiceAnswer('approved approved');
+  await sleep(100);
+  ok('…saying it again does not approve either', settled === undefined);
+  approvalGate.offerConsoleAnswer('approve');
+  ok('…the typed answer approves it', await asked === true);
+  const last = approvalGate.recentDecisions(1)[0];
+  ok('…and the decision is recorded as typed in the console', last?.by === 'console' && last.approved === true, JSON.stringify(last));
+
+  // Level 2 by voice still works.
+  asked = approvalGate.requestApproval(build(2));
+  await whenListening();
+  approvalGate.offerVoiceAnswer('yes');
+  ok('a spoken "yes" still approves a level-2 request', await asked === true);
 
   ok('"approved approved approved" approves (said again when JARVIS seemed not to hear)',
     requests.classifyVoiceAnswer('approved approved approved') === 'approve' && requests.classifyVoiceAnswer('approve approve') === 'approve'

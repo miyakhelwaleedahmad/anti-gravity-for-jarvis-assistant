@@ -20,13 +20,14 @@
  */
 
 import { execa } from 'execa';
+import { childEnv } from './childEnv.js';
 
 export interface RunOptions {
   signal?: AbortSignal;
   /** Stop the process after this long (in addition to `signal`). */
   timeoutMs?: number;
   cwd?: string;
-  /** The child's whole environment (no JARVIS secrets are added to it). */
+  /** The child's whole environment; default: childEnv() (no JARVIS secrets).*/
   env?: Record<string, string | undefined>;
 }
 
@@ -64,7 +65,9 @@ export async function runProcess(file: string, args: string[], opts: RunOptions 
     // A group of its own, so the whole tree can be stopped (POSIX).
     detached: !isWindows,
     ...(opts.cwd ? { cwd: opts.cwd } : {}),
-    ...(opts.env ? { env: opts.env, extendEnv: false } : {}),
+    // JARVIS's keys and tokens stay out of the child (SEC-06).
+    env: opts.env ?? childEnv(),
+    extendEnv: false,
   });
 
   let cancelled = false;
