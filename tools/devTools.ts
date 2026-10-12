@@ -238,8 +238,14 @@ async function startServer(project: string, script: string, portArg: unknown): P
   const watched = devPorts();
   const before = new Set((await Promise.all(watched.map(async (p) => ((await portOpen(p)) ? p : 0)))).filter(Boolean));
   const { file, args } = scriptCommand(project, script);
+  // Detached only off Windows, where the process group is what killTree
+  // stops. On Windows a detached `cmd /c npm run …` gets no console of its
+  // own, and the server it starts wrote nowhere JARVIS could read: Windows CI
+  // showed 0 output lines while the server ran, so a crash could not be
+  // explained. killTree uses `taskkill /T` there (as system/processRunner.ts).
+  // A Ctrl+C in JARVIS's console now also reaches these servers on Windows.
   const child = spawn(file, args, {
-    cwd: project, detached: true, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: project, detached: process.platform !== 'win32', windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
     env: childEnv({ ...(requested ? { PORT: String(requested) } : {}), BROWSER: 'none', FORCE_COLOR: '0' }),
   });
   if (!child.pid) throw new NotDone('The server process did not start.');

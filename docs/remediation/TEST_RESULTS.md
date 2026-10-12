@@ -36,6 +36,7 @@ The 9 skipped are the same tests as before (table below). None counts as a pass.
 | `c71b6f0` | 153 | 1 | 6 | scenarioIntegrationTest: 2 checks (output cut off) |
 | `0c41e7b`, `7ff1866` | 156, 159 | 1 | 6 | scenarioIntegrationTest: the crash diagnosis lost the server's log line behind npm's error lines |
 | `ccc9e84` | 159 | 1 | 6 | scenarioIntegrationTest, 2 checks: the tab list was read before the pages had their titles (test timing; the setup now waits for titles), and the crash diagnosis still misses the log line: the npm-lines change did not fix it on Windows. The next run prints what JARVIS kept for the crashed server |
+| `a5a126f` | 159 | 1 | 6 | the same check; the printed detail showed the cause: JARVIS caught **0 output lines** from the backend even while it ran (`start: running=true n=0`). A server started as a detached `cmd /c npm run …` wrote nowhere JARVIS could read. Fixed in the next commit (not detached on Windows); to be confirmed by its Windows CI run |
 
 Skipped on Windows CI (6):
 - `processControlSafetyTest` and `windowControlTest` need the owner's desktop session;
@@ -119,7 +120,7 @@ Coverage, final run (c8 10.1.3; only files the tests load; `tests/` excluded):
 | foregroundPriorityTest | PERF-02 | 9/9 | 2/9: background calls took the quota; the owner got a 429 (simulated provider) |
 | controlCenterTest | OPS-01 | 34/34 | new feature |
 | remoteAccessTest | OPS-02 | 30/30 | new groundwork |
-| diagnosisRulesTest (extended) | REL-09 (Windows CI) | 19/19 | the new check fails with the old 6-line window; this did not fix the Windows CI case |
+| diagnosisRulesTest (extended) | REL-09 (Windows CI) | 18/18 | the new check fails with the old 6-line window; this did not fix the Windows CI case (the `ccc9e84` commit message says 19/19 by mistake) |
 | browserControlAgentTest (fixed check) | TEST-01 | 72/72, three runs | the check could edit the other `/app` tab |
 | tests/python (fake encoder) | TEST-01 | 23, 23, 33, 12 | old encoder failed 10 of 300 `PYTHONHASHSEED` values |
 

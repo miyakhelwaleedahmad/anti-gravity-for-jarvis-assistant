@@ -78,7 +78,7 @@ The branch is pushed (normal pushes only) and CI runs on it. `main` was not touc
   - Chrome refused remote debugging in tests;
   - upload checks ran in the wrong order.
 
-  Still open: on Windows, a crashed server's own error line is missing from the diagnosis.
+  - JARVIS caught no output from the dev servers it started (so a crash could not be explained); they are no longer started detached on Windows. Pending the Windows CI result.
 
 ### Bugs reproduced and fixed
 

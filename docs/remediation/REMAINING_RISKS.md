@@ -9,7 +9,7 @@ The branch is pushed and the CI Windows job (TEST-01) runs the suite on `windows
 - Chrome refused remote debugging under a fake `USERPROFILE`;
 - upload checks ran in the wrong order.
 
-One is still open: after a crash, JARVIS's diagnosis on Windows names the exit code but not the server's own error line. On Linux it names both. Keeping 20 output lines instead of 6 did not change it, so the cause is elsewhere, perhaps in how the output of `cmd /c pnpm run` reaches JARVIS. The test now prints what JARVIS kept for the crashed server.
+It also showed that JARVIS caught no output from a dev server it started on Windows: 0 lines while the server ran. So a crash's error line could not be reported. Dev servers are no longer started detached on Windows. Side effect: a Ctrl+C in JARVIS's console window also stops the dev servers JARVIS started. Whether this fixes the Windows case is shown by that commit's Windows CI run (TEST_RESULTS.md).
 
 Windows CI is a clean Windows Server VM. It has no desktop session the owner uses, no microphone or speakers, no Python `.venv`, no Redis and no live model key. It does not replace a run on the owner's PC.
 
