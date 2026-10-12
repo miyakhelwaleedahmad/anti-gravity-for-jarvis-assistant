@@ -167,7 +167,14 @@ export class GroqProvider implements ILLMProvider {
   // Phase 7: Response cache — identical planning calls reuse the last result for 60s
   private static responseCache = new AdaptiveLruCache<string, ILLMResponse>(64, 60_000, 'groq-resp');
   // Phase 7: In-flight dedup — same hash never fires two concurrent Groq requests
-  private static inFlight = new Map<string, Promise<ILLMResponse>>();
+  /**
+   * Identical requests in flight share one call (Phase 7 dedup). REL-05: the
+   * shared call used to run on the first caller's abort signal, so cancelling
+   * that caller failed every other caller of the same request. The shared call
+   * now has its own controller, aborted only when every caller has cancelled;
+   * each caller's promise follows its own signal.
+   */
+  private static inFlight = new Map<string, { promise: Promise<ILLMResponse>; controller: AbortController; waiting: number }>();
 
   // Phase 7: Stable hash key for request dedup/cache
   private static hashRequest(req: ILLMRequest): string {
@@ -225,17 +232,48 @@ export class GroqProvider implements ILLMProvider {
     const existing = GroqProvider.inFlight.get(cacheKey);
     if (existing) {
       console.log(`${TAG()} 🔄 Deduped in-flight request (${cacheKey})`);
-      return existing;
+      return GroqProvider.follow(existing, request.signal);
     }
 
-    const promise = this._chatInternal(request, cacheKey);
-    promise.then(() => noteOk(), (err) => noteFail(err));
-    GroqProvider.inFlight.set(cacheKey, promise);
+    const shared = { controller: new AbortController(), waiting: 0, promise: undefined as unknown as Promise<ILLMResponse> };
+    shared.promise = this._chatInternal({ ...request, signal: shared.controller.signal }, cacheKey);
+    shared.promise.then(() => noteOk(), (err) => noteFail(err));
+    GroqProvider.inFlight.set(cacheKey, shared);
     // `.finally()` would return a second promise that rejects with nobody
     // listening — an unhandled rejection on every failed call.
-    const clear = () => { GroqProvider.inFlight.delete(cacheKey); };
-    promise.then(clear, clear);
-    return promise;
+    const clear = () => { if (GroqProvider.inFlight.get(cacheKey) === shared) GroqProvider.inFlight.delete(cacheKey); };
+    shared.promise.then(clear, clear);
+    return GroqProvider.follow(shared, request.signal);
+  }
+
+  /**
+   * One caller's view of a shared call: it rejects when this caller's signal
+   * aborts, and the shared call itself is aborted only when no caller is left.
+   */
+  private static follow(
+    shared: { promise: Promise<ILLMResponse>; controller: AbortController; waiting: number },
+    signal: AbortSignal | undefined,
+  ): Promise<ILLMResponse> {
+    shared.waiting++;
+    let left = false;
+    const leave = () => {
+      if (left) return;
+      left = true;
+      shared.waiting--;
+      if (shared.waiting <= 0) shared.controller.abort(signal?.reason ?? new Error('LLM_ABORTED'));
+    };
+    if (signal?.aborted) {
+      leave();
+      return Promise.reject(signal.reason instanceof Error ? signal.reason : new Error('LLM_ABORTED'));
+    }
+    return new Promise<ILLMResponse>((resolve, reject) => {
+      const onAbort = () => { leave(); reject(signal?.reason instanceof Error ? signal.reason : new Error('LLM_ABORTED')); };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      shared.promise.then(
+        (v) => { signal?.removeEventListener('abort', onAbort); if (!left) { left = true; shared.waiting--; } resolve(v); },
+        (e) => { signal?.removeEventListener('abort', onAbort); if (!left) { left = true; shared.waiting--; } reject(e); },
+      );
+    });
   }
 
   /** Request body shared by chat and streaming. */
