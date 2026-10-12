@@ -9,7 +9,7 @@ The branch is pushed and the CI Windows job (TEST-01) runs the suite on `windows
 - Chrome refused remote debugging under a fake `USERPROFILE`;
 - upload checks ran in the wrong order.
 
-It also showed that JARVIS caught no output from a dev server it started on Windows: 0 lines while the server ran. So a crash's error line could not be reported. Dev servers are no longer started detached on Windows. Side effect: a Ctrl+C in JARVIS's console window also stops the dev servers JARVIS started. Whether this fixes the Windows case is shown by that commit's Windows CI run (TEST_RESULTS.md).
+It also showed that JARVIS caught no output from a dev server it started on Windows: 0 lines while the server ran. So a crash's error line could not be reported. Dev servers are no longer started detached on Windows. Side effect: a Ctrl+C in JARVIS's console window also stops the dev servers JARVIS started. With that change Windows CI passes: 160 passed, 0 failed, 6 skipped on `86ca10d`.
 
 Windows CI is a clean Windows Server VM. It has no desktop session the owner uses, no microphone or speakers, no Python `.venv`, no Redis and no live model key. It does not replace a run on the owner's PC.
 
@@ -21,7 +21,8 @@ Not exercised on any Windows machine:
 | SEC-20 cmd.exe characters | `^`, `!`, `%NAME%` reach cmd.exe | allow-list refusal tested; cmd.exe's own handling not exercised |
 | SEC-15 self-heal | `.venv\Scripts\python.exe` | path code read; no `.venv` on CI |
 | SEC-18 / OPS-01 token files | mode 0600 has no effect on NTFS | the files sit in the user's own profile folder; ACLs not set |
-| Voice, wake word, TTS, window control | real devices and desktop | `processControlSafetyTest` and `windowControlTest` need the owner's desktop |
+| Voice, wake word, TTS | microphone, speakers, Python `.venv` | not on CI; `sttReliabilityTest` skipped |
+| Window and process control | the owner's desktop and apps | `windowControlTest` and `processControlSafetyTest` pass in the CI VM's session; not on the owner's desktop |
 
 ## 2. Partly done or still open
 

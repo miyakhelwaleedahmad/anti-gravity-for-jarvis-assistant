@@ -22,6 +22,8 @@ The branch is pushed (normal pushes only) and CI runs on it. `main` was not touc
 | `2bc7075` | E | PERF-02, PERF-07 |
 | `7ff1866` | F, G | OPS-01 Control Center, PERF-05 monitor, OPS-02 groundwork |
 | `ccc9e84` | — | Flaky Python test encoder; server output kept for the diagnosis 6 → 20 lines (did not fix the Windows case) |
+| `6100112`, `a5a126f` | — | These docs; Windows test diagnostics |
+| `86ca10d` | — | Windows: dev server output caught (not detached) |
 
 ## What changed, in short
 
@@ -78,7 +80,9 @@ The branch is pushed (normal pushes only) and CI runs on it. `main` was not touc
   - Chrome refused remote debugging in tests;
   - upload checks ran in the wrong order.
 
-  - JARVIS caught no output from the dev servers it started (so a crash could not be explained); they are no longer started detached on Windows. Pending the Windows CI result.
+  - JARVIS caught no output from the dev servers it started (so a crash could not be explained); they are no longer started detached on Windows.
+
+  Windows CI now passes: 160 passed, 0 failed, 6 skipped (`86ca10d`). That is a clean VM, not your PC.
 
 ### Bugs reproduced and fixed
 

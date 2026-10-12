@@ -36,14 +36,17 @@ The 9 skipped are the same tests as before (table below). None counts as a pass.
 | `c71b6f0` | 153 | 1 | 6 | scenarioIntegrationTest: 2 checks (output cut off) |
 | `0c41e7b`, `7ff1866` | 156, 159 | 1 | 6 | scenarioIntegrationTest: the crash diagnosis lost the server's log line behind npm's error lines |
 | `ccc9e84` | 159 | 1 | 6 | scenarioIntegrationTest, 2 checks: the tab list was read before the pages had their titles (test timing; the setup now waits for titles), and the crash diagnosis still misses the log line: the npm-lines change did not fix it on Windows. The next run prints what JARVIS kept for the crashed server |
-| `a5a126f` | 159 | 1 | 6 | the same check; the printed detail showed the cause: JARVIS caught **0 output lines** from the backend even while it ran (`start: running=true n=0`). A server started as a detached `cmd /c npm run …` wrote nowhere JARVIS could read. Fixed in the next commit (not detached on Windows); to be confirmed by its Windows CI run |
+| `a5a126f` | 159 | 1 | 6 | the same check; the printed detail showed the cause: JARVIS caught **0 output lines** from the backend even while it ran (`start: running=true n=0`). A server started as a detached `cmd /c npm run …` wrote nowhere JARVIS could read. Fixed in `86ca10d` (not detached on Windows) |
+| `86ca10d` | **160** | **0** | 6 | none: all three CI jobs pass |
 
 Skipped on Windows CI (6):
-- `processControlSafetyTest` and `windowControlTest` need the owner's desktop session;
-- `dashboardAccuracyTest` needs Redis;
-- `sttReliabilityTest` needs the `.venv`;
-- `startupPerformanceTest` needs `JARVIS_BRIDGE_TOKEN`;
-- the two live-LLM tests are opt-in.
+- `dashboardAccuracyTest`: needs Redis;
+- `dashboardHealthSystemTest`: needs Windows PowerShell, a reachable LLM API and Redis;
+- `sttReliabilityTest`: needs the `.venv`;
+- `startupPerformanceTest`: needs `JARVIS_BRIDGE_TOKEN`;
+- `finalIntegrationSuiteTest` and `successfulExecutionLifecycleAuditTest`: live LLM, opt-in.
+
+`processControlSafetyTest`, `windowControlTest` and `windowsScriptsTest` (skipped on Linux) run and pass on Windows CI. They ran in the CI VM's own session, not on the owner's desktop.
 
 Linux CI (`build-and-test`) failed once on `eafc0d4`: `browserControlAgentTest` had an order-dependent check, fixed in `7678ed7`. `python-checks` failed once on `0c41e7b`: the fake encoder used Python's salted `hash()` and failed for about 3% of salts (10 of 300 seeds here). Fixed in `ccc9e84`. On `ccc9e84`, `build-and-test` (with coverage) and `python-checks` pass; `windows` fails only `scenarioIntegrationTest` (table above).
 
