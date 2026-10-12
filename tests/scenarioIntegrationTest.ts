@@ -82,6 +82,10 @@ try {
   let r = await toolRegistryV2.execute('dev', { action: 'start_server', project: world.web.dir, script: 'dev', port: world.web.port });
   const r2 = await toolRegistryV2.execute('dev', { action: 'start_server', project: world.api.dir, script: 'start', port: world.api.port });
   ok('(setup) JARVIS started the website and the backend', r.success && r2.success && await answers(world.web.port) && await answers(world.api.port), `${r.output.slice(0, 120)} ${r2.output.slice(0, 120)}`);
+  // How many output lines JARVIS has caught from the running backend (shown
+  // with the crash diagnosis check if it fails on Windows CI).
+  const atStart = devTools.knownServers().find((k) => k.port === world.api.port);
+  const keptAtStart = atStart ? `start: running=${atStart.running} n=${atStart.lastLines.length} first=${JSON.stringify((atStart.lastLines[0] ?? '').slice(0, 30))}` : 'start: no known server';
   const blank = (await pages()).filter((p) => p.url === 'about:blank');
   const opened = [];
   for (const url of [world.site.url('/docs'), world.site.url('/deploy'), webUrl, world.site.url('/')]) opened.push(await cdp.openTab(url, world.chrome.port));
@@ -115,7 +119,7 @@ try {
   const keptAtCrash = crashed ? `running=${crashed.running} exit=${crashed.exit?.code}/${crashed.exit?.by} n=${crashed.lastLines.length} last=${JSON.stringify(crashed.lastLines.slice(-5).map((l) => l.slice(0, 40)))}` : 'no known server';
   out = await say('3 application not working', "Why isn't my application working?");
   const diagnosed = /api/.test(out.reply) && /exit code 1/.test(out.reply) && /lost the connection to the database/.test(out.reply);
-  ok('the diagnosis: the backend stopped by itself, with its exit code and last log line', diagnosed, diagnosed ? out.reply : `${keptAtCrash} | ${out.reply}`);
+  ok('the diagnosis: the backend stopped by itself, with its exit code and last log line', diagnosed, diagnosed ? out.reply : `${keptAtStart} | crash: ${keptAtCrash} | ${out.reply}`);
   ok('restarted (level 1, no approval) and checked: the port answers again', await answers(world.api.port)
     && out.calls.some((c) => c.tool === 'dev' && (c.args as any).action === 'start_server' && c.success) && out.decisions.length === 0
     && /started it again/i.test(out.reply), out.calls.map((c) => `${c.tool}:${(c.args as any).action ?? ''}:${c.success}`).join(' '));
