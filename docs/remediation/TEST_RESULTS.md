@@ -24,8 +24,33 @@ Kinds of evidence, kept apart below:
 | Phase C (`0c41e7b`) | 154 | 0 | 9 | clean |
 | Phases E, F, G (`2bc7075`, `7ff1866`) | 157 | 0 | 9 | clean |
 | CI fixes (`ccc9e84`) | 157 | 0 | 9 | clean |
+| PC fixes (this commit), non-CI mode, Redis running | 161 | 0 | 6 environment | clean |
 
 The 9 skipped are the same tests as before (table below). None counts as a pass.
+
+## The owner's Windows PC (`28b0d2b`, Windows 10, Node 22.14)
+
+The first run of these changes on the owner's PC. The owner reported these results; they were not run from here.
+
+| Run | Passed | Failed | Environment | Skipped |
+|---|---|---|---|---|
+| `pnpm run typecheck` | clean | | | |
+| `pnpm test` | 160 | 3 | 3 | 0 |
+| `pnpm verify:windows` | 11 | 1 | — | 5 |
+
+- **Failed (real):**
+  - `errorRecoveryTest`: PC-03, a test budget;
+  - `goalRuntimeTest`: PC-01, a runtime race;
+  - `scenarioIntegrationTest`: PC-02, a diagnosis race.
+- **"Environment":**
+  - `dashboardAccuracyTest`: really needs Redis and an LLM. Redis was running, so this was not an environment failure (PC-04);
+  - `dashboardHealthSystemTest`;
+  - `windowsScriptsTest`: PowerShell 7 is not installed.
+- **Passed on the PC with its keys present:** `finalIntegrationSuiteTest` and `successfulExecutionLifecycleAuditTest`. Several of their commands are routed without the model, so this is partial live-provider evidence.
+- **Control Center:** `controlCenterTest`, including its real-registry section, passed on the PC.
+- **`verify:windows`:** the only failure is the unanswered approval. Notepad, window actions, Calculator, clipboard and the dev server were skipped, not passed.
+
+Not yet rerun on the PC after the fixes below.
 
 ## Windows CI (`windows-latest`)
 
@@ -125,6 +150,9 @@ Coverage, final run (c8 10.1.3; only files the tests load; `tests/` excluded):
 | remoteAccessTest | OPS-02 | 30/30 | new groundwork |
 | diagnosisRulesTest (extended) | REL-09 (Windows CI) | 18/18 | the new check fails with the old 6-line window; this did not fix the Windows CI case (the `ccc9e84` commit message says 19/19 by mistake) |
 | browserControlAgentTest (fixed check) | TEST-01 | 72/72, three runs | the check could edit the other `/app` tab |
+| goalRuntimeTest (extended) | PC-01 | 63/63 | 60/63: `paused/running`, executor started, `pending` |
+| serverExitRaceTest | PC-02 | 4/4 | 2/4: "runs but does not answer" in the gap |
+| approvalGateStructuredTest (extended) | PC-05 | 66/66 | new setting |
 | tests/python (fake encoder) | TEST-01 | 23, 23, 33, 12 | old encoder failed 10 of 300 `PYTHONHASHSEED` values |
 
 Converted to the real speech path (TEST-02), all passing:

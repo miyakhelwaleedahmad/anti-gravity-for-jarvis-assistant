@@ -283,7 +283,12 @@ function freePort(): Promise<number> {
 const answers = (port: number) => fetch(`http://127.0.0.1:${port}/`).then((r) => r.ok).catch(() => false);
 
 console.log('\n--- Approval in this window (P3) ---');
-console.log('  When the approval box appears, type  approve  and press Enter.');
+{
+  const { typedApprovalSeconds } = await import('../security/approvalGate.js');
+  console.log(`  When the approval box appears, type  approve  and press Enter. You have ${typedApprovalSeconds()} s.`);
+  console.log('  (No answer denies it, and the checks that need full control are skipped. For more time,');
+  console.log('   set JARVIS_APPROVAL_TIMEOUT_S=120 in .env and run this again.)');
+}
 const fullControl = await check('approval.console', 'A typed approval turns on full control mode', async () => {
   // 30 minutes: a slow PC needs several for the steps below; it is turned off at the end.
   const r = await call('enable_full_control_session', { source: 'cli', durationMinutes: 30 });

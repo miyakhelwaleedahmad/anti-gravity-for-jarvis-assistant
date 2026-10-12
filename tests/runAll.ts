@@ -19,7 +19,9 @@
  */
 
 import { spawn } from 'child_process';
+import * as dotenv from 'dotenv';
 import * as fs from 'fs';
+import * as net from 'net';
 import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
@@ -61,7 +63,8 @@ const ENVIRONMENT_DEPENDENT: Record<string, string> = {
   processControlSafetyTest: 'Windows process table',
   windowControlTest: 'Windows window manager',
   sttReliabilityTest: 'Python virtualenv (.venv)',
-  dashboardAccuracyTest: 'a running Redis',
+  // Overall "online" also needs the live LLM health check (not stubbed).
+  dashboardAccuracyTest: 'a running Redis and a reachable LLM API',
   startupPerformanceTest: 'JARVIS_BRIDGE_TOKEN',
   finalIntegrationSuiteTest: 'a reachable LLM API',
   successfulExecutionLifecycleAuditTest: 'a reachable LLM API',
@@ -84,9 +87,41 @@ const HOST_DEPENDENT: Record<string, () => string | undefined> = {
   windowsScriptsTest: () => (findPwsh() ? undefined : 'PowerShell 7, pwsh (JARVIS_TEST_PWSH)'),
 };
 
+/**
+ * Prerequisites checked on this host before the run (owner's PC: Redis was
+ * running, yet a dashboardAccuracyTest failure was excused as "needs a running
+ * Redis"). When the prerequisite is here, a failure counts as real.
+ */
+const presentHere = new Set<string>();
+
+function portAnswers(host: string, port: number, ms = 1_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const done = (up: boolean) => { socket.destroy(); resolve(up); };
+    socket.setTimeout(ms, () => done(false));
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
+  });
+}
+
+async function checkPrerequisites(): Promise<void> {
+  // Keys usually live in .env, which the tests load themselves; read it here
+  // only to see which are set (process.env is not changed).
+  let fromFile: Record<string, string> = {};
+  try { fromFile = dotenv.parse(fs.readFileSync(path.join(getWorkspaceRoot(), '.env'))); } catch { /* no .env */ }
+  const has = (k: string) => !!(process.env[k] || fromFile[k]);
+  const redisUp = await portAnswers(process.env['REDIS_HOST'] || fromFile['REDIS_HOST'] || '127.0.0.1', Number(process.env['REDIS_PORT'] || fromFile['REDIS_PORT'] || 6379));
+  const llmKey = ['GROQ_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY'].some(has);
+  if (redisUp && llmKey) presentHere.add('dashboardAccuracyTest');
+  if (fs.existsSync(path.join(getWorkspaceRoot(), '.venv'))) presentHere.add('sttReliabilityTest');
+  if (has('JARVIS_BRIDGE_TOKEN')) presentHere.add('startupPerformanceTest');
+  if (process.platform === 'win32' && redisUp && llmKey) presentHere.add('dashboardHealthSystemTest');
+}
+
 /** What `name` needs that this host is missing, or undefined if nothing is. */
 function missingPrerequisite(name: string): string | undefined {
   if (process.platform === 'win32' && PROVIDED_BY_WINDOWS.has(name)) return undefined;
+  if (presentHere.has(name)) return undefined;
   // Live provider tests run only when asked (TEST-01): they need keys, cost
   // requests and depend on the network, so they are never on by default.
   if (ENVIRONMENT_DEPENDENT[name] === 'a reachable LLM API' && process.env['JARVIS_LIVE_TESTS'] === '1') return undefined;
@@ -202,6 +237,7 @@ async function main(): Promise<void> {
   const ciMode = args.includes('--ci');
   const filterArg = args.find((a) => a.startsWith('--filter='));
   const filter = filterArg ? filterArg.split('=')[1] ?? '' : '';
+  await checkPrerequisites();
   const tempFolder = useTestTempFolder();
   if (tempFolder) console.log(`Temp folder for the tests: ${tempFolder} (this PC's temp folder is one JARVIS refuses as a system folder; on Windows it is under AppData).`);
 

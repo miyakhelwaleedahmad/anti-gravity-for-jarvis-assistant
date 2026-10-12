@@ -369,5 +369,15 @@ permissionSession.shutdown?.();
 console.log = realLog;
 process.chdir(os.tmpdir());
 try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use by a child process; the runner clears its temp folder */ }
+console.log('\n--- The typed answer window (JARVIS_APPROVAL_TIMEOUT_S) ---');
+{
+  const secs = gateModule.typedApprovalSeconds as (env: Record<string, string | undefined>) => number;
+  ok('default 30 s', secs({}) === 30);
+  ok('the owner can give more time (90 s)', secs({ JARVIS_APPROVAL_TIMEOUT_S: '90' }) === 90);
+  ok('at most 120 s', secs({ JARVIS_APPROVAL_TIMEOUT_S: '9999' }) === 120);
+  ok('at least 10 s', secs({ JARVIS_APPROVAL_TIMEOUT_S: '1' }) === 10);
+  ok('a value that is not a number keeps 30 s', secs({ JARVIS_APPROVAL_TIMEOUT_S: 'forever' }) === 30);
+}
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

@@ -35,7 +35,16 @@ import { redact } from './redactor.js';
 import { currentTaskNode } from '../core/taskContext.js';
 import { getRequestSource, getRequestText } from '../core/traceContext.js';
 
-const DEFAULT_TIMEOUT_SECONDS = 30;
+/**
+ * How long a typed approval waits for an answer: 30 s, or the owner's
+ * JARVIS_APPROVAL_TIMEOUT_S (10–120). A longer wait gives more time to read
+ * the box; it never approves anything: no answer still denies.
+ */
+export function typedApprovalSeconds(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env['JARVIS_APPROVAL_TIMEOUT_S']);
+  if (!env['JARVIS_APPROVAL_TIMEOUT_S'] || !Number.isFinite(n)) return 30;
+  return Math.min(120, Math.max(10, Math.round(n)));
+}
 /**
  * The spoken answer window, from when JARVIS has finished asking. 10 s was
  * too short on the owner's PC: the microphone takes a moment to come back
@@ -251,7 +260,7 @@ export class ApprovalGate {
 
   private async ask(request: ApprovalRequest, timeoutSecs?: number): Promise<boolean> {
     const voice = request.source === 'voice';
-    const seconds = timeoutSecs ?? (voice && !request.strong ? VOICE_TIMEOUT_SECONDS : DEFAULT_TIMEOUT_SECONDS);
+    const seconds = timeoutSecs ?? (voice && !request.strong ? VOICE_TIMEOUT_SECONDS : typedApprovalSeconds());
     securityAuditLogger.approvalRequest(request);
     console.log(formatApprovalRequest(request, seconds));
 

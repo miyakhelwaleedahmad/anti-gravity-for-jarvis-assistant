@@ -146,9 +146,15 @@ Use **CMD**, in the JARVIS folder. Run one step at a time.
    ```
    The last line shows passed · failed · skipped. Please send the "Real failures" list if there is one. Windows CI has run these changes; this is the first run on your PC (REL-09).
 
-4. Run the Windows check:
+4. Run the Windows check. When the approval box appears, type `approve` and press Enter. You have 30 s by default; for more time, add `JARVIS_APPROVAL_TIMEOUT_S=120` to `.env` first. No answer means the five control checks are skipped, not passed.
    ```
    pnpm verify:windows
+   ```
+   It writes `data\logs\verify-windows.json`; send that file back.
+
+   Optional, to run `windowsScriptsTest` as well, install PowerShell 7 (CMD):
+   ```
+   winget install --id Microsoft.PowerShell --source winget
    ```
 
 5. Check your `.env` (a text editor is fine):

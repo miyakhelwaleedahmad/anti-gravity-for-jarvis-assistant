@@ -2,6 +2,15 @@
 
 What this repair did not close, why, and what to do about it. Each item names its finding ID in `REMEDIATION_TRACKER.md`.
 
+## 0. The owner's PC run
+
+`pnpm test` and `pnpm verify:windows` ran on the PC at `28b0d2b`; see TEST_RESULTS.md. Its three real failures are fixed here (PC-01 to PC-03) but not yet rerun on the PC.
+
+Still unverified on the PC:
+- Notepad, window actions, Calculator, clipboard and the dev server: the approval was not answered;
+- `windowsScriptsTest`: needs PowerShell 7;
+- `dashboardHealthSystemTest`: its output was not captured.
+
 ## 1. Not verified on the owner's Windows PC (REL-09)
 
 The branch is pushed and the CI Windows job (TEST-01) runs the suite on `windows-latest`. Results are in TEST_RESULTS.md. Windows CI found three real problems, now fixed:

@@ -62,7 +62,8 @@ async function runTests() {
   });
 
   const snap3 = await healthManager.probe();
-  assert(snap3.overallStatus === 'online', `Overall status transitions to ONLINE when all services are healthy (got: ${snap3.overallStatus})`);
+  const notOnline = Object.entries(snap3.services).filter(([, v]) => (v as any)?.status !== 'online').map(([k, v]) => `${k}=${(v as any)?.status}`).join(', ');
+  assert(snap3.overallStatus === 'online', `Overall status transitions to ONLINE when all services are healthy (got: ${snap3.overallStatus}; not online: ${notOnline || 'none'})`);
 
   // Restore original methods
   (healthManager as any).probeVectorMemory = origProbeVector;
