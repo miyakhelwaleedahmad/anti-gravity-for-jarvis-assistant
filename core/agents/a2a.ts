@@ -33,6 +33,7 @@ import type {
 } from './types.js';
 import { A2A_TERMINAL_STATES, JARVIS_A2A_EXTENSION, isTerminal } from './types.js';
 import { JARVIS_AGENT_ID } from './agentManager.js';
+import { assertLoopbackBind } from '../../security/remoteAccess.js';
 
 // ─── Errors (spec §5.4) ──────────────────────────────────────────────────────
 
@@ -642,6 +643,7 @@ export class A2AHttpServer {
 
   async start(): Promise<number> {
     this.server = http.createServer((req, res) => { this.route(req, res).catch((err) => this.fail(res, null, err)); });
+    assertLoopbackBind('127.0.0.1', 'The A2A endpoint');
     await new Promise<void>((resolve, reject) => {
       this.server!.once('error', reject);
       this.server!.listen(this.opts.port, '127.0.0.1', () => resolve());

@@ -58,6 +58,12 @@ import { backupIntervalMs, backupRestore } from './system/backupRestore.js';
 import { goalStatusText } from './core/goalTools.js';
 import { createCrashPolicy } from './system/crashPolicy.js';
 import { runShutdownSteps } from './system/shutdownSteps.js';
+import { resourceMonitor } from './monitoring/resourceMonitor.js';
+import { CONTROL_CENTER_DEFAULT_PORT, startControlCenter, type ControlCenter } from './system/controlCenter.js';
+import { llmStatus } from './bridge/llmStatus.js';
+
+/** The local Control Center, when JARVIS_CONTROL_CENTER=1 started it. */
+let controlCenter: ControlCenter | null = null;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -338,6 +344,19 @@ async function startJarvis() {
       const every = backupIntervalMs();
       if (every > 0) backupRestore.startScheduled(every);
       else console.log('[BackupRestore] Scheduled backups are off (JARVIS_BACKUP_INTERVAL_HOURS=0).');
+      // CPU, event-loop lag and heap, sampled every 10 s; warns only above its
+      // thresholds (PERF-05: the readings the budgets are to be set from).
+      resourceMonitor.start();
+      // The local Control Center (OPS-01), only when asked for: JARVIS_CONTROL_CENTER=1.
+      if (process.env['JARVIS_CONTROL_CENTER'] === '1') {
+        const port = Number(process.env['JARVIS_CONTROL_CENTER_PORT']) || CONTROL_CENTER_DEFAULT_PORT;
+        startControlCenter({
+          port,
+          extraStatus: () => ({ llm: llmStatus.snapshot(), resources: resourceMonitor.getLatest(), trend: resourceMonitor.getTrend() }),
+        })
+          .then((cc) => { controlCenter = cc; })
+          .catch((err) => console.warn(`[JARVIS] Control Center did not start: ${redact(err instanceof Error ? err.message : String(err))}`));
+      }
     });
 
     // Register barge-in hook to clear voice command queue
@@ -902,6 +921,8 @@ async function shutdown(signal = 'manual', exitCode = 0) {
     { name: 'brain loop', run: () => brainLoop.stop() },
     { name: 'conversation bus', run: () => conversationBus.shutdown() },
     { name: 'node bridge', run: () => nodeBridge.stop() },
+    { name: 'resource monitor', run: () => resourceMonitor.stop() },
+    { name: 'control center', run: () => controlCenter?.close() },
   ], { stepTimeoutMs: 10_000 });
   for (const what of notSaved) failures.unshift({ name: `saving ${what}`, error: 'see above' });
 

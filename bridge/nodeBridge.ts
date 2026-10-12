@@ -8,6 +8,7 @@ import { systemController } from "../core/stateShim.js";
 import { agentStateMachine } from "../core/agentStateMachine.js";
 import http from "http";
 import { createHash, timingSafeEqual } from "crypto";
+import { assertLoopbackBind } from "../security/remoteAccess.js";
 
 const LOCALHOST_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const BRIDGE_DEV_MODE = process.env.JARVIS_BRIDGE_DEV_MODE === "true";
@@ -174,6 +175,7 @@ export class NodeBridge {
     if (!LOCALHOST_HOSTS.has(pythonBridgeConfig.host)) {
       throw new Error(`[NodeBridge] Refusing to bind WebSocket bridge to non-localhost host: ${pythonBridgeConfig.host}`);
     }
+    assertLoopbackBind(pythonBridgeConfig.host, 'The voice bridge');
 
     if (!BRIDGE_TOKEN && !BRIDGE_DEV_MODE) {
       throw new Error('[NodeBridge] JARVIS_BRIDGE_TOKEN is required. Set it in .env, or explicitly set JARVIS_BRIDGE_DEV_MODE=true for local insecure development.');
