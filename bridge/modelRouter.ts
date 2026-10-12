@@ -4,6 +4,7 @@ import { openaiProvider } from "./openaiProvider.js";
 import type { ILLMMessage, ILLMProvider, ILLMRequest, ILLMResponse } from "./llmTypes.js";
 import { llmStatus } from "./llmStatus.js";
 import { redact } from "../security/redactor.js";
+import { yieldToForeground } from "../core/foregroundGate.js";
 
 /**
  * The request with credentials replaced in every message: tool output, memory,
@@ -74,8 +75,22 @@ export class ModelRouter {
     return order;
   }
 
+  /**
+   * A background agent's or goal's call waits while the owner is in a
+   * conversation (PERF-02, core/foregroundGate.ts). A call cancelled while it
+   * waits is not sent.
+   */
+  private async backgroundWaits(request: ILLMRequest): Promise<void> {
+    const waited = await yieldToForeground(request.signal);
+    if (waited > 0) console.log(`[ModelRouter] Background call waited ${waited} ms for the owner's request.`);
+    if (request.signal?.aborted) {
+      throw Object.assign(new Error("Request aborted before it was sent"), { name: "AbortError" });
+    }
+  }
+
   async chat(request: ILLMRequest, providerName?: string): Promise<ILLMResponse> {
     request = redactRequest(request);
+    await this.backgroundWaits(request);
     const order = this.failoverOrder(providerName);
     let lastError: unknown;
 
@@ -118,6 +133,7 @@ export class ModelRouter {
    */
   async *streamChat(request: ILLMRequest, providerName?: string): AsyncGenerator<string, void, unknown> {
     request = redactRequest(request);
+    await this.backgroundWaits(request);
     const selectedProviderName = providerName || this.primary;
     const provider = this.providers.get(selectedProviderName);
 
