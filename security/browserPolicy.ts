@@ -122,8 +122,16 @@ function realRoots(): string[] {
 /** Why `file` cannot be uploaded, or undefined. Links are followed before the folder check. */
 export function uploadPathProblem(file: string): string | undefined {
   if (!file.trim()) return 'Name the file to upload.';
+  // The folder rule first, on the path as given: a file outside the approved
+  // folders is refused the same way whether or not it exists. The existence
+  // answer used to come first and told a caller what is on the disk there.
+  const OUTSIDE = 'JARVIS uploads files only from your approved folders (the JARVIS folder, Desktop, Documents, Downloads, temp).';
+  const given = path.resolve(file);
+  if (isProtectedSystemPath(given) || ![...approvedFolders().map((r) => path.resolve(r)), ...realRoots()].some((root) => isPathInside(root, given))) {
+    return OUTSIDE;
+  }
   let real: string;
-  try { real = fs.realpathSync(path.resolve(file)); } catch { return `${path.basename(file)} does not exist.`; }
+  try { real = fs.realpathSync(given); } catch { return `${path.basename(file)} does not exist.`; }
   if (isProtectedSystemPath(real) || !realRoots().some((root) => isPathInside(root, real))) {
     return 'JARVIS uploads files only from your approved folders (the JARVIS folder, Desktop, Documents, Downloads, temp).';
   }

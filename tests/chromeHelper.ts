@@ -52,6 +52,15 @@ export interface RunningChrome {
   stop(): Promise<void>;
 }
 
+/**
+ * The user's own folders as they were when the tests started. A scenario test
+ * points HOME and USERPROFILE at a stand-in home for JARVIS; Chrome, a
+ * separate program, inherited it and on Windows refused remote debugging
+ * ("requires a non-default data directory"). Chrome keeps the real ones.
+ */
+const REAL_USER_ENV = Object.fromEntries(['HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'HOMEDRIVE', 'HOMEPATH']
+  .map((k) => [k, process.env[k]] as const).filter(([, v]) => v !== undefined));
+
 /** Headless, a free debugging port, a throwaway profile; resolves once DevTools answers. */
 export async function startChromium(url = 'about:blank', extraArgs: string[] = []): Promise<RunningChrome> {
   const binary = findChromium();
@@ -61,7 +70,7 @@ export async function startChromium(url = 'about:blank', extraArgs: string[] = [
   const proc = spawn(binary, [
     '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
     '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-gpu', ...extraArgs, url,
-  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  ], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...REAL_USER_ENV } });
   let stderr = '';
   proc.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-2000); });
   let exited: number | null | undefined;

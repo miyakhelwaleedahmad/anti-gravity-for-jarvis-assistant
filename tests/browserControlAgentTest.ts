@@ -227,7 +227,11 @@ try {
   fs.writeFileSync(upload, 'my cv');
   fs.writeFileSync(path.join(workspace, '.env'), 'KEY=1');
   ok('upload from an approved folder: 3', level('browser_upload', { ref: fieldNamed('doc'), path: upload }) === 3);
-  ok('upload from outside the approved folders is refused', /approved folders/.test(String(level('browser_upload', { ref: fieldNamed('doc'), path: '/etc/hostname' }))));
+  // A file that exists outside the approved folders on this platform.
+  const outside = process.platform === 'win32' ? path.join(process.env['SystemRoot'] ?? 'C:\\Windows', 'win.ini') : '/etc/hostname';
+  ok('upload from outside the approved folders is refused', /approved folders/.test(String(level('browser_upload', { ref: fieldNamed('doc'), path: outside }))));
+  ok('…and a missing file there gets the same answer (whether it exists is not revealed)',
+    /approved folders/.test(String(level('browser_upload', { ref: fieldNamed('doc'), path: path.join(path.dirname(outside), 'no-such-file-jarvis.txt') }))));
   ok('uploading a .env file is refused', /keys, passwords or credential files/.test(String(level('browser_upload', { ref: fieldNamed('doc'), path: path.join(workspace, '.env') }))));
   ok('the approval request names the element and the site', risk('browser_click', { ref: button('Sign in') }).target === `button "Sign in" on ${new URL(base).host}`,
     String(risk('browser_click', { ref: button('Sign in') }).target));
