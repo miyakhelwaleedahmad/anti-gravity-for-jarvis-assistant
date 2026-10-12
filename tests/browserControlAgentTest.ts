@@ -155,7 +155,12 @@ for (let i = 0; i < 150 && !(await listPages(chrome.port)).some((p) => p.title =
 
 /** A raw DevTools evaluation in the page — the test's own eyes, not JARVIS's. */
 async function inPage(urlPart: string, expression: string): Promise<any> {
-  const page = (await listPages(chrome.port)).find((p) => p.url.includes(urlPart));
+  // Two tabs can show the same address (the "Next" tab is sent to /app in
+  // section 3). Prefer the tab JARVIS last looked at, so a change made here
+  // lands in the tab its references point to; the first match otherwise.
+  const matches = (await listPages(chrome.port)).filter((p) => p.url.includes(urlPart));
+  const looked = lookedTabId();
+  const page = matches.find((p) => p.id === looked) ?? matches[0];
   if (!page) return undefined;
   const s = await CdpSession.connect(page, chrome.port);
   try {
@@ -171,6 +176,11 @@ async function look(tab = 'Shop') {
   return page;
 }
 const button = (text: string) => page?.buttons?.find((b: any) => b.text === text)?.ref;
+/** The tab the last look() saw, from any of its references. */
+function lookedTabId(): string | undefined {
+  const anyRef = [...(page?.buttons ?? []), ...(page?.links ?? []), ...(page?.fields ?? []), ...(page?.headings ?? [])][0]?.ref;
+  return anyRef ? refs.lookupRef?.(anyRef)?.tabId : undefined;
+}
 const fieldNamed = (name: string) => [...(page?.fields ?? []), ...(page?.forms ?? []).flatMap((f: any) => f.fields)].find((f: any) => f.name === name)?.ref;
 const fieldLabelled = (label: string) => [...(page?.fields ?? []), ...(page?.forms ?? []).flatMap((f: any) => f.fields)].find((f: any) => f.label === label)?.ref;
 const link = (text: string) => page?.links?.find((l: any) => l.text === text)?.ref;
