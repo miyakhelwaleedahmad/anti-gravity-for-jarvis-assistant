@@ -70,6 +70,9 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
       - name: Test (Windows)
+        env:
+          JARVIS_TEST_FULL_OUTPUT: '1'
+          JARVIS_TEST_CHROME_WAIT_MS: '60000'
         run: pnpm test -- --ci
 
   # Opt-in: tests that call a real LLM provider. Started by hand with

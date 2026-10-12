@@ -6,7 +6,7 @@
  *
  *  1. Each parses without errors, and uses nothing Windows PowerShell 5.1
  *     lacks (??, ?., ternaries, && and || between commands).
- *  2. Run off Windows, each answers with one line of JSON — an unknown
+ *  2. Run here (on Windows: real readings), each answers with one line of JSON — an unknown
  *     section or action, a handle or reference that is not a number, and a
  *     section name with a command tacked on are all refused, never run.
  *  3. win_automate.ps1's window actions, run with the arguments JARVIS
@@ -274,7 +274,12 @@ ok('probe: a section with a command tacked on is just an unknown section', out.o
 out = run('perception/windows_probe.ps1', { JARVIS_PROBE_SECTION: 'window_state', JARVIS_PROBE_HWND: '12; calc' });
 ok('probe: a window handle that is not a number is refused', out.ok === false && /not a number/.test(out.error), JSON.stringify(out));
 out = run('perception/windows_probe.ps1', { JARVIS_PROBE_SECTION: 'ports' });
-ok('probe: a Windows-only reading off Windows is an error in JSON, not a crash', out.ok === false && typeof out.error === 'string' && out.section === 'ports', JSON.stringify(out).slice(0, 160));
+if (process.platform === 'win32') {
+  // On Windows the reading is real: listening ports, as JSON.
+  ok('probe: on Windows, the ports reading returns the listening ports as JSON', out.ok === true && out.section === 'ports' && Array.isArray(out.items), JSON.stringify(out).slice(0, 160));
+} else {
+  ok('probe: a Windows-only reading off Windows is an error in JSON, not a crash', out.ok === false && typeof out.error === 'string' && out.section === 'ports', JSON.stringify(out).slice(0, 160));
+}
 out = run('control/desktop.ps1', { JARVIS_DESKTOP_ACTION: 'format_disk' });
 ok('desktop: an unknown action → "unknown action"', out.ok === false && out.error === 'unknown action', JSON.stringify(out));
 out = run('control/desktop.ps1', { JARVIS_DESKTOP_ACTION: 'clipboard_write', JARVIS_DESKTOP_FILE: path.join(repo, 'no-such-file.txt') });
@@ -282,7 +287,12 @@ ok('desktop: clipboard text only from the file JARVIS wrote; a missing file is r
 out = run('control/desktop.ps1', { JARVIS_DESKTOP_ACTION: 'screenshot', JARVIS_DESKTOP_FILE: path.join(repo, 'shot.exe') });
 ok('desktop: a screenshot is written only as .png', out.ok === false && /No PNG file/.test(out.error) && !fs.existsSync(path.join(repo, 'shot.exe')), JSON.stringify(out));
 out = run('control/uia.ps1', { JARVIS_UIA_ACTION: 'list' });
-ok('uia: off Windows, an error in JSON (no UI Automation here)', out.ok === false && typeof out.error === 'string' && out.action === 'list', JSON.stringify(out).slice(0, 160));
+if (process.platform === 'win32') {
+  // On Windows UI Automation exists: the list reads the elements of the active window.
+  ok('uia: on Windows, list returns the elements as JSON', Array.isArray(out.elements), JSON.stringify(out).slice(0, 160));
+} else {
+  ok('uia: off Windows, an error in JSON (no UI Automation here)', out.ok === false && typeof out.error === 'string' && out.action === 'list', JSON.stringify(out).slice(0, 160));
+}
 
 console.log('\n--- 3. win_automate.ps1 window actions, called as JARVIS calls them ---');
 // The owner's seventh Windows run: every close "succeeded" and nothing

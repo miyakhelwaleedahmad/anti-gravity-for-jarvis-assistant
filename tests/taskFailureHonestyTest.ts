@@ -41,6 +41,16 @@ const { registerAllTools } = await import('../core/tools/index.js');
 const { SkillLoader } = await import('../core/skillLoader.js');
 const { toolRegistryV2, reportedFailure } = await import('../core/toolRegistryV2.js');
 const { orchestrator } = await import('../core/orchestrator.js');
+
+// What these timings check is that a refusal is not retried (no 1 s back-off).
+// Before planning, a request that names windows or apps refreshes the window
+// list (PowerShell on Windows, up to WORLD_REFRESH_BUDGET_MS = 1.5 s): on the
+// Windows CI runner that budget alone failed the 900 ms checks. It is not
+// what is measured here, so it answers at once.
+{
+  const { worldState } = await import('../core/worldState.js');
+  (worldState as any).refresh = async () => {};
+}
 const { modelRouter } = await import('../bridge/modelRouter.js');
 const { reflectionEngine } = await import('../core/reflectionEngine.js');
 const { agentMemory } = await import('../memory/agentMemory.js');

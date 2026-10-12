@@ -61,13 +61,28 @@ export async function startChromium(url = 'about:blank', extraArgs: string[] = [
   const proc = spawn(binary, [
     '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
     '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-gpu', ...extraArgs, url,
-  ], { stdio: 'ignore' });
-  for (let i = 0; i < 100; i++) {
+  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  let stderr = '';
+  proc.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-2000); });
+  let exited: number | null | undefined;
+  proc.on('exit', (code) => { exited = code; });
+  // A first start on a fresh Windows runner took longer than the 10 s this
+  // waited, and the helper then returned as if Chrome were up: the failure
+  // surfaced later as "Chrome is not reachable". Wait longer, and say so.
+  const waitMs = Number(process.env['JARVIS_TEST_CHROME_WAIT_MS'] ?? 45_000);
+  const started = Date.now();
+  let up = false;
+  while (!up && exited === undefined && Date.now() - started < waitMs) {
     await new Promise((r) => setTimeout(r, 100));
     try {
       const res = await fetch(`http://127.0.0.1:${port}/json/version`);
-      if (res.ok) break;
+      up = res.ok;
     } catch { /* not up yet */ }
+  }
+  if (!up) {
+    proc.kill();
+    throw new Error(`Chrome did not open DevTools on port ${port} within ${Date.now() - started} ms`
+      + `${exited !== undefined ? ` (it exited with code ${exited})` : ''}. Chrome said: ${stderr.trim().slice(-600) || '(nothing)'}`);
   }
   return {
     port,

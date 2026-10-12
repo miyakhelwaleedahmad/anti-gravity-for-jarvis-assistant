@@ -55,7 +55,9 @@ function useTestTempFolder(): string | undefined {
  * skips them rather than letting a CI run go permanently red.
  */
 const ENVIRONMENT_DEPENDENT: Record<string, string> = {
-  dashboardHealthSystemTest: 'Windows PowerShell',
+  // It asserts the overall status is "online", which needs a live LLM health
+  // check and Redis, not only Windows (Windows CI: "offline" without keys).
+  dashboardHealthSystemTest: 'Windows PowerShell, a reachable LLM API and Redis',
   processControlSafetyTest: 'Windows process table',
   windowControlTest: 'Windows window manager',
   sttReliabilityTest: 'Python virtualenv (.venv)',
@@ -70,7 +72,7 @@ const ENVIRONMENT_DEPENDENT: Record<string, string> = {
  * tests run in every mode and a failure counts as real: excusing it there would
  * hide exactly the failures a Windows run exists to find.
  */
-const PROVIDED_BY_WINDOWS = new Set(['dashboardHealthSystemTest', 'processControlSafetyTest', 'windowControlTest']);
+const PROVIDED_BY_WINDOWS = new Set(['processControlSafetyTest', 'windowControlTest']);
 
 /** Tests that need something only some hosts have: checked on this host. */
 const HOST_DEPENDENT: Record<string, () => string | undefined> = {
@@ -88,6 +90,7 @@ function missingPrerequisite(name: string): string | undefined {
   // Live provider tests run only when asked (TEST-01): they need keys, cost
   // requests and depend on the network, so they are never on by default.
   if (ENVIRONMENT_DEPENDENT[name] === 'a reachable LLM API' && process.env['JARVIS_LIVE_TESTS'] === '1') return undefined;
+  if (name === 'dashboardHealthSystemTest' && process.platform === 'win32' && process.env['JARVIS_LIVE_TESTS'] === '1') return undefined;
   return ENVIRONMENT_DEPENDENT[name] ?? HOST_DEPENDENT[name]?.();
 }
 
@@ -181,7 +184,12 @@ function runOne(file: string, name: string): Promise<Result> {
         // The failing checks and the end of the output; the rest of a test's
         // output is not kept, which left CI failures impossible to read.
         const failLines = lines.filter((l) => /^\s*(FAIL|✗|❌)/.test(l)).slice(0, 40);
-        const detail = [...failLines, '  …', ...lines.filter((l) => l.trim()).slice(-15)].map((l) => l.slice(0, 300));
+        // JARVIS_TEST_FULL_OUTPUT=1 (set in CI): the whole output of a failed
+        // test, up to 400 lines, for failures that cannot be rerun locally.
+        const full = process.env['JARVIS_TEST_FULL_OUTPUT'] === '1';
+        const detail = full
+          ? lines.filter((l) => l.trim()).slice(-400).map((l) => l.slice(0, 300))
+          : [...failLines, '  …', ...lines.filter((l) => l.trim()).slice(-15)].map((l) => l.slice(0, 300));
         resolve({ name, status: 'fail', ms, detail, ...(lastMeaningful ? { reason: lastMeaningful.trim().slice(0, 160) } : {}) });
       }
     });

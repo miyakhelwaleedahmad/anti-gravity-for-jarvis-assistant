@@ -151,6 +151,13 @@ export class PersistentPSSession {
       this.proc = spawn(this.exe, this.args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
       this.proc.unref();   // don't block Node.js exit
+      // The process alone was not enough: its open stdin/stdout/stderr pipes
+      // kept Node running after everything else had finished (a test, a
+      // script, the Windows CI run of windowControlTest hung for 120 s). A
+      // query in flight stays alive through its own timeout timer.
+      for (const stream of [this.proc.stdin, this.proc.stdout, this.proc.stderr]) {
+        (stream as unknown as { unref?: () => void } | null)?.unref?.();
+      }
       this.buffer = '';
       this.stale.clear();
       this._firstQueryDone = false;
