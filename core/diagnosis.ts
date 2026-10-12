@@ -23,7 +23,7 @@
 
 import * as path from 'path';
 import type { RepairStep } from './recoveryPlanner.js';
-import { knownServers, packageScripts, SERVER_SCRIPTS, type ServerExit } from '../tools/devTools.js';
+import { knownServers, settleServerExits, packageScripts, SERVER_SCRIPTS, type ServerExit } from '../tools/devTools.js';
 import { devPorts, httpInfo, portOpen, scanDevPorts } from '../perception/devProbe.js';
 import { readBrowserState } from '../perception/browserState.js';
 import { projectRoots } from '../perception/gitProbe.js';
@@ -121,6 +121,8 @@ function portOf(url: string): number | undefined {
 
 /** Read everything the diagnosis needs, now. */
 export async function observeApp(): Promise<AppObservation> {
+  // A server that has just ended: its exit code and last lines first (a slow PC).
+  await settleServerExits();
   const known = knownServers();
   const servers = await Promise.all(known.map(async (k): Promise<ServerFinding> => {
     const base = { port: k.port, project: k.project, name: path.basename(k.project), script: k.script, pid: k.pid };

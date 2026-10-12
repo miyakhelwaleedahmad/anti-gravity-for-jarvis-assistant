@@ -39,7 +39,7 @@ process.env['JARVIS_WORKSPACE_ROOT'] = workspace;
 process.env['JARVIS_DATA_ROOT'] = workspace;
 process.env['JARVIS_PROJECT_DIRS'] = projects;
 process.env['JARVIS_LEVEL2_POLICY'] = 'ask';
-process.env['JARVIS_DEV_SERVER_START_MS'] = '8000';
+process.env['JARVIS_DEV_SERVER_START_MS'] = '20000'; // JARVIS's default is 30 s; 8 s was too short for npm on the owner's PC
 process.chdir(workspace);
 
 const { registerAllTools } = await import('../core/tools/index.js');

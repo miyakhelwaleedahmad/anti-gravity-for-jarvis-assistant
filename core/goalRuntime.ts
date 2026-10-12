@@ -678,6 +678,10 @@ export class GoalRuntime extends EventEmitter {
 
     let outcome: ExecOutcome;
     try {
+      // Paused, cancelled or stopped while the claim was being written: the
+      // abort has already fired, and an executor handed an aborted signal
+      // would never hear it. Do not start the work at all.
+      if (ac.signal.aborted) throw new Error(String((ac.signal.reason as Error)?.message ?? 'stopped before it started'));
       outcome = await this.opts.executor.run({
         goal: g, task: t, attemptId, signal: ac.signal, budget: this.remainingBudget(g), context: this.contextFor(g, t),
         onStarted: (rootTaskId) => {

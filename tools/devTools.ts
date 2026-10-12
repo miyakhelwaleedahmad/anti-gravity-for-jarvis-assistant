@@ -144,6 +144,8 @@ interface Server {
   pid: number; project: string; script: string; port?: number; startedAt: string; child: ChildProcess; output: string[];
   /** JARVIS is stopping it (stop_server): its exit is not a crash. */
   stopping?: boolean;
+  /** Settles when the process's exit (and its last output) has been recorded. */
+  closed: Promise<void>;
 }
 
 const servers = new Map<number, Server>();
@@ -173,6 +175,23 @@ const known = new Map<number, KnownServer>();
 export function knownServerOnPort(port: number): { project: string; script: string } | undefined {
   const entry = known.get(port);
   return entry ? { project: entry.project, script: entry.script } : undefined;
+}
+
+/**
+ * Waits (at most `ms`) for servers that may have just ended but whose exit
+ * JARVIS has not recorded yet: the process is gone, or its port no longer
+ * answers (on Linux an ended child still looks alive until it is reaped). On
+ * a slow PC the diagnosis ran in that gap and said "stopped" without the exit
+ * code (Windows), or "runs but does not answer" (Linux). Returns how many it
+ * waited for; a server that is alive but hung costs at most `ms`.
+ */
+export async function settleServerExits(ms = 2_000): Promise<number> {
+  const all = [...servers.values()];
+  const silent = await Promise.all(all.map(async (s) => !alive(s.pid) || (s.port !== undefined && !(await portOpen(s.port)))));
+  const ended = all.filter((_, i) => silent[i]);
+  if (ended.length === 0) return 0;
+  await Promise.race([Promise.all(ended.map((s) => s.closed)), sleep(ms)]);
+  return ended.length;
 }
 
 /** Every server JARVIS started this session, by port: running or not, how it ended, its last lines. */
@@ -249,7 +268,9 @@ async function startServer(project: string, script: string, portArg: unknown): P
     env: childEnv({ ...(requested ? { PORT: String(requested) } : {}), BROWSER: 'none', FORCE_COLOR: '0' }),
   });
   if (!child.pid) throw new NotDone('The server process did not start.');
-  const server: Server = { pid: child.pid, project, script, startedAt: new Date().toISOString(), child, output: [] };
+  let markClosed!: () => void;
+  const closed = new Promise<void>((r) => { markClosed = r; });
+  const server: Server = { pid: child.pid, project, script, startedAt: new Date().toISOString(), child, output: [], closed };
   const keep = (data: Buffer) => {
     server.output.push(...data.toString().split(/\r?\n/).filter((l) => l.trim()));
     if (server.output.length > 200) server.output.splice(0, server.output.length - 200);
@@ -266,7 +287,7 @@ async function startServer(project: string, script: string, portArg: unknown): P
     entry.lastLines = lastLines(server.output);
   };
   child.on('exit', (code, signal) => { exitCode = code; servers.delete(server.pid); noteExit(code, signal); });
-  child.on('close', (code, signal) => noteExit(code, signal));
+  child.on('close', (code, signal) => { noteExit(code, signal); markClosed(); });
   servers.set(server.pid, server);
 
   const deadline = Date.now() + SERVER_START_MS;
@@ -325,6 +346,7 @@ async function stopServer(pidArg: unknown, projectArg: unknown): Promise<Record<
 }
 
 async function listServers(): Promise<Record<string, unknown>> {
+  await settleServerExits();
   return {
     servers: await Promise.all([...servers.values()].map(async (s) => ({
       pid: s.pid, project: s.project, script: s.script, port: s.port, startedAt: s.startedAt,

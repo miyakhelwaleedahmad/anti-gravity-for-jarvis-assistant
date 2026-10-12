@@ -281,7 +281,8 @@ console.log('\n--- Recurring: one instance per due time, no overlap, one catch-u
   ok('the second run started', instances().length === 2 && instances()[1]!.status === 'executing', instances().map((g) => g.status).join(','));
   clock += 3_600_000;
   await rt.tick();
-  await sleep(50);
+  // Until the skip is recorded (a fixed 50 ms was too short with a slow disk).
+  await until(() => (tpl.history ?? []).some((h) => h.event === 'instance_skipped'));
   ok('while it is still running, the next run is skipped', instances().length === 2 && (tpl.history ?? []).some((h) => h.event === 'instance_skipped'));
   await gm.cancelGoal(instances()[1]!.id);
   await rt.idle();
@@ -431,6 +432,46 @@ console.log('\n--- Stale results, deadlines, budgets ---');
   const st = rt8.status();
   ok('status reports goals, blocked goals and the schedule', st.goals.length >= 3 && st.blocked.includes(cheap.id) && st.running);
   await rt8.stop();
+}
+
+console.log('\n--- Paused while the claim is being written (a slow disk) ---');
+{
+  // On the owner's PC the pause landed while the task's claim was still being
+  // written: the abort fired before the work started, the executor was handed
+  // an already-aborted signal, and the task ran on for a paused goal.
+  const gm9 = new GoalManager({ now });
+  await gm9.init();
+  const exec9 = new ScriptExecutor();
+  const planner9 = new ScriptPlanner();
+  let writing: (() => void) | undefined;
+  let claimWritten!: () => void;
+  const claimStarted = new Promise<void>((r) => { claimWritten = r; });
+  const realPersist = (gm9 as any).persistImmediate.bind(gm9);
+  (gm9 as any).persistImmediate = async () => {
+    if (!writing && gm9.listGoals({}).some((g: any) => g.tasks?.some((t: any) => t.status === 'running'))) {
+      const gate = new Promise<void>((r) => { writing = r; });
+      claimWritten();
+      await gate;
+    }
+    return realPersist();
+  };
+  let release = false;
+  exec9.script = async (req) => (release ? result('finished after resume') : untilAborted(req));
+  planner9.plans.push([T('slow claim')]);
+  const rt9 = makeRuntime(gm9, exec9, planner9);
+  await rt9.start();
+  const { goal } = await gm9.createManagedGoal({ kind: 'temporary', objective: 'Slow claim job' });
+  await claimStarted;
+  await gm9.pauseGoal(goal.id);
+  writing!();
+  await until(() => goal.tasks![0]!.status !== 'running');
+  ok('a pause during the claim write stops the task before its work starts', goal.status === 'paused' && goal.tasks![0]!.status === 'ready', `${goal.status}/${goal.tasks![0]!.status}`);
+  ok('…and the executor was never started for it', exec9.calls.filter((c) => c.goalId === goal.id).length === 0, String(exec9.calls.length));
+  release = true;
+  await gm9.resumeGoal(goal.id);
+  await rt9.idle();
+  ok('resumed, it runs to completion', goal.status === 'completed', goal.status);
+  await rt9.stop();
 }
 
 await rt.stop();

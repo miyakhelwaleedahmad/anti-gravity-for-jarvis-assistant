@@ -42,7 +42,7 @@ process.env['JARVIS_WORKSPACE_ROOT'] = workspace;
 process.env['JARVIS_DATA_ROOT'] = workspace;
 process.env['JARVIS_PROJECT_DIRS'] = projects;
 process.env['JARVIS_LEVEL2_POLICY'] = 'ask';
-process.env['JARVIS_DEV_SERVER_START_MS'] = '8000';
+process.env['JARVIS_DEV_SERVER_START_MS'] = '20000'; // JARVIS's default is 30 s; 8 s was too short for npm on the owner's PC
 process.chdir(workspace);
 
 fs.writeFileSync(path.join(app, 'server.js'), `
@@ -137,8 +137,9 @@ try {
 
   console.log('--- 1. A server that is down, which JARVIS ran before ---');
   let r = await toolRegistryV2.execute('dev', { action: 'start_server', project: app, script: 'dev', port });
-  const firstPid = JSON.parse(r.output)?.pid;
-  ok('(setup) JARVIS starts the server once, then it stops', r.success && await answers(port));
+  // A failed start is a sentence, not JSON (JARVIS says why): report it.
+  const firstPid = r.success ? JSON.parse(r.output)?.pid : undefined;
+  ok('(setup) JARVIS starts the server once, then it stops', r.success && await answers(port), r.success ? '' : r.output.slice(0, 200));
   answer = true;
   await toolRegistryV2.execute('dev', { action: 'stop_server', project: app });
   ok('(setup) the port is now closed', !(await answers(port)) && !alive(firstPid));
