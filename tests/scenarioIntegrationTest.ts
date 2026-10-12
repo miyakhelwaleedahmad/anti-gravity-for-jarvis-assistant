@@ -37,6 +37,7 @@ const world = await createWorld();
 const jarvis = await loadJarvis();
 const { toolRegistryV2, approvalGate, ask, sleep } = jarvis;
 const cdp = await import('../perception/cdpClient.js');
+const devTools = await import('../tools/devTools.js');
 const { PAGE_STATE_SCRIPT } = await import('../perception/cdpScripts.js');
 
 let passed = 0;
@@ -85,7 +86,10 @@ try {
   const opened = [];
   for (const url of [world.site.url('/docs'), world.site.url('/deploy'), webUrl, world.site.url('/')]) opened.push(await cdp.openTab(url, world.chrome.port));
   for (const p of blank) await cdp.closeTabById(p.id, world.chrome.port);
-  await sleep(800);
+  // Until every tab shows its page's title (on a slow machine a tab still
+  // titled with its address has not loaded yet; a fixed pause was too short
+  // on Windows CI).
+  await until(async () => (await pages()).every((p) => p.title && !/^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(p.title)), 15_000);
   await cdp.activateTab(opened[3]!.id, world.chrome.port);
   await sleep(300);
   ok('(setup) four tabs, the shop on screen', (await pages()).length === 4, (await pages()).map((p) => p.title).join(' | '));
@@ -105,9 +109,13 @@ try {
   const crashedPid = await serverPid(world.api.port);
   await fetch(`${apiUrl}crash`).catch(() => undefined);
   ok('(setup) the backend crashed', await until(async () => !(await answers(world.api.port)) && !alive(crashedPid ?? 0)));
+  // What JARVIS kept for the crashed server, shown if the diagnosis check
+  // fails (Windows CI prints only the failed checks).
+  const crashed = devTools.knownServers().find((k) => k.port === world.api.port);
+  const keptAtCrash = crashed ? `running=${crashed.running} exit=${crashed.exit?.code}/${crashed.exit?.by} n=${crashed.lastLines.length} last=${JSON.stringify(crashed.lastLines.slice(-5).map((l) => l.slice(0, 40)))}` : 'no known server';
   out = await say('3 application not working', "Why isn't my application working?");
-  ok('the diagnosis: the backend stopped by itself, with its exit code and last log line',
-    /api/.test(out.reply) && /exit code 1/.test(out.reply) && /lost the connection to the database/.test(out.reply), out.reply);
+  const diagnosed = /api/.test(out.reply) && /exit code 1/.test(out.reply) && /lost the connection to the database/.test(out.reply);
+  ok('the diagnosis: the backend stopped by itself, with its exit code and last log line', diagnosed, diagnosed ? out.reply : `${keptAtCrash} | ${out.reply}`);
   ok('restarted (level 1, no approval) and checked: the port answers again', await answers(world.api.port)
     && out.calls.some((c) => c.tool === 'dev' && (c.args as any).action === 'start_server' && c.success) && out.decisions.length === 0
     && /started it again/i.test(out.reply), out.calls.map((c) => `${c.tool}:${(c.args as any).action ?? ''}:${c.success}`).join(' '));

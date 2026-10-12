@@ -2,7 +2,13 @@
 
 All runs: Linux container, Node 22, Python 3.11, Chromium available, no Windows, no Redis, no `.venv`, no live LLM keys. Command: `npx tsx tests/runAll.ts --ci` (each test gets its own temporary `JARVIS_DATA_ROOT`; no real memory, goals or permission files are touched). Type check: `npx tsc --noEmit`.
 
-**Not run on Windows.** See REMAINING_RISKS.md §1.
+Kinds of evidence, kept apart below:
+- local Linux runs (this container);
+- Windows CI (GitHub `windows-latest`, a clean VM);
+- simulated providers (stand-in `fetch` or model, no network);
+- live providers (none run in this follow-up: the live job is `workflow_dispatch` only).
+
+**Not run on the owner's Windows PC.** See REMAINING_RISKS.md §1.
 
 ## Gates
 
@@ -13,6 +19,32 @@ All runs: Linux container, Node 22, Python 3.11, Chromium available, no Windows,
 | After Phase 2 (`9ec6311`) | 142 | 0 | 9 | clean |
 | After Phase 3 (`9a851eb`) | 148 | 0 | 9 | clean |
 | Final (Phases 4–5), under c8 coverage | 150 | 0 | 9 | clean |
+| Phase A part 2 (`c71b6f0`) | 151 | 0 | 9 | clean |
+| Phase D (`eafc0d4`) | 152 | 0 | 9 | clean |
+| Phase C (`0c41e7b`) | 154 | 0 | 9 | clean |
+| Phases E, F, G (`2bc7075`, `7ff1866`) | 157 | 0 | 9 | clean |
+| CI fixes (`ccc9e84`) | 157 | 0 | 9 | clean |
+
+The 9 skipped are the same tests as before (table below). None counts as a pass.
+
+## Windows CI (`windows-latest`)
+
+| Commit | Passed | Failed | Skipped | Failures |
+|---|---|---|---|---|
+| `9a1cc21` (first run) | 147 | 7 | 5 | windowsScriptsTest, windowControlTest (exit hang), browser tests (Chrome start), dashboardHealthSystemTest, retry timing |
+| `0559814` | 151 | 2 | 6 | Chrome remote debugging (fake USERPROFILE), upload outside folders |
+| `c71b6f0` | 153 | 1 | 6 | scenarioIntegrationTest: 2 checks (output cut off) |
+| `0c41e7b`, `7ff1866` | 156, 159 | 1 | 6 | scenarioIntegrationTest: the crash diagnosis lost the server's log line behind npm's error lines |
+| `ccc9e84` | 159 | 1 | 6 | scenarioIntegrationTest, 2 checks: the tab list was read before the pages had their titles (test timing; the setup now waits for titles), and the crash diagnosis still misses the log line: the npm-lines change did not fix it on Windows. The next run prints what JARVIS kept for the crashed server |
+
+Skipped on Windows CI (6):
+- `processControlSafetyTest` and `windowControlTest` need the owner's desktop session;
+- `dashboardAccuracyTest` needs Redis;
+- `sttReliabilityTest` needs the `.venv`;
+- `startupPerformanceTest` needs `JARVIS_BRIDGE_TOKEN`;
+- the two live-LLM tests are opt-in.
+
+Linux CI (`build-and-test`) failed once on `eafc0d4`: `browserControlAgentTest` had an order-dependent check, fixed in `7678ed7`. `python-checks` failed once on `0c41e7b`: the fake encoder used Python's salted `hash()` and failed for about 3% of salts (10 of 300 seeds here). Fixed in `ccc9e84`. On `ccc9e84`, `build-and-test` (with coverage) and `python-checks` pass; `windows` fails only `scenarioIntegrationTest` (table above).
 
 Python tests, final run:
 - `test_vector_persistence`: 23/23
@@ -78,6 +110,18 @@ Coverage, final run (c8 10.1.3; only files the tests load; `tests/` excluded):
 | llmTimingTest | PERF-03 | 13/13 | by code: watchdog 15 s < 32 s retry budget; the test shows a short watchdog resetting PLANNING |
 | toolNameListsTest | ARCH-06 | 4/4 | 13/28 and 29/36 listed names were not tools |
 | transitionLoggingTest | ARCH-07 | 5/5 | 5 empty catches around transitions |
+| llmCancellationTest | REL-05 | 10/10 | 8/10: the second identical request failed when the first was cancelled (simulated provider) |
+| shutdownStepsTest | ARCH-07 | 12/12 | by construction: the old jarvis.ts had empty catches and always said "shut down cleanly" |
+| fullControlLimitTest (extended) | ARCH-05 | 23/23 | 20/23: asked and recorded "auto"; forged audit line; open_app asked by voice |
+| routeGoldenTest | ARCH-01 | 143/143 | recorded from the code before the move |
+| policyOwnershipTest | ARCH-04, ARCH-05 | 7/7 | would fail on the old skills (model-chosen source) |
+| requestScopeTest (extended) | ARCH-03 | 9/9 | 3 new checks; the old fields did not produce a wrong outcome in this test |
+| foregroundPriorityTest | PERF-02 | 9/9 | 2/9: background calls took the quota; the owner got a 429 (simulated provider) |
+| controlCenterTest | OPS-01 | 34/34 | new feature |
+| remoteAccessTest | OPS-02 | 30/30 | new groundwork |
+| diagnosisRulesTest (extended) | REL-09 (Windows CI) | 19/19 | the new check fails with the old 6-line window; this did not fix the Windows CI case |
+| browserControlAgentTest (fixed check) | TEST-01 | 72/72, three runs | the check could edit the other `/app` tab |
+| tests/python (fake encoder) | TEST-01 | 23, 23, 33, 12 | old encoder failed 10 of 300 `PYTHONHASHSEED` values |
 
 Converted to the real speech path (TEST-02), all passing:
 - approvalGateStructuredTest
@@ -92,6 +136,28 @@ Converted to the real speech path (TEST-02), all passing:
 
 `voiceApprovalTest` keeps its own speaker model; the reason is in the file.
 
-## Measurement (ARCH-09 / PERF-04)
+## Measurements
 
-`writeFileSync` of one 2.1 MB agent archive JSON blocks the event loop 28.8 ms here; five in a row block it 106.6 ms. This was measured on a container SSD, and a slow PC disk will be slower.
+All on this Linux container (SSD). A slower PC disk or CPU will give larger numbers.
+
+**ARCH-09 / PERF-04 (sync writes).** In Phase 5, one `writeFileSync` of a 2.1 MB agent archive blocked the event loop 28.8 ms (five: 106.6 ms). Measured again in the follow-up, split by step:
+
+| Step | Time |
+|---|---|
+| `JSON.stringify` of the archive | 11–15 ms (synchronous in either write style) |
+| `writeFileSync` | 2–20 ms |
+| Audit log `appendFileSync` | 0.006 ms per line |
+| Permission log rewrite | 0.56 ms |
+
+No change. The archive write is not on the voice path, and the audit log stays synchronous so a record survives a crash.
+
+**PERF-07 (memory lookup, vector service down)**, `npx tsx scripts/benchMemoryLookup.ts`, 40 lookups per size:
+
+| Facts | Median ms | p95 ms | Max ms |
+|---|---|---|---|
+| 1,000 | 0.37 | 2.13 | 2.15 |
+| 5,000 | 1.24 | 3.52 | 3.91 |
+| 20,000 | 8.45 | 13.96 | 16.87 |
+| 50,000 | 19.30 | 32.88 | 52.48 |
+
+No index added.

@@ -2,35 +2,40 @@
 
 What this repair did not close, why, and what to do about it. Each item names its finding ID in `REMEDIATION_TRACKER.md`.
 
-## 1. Not verified on Windows (REL-09, TEST-01)
+## 1. Not verified on the owner's Windows PC (REL-09)
 
-All work was done and tested on Linux (Node 22, Python 3.11). Nothing here ran on Windows. The last Windows run, on the owner's PC before `30605cf`, had 103 passing and 24 failing tests.
+The branch is pushed and the CI Windows job (TEST-01) runs the suite on `windows-latest`. Results are in TEST_RESULTS.md. Windows CI found three real problems, now fixed:
+- the PowerShell session's pipes kept Node alive;
+- Chrome refused remote debugging under a fake `USERPROFILE`;
+- upload checks ran in the wrong order.
 
-Code paths that behave differently on Windows and were checked only by reading:
+One is still open: after a crash, JARVIS's diagnosis on Windows names the exit code but not the server's own error line. On Linux it names both. Keeping 20 output lines instead of 6 did not change it, so the cause is elsewhere, perhaps in how the output of `cmd /c pnpm run` reaches JARVIS. The test now prints what JARVIS kept for the crashed server.
 
-| Change | Windows-specific part | How it was checked |
+Windows CI is a clean Windows Server VM. It has no desktop session the owner uses, no microphone or speakers, no Python `.venv`, no Redis and no live model key. It does not replace a run on the owner's PC.
+
+Not exercised on any Windows machine:
+
+| Change | Windows-specific part | Where it was checked |
 |---|---|---|
-| REL-01 process stop | `taskkill /pid N /T /F` | Linux process-group path tested; the Windows-only `ping -n 30` case in `toolTimeoutTest` runs only on Windows |
-| SEC-20 cmd.exe characters | `^`, `!`, `%NAME%` reach cmd.exe | allow-list refusal tested; cmd.exe itself not run |
-| SEC-15 self-heal | `.venv\Scripts\python.exe` | path code read; the run test uses a POSIX stand-in |
-| SEC-16 skill trust | CRLF checkouts | CRLF fingerprint tested on Linux |
-| SEC-18 vector token file | file mode 0600 has no effect on NTFS | the file sits in the user's own profile folder; ACLs not set |
+| REL-01 process stop | `taskkill /pid N /T /F` | Windows CI runs `toolTimeoutTest`; not on the owner's PC |
+| SEC-20 cmd.exe characters | `^`, `!`, `%NAME%` reach cmd.exe | allow-list refusal tested; cmd.exe's own handling not exercised |
+| SEC-15 self-heal | `.venv\Scripts\python.exe` | path code read; no `.venv` on CI |
+| SEC-18 / OPS-01 token files | mode 0600 has no effect on NTFS | the files sit in the user's own profile folder; ACLs not set |
+| Voice, wake word, TTS, window control | real devices and desktop | `processControlSafetyTest` and `windowControlTest` need the owner's desktop |
 
-The new CI Windows job (TEST-01) runs the suite on `windows-latest` after the branch is pushed. Pushing was not authorised, so it has not run.
+## 2. Partly done or still open
 
-## 2. Findings answered in writing only
-
-| ID | Risk that stays | Suggested next step |
-|---|---|---|
-| ARCH-01 | `core/orchestrator.ts` (~2,900 lines) holds routing, planning, execution, reflection and replies; changes there are hard to review | Split in this order, each step behind the existing tests: (1) deterministic routes → `core/routes/`, (2) planning → `core/planner.ts`, (3) synthesis and spoken replies → `core/replies.ts`. The request-level tests added here (`requestScopeTest`, `skillLoadOrderTest`, `promptInjectionFlowTest`, converted TEST-02 tests) cover the seams |
-| ARCH-02 | Two health systems (`monitoring/healthManager`, `self_healing/healthChecker`), three buses, two memory front ends | Health: keep `healthChecker` for repair, make `healthManager` read from it. Buses: `conversationBus` for speech, `agents/events` for agents, retire `messageBus`. Memory: `memoryManager` as the only writer |
-| ARCH-03 | Mutable singletons serve the foreground request, goals and agents at once | The concrete bugs were fixed per request (REL-04/05, SEC-08). A general request context (ALS carrying request id, signal, source, approval scope) should replace the remaining fields |
-| ARCH-04 | `security/riskEngine.ts` imports tool and controller modules | Move `validateDeveloperCommand`, `packageScripts`, `isSecurityService` predicates into `security/` |
-| ARCH-07 | Many other empty `catch {}` blocks and ~700 `console.*` calls | Review each empty catch; add a small structured logger with levels |
-| ARCH-09 / PERF-04 | Synchronous archive writes (~29 ms per 2 MB here) | Switch `agentManager` archive writes to `fs.promises` if stutter is heard |
-| PERF-02 | Foreground and background share one provider quota | Measure 429s during a goal; pause background agents while a spoken request runs |
-| PERF-05 | CPU and RAM contention on an old PC | Profile on the PC (see REMEDIATION_REPORT.md) before changing defaults |
-| PERF-07 | Lexical memory fallback is a linear scan | Index it if facts grow past tens of thousands |
+| ID | Status | What stays | Next step |
+|---|---|---|---|
+| ARCH-01 | first steps | `core/orchestrator.ts` is still 2,834 lines | Continue behind `routeGoldenTest`: (1) the rest of the deterministic router → `core/routes/`, (2) planning → `core/planner.ts`, (3) synthesis and spoken replies → `core/replies.ts` |
+| ARCH-02 | owners chosen | Two health systems, three buses, two memory front ends | Health: `healthManager` reads from `healthChecker`. Buses: move `core/agents/events.ts` and `brainLoop` off `messageBus`, then retire it. Memory: `memoryManager` the only writer |
+| ARCH-03 | narrowed | Shared fields on the orchestrator: `currentAbortController`, `currentProcessCallId`, `continueOffer`, conversation-end flags | Move them into the request scope one at a time, each with a two-request test like `requestScopeTest` §3 |
+| ARCH-04 | policy lists moved | The risk engine imports validators that sit next to their tools (`validateDeveloperCommand`, `packageScripts`, `resolveTargetUrl`, git checks) | Move each into `security/` with its tool re-exporting it, as done for `protectedTargets` |
+| ARCH-07 | shutdown and barge-in done | ~700 `console.*` calls; no levelled logger | Add a small logger with levels and redaction; convert module by module |
+| ARCH-09 / PERF-04 | measured, unchanged | Synchronous archive writes (2–20 ms here) | Change to `fs.promises` if stutter is heard after large agent runs |
+| PERF-02 | simulated | Not measured against a live provider | On the PC: count 429 replies in `logs` during a goal while talking to JARVIS; tune `JARVIS_BACKGROUND_YIELD_MS` |
+| PERF-05 | needs readings | No budgets set | Run JARVIS with `JARVIS_CONTROL_CENTER=1` during a goal and read the resource figures; set agent concurrency from them |
+| PERF-07 | measured, unchanged | Linear scan when the vector service is down (33 ms p95 at 50,000 facts) | Re-run `scripts/benchMemoryLookup.ts` if memory grows past that |
 
 ## 3. Limits of the fixes
 
@@ -43,38 +48,28 @@ The new CI Windows job (TEST-01) runs the suite on `windows-latest` after the br
 - **SEC-18** The token stops other programs and web pages that do not have it. A program running as the same Windows user can read `data/security/vector_token`.
 - **SEC-19** No signature on the session file (its key would sit in the same folder). An edited file can still claim up to 30 minutes of full control.
 - **REL-02** JARVIS now exits after an uncaught exception. Without the supervisor (`pnpm dev:supervised`) it stays stopped until restarted.
-- **REL-05** Marked NOT_REPRODUCED: hardened, but no failing case was found.
+- **REL-05** Fixed at the provider (shared in-flight call). The orchestrator path was already correct.
+- **PERF-02** A background call waits at most `JARVIS_BACKGROUND_YIELD_MS` (20 s) per call; a very long conversation still lets background work through after that.
+- **OPS-01** The Control Center token in `data/security/control_center_token` can be read by any program running as the same Windows user, like the vector token. The Control Center is off unless `JARVIS_CONTROL_CENTER=1`.
 - **PERF-03** An `.env` that still sets `JARVIS_PLANNING_WATCHDOG_MS=20000` keeps the old behaviour, with a warning at start.
 
-## 4. Designs not built
+## 4. Control Center and remote access
 
-### Control Center (OPS-01)
+### Control Center (OPS-01): built, local only
 
-Documented only, as instructed.
+`system/controlCenter.ts`, off unless `JARVIS_CONTROL_CENTER=1`, at `http://127.0.0.1:7790`. What it does and refuses is listed in the tracker row and tested in `controlCenterTest` (34 checks).
 
-- **Purpose:** see and manage agents, goals, memory facts and pending approvals without the CLI or voice.
-- **Shape:** a local web page served by JARVIS on `127.0.0.1` only, on its own port.
-- **Access:** the same rules as the bridge and vector service after this repair:
-  - a token required on every request (SEC-18 pattern);
-  - any `Origin` other than the page's own refused (SEC-01);
-  - JSON bodies only;
-  - no CORS.
-- **Approvals from the page:** typed only, never by a single click. Level-4 approvals still need the console code.
-- **Audit:** every action from the page goes through the tool registry, so the existing risk checks, approvals and audit logs apply unchanged. The page gets no direct access to controllers.
-- **Views:**
-  - running and scheduled goals (pause, resume, cancel);
-  - agent tasks (cancel);
-  - memory facts with origin (forget, via `forget_memory`);
-  - pending approvals;
-  - recent audit entries.
+Not built yet from the earlier design:
+- memory facts view with forget;
+- pending approvals list (approvals stay in the console by design);
+- recent audit entries.
 
-### Remote access (OPS-02)
+It has not been used on the owner's PC.
 
-Nothing in this repair exposes a port beyond `127.0.0.1`. Before JARVIS runs on a rented server or is reached from another device, it needs:
+### Remote access (OPS-02): groundwork only
 
-1. Per-device identity (one key per device, revocable), not one shared token.
-2. TLS on every listener.
-3. A remote approval model in which high-risk approvals need a second factor. A remote voice "yes" never counts.
-4. A clear split between the server (thinking, memory) and the PC (desktop control), and a PC-side agent that refuses desktop actions unless the owner is present.
-5. Rate limits and audit at the network edge.
-6. Secrets kept out of the server's environment where the PC is the one that needs them.
+Remote access is not available. `docs/remediation/REMOTE_ACCESS.md` has the threat model and the requirements. `security/remoteAccess.ts` has:
+- the bind rule all listeners use;
+- a deny-by-default request policy, tested in `remoteAccessTest`.
+
+Nothing listens beyond loopback and nothing was deployed.
