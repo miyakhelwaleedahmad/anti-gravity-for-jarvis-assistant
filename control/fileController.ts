@@ -99,7 +99,7 @@ export class FileController {
             matches.push(path.join(dir, f));
           }
         }
-      } catch {}
+      } catch { /* folder missing or not readable: search the others */ }
     }
 
     return JSON.stringify(matches, null, 2);

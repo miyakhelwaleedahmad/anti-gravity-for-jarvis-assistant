@@ -226,7 +226,7 @@ export class SystemStateObserver {
         // Fallback for Windows file lock (EPERM / EBUSY) when reading concurrently
         if (['EPERM', 'EBUSY', 'EACCES'].includes(renameErr.code)) {
           await fs.promises.writeFile(this.stateFilePath, content, 'utf-8');
-          try { await fs.promises.unlink(tempPath); } catch {}
+          try { await fs.promises.unlink(tempPath); } catch { /* the state was written; a leftover temp file is harmless */ }
         } else {
           throw renameErr;
         }

@@ -194,7 +194,7 @@ class HealthManager {
             checkedAt: Date.now(),
           };
         }
-      } catch {}
+      } catch { /* unreachable or refused: reported as offline below */ }
 
       return {
         name: 'vector_memory',
@@ -240,7 +240,7 @@ class HealthManager {
   private async probeToolRegistry(): Promise<ServiceHealth> {
     try {
       const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');
-      try { await import('../core/terminalTools.js'); } catch {}
+      try { await import('../core/terminalTools.js'); } catch { /* the count below then shows the tools are missing */ }
       const count = toolRegistryV2.names().length;
       return {
         name: 'tool_registry',

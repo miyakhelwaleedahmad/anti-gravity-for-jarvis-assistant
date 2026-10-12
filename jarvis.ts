@@ -57,6 +57,7 @@ import { startGoalRuntime, stopGoalRuntime } from './core/goalService.js';
 import { backupIntervalMs, backupRestore } from './system/backupRestore.js';
 import { goalStatusText } from './core/goalTools.js';
 import { createCrashPolicy } from './system/crashPolicy.js';
+import { runShutdownSteps } from './system/shutdownSteps.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -861,10 +862,12 @@ async function shutdown(signal = 'manual', exitCode = 0) {
   console.log(`\n[JARVIS] 🛑 Shutdown initiated (${signal})...`);
 
   // 1. Persist critical state
+  const notSaved: string[] = [];
   try {
     console.log('[JARVIS] 💾 Persisting memory...');
     await memoryManager.flush();
   } catch (err) {
+    notSaved.push('memory');
     console.error('[JARVIS] ⚠️  Memory flush failed:', err);
   }
 
@@ -881,23 +884,30 @@ async function shutdown(signal = 'manual', exitCode = 0) {
     await goalManager.flush();
     console.log(`[JARVIS] ✅ ${activeGoals.length} request goal(s) saved.`);
   } catch (err) {
+    notSaved.push('goals');
     console.error('[JARVIS] ⚠️  Goal persistence failed:', err);
   }
 
-  // 2. Stop subsystems (non-throwing). The Goal Runtime first: it stops its
-  //    agents and records what was interrupted before the agent system goes.
-  try { await stopGoalRuntime(); } catch {}
-  try { backupRestore.stopScheduled(); } catch {}
-  try { await shutdownAgentSystem(); } catch {}
-  try { systemStateObserver.stop(); } catch {}
-  try { selfHealingManager.stopHealthChecks(); } catch {}
-  try { pipelineWatchdog.stop(); } catch {}
-  try { fsWatcher.stop(); } catch {}
-  try { brainLoop.stop(); } catch {}
-  try { conversationBus.shutdown(); } catch {}
-  try { nodeBridge.stop(); } catch {}
+  // 2. Stop subsystems. Every step runs even when one fails; failures are
+  //    logged (ARCH-07). The Goal Runtime first: it stops its agents and
+  //    records what was interrupted before the agent system goes.
+  const failures = await runShutdownSteps([
+    { name: 'goal runtime', run: () => stopGoalRuntime() },
+    { name: 'scheduled backups', run: () => backupRestore.stopScheduled() },
+    { name: 'agent system', run: () => shutdownAgentSystem() },
+    { name: 'system state observer', run: () => systemStateObserver.stop() },
+    { name: 'health checks', run: () => selfHealingManager.stopHealthChecks() },
+    { name: 'pipeline watchdog', run: () => pipelineWatchdog.stop() },
+    { name: 'file watcher', run: () => fsWatcher.stop() },
+    { name: 'brain loop', run: () => brainLoop.stop() },
+    { name: 'conversation bus', run: () => conversationBus.shutdown() },
+    { name: 'node bridge', run: () => nodeBridge.stop() },
+  ], { stepTimeoutMs: 10_000 });
+  for (const what of notSaved) failures.unshift({ name: `saving ${what}`, error: 'see above' });
 
-  console.log(exitCode === 0 ? '[JARVIS] 👋 JARVIS shut down cleanly. Goodbye, sir.' : `[JARVIS] JARVIS stopped after an error (exit code ${exitCode}).`);
+  if (exitCode !== 0) console.log(`[JARVIS] JARVIS stopped after an error (exit code ${exitCode}).`);
+  else if (failures.length === 0) console.log('[JARVIS] 👋 JARVIS shut down cleanly. Goodbye, sir.');
+  else console.log(`[JARVIS] JARVIS stopped, but ${failures.length} part(s) did not stop cleanly: ${failures.map((f) => f.name).join(', ')}.`);
   process.exit(exitCode);
 }
 

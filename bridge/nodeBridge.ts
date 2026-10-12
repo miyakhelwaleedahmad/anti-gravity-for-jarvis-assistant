@@ -235,7 +235,7 @@ export class NodeBridge {
         console.warn(`[NodeBridge] Rejected unauthenticated client_ready for role=${role}`);
         try {
           ws.close(1008, "Authentication required");
-        } catch {}
+        } catch { /* socket already closing; the client is refused either way */ }
         return;
       }
 
@@ -334,7 +334,7 @@ export class NodeBridge {
               console.warn(`[NodeBridge] Rejecting unauthenticated client message type=${msg.type}`);
               try {
                 ws.send(JSON.stringify({ type: "error", payload: { error: "Authentication required" } }));
-              } catch {}
+              } catch { /* socket already closing; it is closed on the next line */ }
               ws.close(1008, "Authentication required");
               return;
             }

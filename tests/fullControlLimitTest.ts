@@ -67,6 +67,17 @@ await skill.execute({ action: 'renew', durationMinutes: 120, source: 'cli' });
 ok('renewed by 120, at most 30 left', minutesLeft(permissionSession) <= 30.01, `${minutesLeft(permissionSession).toFixed(2)} min`);
 permissionSession.deactivateFullControl('limit test');
 
+const { beginTrace, endTrace } = await import('../core/traceContext.js');
+let askedVia: unknown;
+(approvalGate as any).requestApproval = async (...a: unknown[]) => { askedVia = a[4]; return true; };
+beginTrace('cli', 'turn on full control');
+await skill.execute({ action: 'enable', durationMinutes: 5, source: 'auto' });
+endTrace();
+ok('a typed request is approved and recorded as typed, whatever source the model wrote',
+  askedVia === 'cli' && (permissionSession as any).activatedBy === 'cli', `asked via ${String(askedVia)}, recorded ${(permissionSession as any).activatedBy}`);
+permissionSession.deactivateFullControl('limit test');
+(approvalGate as any).requestApproval = async () => true;
+
 console.log('\n--- 4. Restoring the saved session ---');
 const file = path.join(root, 'data', 'security', 'permission_session.json');
 const save = (state: Record<string, unknown>) => {

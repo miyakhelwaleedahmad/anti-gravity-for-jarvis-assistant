@@ -56,6 +56,7 @@ import { unifiedContextBuilder } from '../memory/unifiedContextBuilder.js';
 import { plannerIntelligence } from './plannerIntelligence.js';
 import { taskGraphEngine as _tge } from './taskGraphEngine.js';
 import { LOW_RISK_TOOLS, SIMPLE_REPLY_TOOLS } from './toolNameLists.js';
+import { redact } from '../security/redactor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -724,9 +725,7 @@ export class JarvisOrchestrator {
           if (route.type === 'stop') {
             nodeBridge.sendToRole('tts', { type: 'command', payload: { action: 'stop' } });
             (nodeBridge as any).pendingTTS = [];
-            for (const cb of this.onBargeIn) {
-              try { cb(); } catch {}
-            }
+            this.runBargeInCallbacks();
           }
           this.speak(route.reply);
         }
@@ -2473,6 +2472,19 @@ export class JarvisOrchestrator {
     }
   }
 
+  /**
+   * Barge-in listeners clear the voice queue and similar. One that throws is
+   * logged (ARCH-07): before, a failure was swallowed and stale speech could
+   * play after "stop" with nothing in the log.
+   */
+  private runBargeInCallbacks(): void {
+    for (const cb of this.onBargeIn) {
+      try { cb(); } catch (err) {
+        console.warn(`[Orchestrator] Barge-in listener failed: ${redact(err instanceof Error ? err.message : String(err)).slice(0, 200)}`);
+      }
+    }
+  }
+
   private handleBargeInBeforeProcessing(input: string, source: 'cli' | 'voice'): void {
     const curState = agentStateMachine.currentState;
     this.currentAbortController?.abort();
@@ -2485,9 +2497,7 @@ export class JarvisOrchestrator {
     (nodeBridge as any).pendingTTS = [];
 
     // 3. Clear stale voice queue
-    for (const cb of this.onBargeIn) {
-      try { cb(); } catch {}
-    }
+    this.runBargeInCallbacks();
 
     // 4. Transition SPEAKING -> INTERRUPTED if needed
     if (curState === AgentState.SPEAKING) {

@@ -16,14 +16,18 @@
 import { clampSessionMinutes, permissionSession } from '../../control/permissionSession.js';
 import { approvalGate } from '../../security/approvalGate.js';
 import { securityAuditLogger } from '../../security/securityAuditLogger.js';
+import { getRequestSource } from '../../core/traceContext.js';
 
 export async function execute(args: Record<string, unknown> = {}): Promise<string> {
   const action = String(args['action'] ?? 'enable').toLowerCase();
 
   // ── Validate source ─────────────────────────────────────────────────────
-  const source = (['voice', 'cli', 'gui', 'auto'].includes(String(args['source'] ?? ''))
-    ? String(args['source'])
-    : 'cli') as 'voice' | 'cli' | 'gui' | 'auto';
+  // How the request really arrived wins over what the model wrote in
+  // `source`: it decides how approval is asked and what the audit records as
+  // the activator. The argument is used only outside a request (direct calls).
+  const claimed = String(args['source'] ?? '');
+  const source: 'voice' | 'cli' | 'gui' | 'auto' = getRequestSource()
+    ?? (['voice', 'cli', 'gui', 'auto'].includes(claimed) ? claimed as 'voice' | 'cli' | 'gui' | 'auto' : 'cli');
 
   const durationMinutes = clampSessionMinutes(args['durationMinutes'] ?? 10, 10);
 
@@ -67,7 +71,7 @@ export async function execute(args: Record<string, unknown> = {}): Promise<strin
     `enable_full_control_session for ${durationMinutes} minute(s)`,
     'HIGH_RISK',
     'Full control permits keyboard, mouse, file, and app control. It is denied by default.',
-    isVoice ? 'voice' : source as any,
+    isVoice ? 'voice' : 'cli',
     isVoice ? 10 : undefined,
   );
 
