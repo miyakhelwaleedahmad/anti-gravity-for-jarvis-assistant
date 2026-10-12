@@ -91,6 +91,15 @@ ok('the second look finds nothing: "it answers now"; at most three sentences', /
 console.log('\n--- Words that can be said ---');
 ok('the last error line, not the package manager\'s own or a stack frame',
   tellingLine(['> web@1.0.0 dev', 'ready on http://localhost:3000', 'Error: EADDRINUSE: address already in use', '    at Server.listen (net.js:1:1)', 'npm error code 1']) === 'Error: EADDRINUSE: address already in use');
+const { lastLines } = await import('../tools/devTools.js');
+const windowsCrash = [
+  '> api@1.0.0 start', '> node server.js', 'listening on 3001',
+  'Error: lost the connection to the database', '    at connect (api/db.js:12:7)',
+  'npm error Lifecycle script `start` failed with error:', 'npm error code 1', 'npm error path D:\\work\\api',
+  'npm error workspace api@1.0.0', 'npm error location D:\\work\\api', 'npm error command failed',
+  'npm error command C:\\Windows\\system32\\cmd.exe /d /s /c node server.js',
+];
+ok('after npm\'s Windows error lines, the server\'s own error is still found', tellingLine(lastLines(windowsCrash)) === 'Error: lost the connection to the database', String(tellingLine(lastLines(windowsCrash))));
 ok('no error line: none (a "ready" line says nothing about a failure)', tellingLine(['> web@1.0.0 dev', 'ready on http://localhost:3000']) === undefined);
 const secretWords = 'log in with ' + 'password' + ': ' + 'hunter2-' + 'abcdef';
 said = voice.continueOffer(secretWords, 'it was not approved');

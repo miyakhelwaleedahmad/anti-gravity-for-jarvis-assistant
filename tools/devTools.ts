@@ -189,7 +189,13 @@ export function knownServers(): Array<{ port: number; project: string; script: s
 }
 
 /** The last few output lines, redacted and cut short. */
-function lastLines(output: string[], n = 6): string[] {
+/**
+ * The last lines a server wrote, kept for the diagnosis (core/diagnosis.ts
+ * picks the telling one and skips npm's own). 20, not 6: npm on Windows
+ * writes six or more "npm error …" lines after a crash, which pushed the
+ * server's own error out of a 6-line window.
+ */
+export function lastLines(output: string[], n = 20): string[] {
   return tail(output.join('\n'), n).split('\n').filter(Boolean).map((l) => l.slice(0, 200));
 }
 

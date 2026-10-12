@@ -12,9 +12,11 @@ delivers them. Runs without sentence-transformers, httpx or the network: a
 stand-in encoder replaces the model.
 """
 import asyncio
+import hashlib
 import importlib
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -47,8 +49,14 @@ class SentenceTransformer:
     def encode(self, text, **_):
         if isinstance(text, list):
             return np.vstack([self.encode(t) for t in text])
-        rng = np.random.default_rng(abs(hash(text)) % (2**32))
-        v = rng.standard_normal(self.DIM).astype(np.float32)
+        # Words hashed into buckets with a stable hash: the same in every run
+        # (Python's hash() is salted per process, so the old random vectors
+        # sometimes scored every fact below 0 and a search found nothing).
+        v = np.zeros(self.DIM, dtype=np.float32)
+        for word in re.findall(r"[a-z0-9']+", text.lower()):
+            v[int(hashlib.sha256(word.encode()).hexdigest(), 16) % self.DIM] += 1.0
+        if not v.any():
+            v[0] = 1.0
         return v / np.linalg.norm(v)
 
     def get_sentence_embedding_dimension(self):
