@@ -8,7 +8,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import {
-  getWorkspaceRoot,
   isForeignWindowsAbsolute,
   isPathInside,
   isProtectedSystemPath,
@@ -18,23 +17,9 @@ import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { rollbackManager } from './rollbackManager.js';
 import { isSecretFile, SECRET_FILE_REFUSAL } from '../security/secretFiles.js';
+import { approvedFolders } from '../security/protectedTargets.js';
 
-/**
- * Directories control_file may operate in (also used by the risk engine).
- *
- * Deliberately wider than `workspacePathPolicy`'s workspace-only boundary: a
- * desktop assistant is expected to manage the user's own document folders.
- */
-export function approvedFolders(): string[] {
-  const home = os.homedir();
-  return [
-    getWorkspaceRoot(),
-    path.resolve(os.tmpdir()),
-    path.resolve(path.join(home, 'Desktop')),
-    path.resolve(path.join(home, 'Documents')),
-    path.resolve(path.join(home, 'Downloads')),
-  ];
-}
+export { approvedFolders };
 
 export class FileController {
   /**

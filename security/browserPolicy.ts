@@ -11,7 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { approvedFolders } from '../control/fileController.js';
+import { approvedFolders } from './protectedTargets.js';
 import { isPathInside, isProtectedSystemPath } from '../core/workspaceRoot.js';
 import { isSecretFile } from './secretFiles.js';
 

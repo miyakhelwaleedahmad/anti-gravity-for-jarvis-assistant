@@ -14,6 +14,8 @@
  *      first one ended
  *   2. each model call carries its own request's signal: the first request's
  *      call is cancelled when the second starts; the second's is not
+ *   3. each request keeps its own plan outcome (ARCH-03): the cancelled one
+ *      fails, the one answered directly succeeds
  * Scripted model; no tool is run.
  */
 
@@ -104,6 +106,15 @@ releaseSecond();
 await second;
 await tts.idle();
 ok('nothing is tracked once both have ended', tracked().length === 0, tracked().join(','));
+
+console.log('\n--- 3. Each request keeps its own plan outcome (ARCH-03) ---');
+const ended = goalManager.listGoals({ kinds: ['request'] });
+const g1 = ended.find((g: any) => /printing press/.test(g.description));
+const g2 = ended.find((g: any) => /telescope/.test(g.description));
+ok('the cancelled first request did not end as a success', !!g1 && g1.status !== 'completed', g1?.status);
+ok('the second request, answered directly, ended as a success', g2?.status === 'completed', g2?.status);
+const orchSource = fs.readFileSync(new URL('../core/orchestrator.ts', import.meta.url), 'utf8');
+ok('plan outcome and timings are not fields shared by all requests', !/this\.lastPlanOutcome|_planStageTimings/.test(orchSource));
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 try { await (goalManager as any).flush?.(); } catch { /* best effort */ }

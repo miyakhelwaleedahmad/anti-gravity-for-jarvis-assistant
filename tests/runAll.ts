@@ -184,11 +184,12 @@ function runOne(file: string, name: string): Promise<Result> {
         // The failing checks and the end of the output; the rest of a test's
         // output is not kept, which left CI failures impossible to read.
         const failLines = lines.filter((l) => /^\s*(FAIL|✗|❌)/.test(l)).slice(0, 40);
-        // JARVIS_TEST_FULL_OUTPUT=1 (set in CI): the whole output of a failed
-        // test, up to 400 lines, for failures that cannot be rerun locally.
+        // JARVIS_TEST_FULL_OUTPUT=1 (set in CI): the failed checks, then the
+        // last 400 lines of the output, for failures that cannot be rerun
+        // locally (the failed checks can come before those 400 lines).
         const full = process.env['JARVIS_TEST_FULL_OUTPUT'] === '1';
         const detail = full
-          ? lines.filter((l) => l.trim()).slice(-400).map((l) => l.slice(0, 300))
+          ? [...failLines, '  … last lines:', ...lines.filter((l) => l.trim()).slice(-400)].map((l) => l.slice(0, 300))
           : [...failLines, '  …', ...lines.filter((l) => l.trim()).slice(-15)].map((l) => l.slice(0, 300));
         resolve({ name, status: 'fail', ms, detail, ...(lastMeaningful ? { reason: lastMeaningful.trim().slice(0, 160) } : {}) });
       }

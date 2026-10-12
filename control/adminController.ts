@@ -9,6 +9,7 @@ import { runProcess, stoppedReason } from '../system/processRunner.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { obfuscationReason, obfuscationRefusal, readableCommand } from '../security/commandObfuscation.js';
+import { isSecurityService } from '../security/protectedTargets.js';
 
 /**
  * Service names were pasted into a PowerShell command line, so a "name" such
@@ -18,8 +19,6 @@ import { obfuscationReason, obfuscationRefusal, readableCommand } from '../secur
  */
 const SERVICE_NAME_RE = /^[A-Za-z0-9_.\- ]{1,100}$/;
 
-/** Security services never stopped or restarted (as the blocklist's 'stop-service windefend'). */
-const PROTECTED_SERVICES = new Set(['windefend', 'mpssvc', 'wscsvc', 'securityhealthservice', 'sense', 'wdnissvc']);
 
 export function checkServiceName(serviceName: string): string {
   const name = String(serviceName ?? '').trim();
@@ -31,9 +30,7 @@ export function checkServiceName(serviceName: string): string {
   return name;
 }
 
-export function isSecurityService(name: string): boolean {
-  return PROTECTED_SERVICES.has(String(name ?? '').trim().toLowerCase());
-}
+export { isSecurityService };
 
 function checkNotSecurityService(name: string): void {
   if (isSecurityService(name)) {

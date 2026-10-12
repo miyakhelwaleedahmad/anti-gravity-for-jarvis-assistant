@@ -9,6 +9,7 @@ import { spawn } from 'child_process';
 import { securityAuditLogger } from '../../security/securityAuditLogger.js';
 import { approvalGate } from '../../security/approvalGate.js';
 import { childEnv } from '../../system/childEnv.js';
+import { getRequestSource } from '../../core/traceContext.js';
 
 type OpenAppSource = 'voice' | 'text' | 'llm';
 
@@ -208,9 +209,12 @@ function openTarget(target: string, resolvedTarget: string): Promise<string> {
 
 export async function execute(args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
   const target = String(args['target'] ?? '').trim();
-  const source = (['voice', 'text', 'llm'].includes(String(args['source'] ?? ''))
-    ? String(args['source'])
-    : 'llm') as OpenAppSource;
+  // How the request really arrived wins over the `source` the model wrote:
+  // it decides how approval is asked and what the audit records.
+  const arrived = getRequestSource();
+  const source: OpenAppSource = arrived === 'voice' ? 'voice'
+    : arrived === 'cli' ? 'text'
+    : (['voice', 'text', 'llm'].includes(String(args['source'] ?? '')) ? String(args['source']) as OpenAppSource : 'llm');
   if (!target) {
     return JSON.stringify({
       success: false,

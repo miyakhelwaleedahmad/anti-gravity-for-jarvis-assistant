@@ -38,9 +38,11 @@ import { llmConfig } from '../config/llmconfig.js';
 import { conversationBus } from './conversationBus.js';
 import { registerAllTools } from './tools/index.js';
 import { SkillLoader } from './skillLoader.js';
-import { explicitDelegation, isResearchRequest, specialistForName } from './agents/jarvisAgents.js';
-import { delegationFit, goalIntent, parseGoalRequest, withoutBackgroundPhrase } from './delegationRouting.js';
+import { delegationFit, goalIntent } from './delegationRouting.js';
 import { matchDesktopRoute } from './desktopRouting.js';
+import { matchAgentRoute } from './agentRouting.js';
+import { normalizeVoiceInput } from './voiceInput.js';
+export { normalizeVoiceInput } from './voiceInput.js';
 import { parseItems } from './agents/behaviors/news.js';
 import type { ILLMMessage, ILLMToolCall } from '../bridge/llmTypes.js';
 import * as path from 'path';
@@ -85,7 +87,16 @@ const DEFAULT_CONFIG: OrchestratorConfig = {
 /** Longest the first request waits for the skill tools (HYP-02). */
 const SKILLS_WAIT_MS = 10_000;
 
-const requestContext = new AsyncLocalStorage<{ callId: string; signal: AbortSignal }>();
+/**
+ * How a request's planning went: the outcome of its last planPhase() and the
+ * stage timings for its timing table. Kept per request (ARCH-03): on the
+ * shared orchestrator, overlapping requests wrote the same fields.
+ */
+interface PlanState {
+  outcome: 'graph' | 'answered' | 'failed' | 'interrupted';
+  timings: Record<string, number>;
+}
+const requestContext = new AsyncLocalStorage<{ callId: string; signal: AbortSignal; plan?: PlanState }>();
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
 
@@ -132,12 +143,14 @@ export class JarvisOrchestrator {
   // conversationEnded() even on very early exceptions.
   private _conversationStarted = false;
   /**
-   * How the last planPhase() call ended when it returned no graph: it spoke a
-   * direct answer, spoke an apology for an LLM failure, or was interrupted.
-   * The callers used to guess, and a replan that answered directly was
-   * followed by "I was unable to recover from the error, sir."
+   * Plan state outside a request (planPhase called directly); inside one, see
+   * planState(). Its outcome says how the last planPhase() call ended when it
+   * returned no graph: it spoke a direct answer, spoke an apology for an LLM
+   * failure, or was interrupted. The callers used to guess, and a replan that
+   * answered directly was followed by "I was unable to recover from the
+   * error, sir."
    */
-  private lastPlanOutcome: 'graph' | 'answered' | 'failed' | 'interrupted' = 'graph';
+  private planOutside: PlanState = { outcome: 'graph', timings: {} };
   /**
    * "Continue what I was doing" (P13): the unfinished request JARVIS offered
    * to run again. Only a "yes" as the very next request, within a minute,
@@ -296,8 +309,8 @@ export class JarvisOrchestrator {
 
     console.log(`[Orchestrator] Processing input [${source}]: "${input}"`);
     const t0 = performance.now();
-    // Per-stage plan timings injected by planPhase() via (this as any)._planStageTimings
-    (this as any)._planStageTimings = {};
+    // This request's plan outcome and per-stage timings (filled by planPhase()).
+    const planState: PlanState = { outcome: 'graph', timings: {} };
 
     this._conversationStarted = true;
     conversationBus.conversationStarted();
@@ -333,7 +346,7 @@ export class JarvisOrchestrator {
     const approvals = record.approvals;
     try {
       // Agent loop starts IMMEDIATELY — goal creation runs in background
-      loopOutcome = await requestContext.run({ callId, signal: controller.signal }, () => this.runAgentLoop(input, source, goalPromise, record));
+      loopOutcome = await requestContext.run({ callId, signal: controller.signal, plan: planState }, () => this.runAgentLoop(input, source, goalPromise, record));
 
       // ── Phase 1: Resolve Goal based on actual outcome ──────────────────────
       // PIPELINE-OPT: Resolve the background goal promise now (it ran concurrently
@@ -381,7 +394,7 @@ export class JarvisOrchestrator {
       }
 
       // Spoken as this request (it was not aborted), whatever context called process().
-      if (fallback) requestContext.run({ callId, signal: controller.signal }, () => this.speak(fallback));
+      if (fallback) requestContext.run({ callId, signal: controller.signal, plan: planState }, () => this.speak(fallback));
 
       // ── Phase 1: Fail Goal on unhandled error ──────────────────────────────
       if (goalPromise) { goal = await goalPromise; }
@@ -423,7 +436,7 @@ export class JarvisOrchestrator {
       }
       const totalMs = Math.round(performance.now() - t0);
       // ── Print per-stage timing table ────────────────────────────────────────────────
-      const planStages: Record<string, number> = (this as any)._planStageTimings ?? {};
+      const planStages: Record<string, number> = planState.timings;
       if (Object.keys(planStages).length > 0) {
         console.log('\n┌────────────────────────────────────────────┐');
         console.log('│  ⏱  JARVIS Timing Breakdown                 │');
@@ -766,7 +779,7 @@ export class JarvisOrchestrator {
     if (!planResult) {
       const isActionRequest = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i.test(input);
       const isAborted = this.isInterrupted() || this.requestSignal()?.aborted;
-      const noAnswer = this.lastPlanOutcome !== 'answered';
+      const noAnswer = this.planState().outcome !== 'answered';
 
       if (isAborted || isActionRequest || noAnswer) {
         console.warn(`[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "${input}". Goal marked FAILED.`);
@@ -845,7 +858,7 @@ export class JarvisOrchestrator {
       const replanned = await this.repairPhase('replan', { context: replanRequest.reason }, activePlan, input);
       if (!replanned) {
         // A direct answer finishes the request; an LLM failure or interrupt does not.
-        if (this.lastPlanOutcome !== 'answered') return 'failed';
+        if (this.planState().outcome !== 'answered') return 'failed';
         return 'success';
       }
       activePlan = replanned;
@@ -987,7 +1000,7 @@ export class JarvisOrchestrator {
         // A replan that ended without a graph has already spoken (its answer, or
         // the LLM-failure apology) or was interrupted; a second message here
         // contradicted it ("<answer>. I was unable to recover from the error").
-        const replanSpoke = reflection.repairStrategy === 'replan' && this.lastPlanOutcome !== 'graph';
+        const replanSpoke = reflection.repairStrategy === 'replan' && this.planState().outcome !== 'graph';
         if (!replanSpoke) {
           this.speak(reflection.voiceMessage ?? 'I was unable to recover from the error, sir.');
         }
@@ -1129,7 +1142,7 @@ export class JarvisOrchestrator {
 
   private async planPhase(input: string): Promise<TaskGraph | null> {
     console.log('[Orchestrator] 🧠 PLANNING — calling LLM...');
-    this.lastPlanOutcome = 'interrupted';
+    this.planState().outcome = 'interrupted';
     const planPrepStart = performance.now();
 
     // ── 1. Fast Pre-Warmed System Prompt ──────────────────────────────────────
@@ -1161,9 +1174,7 @@ export class JarvisOrchestrator {
       const ctxMs = Math.round(performance.now() - ctxStart);
       console.log(`[Timing] buildContext: ${ctxMs}ms (heavy=${includeHeavyContext})`);
       
-      const pt = (this as any)._planStageTimings ?? {};
-      pt['ContextBuild'] = ctxMs;
-      (this as any)._planStageTimings = pt;
+      this.planState().timings['ContextBuild'] = ctxMs;
 
       unifiedCtxText = unifiedCtx.mergedContext;
       uniTokens = unifiedCtxText.length >> 2;
@@ -1294,10 +1305,9 @@ export class JarvisOrchestrator {
       const response = await modelRouter.chat(request);
       const llmMs = Math.round(performance.now() - llmStart);
       // Record in plan stage timings for the outer table
-      const planTimings = (this as any)._planStageTimings ?? {};
+      const planTimings = this.planState().timings;
       planTimings['LLM Network'] = llmMs;
       planTimings['TokensEstimated'] = totalTokens;
-      (this as any)._planStageTimings = planTimings;
       console.log(`[Timing] LLM returned in ${llmMs}ms — tokens_used=${response.usage?.totalTokens ?? '?'} prompt_tokens=${response.usage?.promptTokens ?? '?'}`);
       // Strip <think> tags from reasoning models
       let reply = (response.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
@@ -1318,7 +1328,7 @@ export class JarvisOrchestrator {
 
           agentStateMachine.transition(AgentState.SPEAKING);
           this.speak(reply);
-          this.lastPlanOutcome = 'answered';
+          this.planState().outcome = 'answered';
           return null;
         }
       }
@@ -1340,7 +1350,7 @@ export class JarvisOrchestrator {
       const graph = TaskGraphBuilder.fromToolCalls(input, toolCalls);
       limitRetriesToReadOnlyTools(graph);
       console.log(`[Orchestrator] 📊 Task graph built: ${graph.nodes.size} node(s)`);
-      this.lastPlanOutcome = 'graph';
+      this.planState().outcome = 'graph';
       return graph;
 
     } catch (err) {
@@ -1371,7 +1381,7 @@ export class JarvisOrchestrator {
                   args: { query: input },
                   description: 'Emergency fallback search'
               });
-              this.lastPlanOutcome = 'graph';
+              this.planState().outcome = 'graph';
               return graph.build();
           } else if (lowerInput.includes('system') || lowerInput.includes('status')) {
               console.log('[Orchestrator] Fallback: Engaging emergency system tool graph.');
@@ -1382,7 +1392,7 @@ export class JarvisOrchestrator {
                   args: {},
                   description: 'Emergency fallback system status'
               });
-              this.lastPlanOutcome = 'graph';
+              this.planState().outcome = 'graph';
               return graph.build();
           }
       } catch (fallbackErr) {
@@ -1397,7 +1407,7 @@ export class JarvisOrchestrator {
       if (fallback) {
         this.speak(fallback);
         await agentMemory.addConversationMessage('assistant', fallback);
-        this.lastPlanOutcome = 'failed';
+        this.planState().outcome = 'failed';
       }
       return null;
     }
@@ -2135,6 +2145,13 @@ export class JarvisOrchestrator {
    * this.currentAbortController, the newest request's: a call made by an
    * older request after a newer one began was tied to the wrong request.
    */
+  /** This request's plan state (ARCH-03); outside a request, the orchestrator's own. */
+  private planState(): PlanState {
+    const scope = requestContext.getStore();
+    if (!scope) return this.planOutside;
+    return (scope.plan ??= { outcome: 'graph', timings: {} });
+  }
+
   private requestSignal(): AbortSignal | undefined {
     return requestContext.getStore()?.signal ?? this.currentAbortController?.signal;
   }
@@ -2581,44 +2598,6 @@ const BROWSER_TABS_PHRASES = new Set([
   'what tabs do i have open', 'which tabs do i have open',
 ]);
 
-/**
- * Questions about the agents (core/agents/jarvisAgents.ts), "stop this
- * research", and plain research requests, which go straight to the Research
- * Agent without a planning call. `clean` is lower case without punctuation.
- */
-function matchAgentRoute(clean: string, original: string): { type: string; target?: string; reply: string; specialist?: string } | null {
-  const status = (q: string) => ({ type: 'agent_status', target: q, reply: '' });
-  if (/^(how many|how much) (sub ?)?(agents|workers) (are|is) (running|working|active)/.test(clean)) return status('count');
-  if (/\b(show|display|give|tell)( me)? (the |your )?task (tree|graph)\b|^task (tree|graph)$/.test(clean)) return status('tree');
-  if (/^what (has|have|did) (each|the|your) (worker|workers|agent|agents|sub ?agents?) (discovered|found|find|discover)/.test(clean)) return status('findings');
-  if (/^(which|what) (agents?|workers?|sub ?agents?) (failed|have failed|are waiting|is waiting|are stuck|are blocked)/.test(clean)) return status('failures');
-  if (/^how much (work )?(remains|is left|is remaining)|^how much of the (research|task|work) is (left|done)/.test(clean)) return status('remaining');
-  const spawns = /^(what|which) (sub ?agents|subagents|workers|agents) did (the |your )?([a-z ]+?) agent (create|make|start|spawn)/.exec(clean);
-  if (spawns && specialistForName(spawns[4]!)) return status(`spawns|${specialistForName(spawns[4]!)}`);
-  if (/^what (are|is) (your|the) (agents?|sub ?agents|workers) (doing|up to|working on)|^(agent|agents) status$|^status of (the |your )?agents$/.test(clean)) return status('summary');
-  if (/^(stop|cancel|abort|end) (this|the|that|your) (research|agents|agent work|background task|delegated task)$/.test(clean)) return { type: 'agent_stop', target: 'latest', reply: '' };
-  if (/^(stop|cancel|abort) (all|all the|all your) (agents|research|background tasks)$/.test(clean)) return { type: 'agent_stop', target: 'all', reply: '' };
-  // Background goals (core/goalRuntime.ts): status, control, and goals asked for in plain words.
-  if (/^(?:what are|show|list|tell me)(?: me)? (?:your|my|the) (?:background )?goals$|^(?:goals|goal status|my goals|status of (?:my|the|your) goals)$|^how (?:are|is) (?:my|the|your) goals? (?:going|doing)$/.test(clean)) {
-    return { type: 'goal_status', reply: '' };
-  }
-  const control = /^(pause|resume|continue|cancel|stop|confirm|approve) (?:the |my |that |this )?goal(?: (?:called |named |about )?(.+))?$/.exec(clean);
-  if (control) {
-    const action = ({ continue: 'resume', stop: 'pause', approve: 'confirm' } as Record<string, string>)[control[1]!] ?? control[1]!;
-    return { type: 'goal_control', target: `${action}|${control[2] ?? 'latest'}`, reply: '' };
-  }
-  const goal = parseGoalRequest(original);
-  if (goal) return { type: 'goal_create', target: JSON.stringify(goal), reply: '' };
-  // "Ask the data agent to …", "delegate: …", "in the background, …": an explicit hand-over.
-  const handOver = explicitDelegation(original);
-  if (handOver) return { type: 'delegate', target: handOver.task, specialist: handOver.specialist, reply: '' };
-  // "… in the background", "… while I work": background work, unless it acts on the screen.
-  const fit = delegationFit(original);
-  if (fit.background) return { type: 'delegate', target: withoutBackgroundPhrase(original), specialist: fit.specialist, reply: '' };
-  if (isResearchRequest(clean)) return { type: 'delegate', target: original.trim(), reply: '' };
-  return null;
-}
-
 /** "What's running?": open apps and local servers. */
 const RUNNING_PHRASES = new Set([
   'whats running', 'what is running', 'whats running on my pc', 'what is running on my pc',
@@ -2868,47 +2847,3 @@ export function describeCommandResult(result: string): string {
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
 export const orchestrator = new JarvisOrchestrator();
-
-export function normalizeVoiceInput(text: string): string {
-  if (!text) return "";
-
-  // 1. Lowercase and replace punctuation (keeping hyphens for now to handle "you-tube")
-  let result = text.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim();
-
-  // Collapse spaces
-  result = result.replace(/\s+/g, ' ');
-
-  // 2. Normalize brand names
-  result = result.replace(/\byou tube\b/g, 'youtube');
-  result = result.replace(/\byou-tube\b/g, 'youtube');
-  result = result.replace(/\bgit-hub\b/g, 'github');
-  result = result.replace(/\bgit hub\b/g, 'github');
-
-  // Strip remaining hyphens
-  result = result.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-
-  // 3. Strip wake word prefixes
-  const wakePrefixes = ['hey jarvis', 'jarvis'];
-  for (const prefix of wakePrefixes) {
-    if (result.startsWith(prefix + ' ')) {
-      result = result.substring(prefix.length).trim();
-      break;
-    } else if (result === prefix) {
-      result = '';
-      break;
-    }
-  }
-
-  // 4. Strip filler words/phrases
-  const fillers = ['for me', 'please', 'can you', 'could you', 'would you'];
-  for (const filler of fillers) {
-    const regex = new RegExp(`\\b${filler}\\b`, 'g');
-    result = result.replace(regex, '');
-  }
-  result = result.replace(/\bfor\b$/g, '');
-
-  // Collapse spaces and trim one last time
-  result = result.replace(/\s+/g, ' ').trim();
-
-  return result;
-}

@@ -5,13 +5,13 @@
  * (docs/upgrade/PERMISSION_MODEL.md, P10). Shared by the risk engine, which
  * decides before anything runs, and tools/fsTools.ts, which checks again.
  *
- * Containment is the approved folders (control/fileController.ts) compared by
+ * Containment is the approved folders (security/protectedTargets.ts) compared by
  * real path: a link inside an approved folder cannot lead outside it.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { approvedFolders } from '../control/fileController.js';
+import { approvedFolders } from './protectedTargets.js';
 import { isSecretFile as isSecretFileName } from './secretFiles.js';
 import { getWorkspaceRoot, isForeignWindowsAbsolute, isPathInside, isProtectedSystemPath, realPathOf } from '../core/workspaceRoot.js';
 

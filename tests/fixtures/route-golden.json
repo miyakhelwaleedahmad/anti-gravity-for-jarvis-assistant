@@ -1,0 +1,286 @@
+{
+  "stop": {
+    "route": "{\"type\":\"stop\",\"reply\":\"Stopped, sir.\"}",
+    "normalized": "stop"
+  },
+  "cancel": {
+    "route": "{\"type\":\"stop\",\"reply\":\"Stopped, sir.\"}",
+    "normalized": "cancel"
+  },
+  "jarvis stop": {
+    "route": "{\"type\":\"stop\",\"reply\":\"Stopped, sir.\"}",
+    "normalized": "stop"
+  },
+  "pause": {
+    "route": "{\"type\":\"stop\",\"reply\":\"Paused, sir.\"}",
+    "normalized": "pause"
+  },
+  "resume": {
+    "route": "{\"type\":\"stop\",\"reply\":\"Resuming, sir.\"}",
+    "normalized": "resume"
+  },
+  "hello": {
+    "route": "{\"type\":\"greeting\",\"reply\":\"Hello, sir. How may I assist you today?\"}",
+    "normalized": "hello"
+  },
+  "hey jarvis": {
+    "route": "null",
+    "normalized": ""
+  },
+  "thanks": {
+    "route": "{\"type\":\"simple_reply\",\"reply\":\"Anytime, sir.\"}",
+    "normalized": "thanks"
+  },
+  "what time is it": {
+    "route": "{\"type\":\"time\",\"reply\":\"<time>\"}",
+    "normalized": "what time is it"
+  },
+  "open notepad": {
+    "route": "{\"type\":\"open_app\",\"target\":\"notepad\",\"reply\":\"Opening notepad, sir.\"}",
+    "normalized": "open notepad"
+  },
+  "open youtube": {
+    "route": "{\"type\":\"open_app\",\"target\":\"youtube\",\"reply\":\"Opening youtube, sir.\"}",
+    "normalized": "open youtube"
+  },
+  "launch chrome": {
+    "route": "{\"type\":\"open_app\",\"target\":\"chrome\",\"reply\":\"Opening chrome, sir.\"}",
+    "normalized": "launch chrome"
+  },
+  "start calculator": {
+    "route": "{\"type\":\"open_app\",\"target\":\"calculator\",\"reply\":\"Opening calculator, sir.\"}",
+    "normalized": "start calculator"
+  },
+  "open you tube please": {
+    "route": "{\"type\":\"open_app\",\"target\":\"youtube\",\"reply\":\"Opening youtube, sir.\"}",
+    "normalized": "open youtube"
+  },
+  "Jarvis, open Git Hub for me": {
+    "route": "{\"type\":\"open_app\",\"target\":\"github\",\"reply\":\"Opening github, sir.\"}",
+    "normalized": "open github"
+  },
+  "close notepad": {
+    "route": "{\"type\":\"close_app\",\"target\":\"notepad\",\"reply\":\"Closing Notepad, sir.\"}",
+    "normalized": "close notepad"
+  },
+  "minimize chrome": {
+    "route": "null",
+    "normalized": "minimize chrome"
+  },
+  "play lofi music on youtube": {
+    "route": "{\"type\":\"youtube_search\",\"target\":\"{\\\"type\\\":\\\"youtube_search\\\",\\\"query\\\":\\\"lofi music\\\",\\\"open\\\":\\\"best\\\"}\",\"reply\":\"\"}",
+    "normalized": "play lofi music on youtube"
+  },
+  "search youtube for cats": {
+    "route": "{\"type\":\"youtube_search\",\"target\":\"{\\\"type\\\":\\\"youtube_search\\\",\\\"query\\\":\\\"cats\\\",\\\"open\\\":\\\"results\\\"}\",\"reply\":\"\"}",
+    "normalized": "search youtube for cats"
+  },
+  "search google for weather": {
+    "route": "{\"type\":\"site_search\",\"target\":\"{\\\"type\\\":\\\"site_search\\\",\\\"site\\\":\\\"google\\\",\\\"query\\\":\\\"weather\\\"}\",\"reply\":\"\"}",
+    "normalized": "search google for weather"
+  },
+  "what can you do": {
+    "route": "{\"type\":\"what_can_you_do\",\"reply\":\"I have 75 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \\\"list your tools\\\" for each tool and its risk.\"}",
+    "normalized": "what do"
+  },
+  "who are you": {
+    "route": "{\"type\":\"what_can_you_do\",\"reply\":\"I am JARVIS, your assistant, sir. I have 75 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \\\"list your tools\\\" for each tool and its risk.\"}",
+    "normalized": "who are you"
+  },
+  "list your capabilities": {
+    "route": "{\"type\":\"list_capabilities\",\"reply\":\"I have 75 tools in 9 groups, sir; 8 of them include high-risk actions. The full list with the risk of each is in the console.\"}",
+    "normalized": "list your capabilities"
+  },
+  "what are your tools": {
+    "route": "null",
+    "normalized": "what are your tools"
+  },
+  "whats running": {
+    "route": "{\"type\":\"whats_running\",\"reply\":\"\"}",
+    "normalized": "whats running"
+  },
+  "what is running on my pc": {
+    "route": "{\"type\":\"whats_running\",\"reply\":\"\"}",
+    "normalized": "what is running on my pc"
+  },
+  "what is open in chrome": {
+    "route": "{\"type\":\"get_browser_tabs\",\"reply\":\"Checking open Chrome tabs, sir.\"}",
+    "normalized": "what is open in chrome"
+  },
+  "which tabs are open": {
+    "route": "{\"type\":\"get_browser_tabs\",\"reply\":\"Checking open Chrome tabs, sir.\"}",
+    "normalized": "which tabs are open"
+  },
+  "what is currently open in my browser": {
+    "route": "{\"type\":\"get_browser_tabs\",\"reply\":\"Checking open Chrome tabs, sir.\"}",
+    "normalized": "what is currently open in my browser"
+  },
+  "why isnt my app working": {
+    "route": "{\"type\":\"diagnose_app\",\"reply\":\"\"}",
+    "normalized": "why isnt my app working"
+  },
+  "my server is down": {
+    "route": "{\"type\":\"diagnose_app\",\"reply\":\"\"}",
+    "normalized": "my server is down"
+  },
+  "fix the website": {
+    "route": "{\"type\":\"diagnose_app\",\"reply\":\"\"}",
+    "normalized": "fix the website"
+  },
+  "is the backend working": {
+    "route": "{\"type\":\"diagnose_app\",\"reply\":\"\"}",
+    "normalized": "is the backend working"
+  },
+  "continue what i was doing": {
+    "route": "{\"type\":\"continue_work\",\"reply\":\"\"}",
+    "normalized": "continue what i was doing"
+  },
+  "what was i doing": {
+    "route": "{\"type\":\"continue_work\",\"reply\":\"\"}",
+    "normalized": "what was i doing"
+  },
+  "yes": {
+    "route": "{\"type\":\"simple_reply\",\"reply\":\"Understood, sir. Nothing is waiting for your approval.\"}",
+    "normalized": "yes"
+  },
+  "no thanks": {
+    "route": "null",
+    "normalized": "no thanks"
+  },
+  "is youtube open": {
+    "route": "{\"type\":\"is_tab_open\",\"target\":\"youtube\",\"reply\":\"Checking if YouTube is open, sir.\"}",
+    "normalized": "is youtube open"
+  },
+  "enable full control mode": {
+    "route": "{\"type\":\"enable_full_control_session\",\"reply\":\"Enabling full control mode, sir.\"}",
+    "normalized": "enable full control mode"
+  },
+  "system status": {
+    "route": "{\"type\":\"status\",\"reply\":\"\"}",
+    "normalized": "system status"
+  },
+  "how is my pc doing": {
+    "route": "{\"type\":\"status\",\"reply\":\"\"}",
+    "normalized": "how is my pc doing"
+  },
+  "git status": {
+    "route": "null",
+    "normalized": "git status"
+  },
+  "what changed in my project": {
+    "route": "null",
+    "normalized": "what changed in my project"
+  },
+  "how many agents are running": {
+    "route": "{\"type\":\"agent_status\",\"target\":\"count\",\"reply\":\"\"}",
+    "normalized": "how many agents are running"
+  },
+  "show me the task tree": {
+    "route": "{\"type\":\"agent_status\",\"target\":\"tree\",\"reply\":\"\"}",
+    "normalized": "show me the task tree"
+  },
+  "what have the workers found": {
+    "route": "{\"type\":\"agent_status\",\"target\":\"findings\",\"reply\":\"\"}",
+    "normalized": "what have the workers found"
+  },
+  "which agents failed": {
+    "route": "{\"type\":\"agent_status\",\"target\":\"failures\",\"reply\":\"\"}",
+    "normalized": "which agents failed"
+  },
+  "how much work remains": {
+    "route": "{\"type\":\"agent_status\",\"target\":\"remaining\",\"reply\":\"\"}",
+    "normalized": "how much work remains"
+  },
+  "what sub agents did the research agent create": {
+    "route": "{\"type\":\"agent_status\",\"target\":\"spawns|research_agent\",\"reply\":\"\"}",
+    "normalized": "what sub agents did the research agent create"
+  },
+  "what are your agents doing": {
+    "route": "{\"type\":\"agent_status\",\"target\":\"summary\",\"reply\":\"\"}",
+    "normalized": "what are your agents doing"
+  },
+  "stop this research": {
+    "route": "{\"type\":\"agent_stop\",\"target\":\"latest\",\"reply\":\"\"}",
+    "normalized": "stop this research"
+  },
+  "cancel all agents": {
+    "route": "{\"type\":\"agent_stop\",\"target\":\"all\",\"reply\":\"\"}",
+    "normalized": "cancel all agents"
+  },
+  "what are my goals": {
+    "route": "{\"type\":\"goal_status\",\"reply\":\"\"}",
+    "normalized": "what are my goals"
+  },
+  "goal status": {
+    "route": "{\"type\":\"goal_status\",\"reply\":\"\"}",
+    "normalized": "goal status"
+  },
+  "pause the goal": {
+    "route": "{\"type\":\"goal_control\",\"target\":\"pause|latest\",\"reply\":\"\"}",
+    "normalized": "pause the goal"
+  },
+  "resume goal called news": {
+    "route": "{\"type\":\"goal_control\",\"target\":\"resume|news\",\"reply\":\"\"}",
+    "normalized": "resume goal called news"
+  },
+  "approve goal": {
+    "route": "{\"type\":\"goal_control\",\"target\":\"confirm|latest\",\"reply\":\"\"}",
+    "normalized": "approve goal"
+  },
+  "ask the data agent to clean the sales csv": {
+    "route": "{\"type\":\"delegate\",\"target\":\"clean the sales csv\",\"specialist\":\"data_agent\",\"reply\":\"\"}",
+    "normalized": "ask the data agent to clean the sales csv"
+  },
+  "delegate: summarise the logs": {
+    "route": "{\"type\":\"delegate\",\"target\":\"summarise the logs\",\"specialist\":\"data_agent\",\"reply\":\"\"}",
+    "normalized": "delegate summarise the logs"
+  },
+  "in the background, find the best laptops under 1000": {
+    "route": "{\"type\":\"delegate\",\"target\":\"find the best laptops under 1000\",\"specialist\":\"research_agent\",\"reply\":\"\"}",
+    "normalized": "in the background find the best laptops under 1000"
+  },
+  "research the best python web frameworks": {
+    "route": "{\"type\":\"delegate\",\"target\":\"research the best python web frameworks\",\"reply\":\"\"}",
+    "normalized": "research the best python web frameworks"
+  },
+  "find me information about rust async runtimes": {
+    "route": "null",
+    "normalized": "find me information about rust async runtimes"
+  },
+  "every morning at 9 summarise the news": {
+    "route": "null",
+    "normalized": "every morning at 9 summarise the news"
+  },
+  "remind me every hour to drink water": {
+    "route": "null",
+    "normalized": "remind me every hour to drink water"
+  },
+  "write a poem about the sea": {
+    "route": "null",
+    "normalized": "write a poem about the sea"
+  },
+  "tell me a joke": {
+    "route": "null",
+    "normalized": "tell me a joke"
+  },
+  "delete all my files": {
+    "route": "null",
+    "normalized": "delete all my files"
+  },
+  "shutdown the computer": {
+    "route": "null",
+    "normalized": "shutdown the computer"
+  },
+  "": {
+    "route": "null",
+    "normalized": ""
+  },
+  "   ": {
+    "route": "null",
+    "normalized": ""
+  },
+  "!!!": {
+    "route": "null",
+    "normalized": ""
+  }
+}
