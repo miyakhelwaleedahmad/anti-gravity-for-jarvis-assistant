@@ -16,7 +16,7 @@ output description — and JARVIS can say what it can do from that metadata.
   `parameters` with `enum`, `fallbacks`).
 - Built-in tools: `core/tools/index.ts` registers read_file, write_file,
   run_command, get_system_info, web_search, save_relation, search_memory.
-- `core/orchestrator.ts`: `selectPlanningToolNames()` offers ≤ 8 tools by
+- `core/orchestrator.ts` (now `core/planningToolSelection.ts`): `selectPlanningToolNames()` offers ≤ 8 tools by
   keyword; `matchDeterministicCommand()` answers "what can you do" / "who are
   you" with a fixed sentence (type `what_can_you_do`).
 - 33 tools registered (list in [TOOL_REGISTRY.md](../TOOL_REGISTRY.md)).
