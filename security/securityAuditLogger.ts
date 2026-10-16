@@ -81,19 +81,31 @@ class SecurityAuditLogger {
     }
   }
 
+  private listeners: Array<(event: SecurityEvent) => void> = [];
+
+  /** Also hand each event (redacted) to `fn`: the request trace (monitoring/traceWiring.ts). */
+  public onEvent(fn: (event: SecurityEvent) => void): void {
+    this.listeners.push(fn);
+  }
+
   public log(event: SecurityEvent): void {
+    let clean: SecurityEvent | undefined;
     try {
-      this.ensureLogDir();
       // Every field, not only the command and reason: targets and actions
       // can carry a token too.
-      const line = JSON.stringify(redactDeep({
+      clean = redactDeep({
         ...event,
         command: sanitize(event.command),
         reason: sanitize(event.reason),
-      }));
-      fs.appendFileSync(AUDIT_LOG_PATH, line + '\n', 'utf8');
+      });
+      this.ensureLogDir();
+      fs.appendFileSync(AUDIT_LOG_PATH, JSON.stringify(clean) + '\n', 'utf8');
     } catch {
       // Audit logging must never crash the application
+    }
+    if (!clean) return;
+    for (const fn of this.listeners) {
+      try { fn(clean); } catch { /* a trace listener must not stop the audit record */ }
     }
   }
 

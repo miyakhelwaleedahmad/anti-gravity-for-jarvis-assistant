@@ -1081,17 +1081,29 @@ export class ToolRegistryV2 {
     }
   }
 
+  private _callListeners: Array<(call: Omit<ExecutionRecord, 'args'>) => void> = [];
+
+  /** Also hand each recorded attempt, without its arguments, to `fn`: the request trace (monitoring/traceWiring.ts). */
+  onCall(fn: (call: Omit<ExecutionRecord, 'args'>) => void): void {
+    this._callListeners.push(fn);
+  }
+
   private _pushHistory(record: ExecutionRecord): void {
     if (this._history.length >= this.HISTORY_MAX) {
       this._history.shift(); // drop oldest
     }
     // Kept without credentials: action_history shows it, and arguments can
     // carry a token (a command line, a URL).
-    this._history.push({
+    const kept = {
       ...record,
       args: redactDeep(record.args),
       ...(record.error !== undefined ? { error: redact(record.error) } : {}),
-    });
+    };
+    this._history.push(kept);
+    const { args: _args, ...call } = kept;
+    for (const fn of this._callListeners) {
+      try { fn(call); } catch { /* a trace listener must not break the call */ }
+    }
   }
 
   /** Returns metrics for all tools or a specific tool. */
