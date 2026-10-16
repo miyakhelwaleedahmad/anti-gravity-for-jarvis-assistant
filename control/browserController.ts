@@ -38,7 +38,7 @@ export interface CDPTab {
 
 export class BrowserController {
   private getInstruction(): string {
-    return `Please start Chrome with remote debugging enabled:\nstart chrome.exe --remote-debugging-port=${cdpPort()} --user-data-dir="W:\\jarvis-chrome-profile"`;
+    return `Please start Chrome with remote debugging enabled:\nstart chrome.exe --remote-debugging-port=${cdpPort()} --user-data-dir="%USERPROFILE%\\jarvis-chrome-profile"`;
   }
 
   private async fetchCDPTabs(): Promise<CDPTab[]> {

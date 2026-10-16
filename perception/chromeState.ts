@@ -67,7 +67,7 @@ export async function getChromeState(): Promise<ChromeState> {
       running,
       debugPort,
       tabs: [],
-      error: `Chrome DevTools endpoint unavailable. Suggest starting Chrome with: start chrome.exe --remote-debugging-port=${debugPort} --user-data-dir="W:\\jarvis-chrome-profile"`
+      error: `Chrome DevTools endpoint unavailable. Suggest starting Chrome with: start chrome.exe --remote-debugging-port=${debugPort} --user-data-dir="%USERPROFILE%\\jarvis-chrome-profile"`
     };
   }
 }

@@ -4,8 +4,9 @@ An autonomous desktop assistant for Windows. Voice in, plan, act on the machine,
 speak back. Node.js/TypeScript at the core, with small Python sidecars for
 speech, vision, and embeddings.
 
-Despite the `requirements.txt`, this is **not** a Python application: 119 of the
-live source files are TypeScript and 14 are Python.
+Despite the `requirements.txt`, this is **not** a Python application: 217 of the
+live source files are TypeScript and 5 are Python (the vector service, speech
+to text, text to speech, wake word and screen capture).
 
 ---
 
@@ -22,7 +23,7 @@ core/taskGraphEngine.ts      runs the plan as a parallel DAG, with retries (no a
       ↓
 core/toolRegistryV2.ts       single dispatch point: schema validation, authz, retry, fallback, caching
       ↓
-skills/*  and  control/*     33 tools; the control layer drives Windows
+skills/*  and  control/*     75 tools (49 built in, 26 from skills); the control layer drives Windows
       ↓
 memory/                      LowDB (source of truth) + Redis cache + vector search + optional graph
 ```

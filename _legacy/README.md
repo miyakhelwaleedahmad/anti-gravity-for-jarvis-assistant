@@ -25,6 +25,7 @@ typechecked — their relative imports no longer resolve from this directory.
 | Unused subsystems | `system/*`, `learning/selfAudit.ts`, `simulation/worldModel.ts`, `conversation/contextManager.ts`, `memory/cacheManager.ts`, `memory/contextBuilder.ts` | Never referenced from the live path. |
 | One-off scripts | `analyze.ts`, `count_modules.ts`, `debug_imports.ts`, `find_importers.ts`, `fix_*.ts`, `refactor_*.ts`, `stabilityTest.ts`, `stateMachineVerification.ts`, `test_*.ts` | Development throwaways committed at the repository root. |
 | Duplicate entry point | `index.ts` | No script references it; `jarvis.ts` is the entry point. |
+| Python stubs (ARCH-08) | `agents/researchAgent.py`, `voice/wakeWord.py`, `bridge/pythonBridge.py`, `learning/improvementEngine.py`, `learning/mistakeAnalyzer.py`, `memory/memoryIndexer.py`, `tools/browserTool.py`, `backend/memory/*`, and `scaffold.ps1` | Never started by JARVIS; only `scaffold.ps1` named them, and it is here too so it cannot recreate them. The live services are `memory/vectorMemory.py`, `voice/stt.py`, `voice/tts.py`, `voice/wakeWords.py` and `vision/screen_capture.py`. |
 
 ## Deliberately NOT quarantined
 

@@ -21,9 +21,6 @@ sentence-transformers>=2.2.2
 # ── WebSocket Bridge ──────────────────────────────────────────────────────────
 websockets>=13.0             # WS client connecting to NodeBridge (all voice modules)
 
-# ── Reflection / Self-Learning ───────────────────────────────────────────────
-requests>=2.31.0             # HTTP client for Groq API calls (reflectionEngine.py)
-
 # ── Optional: Offline Wake Word Fallback ─────────────────────────────────────
 # Uncomment to enable offline wake word recognition via pocketsphinx
 # pocketsphinx>=5.0.3
