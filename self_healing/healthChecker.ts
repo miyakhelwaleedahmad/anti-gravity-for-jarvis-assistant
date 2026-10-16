@@ -11,7 +11,8 @@
  *   - LLM API (the configured provider, Gemini or Groq) — lists models; costs
  *     no generation quota. A rate limit counts as reachable; other failures
  *     are classified by HTTP status (bridge/llmStatus.ts), not by message text
- *   - Redis             — PING command via ioredis
+ *   - Redis             — a write and read with a time limit (memory/redisCache.ts
+ *                         probeRedis, shared with the dashboard)
  *   - Vector Memory     — the supervisor's state; "loading" while the model
  *                         loads is reported as loading, not as a failure
  *   - Memory Manager    — verifies in-memory DB is initialized
@@ -207,15 +208,13 @@ export class HealthChecker {
   private async _probeRedis(): Promise<ProbeResult> {
     const t0 = Date.now();
     try {
-      // Dynamic import to avoid hard Redis dependency at startup
-      const { isRedisAvailable, pingRedis } = await import('../memory/redisCache.js').then(
-        m => ({ isRedisAvailable: (m as any).isRedisAvailable, pingRedis: (m as any).pingRedis })
-      );
-      if (typeof isRedisAvailable === 'function' && !isRedisAvailable()) {
-        return { subsystem: 'Redis', pipeline: 'memory_to_context', ok: true, latencyMs: Date.now() - t0 };
-      }
-      if (typeof pingRedis === 'function') await pingRedis();
-      return { subsystem: 'Redis', pipeline: 'memory_to_context', ok: true, latencyMs: Date.now() - t0 };
+      // The same check the dashboard uses (ARCH-02). This called `pingRedis`,
+      // which redisCache never had, behind an `as any`: it never reached Redis.
+      // Not connected = the in-memory fallback, by design: still ok, as before.
+      const { probeRedis } = await import('../memory/redisCache.js');
+      const p = await probeRedis();
+      const ok = p.state !== 'failed';
+      return { subsystem: 'Redis', pipeline: 'memory_to_context', ok, latencyMs: p.latencyMs, error: ok ? undefined : p.detail };
     } catch (err) {
       const e = err instanceof Error ? err.message : String(err);
       return { subsystem: 'Redis', pipeline: 'memory_to_context', ok: false, latencyMs: Date.now() - t0, error: e.slice(0, 120) };

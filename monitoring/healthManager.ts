@@ -7,7 +7,7 @@
  * a live health snapshot. Designed to be polled by runtimeDashboard.ts.
  *
  * Probes:
- *   - Redis (ioredis ping)
+ *   - Redis (memory/redisCache.ts probeRedis, shared with self-healing)
  *   - Vector Memory (the supervisor's state; HTTP GET /stats on port 8000 once ready)
  *   - LLM (bridge/llmStatus.ts: the last request or probe to the configured
  *     provider; a background model-list check when nothing recent is known)
@@ -84,19 +84,17 @@ class HealthManager {
   private async probeRedis(): Promise<ServiceHealth> {
     const start = Date.now();
     try {
-      const { isRedisAvailable, cacheSet, cacheGet, initRedis } = await import('../memory/redisCache.js');
+      // The same check self-healing uses (ARCH-02), with a time limit: this
+      // waited for ever on a Redis that stopped answering, and read back an
+      // earlier probe's value as "round-trip OK" when writes were refused.
+      const { initRedis, probeRedis } = await import('../memory/redisCache.js');
       initRedis();
-      if (!isRedisAvailable()) {
-        return { name: 'redis', status: 'online', detail: 'in-memory cache fallback', checkedAt: Date.now() };
-      }
-      await cacheSet('__health_probe__', { ts: Date.now() }, 10);
-      const val = await cacheGet<{ ts: number }>('__health_probe__');
-      const latencyMs = Date.now() - start;
+      const p = await probeRedis();
       return {
         name: 'redis',
-        status: val !== null ? 'online' : 'degraded',
-        latencyMs,
-        detail: val !== null ? 'round-trip OK' : 'in-memory fallback active',
+        status: p.state === 'failed' ? 'degraded' : 'online',
+        ...(p.state === 'fallback' ? {} : { latencyMs: p.latencyMs }),
+        detail: p.state === 'failed' ? `cache not working: ${p.detail}` : p.detail,
         checkedAt: Date.now(),
       };
     } catch (err) {

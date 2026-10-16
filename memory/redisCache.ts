@@ -91,6 +91,50 @@ export function isRedisAvailable(): boolean {
   return redisAvailable;
 }
 
+export interface RedisProbe {
+  /** `fallback`: not connected, so the in-memory path is in use (by design, not a fault). */
+  state: "ok" | "fallback" | "failed";
+  latencyMs: number;
+  detail: string;
+}
+
+/**
+ * The one Redis health check, used by both the dashboard
+ * (monitoring/healthManager.ts) and self-healing (self_healing/healthChecker.ts)
+ * so they cannot disagree (ARCH-02). A write and a read of a fresh value, with
+ * a time limit: a connected Redis can still refuse writes (full memory or
+ * disk) or stop answering. Never throws.
+ */
+export async function probeRedis(timeoutMs = 2_000): Promise<RedisProbe> {
+  const t0 = Date.now();
+  const c = client;
+  if (!redisAvailable || !c) return { state: "fallback", latencyMs: 0, detail: "in-memory cache fallback" };
+  // A key of its own per probe: the two health systems probe at the same time,
+  // and with one shared key each read back the other's value.
+  const value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const key = `__health_probe__:${value}`;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const roundTrip = (async () => {
+      await c.set(key, value, "EX", 10);
+      return c.get(key);
+    })();
+    roundTrip.catch(() => { /* a failure after the time limit was already reported */ });
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
+    });
+    const got = await Promise.race([roundTrip, timeout]);
+    const latencyMs = Date.now() - t0;
+    return got === value
+      ? { state: "ok", latencyMs, detail: "round-trip OK" }
+      : { state: "failed", latencyMs, detail: "the value read back is not the value written" };
+  } catch (err) {
+    return { state: "failed", latencyMs: Date.now() - t0, detail: (err as Error).message.slice(0, 120) };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /** Gracefully disconnect (call on process exit). */
 export async function disconnectRedis(): Promise<void> {
   if (client) {
