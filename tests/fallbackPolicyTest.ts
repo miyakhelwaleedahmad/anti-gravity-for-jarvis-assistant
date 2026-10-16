@@ -78,6 +78,8 @@ err = throwsOn(() => toolRegistryV2.register(tool('test_lookup_d', { risk: 1, fa
 ok('registers', err === '', err);
 const viaFallback = await toolRegistryV2.execute('test_lookup_d', { q: 'x' });
 ok('runs when the primary fails', viaFallback.success && viaFallback.fromFallback === 'test_fb_same' && runs['test_fb_same'] === 1, JSON.stringify({ s: viaFallback.success, fb: viaFallback.fromFallback }));
+const recorded = toolRegistryV2.getHistory(20).filter((h) => h.tool === 'test_lookup_d' || h.tool === 'test_fb_same').map((h) => `${h.tool}:${h.success}`);
+ok('…and the call history records the fallback under its own name, after the failed primary (SEC-09)', recorded.join(',') === 'test_lookup_d:false,test_fb_same:true', recorded.join(','));
 
 console.log('\n--- 3. Riskier for these arguments: not used ---');
 // Highest risks match (3 and 3), so both register; but for action "read" the
