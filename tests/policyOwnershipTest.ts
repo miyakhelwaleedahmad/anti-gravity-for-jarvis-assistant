@@ -5,7 +5,10 @@
  *
  *   1. the approved folders and protected services are defined in security/;
  *      the controllers use the same functions (no second copy to drift)
- *   2. no security module takes policy from a controller module
+ *   2. no security module takes policy from a controller module, nor from a
+ *      skill: open_app's allow-list and run_command's allow-list are defined
+ *      in security/ and the skill and tool use those same functions (a skill
+ *      folder is trusted by its description's hash, not its code)
  *   3. every model tool call goes through the registry: the orchestrator's
  *      routed commands use toolRegistryV2.execute, and production code never
  *      swaps the agents' tool executor (only tests do)
@@ -44,6 +47,17 @@ const securityDir = path.join(repo, 'security');
 const fromControllers = fs.readdirSync(securityDir).filter((f) => f.endsWith('.ts'))
   .filter((f) => /from '\.\.\/control\/(fileController|adminController)\.js'/.test(fs.readFileSync(path.join(securityDir, f), 'utf8')));
 ok('no security module imports policy from fileController or adminController', fromControllers.length === 0, fromControllers.join(', '));
+const fromSkills = fs.readdirSync(securityDir).filter((f) => f.endsWith('.ts'))
+  .filter((f) => /from '\.\.\/skills\//.test(fs.readFileSync(path.join(securityDir, f), 'utf8')));
+ok('no security module imports policy from a skill', fromSkills.length === 0, fromSkills.join(', '));
+const openApp = await import('../skills/automation/skill.js') as any;
+const terminal = await import('../tools/terminalTool.js') as any;
+const openAppPolicy = await import('../security/openAppPolicy.js').catch(() => null) as any;
+const commandPolicy = await import('../security/developerCommands.js').catch(() => null) as any;
+ok('open_app\'s allow-list is defined in security/, and the skill uses it', !!openAppPolicy && openApp.resolveTargetUrl === openAppPolicy.resolveTargetUrl);
+ok('run_command\'s allow-list is defined in security/, and the tool uses it', !!commandPolicy && terminal.validateDeveloperCommand === commandPolicy.validateDeveloperCommand);
+const risk = read('security/riskEngine.ts');
+ok('the risk engine takes both from security/', /from '\.\/openAppPolicy\.js'/.test(risk) && /from '\.\/developerCommands\.js'/.test(risk));
 
 const orch = read('core/orchestrator.ts');
 const routed = /const runRoutedTool = async \([^)]*\) => \{\s*const result = await toolRegistryV2\.execute\(/.test(orch);
