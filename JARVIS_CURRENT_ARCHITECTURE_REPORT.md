@@ -52,7 +52,7 @@ flowchart LR
         PI[plannerIntelligence.ts]
         TGE[taskGraphEngine.ts]
         RE[reflectionEngine.ts]
-        RP[core/recoveryPlanner.ts<br/>task-step recovery]
+        RP[core/stepRecovery.ts<br/>task-step recovery]
         GM[goalManager.ts]
         WS[worldState.ts]
         CB[conversationBus.ts]
@@ -119,7 +119,7 @@ flowchart LR
 | Task graph | `core/taskGraphEngine.ts` | Runs the plan as a dependency graph; replan limits; interrupt | Implemented | toolRegistryV2 |
 | Planner checks | `core/plannerIntelligence.ts` | Graph analysis, alternatives for failed steps | Implemented (used by orchestrator only) | — |
 | Reflection | `core/reflectionEngine.ts` | Pre-, mid- and post-execution checks; repair strategy | Implemented | LLM for unknown failures |
-| Step recovery | `core/recoveryPlanner.ts` | Diagnoses failed steps, up to `MAX_RECOVERY_ROUNDS` | Implemented (`errorRecoveryTest`) | core/diagnosis.ts |
+| Step recovery | `core/stepRecovery.ts` | Diagnoses failed steps, up to `MAX_RECOVERY_ROUNDS` | Implemented (`errorRecoveryTest`) | core/diagnosis.ts |
 | Tool registry | `core/toolRegistryV2.ts`, `core/tools/index.ts` | 40 built-in tools; risk metadata | Implemented (`startupRegistrationTest`) | security |
 | Skills | `core/skillLoader.ts`, `skills/*` | 26 skill tools added after the built-ins (total 66) | Implemented | toolRegistryV2 |
 | Goals | `core/goalManager.ts` | Goal records in lowdb; status, retries, priority | Partial (see §3) | lowdb |
@@ -205,7 +205,7 @@ sequenceDiagram
 | BrainLoop | `core/brainLoop.ts` (65 lines) | Thin wrapper. The old timer loop was removed. Execution is event-driven: nothing runs without input. |
 | State machine | `core/agentStateMachine.ts` | Implemented |
 | Reflection | `core/reflectionEngine.ts` | Implemented. The separate Python `voice/reflectionEngine.py` does not exist and its 30-minute schedule is commented out (`jarvis.ts:749-770`). |
-| Recovery | `core/recoveryPlanner.ts` + `reflectionEngine` | Implemented; two recovery layers run one after the other. |
+| Recovery | `core/stepRecovery.ts` + `reflectionEngine` | Implemented; two recovery layers run one after the other. |
 
 ---
 
@@ -288,7 +288,7 @@ Only items with code on the live path and a passing test. Live LLM quality and r
 
 **Checked and not duplicates** (different jobs, layered):
 
-- `core/recoveryPlanner.ts` (task-step recovery) vs `self_healing/recoveryPlanner.ts` (service recovery).
+- `core/stepRecovery.ts` (task-step recovery) vs `self_healing/recoveryPlanner.ts` (service recovery).
 - `tools/fileTool.ts` wraps `core/fileTools.ts`; `tools/terminalTool.ts` wraps `core/terminalTools.ts`.
 - `control/browserAgent.ts` (browser action functions) vs `browser_agent` specialist (an agent that calls browser tools).
 
@@ -338,7 +338,7 @@ flowchart TD
 | Startup | `jarvis.ts` | Implemented |
 | Request path | `core/orchestrator.ts`, `core/taskGraphEngine.ts`, `core/plannerIntelligence.ts` | Implemented; live LLM Unverified |
 | State | `core/agentStateMachine.ts`, `core/brainLoop.ts` | Implemented / Partial |
-| Reflection and recovery | `core/reflectionEngine.ts`, `core/recoveryPlanner.ts`, `core/diagnosis.ts` | Implemented |
+| Reflection and recovery | `core/reflectionEngine.ts`, `core/stepRecovery.ts`, `core/diagnosis.ts` | Implemented |
 | Python reflection | `jarvis.ts:749-770`, `voice/reflectionEngine.py` (missing) | Planned |
 | Goals | `core/goalManager.ts` | Partial |
 | Tools and skills | `core/toolRegistryV2.ts`, `core/tools/*`, `core/skillLoader.ts`, `skills/*`, `tools/*` | Implemented |

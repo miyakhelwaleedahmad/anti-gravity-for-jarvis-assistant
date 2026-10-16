@@ -183,7 +183,7 @@ interface KnownServer { project: string; script: string; pid: number; exit?: Ser
 /**
  * Servers JARVIS started at least once, by port, kept after they stop — with
  * how they ended and their last output lines (redacted): the error recovery
- * (core/recoveryPlanner.ts) and the diagnosis (core/diagnosis.ts) restart one
+ * (core/stepRecovery.ts) and the diagnosis (core/diagnosis.ts) restart one
  * when its port stops answering, and say why it stopped. In memory only.
  */
 const known = new Map<number, KnownServer>();

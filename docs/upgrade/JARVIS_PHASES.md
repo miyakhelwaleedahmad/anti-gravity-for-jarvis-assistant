@@ -208,7 +208,7 @@ means it needs the owner's PC (see the roadmap, §4).
 - **Dependencies:** P2, P3, P5, P7.
 - **Tasks:** T11.1–T11.4.
 - **Files affected:** `core/reflectionEngine.ts`, `core/orchestrator.ts`
-  (repair phase), `core/recoveryPlanner.ts` (new), tests, docs.
+  (repair phase), `core/stepRecovery.ts` (new), tests, docs.
 - **Prompt:** [phase-11-error-recovery.md](phases/phase-11-error-recovery.md)
 - **Test plan:** a stopped dev server is restarted and the port verified; a
   repair needing a process kill asks first and does nothing when refused.

@@ -1,5 +1,5 @@
 /**
- * core/recoveryPlanner.ts
+ * core/stepRecovery.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * When a step fails (docs/upgrade/phases/phase-11-error-recovery.md): look
  * again at the part of the PC the step touched, and — for a failure JARVIS

@@ -761,7 +761,7 @@ export class ToolRegistryV2 {
         tool: name,
         ...(assessment.action ? { action: assessment.action } : {}),
         target: assessment.target ?? JSON.stringify(args),
-        // A repair shows the failure it repairs as WHY (core/recoveryPlanner.ts).
+        // A repair shows the failure it repairs as WHY (core/stepRecovery.ts).
         ...(getRepairReason() ? { reason: getRepairReason() } : { request: getRequestText(), reason: assessment.reasons[0] }),
         risk: assessment.level,
         // The rule that set the level, when it was an argument and not the metadata.

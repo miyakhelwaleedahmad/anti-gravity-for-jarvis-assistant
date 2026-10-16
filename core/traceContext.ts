@@ -74,7 +74,7 @@ export function getTraceId(): string | undefined {
 let currentRepair: string | undefined;
 
 /**
- * Runs `fn` as a repair of a failed step (core/recoveryPlanner.ts): an
+ * Runs `fn` as a repair of a failed step (core/stepRecovery.ts): an
  * approval request asked meanwhile shows `reason` — the failure being
  * repaired — as its WHY.
  */

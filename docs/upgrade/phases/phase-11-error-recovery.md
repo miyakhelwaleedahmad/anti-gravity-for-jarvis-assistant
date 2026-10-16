@@ -13,7 +13,7 @@ repair only if allowed, verify; stop and ask when the repair is risky.
 
 ## Required changes
 1. Fresh observation on failure (world-state sections the step touched).
-2. `core/recoveryPlanner.ts`: known failure → concrete repair candidates.
+2. `core/stepRecovery.ts`: known failure → concrete repair candidates.
 3. Each candidate assessed by the risk engine; risky → approval or report.
 4. Verify after repair; bounded attempts; honest final message.
 
@@ -34,7 +34,7 @@ repair only if allowed, verify; stop and ask when the repair is risky.
 `core/plannerIntelligence.ts`, P2/P3/P5/P7 modules.
 
 ## Files that may be modified
-`core/recoveryPlanner.ts` (new), `core/reflectionEngine.ts`,
+`core/stepRecovery.ts` (new), `core/reflectionEngine.ts`,
 `core/orchestrator.ts`, tests, docs.
 
 ## Dependencies

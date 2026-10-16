@@ -5,7 +5,7 @@
  * then retry later, wait, re-plan, block for a person, or give up.
  *
  * Three recovery layers, three jobs (docs/GOAL_RUNTIME.md §Recovery):
- *   core/recoveryPlanner.ts + core/reflectionEngine.ts  one request's failed
+ *   core/stepRecovery.ts + core/reflectionEngine.ts  one request's failed
  *       steps, inside the orchestrator, within seconds;
  *   this file   a goal-task that an agent could not finish, across minutes,
  *       hours and restarts, with bounded attempts and backoff;

@@ -10,7 +10,7 @@ and runs the step once more, instead of repeating it blind or giving up.
 1. **Look again.** The part of the PC the failed step touched is read again
    at once (world state, P7): browser tools → browser; dev, git and commands →
    development; app and window tools → apps; system tools → system.
-2. **Diagnose** (`core/recoveryPlanner.ts`), from the step's error:
+2. **Diagnose** (`core/stepRecovery.ts`), from the step's error:
 
    | Failure | Repair | Level |
    |---|---|---|

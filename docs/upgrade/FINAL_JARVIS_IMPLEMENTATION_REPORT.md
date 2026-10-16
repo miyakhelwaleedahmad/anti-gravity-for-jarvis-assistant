@@ -403,7 +403,7 @@ also adds `securityBypassTest` and this report, and updates four documents.
 | Observation (P6–P7) | `perception/systemProbe.ts`, `perception/devProbe.ts`, `perception/gitProbe.ts`, `core/worldState.ts`, `core/taskContext.ts`, `core/tools/observationTools.ts` |
 | Browser (P8–P9) | `perception/cdpClient.ts`, `perception/cdpScripts.ts`, `perception/browserState.ts`, `perception/browserRefs.ts`, `security/browserPolicy.ts`, `control/browserAgent.ts`, `core/tools/browserTools.ts`, `core/tools/browserActionTools.ts` |
 | Files and development (P10) | `tools/fsTools.ts`, `tools/gitTools.ts`, `tools/devTools.ts`, `security/fsPolicy.ts` |
-| Recovery (P11, P13) | `core/recoveryPlanner.ts`, `core/diagnosis.ts`, `core/tools/diagnosisTools.ts` |
+| Recovery (P11, P13) | `core/stepRecovery.ts`, `core/diagnosis.ts`, `core/tools/diagnosisTools.ts` |
 | Voice (P12) | `core/voiceSummaries.ts` |
 | Windows (P14) | `perception/windowsProbe.ts`, `perception/windows_probe.ps1`, `control/uiAutomation.ts`, `control/uiRefs.ts`, `control/uia.ps1`, `control/desktopControl.ts`, `control/desktop.ps1`, `core/tools/windowsTools.ts`, `scripts/verifyWindows.ts` |
 

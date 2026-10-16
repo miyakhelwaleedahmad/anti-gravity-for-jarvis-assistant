@@ -16,7 +16,7 @@
 import { agentStateMachine, AgentState, tryTransition } from './agentStateMachine.js';
 import { UNTRUSTED_RULE, untrusted } from '../security/untrustedText.js';
 import { asRepair, beginTrace, endTrace } from './traceContext.js';
-import { diagnose, MAX_RECOVERY_ROUNDS, observeFailure } from './recoveryPlanner.js';
+import { diagnose, MAX_RECOVERY_ROUNDS, observeFailure } from './stepRecovery.js';
 import {
   continueOffer, continueQuestion, diagnosisSummary, repairSummary, runningSummary, systemStateSummary, tabsSummary, unfinishedReason,
 } from './voiceSummaries.js';
@@ -1070,7 +1070,7 @@ export class JarvisOrchestrator {
   }
 
   /**
-   * RECOVERY (P11, core/recoveryPlanner.ts): for each failed step, read again
+   * RECOVERY (P11, core/stepRecovery.ts): for each failed step, read again
    * the part of the PC it touched and diagnose it. A known failure is repaired
    * through the tool registry — so the risk engine, the approval gate and the
    * after-action check apply — and the step is reset to run again; at most

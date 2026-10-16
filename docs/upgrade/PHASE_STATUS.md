@@ -536,7 +536,7 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
 ## P11 — Error recovery — COMPLETE
 
 - **Implemented** ([ERROR_RECOVERY.md](ERROR_RECOVERY.md)):
-  - `core/recoveryPlanner.ts`: on a failed step, the world-state part it
+  - `core/stepRecovery.ts`: on a failed step, the world-state part it
     touched is read again; known failures get a repair as ordinary tool calls
     — a local port where JARVIS ran a server stopped answering → start that
     server (1); the port is held by JARVIS's own old server → stop it (2);

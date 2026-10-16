@@ -22,7 +22,7 @@
  */
 
 import * as path from 'path';
-import type { RepairStep } from './recoveryPlanner.js';
+import type { RepairStep } from './stepRecovery.js';
 import { knownServers, settleServerExits, packageScripts, SERVER_SCRIPTS, type ServerExit } from '../tools/devTools.js';
 import { devPorts, httpInfo, portOpen, scanDevPorts } from '../perception/devProbe.js';
 import { readBrowserState } from '../perception/browserState.js';

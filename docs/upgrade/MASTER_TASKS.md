@@ -447,7 +447,7 @@ Refresh the world-state sections the failed step touched.
 
 ### T11.2 — Repair candidates · High · [x] · depends on: T11.1
 Known failures → repairs (server down → start, tab missing → open); otherwise replan.
-Files: `core/recoveryPlanner.ts` (new), `core/orchestrator.ts`.
+Files: `core/stepRecovery.ts` (new), `core/orchestrator.ts`.
 (Also: a port held by JARVIS's own old server → stop it; a server JARVIS
 never ran, or a missing file → ask the user. Killing other processes is not
 a repair: JARVIS asks instead.)
