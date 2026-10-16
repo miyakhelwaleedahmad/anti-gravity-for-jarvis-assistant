@@ -38,7 +38,7 @@ import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
 import { getWorkspaceRoot, isProtectedSystemPath } from '../core/workspaceRoot.js';
-import { findChromium, findPwsh } from './chromeHelper.js';
+import { findChromium, findPwsh, pwshMissingReason } from './chromeHelper.js';
 
 /**
  * The tests' temp folder. On Windows the user's temp folder is under AppData,
@@ -96,7 +96,7 @@ const HOST_DEPENDENT: Record<string, () => string | undefined> = {
   errorRecoveryTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   scenarioIntegrationTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
   desktopControlTest: () => (findChromium() ? undefined : 'Chromium or Chrome (JARVIS_TEST_CHROME)'),
-  windowsScriptsTest: () => (findPwsh() ? undefined : 'PowerShell 7, pwsh (JARVIS_TEST_PWSH)'),
+  windowsScriptsTest: () => (findPwsh() ? undefined : `PowerShell 7, pwsh (JARVIS_TEST_PWSH). ${pwshMissingReason()}`),
 };
 
 /**
@@ -293,6 +293,14 @@ async function main(): Promise<void> {
     if (isLiveProviderTest(name) && !liveOn) {
       results.push({ name, status: 'skipped', ms: 0, reason: LIVE_HINT });
       console.log(`  SKIP  ${name.padEnd(44)} ${LIVE_HINT}`);
+      continue;
+    }
+    // A prerequisite checked on this host and found missing: running the test
+    // would only show that again (windowsScriptsTest without PowerShell 7).
+    const hostMissing = HOST_DEPENDENT[name]?.();
+    if (hostMissing && !(process.platform === 'win32' && PROVIDED_BY_WINDOWS.has(name))) {
+      results.push({ name, status: 'skipped', ms: 0, reason: `needs ${hostMissing}` });
+      console.log(`  SKIP  ${name.padEnd(44)} needs ${hostMissing} (not found on this host)`);
       continue;
     }
     if (ciMode && needs) {

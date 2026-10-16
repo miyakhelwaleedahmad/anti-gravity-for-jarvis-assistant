@@ -25,8 +25,10 @@ import { findPwsh, pwshMissingReason } from './chromeHelper.js';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pwsh = findPwsh();
 if (!pwsh) {
-  console.error(pwshMissingReason());
-  process.exit(1);
+  // Not a failure of the scripts: they could not be checked here.
+  // tests/runAll.ts reports exit 3 with a BLOCKED: line as blocked, not passed.
+  console.log(`BLOCKED: ${pwshMissingReason()}`);
+  process.exit(3);
 }
 
 let passed = 0;
