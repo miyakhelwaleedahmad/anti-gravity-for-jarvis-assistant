@@ -60,6 +60,16 @@ for (const p of PHRASES) {
     heavy: planner.shouldUseHeavyContext(p),
   };
 }
+// While "Shall I try it again?" is open, yes/no answer it (P13).
+const OFFER_PHRASES = ['yes', 'yes please', 'try again', 'go ahead', 'no', 'no thanks', 'leave it', 'open notepad', 'what was i doing'];
+const offerState = orchestrator as unknown as { continueOffer: { description: string; expires: number } | null };
+for (const [label, offer] of [['offer open', { description: 'open the report', expires: Date.now() + 60_000 }], ['offer expired', { description: 'open the report', expires: Date.now() - 1 }]] as const) {
+  offerState.continueOffer = offer;
+  for (const p of OFFER_PHRASES) {
+    now[`[${label}] ${p}`] = { route: STABLE(orchestrator.matchDeterministicCommand(p)), normalized: normalizeVoiceInput(p), tools: [], heavy: false };
+  }
+}
+offerState.continueOffer = null;
 
 let passed = 0;
 let failed = 0;
@@ -75,8 +85,8 @@ if (process.argv.includes('--record')) {
   console.log(`recorded ${PHRASES.length} phrases to ${path.relative(process.cwd(), fixture)}`);
 } else {
   const golden = JSON.parse(fs.readFileSync(fixture, 'utf8')) as typeof now;
-  ok('the fixture covers every phrase', PHRASES.every((p) => p in golden));
-  for (const p of PHRASES) {
+  ok('the fixture covers every phrase', Object.keys(now).every((p) => p in golden));
+  for (const p of Object.keys(now)) {
     ok(`route for "${p}"`, golden[p]?.route === now[p]!.route, `was ${golden[p]?.route}, now ${now[p]!.route}`);
     ok(`normalised "${p}"`, golden[p]?.normalized === now[p]!.normalized, `was ${golden[p]?.normalized}, now ${now[p]!.normalized}`);
     ok(`tools offered for "${p}"`, JSON.stringify(golden[p]?.tools) === JSON.stringify(now[p]!.tools), `was ${golden[p]?.tools}, now ${now[p]!.tools}`);
@@ -89,6 +99,9 @@ if (process.argv.includes('--record')) {
   ok('core/planningToolSelection.ts exports the selection and the heavy-context check',
     /export function selectPlanningToolNames\(/.test(selection) && /export function shouldUseHeavyContext\(/.test(selection));
   ok('the orchestrator no longer holds the selection rules', !/addIfRegistered\(/.test(src('core/orchestrator.ts')) && !/simplePatterns/.test(src('core/orchestrator.ts')));
+  // Step 4: the deterministic router lives in core/deterministicRoutes.ts.
+  ok('core/deterministicRoutes.ts exports the router', /export function matchDeterministicCommand\(/.test(src('core/deterministicRoutes.ts')));
+  ok('the orchestrator no longer holds the route phrases', !/RUNNING_PHRASES|APP_TROUBLE|BROWSER_TABS_QUESTION/.test(src('core/orchestrator.ts')));
   console.log(`  ${passed} checks passed`);
 }
 

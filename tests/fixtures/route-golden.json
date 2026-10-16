@@ -992,5 +992,113 @@
       "save_relation"
     ],
     "heavy": true
+  },
+  "[offer open] yes": {
+    "route": "{\"type\":\"continue_confirmed\",\"reply\":\"\"}",
+    "normalized": "yes",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer open] yes please": {
+    "route": "{\"type\":\"continue_confirmed\",\"reply\":\"\"}",
+    "normalized": "yes",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer open] try again": {
+    "route": "{\"type\":\"continue_confirmed\",\"reply\":\"\"}",
+    "normalized": "try again",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer open] go ahead": {
+    "route": "{\"type\":\"continue_confirmed\",\"reply\":\"\"}",
+    "normalized": "go ahead",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer open] no": {
+    "route": "{\"type\":\"continue_declined\",\"reply\":\"Understood, sir. I will leave it.\"}",
+    "normalized": "no",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer open] no thanks": {
+    "route": "{\"type\":\"continue_declined\",\"reply\":\"Understood, sir. I will leave it.\"}",
+    "normalized": "no thanks",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer open] leave it": {
+    "route": "{\"type\":\"continue_declined\",\"reply\":\"Understood, sir. I will leave it.\"}",
+    "normalized": "leave it",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer open] open notepad": {
+    "route": "{\"type\":\"open_app\",\"target\":\"notepad\",\"reply\":\"Opening notepad, sir.\"}",
+    "normalized": "open notepad",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer open] what was i doing": {
+    "route": "{\"type\":\"continue_work\",\"reply\":\"\"}",
+    "normalized": "what was i doing",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] yes": {
+    "route": "{\"type\":\"simple_reply\",\"reply\":\"Understood, sir. Nothing is waiting for your approval.\"}",
+    "normalized": "yes",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] yes please": {
+    "route": "{\"type\":\"simple_reply\",\"reply\":\"Understood, sir. Nothing is waiting for your approval.\"}",
+    "normalized": "yes",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] try again": {
+    "route": "null",
+    "normalized": "try again",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] go ahead": {
+    "route": "null",
+    "normalized": "go ahead",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] no": {
+    "route": "{\"type\":\"simple_reply\",\"reply\":\"Understood.\"}",
+    "normalized": "no",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] no thanks": {
+    "route": "null",
+    "normalized": "no thanks",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] leave it": {
+    "route": "null",
+    "normalized": "leave it",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] open notepad": {
+    "route": "{\"type\":\"open_app\",\"target\":\"notepad\",\"reply\":\"Opening notepad, sir.\"}",
+    "normalized": "open notepad",
+    "tools": [],
+    "heavy": false
+  },
+  "[offer expired] what was i doing": {
+    "route": "{\"type\":\"continue_work\",\"reply\":\"\"}",
+    "normalized": "what was i doing",
+    "tools": [],
+    "heavy": false
   }
 }
