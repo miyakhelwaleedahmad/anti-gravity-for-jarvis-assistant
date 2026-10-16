@@ -79,6 +79,7 @@ Not yet rerun on the PC after the fixes below.
 | `ccc9e84` | 159 | 1 | 6 | scenarioIntegrationTest, 2 checks: the tab list was read before the pages had their titles (test timing; the setup now waits for titles), and the crash diagnosis still misses the log line: the npm-lines change did not fix it on Windows. The next run prints what JARVIS kept for the crashed server |
 | `a5a126f` | 159 | 1 | 6 | the same check; the printed detail showed the cause: JARVIS caught **0 output lines** from the backend even while it ran (`start: running=true n=0`). A server started as a detached `cmd /c npm run …` wrote nowhere JARVIS could read. Fixed in `86ca10d` (not detached on Windows) |
 | `86ca10d` | **160** | **0** | 6 | none: all three CI jobs pass |
+| `12c6925` | **163** | **0** | 6 | none: all CI jobs pass (Linux: 161 passed, 0 failed, 8 skipped). `windowsStateSessionTest`'s real-PowerShell section ran with Windows PowerShell 5.1 and passed. Window tests got faster now the session answers: windowControlTest 28.0 → 2.5 s, appControlTest 36.5 → 5.7 s, executionDispatchAuditTest 30.4 → 9.7 s (vs `ee1c8c8`) |
 
 Skipped on Windows CI (6):
 - `dashboardAccuracyTest`: needs Redis;

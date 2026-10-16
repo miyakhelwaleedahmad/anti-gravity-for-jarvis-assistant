@@ -25,7 +25,7 @@ The branch is pushed (normal pushes only) and CI runs on it. `main` was not touc
 | `6100112`, `a5a126f` | — | These docs; Windows test diagnostics |
 | `86ca10d` | — | Windows: dev server output caught (not detached) |
 | `295c4f5`, `ee1c8c8` | — | First PC run: PC-01 to PC-05 |
-| the commit after `ee1c8c8` | — | Second PC run: PC-06 to PC-12 |
+| `12c6925` | — | Second PC run: PC-06 to PC-12 |
 
 ## What changed, in short
 
@@ -103,7 +103,7 @@ The branch is pushed (normal pushes only) and CI runs on it. `main` was not touc
 | ARCH-05 | A disable could write `manual_by_cli\n[AUDIT] forged line`; open_app asked a typed request by voice | The real request source decides |
 | PC-06 | After "remember", a search could get an old or empty cached answer from Redis (a second test run failed) | The cache is per store and goes stale on every write |
 | PC-07 | The first health probe said "LLM: unknown", so JARVIS read as offline; an empty tool registry read "online" | The first probe waits up to 6 s for the LLM check; no tools reads "loading" |
-| PC-08 | Every query of the background PowerShell session timed out (a poll took 6.3 s; window reads fell back to a fresh PowerShell) | Each query is one line, so PowerShell runs it at once: 10–15 ms warm with PowerShell 7 here |
+| PC-08 | Every query of the background PowerShell session timed out (a poll took 6.3 s; window reads fell back to a fresh PowerShell) | Each query is one line, so PowerShell runs it at once: 10–15 ms warm with PowerShell 7 here; passes with Windows PowerShell 5.1 on Windows CI |
 
 ### Who decides what (ARCH-05)
 
