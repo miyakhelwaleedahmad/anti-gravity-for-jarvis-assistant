@@ -16,6 +16,9 @@
  *                             (Windows/Redis/venv/network; on Windows the
  *                             Windows-only tests are not skipped)
  *   npm test -- --filter=tool only tests whose name contains "tool"
+ *   npm test -- --only=a,b    exactly the tests named (an unknown name is an
+ *                             error); package.json's test:* scripts use it, so
+ *                             each test still gets its own data folder
  */
 
 import { spawn } from 'child_process';
@@ -237,6 +240,8 @@ async function main(): Promise<void> {
   const ciMode = args.includes('--ci');
   const filterArg = args.find((a) => a.startsWith('--filter='));
   const filter = filterArg ? filterArg.split('=')[1] ?? '' : '';
+  const onlyArg = args.find((a) => a.startsWith('--only='));
+  const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',').map((n) => n.trim()).filter(Boolean)) : undefined;
   await checkPrerequisites();
   const tempFolder = useTestTempFolder();
   if (tempFolder) console.log(`Temp folder for the tests: ${tempFolder} (this PC's temp folder is one JARVIS refuses as a system folder; on Windows it is under AppData).`);
@@ -248,7 +253,15 @@ async function main(): Promise<void> {
     .map((f) => ({ file: path.join(testsDir, f), name: path.basename(f, '.ts') }))
     .filter(({ name }) => !NOT_A_TEST.has(name))
     .filter(({ name }) => !filter || name.toLowerCase().includes(filter.toLowerCase()))
+    .filter(({ name }) => !only || only.has(name))
     .sort((a, b) => a.name.localeCompare(b.name));
+  if (only) {
+    const unknown = [...only].filter((name) => !files.some((f) => f.name === name));
+    if (unknown.length > 0) {
+      console.error(`No test file named: ${unknown.join(', ')} (in tests/).`);
+      process.exit(1);
+    }
+  }
 
   console.log(`\n=== JARVIS test suite — ${files.length} file(s)${ciMode ? ' (CI mode)' : ''} ===\n`);
 

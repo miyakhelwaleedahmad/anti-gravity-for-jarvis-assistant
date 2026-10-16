@@ -106,11 +106,15 @@ pnpm test:voice-core
 ```
 
 If it does NOT exist in package.json, do not invent it.
-Report it as missing and run tests individually.
+Report it as missing and run tests individually through the runner:
+`pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest`.
+Do not run `npx tsx tests/<name>.ts` directly: a test run that way uses
+JARVIS's real data folder (memory, goals, permission session); the runner
+gives each test its own empty one.
 
 **As of last verification, this script exists:**
 ```json
-"test:voice-core": "npx tsc --noEmit && npx tsx tests/nodeBridgeSingletonTest.ts && ..."
+"test:voice-core": "tsc --noEmit && tsx tests/runAll.ts --only=nodeBridgeSingletonTest,voiceRouteMockTest,..."
 ```
 Verify it still exists before citing it.
 
