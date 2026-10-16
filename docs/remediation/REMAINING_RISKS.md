@@ -14,6 +14,8 @@ Still unverified on the PC:
 
 Third run (`b81aeac`): `docsHygieneTest` timeout, `parallelizationTimeoutAuditTest` 855 ms, `finalIntegrationSuiteTest` timeout, no PowerShell 7. Fixed or reclassified as PC-13 to PC-16; none rerun on the PC yet. The live tests now run only with `pnpm test:live`, which needs the key in `.env` and opens apps on the PC; it has not been run against the real provider (no key here).
 
+**Intermittent on Windows CI (`448dbcb`, first attempt): `windowsStateSessionTest`, real Windows PowerShell 5.1 section.** `throw 'deliberate'` got no end marker within the 4 s query limit; the session then refused the next two queries as busy (3 checks failed). The re-run of the same commit passed (7.2 s), as did `b81aeac` and `12c6925`; neither the test nor `perception/windowsState.ts` changed in between. That runner was about twice as slow as usual (`windowsScriptsTest` 66 s against 31–38 s). With PowerShell 7 here a throw answers in 17–163 ms, so the delay is specific to 5.1 under load and was not reproduced. Root cause not established. JARVIS's own scripts catch their errors, so a throwing query is rare in use; if the owner's PC shows "PS session still finishing a slow query" after an error, this is the place to look.
+
 ## 1. Not verified on the owner's Windows PC (REL-09)
 
 The branch is pushed and the CI Windows job (TEST-01) runs the suite on `windows-latest`. Results are in TEST_RESULTS.md. Windows CI found three real problems, now fixed:
