@@ -12,6 +12,8 @@ Still unverified on the PC:
 - **`dashboardAccuracyTest` (PC-07):** needs Redis and a working LLM key; here it ran without a key only.
 - **`windowsScriptsTest` (PC-10):** needs PowerShell 7 installed on the PC.
 
+Third run (`b81aeac`): `docsHygieneTest` timeout, `parallelizationTimeoutAuditTest` 855 ms, `finalIntegrationSuiteTest` timeout, no PowerShell 7. Fixed or reclassified as PC-13 to PC-16; none rerun on the PC yet. The live tests now run only with `pnpm test:live`, which needs the key in `.env` and opens apps on the PC; it has not been run against the real provider (no key here).
+
 ## 1. Not verified on the owner's Windows PC (REL-09)
 
 The branch is pushed and the CI Windows job (TEST-01) runs the suite on `windows-latest`. Results are in TEST_RESULTS.md. Windows CI found three real problems, now fixed:

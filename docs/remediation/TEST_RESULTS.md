@@ -27,6 +27,7 @@ Kinds of evidence, kept apart below:
 | PC fixes (`295c4f5`, `ee1c8c8`), non-CI mode, Redis running | 161 | 0 | 6 environment | clean |
 | Second PC run fixes (`12c6925`), CI mode, Redis running | 160 | 0 | 9 | clean |
 | Audit pass (`3a7d1b6`), CI mode, Redis running | 166 | 0 | 9 | clean |
+| Owner's PC run fixes (`b517954`), plain `pnpm test`, Redis running | 167 | 0 (5 environment: no Windows, no LLM key, no bridge token, no `.venv`) | 3 (2 live tests not asked for; no PowerShell 7) | clean |
 
 The 9 skipped are the same tests as before (table below). None counts as a pass.
 

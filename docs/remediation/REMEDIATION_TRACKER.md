@@ -113,3 +113,12 @@ The owner's full audit (write-ups, diagrams, probes) re-checked every finding ag
 | ARCH-02 | FIXED_AND_TESTED | The self-healing Redis probe called a function that never existed and always said ok; the dashboard probe could hang. One shared `probeRedis()`. `core/recoveryPlanner.ts` → `core/stepRecovery.ts`. Events and conversation memory checked: one transport, one store | `redisHealthAgreementTest` 11/11 (old 5/11), `sourceFileNamesTest` 4/4 (old 2/4) | `62ae200`, `b090423` |
 | ARCH-01 | FIXED_AND_TESTED (named seams) | Planning tool selection, spoken replies and the deterministic router moved out; 2,849 → 2,243 lines. The stateful coordinator stays (accepted) | `routeGoldenTest` 441/441, `replyGoldenTest` 32/32 | `f1de430`, `589d4a5`, `e97739c` |
 
+## From the owner's third PC run (`b81aeac`: 171 passed, 2 failed, 2 environment)
+
+| Finding ID | Status | Root cause | Change | Tests | Commit |
+|---|---|---|---|---|---|
+| PC-13 | FIXED_AND_TESTED (needs the PC) | `docsHygieneTest` read the whole folder (node_modules, .git, .venv, data) once per name in requirements.txt: 70,020 entries here, 314,832 with a 60,000-file .venv; past 120 s on the PC | One walk of JARVIS's own files for both checks | `docsHygieneTest` 8/8, ~2 s; both checks still fail on planted problems | `81926d8` |
+| PC-14 | FIXED_AND_TESTED (needs the PC) | Not sequential waits: with a key set, the first health probe waits for the first LLM reachability request (by design). Stand-in 800 ms provider: probe 819 ms, LLM 818 ms, rest ≤ 24 ms | Test times each service: local work ≤ 300 ms, parallelism checked directly (five 200 ms services: 205 ms; sequential mutation: 1,020 ms, fails) | `parallelizationTimeoutAuditTest` 5/5 runs | `b722c28` |
+| PC-15 | FIXED_AND_TESTED (simulated provider); live run BLOCKED here | `finalIntegrationSuiteTest` passed whenever `process()` returned (always); ran in plain `pnpm test` with real provider and desktop actions | Preflight → BLOCKED (exit 3) in seconds; expected tool checked; approvals auto-denied; live tests only with `pnpm test:live`; runner verdicts pass/fail/timeout/blocked/environment/skipped | simulated provider 12/12; wrong-tool mutation 4 FAIL; no key: BLOCKED 1.5 s | `31b9313` |
+| PC-16 | FIXED_AND_TESTED (pwsh 7.4.6 here) | Runner ran `windowsScriptsTest` though its own check found no pwsh; the test exited 1 | Test: BLOCKED with install steps; runner: skip with reason in every mode | real PowerShell 7.4.6: PASS (26 s) | `b517954` |
+
