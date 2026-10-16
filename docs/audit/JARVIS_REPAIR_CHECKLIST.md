@@ -183,3 +183,14 @@ Also in the write-ups but not register findings: **PERF-06** (pollers; "reasonab
 | **Kept as is** | The orchestrator keeps one-line delegates and re-exports, so every caller and test is unchanged. Moves were checked line by line against the previous commit; static import cycles 0. |
 | **Validation** | `npx tsc --noEmit` clean. `routeGoldenTest` 441/441, `replyGoldenTest` 32/32, and all 47 test files that import the orchestrator pass (each in its own data folder), among them `scenarioIntegrationTest` 36/36, `browserControlAgentTest` 72/72, `windowsToolsTest` 68/68, `desktopControlTest` 31/31, `backgroundResearchTest` 27/27, `registryRepairHonestyTest` 34/34. |
 | **Accepted Risk (what remains)** | Request lifecycle (`process`, `runAgentLoop`), planning prompt assembly (`planPhase`), synthesis and streaming, speech, barge-in, watchdog and recovery stay in the orchestrator. They share the request's abort signal, plan state and speech queue, and run through the LLM; the golden tests cannot pin them down without a scripted model for every path. Moving them in this repair would risk behaviour for no fix. The audit's own advice keeps `runAgentLoop` as the coordinator. |
+
+## The owner's PC run at `b81aeac` (171 passed, 2 failed, 2 environment)
+
+### PC-13: `docsHygieneTest` timed out after 120 s
+
+| | |
+|---|---|
+| **Seen** | `TIMEOUT docsHygieneTest 120115ms`, last line `PASS: no live source suggests a W:\ folder`: the second check never finished. |
+| **Root cause** | The `requirements.txt` check looked up each named `.py` file with `fs.readdirSync(repo, { recursive: true })`: the whole folder, once per name (4 names). That read `node_modules`, `.git`, a Python `.venv` and `data`. Measured here: 70,020 entries without a `.venv` (0.7 s); 314,832 with a stand-in `.venv` of 60,000 files (2.5 s). On the owner's PC (a real `.venv`, Windows file system, on-access scanning) that ran past the 120 s limit. A test bug, not a JARVIS bug. |
+| **Fix** | One walk of JARVIS's own files, skipping dependency, cache, build and data folders and not following links; both checks use it. The `.py` lookup is stricter than before: it no longer counts copies under `_legacy/` or `node_modules`. A new check asserts the walk read none of those folders and fewer than 5,000 files (578 here). |
+| **Proof** | With the stand-in `.venv`: whole test 3.4 s, 578 files read (before: 4 walks, 314,832 entries). Five runs without it: 1.8–2.1 s, 8/8. Mutations: a `.ts` file containing `'W:\\jarvis-chrome-profile'` → that check fails; a `requirements.txt` comment naming `no_such_file.py` → that check fails. `runAll --only=docsHygieneTest,sourceFileNamesTest,testScriptIsolationTest` 3 passed; `tsc --noEmit` clean. Not yet rerun on the owner's PC. |

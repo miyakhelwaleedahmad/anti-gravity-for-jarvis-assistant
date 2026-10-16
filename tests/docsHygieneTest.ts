@@ -5,7 +5,8 @@
  *
  *   1. no live source suggests a W:\ folder (the owner's old drive): the
  *      Chrome hints say %USERPROFILE%\jarvis-chrome-profile, as .env.example
- *   2. every file a requirements.txt comment names exists
+ *   2. every file a requirements.txt comment names exists, found in one
+ *      walk of JARVIS's own files (not node_modules, .git, .venv or data)
  *   3. the README's tool count is the number of tools that register
  *   4. the dead Python stubs (only scaffold.ps1 referred to them) and
  *      scaffold.ps1 itself are in _legacy/, not in the live tree
@@ -27,21 +28,31 @@ function ok(label: string, condition: boolean, detail = ''): void {
 
 console.log('\n=== Documentation and leftovers (ARCH-08) ===\n');
 
-const live: string[] = [];
+// One walk of JARVIS's own files. Dependencies, caches, build output and
+// runtime data are not JARVIS's sources, and are by far the most files: the
+// requirements check below used to read the whole folder once per name
+// (node_modules, .git, .venv, data …: 70,000 entries here, several hundred
+// thousand with a Python .venv), which ran past the 120 s test limit on the
+// owner's PC. Symbolic links and junctions are not followed.
+const NOT_SOURCE = new Set(['node_modules', '.git', '.venv', 'venv', 'dist', 'data', 'logs', 'coverage', '__pycache__', '_legacy', '.jarvis-test-tmp']);
+const files: string[] = []; // relative, '/'-separated
 (function walk(dir: string) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (['node_modules', '.git', '_legacy', 'tests', 'docs', 'dist', '.venv'].includes(e.name)) continue;
+    if (NOT_SOURCE.has(e.name) || e.isSymbolicLink()) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p);
-    else if (p.endsWith('.ts')) live.push(p);
+    else if (e.isFile()) files.push(path.relative(repo, p).split(path.sep).join('/'));
   }
 })(repo);
-const wDrive = live.filter((f) => /W:\\\\|W:\//.test(fs.readFileSync(f, 'utf8'))).map((f) => path.relative(repo, f));
+const live = files.filter((f) => f.endsWith('.ts') && !f.split('/').some((seg) => seg === 'tests' || seg === 'docs'));
+const wDrive = live.filter((f) => /W:\\\\|W:\//.test(fs.readFileSync(path.join(repo, f), 'utf8')));
 ok('no live source suggests a W:\\ folder', wDrive.length === 0, wDrive.join(', '));
 
 const named = [...fs.readFileSync(path.join(repo, 'requirements.txt'), 'utf8').matchAll(/\(([\w./-]+\.py)\)/g)].map((m) => m[1]!);
-const missing = named.filter((f) => !fs.existsSync(path.join(repo, f)) && !fs.readdirSync(repo, { recursive: true } as any).some((p: any) => String(p).endsWith(f)));
+const missing = named.filter((f) => !files.some((p) => p === f || p.endsWith(`/${f}`)));
 ok('every file a requirements.txt comment names exists', missing.length === 0, missing.join(', ') || `${named.length} named`);
+const outside = files.filter((f) => f.split('/').some((seg) => NOT_SOURCE.has(seg)));
+ok('…found among JARVIS\'s own files, without reading dependencies or data', outside.length === 0 && files.length < 5_000, `${files.length} files read`);
 
 const { registerAllTools } = await import('../core/tools/index.js');
 const { SkillLoader } = await import('../core/skillLoader.js');
