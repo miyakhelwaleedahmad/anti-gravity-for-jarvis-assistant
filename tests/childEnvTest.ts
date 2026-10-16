@@ -79,7 +79,12 @@ ok('run_command (terminalTools): runs, no secret', keys.length > 0 && leaked(key
 fs.writeFileSync(path.join(app, 'dump.js'), DUMP);
 fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: 'app', private: true, scripts: { test: 'node dump.js' } }));
 registerAllTools();
+// A project other than JARVIS: its script's first run asks the owner (SEC-07); the owner says yes.
+const { approvalGate } = await import('../security/approvalGate.js');
+const asked: any[] = [];
+(approvalGate as any).requestApproval = async (r: any) => { asked.push(r); return true; };
 const dev = await toolRegistryV2.execute('dev', { action: 'run', project: app, script: 'test' });
+ok('(the owner was asked once, shown the command)', asked.length === 1 && /test → node dump\.js/.test(String(asked[0]?.target)), String(asked[0]?.target ?? 'not asked'));
 keys = names(dev.output.replace(/\\"/g, '"'));
 ok('a project\'s package.json script (dev run): runs, sees CI, no secret', keys.length > 0 && keys.includes('CI') && leaked(keys).length === 0, leaked(keys).join(',') || dev.output.slice(0, 120));
 

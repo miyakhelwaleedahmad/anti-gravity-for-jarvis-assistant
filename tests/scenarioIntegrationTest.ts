@@ -79,8 +79,22 @@ async function until(check: () => Promise<boolean> | boolean, ms = 8000): Promis
 console.log('\n=== Scenario Integration Test ===\n');
 try {
   // The user's morning: JARVIS started both servers earlier; four tabs are open.
-  let r = await toolRegistryV2.execute('dev', { action: 'start_server', project: world.web.dir, script: 'dev', port: world.web.port });
-  const r2 = await toolRegistryV2.execute('dev', { action: 'start_server', project: world.api.dir, script: 'start', port: world.api.port });
+  // These projects are not JARVIS's own, so the first start of each script
+  // this session asked the owner, showing its command (SEC-07); the owner
+  // approved, as at that earlier start.
+  const firstStart = async (args: Record<string, unknown>) => {
+    let done = false;
+    const call = toolRegistryV2.execute('dev', args).finally(() => { done = true; });
+    const request = await jarvis.whenAsked(() => done);
+    if (request) approvalGate.offerConsoleAnswer('approve');
+    return { result: await call, request };
+  };
+  const web = await firstStart({ action: 'start_server', project: world.web.dir, script: 'dev', port: world.web.port });
+  const api = await firstStart({ action: 'start_server', project: world.api.dir, script: 'start', port: world.api.port });
+  let r = web.result;
+  const r2 = api.result;
+  ok('(setup) the first start of each project\'s script asked, showing its command', /dev → /.test(String(web.request?.target)) && /start → /.test(String(api.request?.target)),
+    `${web.request?.target ?? 'not asked'} | ${api.request?.target ?? 'not asked'}`);
   ok('(setup) JARVIS started the website and the backend', r.success && r2.success && await answers(world.web.port) && await answers(world.api.port), `${r.output.slice(0, 120)} ${r2.output.slice(0, 120)}`);
   // How many output lines JARVIS has caught from the running backend (shown
   // with the crash diagnosis check if it fails on Windows CI).

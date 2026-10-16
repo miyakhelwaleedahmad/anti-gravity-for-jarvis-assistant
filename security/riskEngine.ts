@@ -26,7 +26,7 @@ import { goalKindFromArgs } from '../core/goalLifecycle.js';
 import { getAgentPath, getRequestText } from '../core/traceContext.js';
 import { changeLevel, checkFilePath, isApprovedRoot, isExecutable } from './fsPolicy.js';
 import { pushTargetSync, repoProblem } from '../tools/gitTools.js';
-import { isJarvisServer, knownServerOnPort, packageScripts, projectProblem, scriptProblem } from '../tools/devTools.js';
+import { isJarvisServer, knownServerOnPort, packageScripts, projectProblem, scriptProblem, scriptRanThisSession } from '../tools/devTools.js';
 import { describeUiElement, lookupUiRef } from '../control/uiRefs.js';
 
 const NOT_OBSERVED_UI = 'JARVIS has not looked at that element, or it was more than 10 minutes ago: list the window\'s elements (ui_elements) first.';
@@ -399,6 +399,14 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
         // (level 2; an agent limited to 1 is refused).
         if (getAgentPath() && !isPathInside(getWorkspaceRoot(), project)) {
           raise(2, 'an agent running a script in a project other than JARVIS');
+        } else if (!isPathInside(getWorkspaceRoot(), project) && !scriptRanThisSession(project, script)) {
+          // The owner's request: another project's script is that project's
+          // code (a cloned repository, say), and a plan steered by text from
+          // it could pick it. Asked once per script and text, also without
+          // full control mode.
+          raise(2, 'a script from a project other than JARVIS, not run before this session');
+          needsSession = 0;
+          askOwner = 'script from another project';
         }
       }
       break;

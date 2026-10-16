@@ -6,6 +6,8 @@
  * typecheck or check scripts (level 1) and report the exit code; start a
  * development server (dev, start, serve, preview — level 1) and confirm it
  * answers on its port; stop a server (level 2) — only one JARVIS started.
+ * A script of a project other than JARVIS asks the owner before its first
+ * run each session (SEC-07, below).
  *
  * The package manager (npm, pnpm or yarn, from the lock file) runs the
  * script; the script name is checked against package.json and an allowlist,
@@ -28,6 +30,20 @@ type CheckStatus = 'verified' | 'failed' | 'unverifiable';
 interface Check { status: CheckStatus; evidence: string }
 
 class NotDone extends Error {}
+
+/**
+ * Scripts of projects other than JARVIS that ran this session (SEC-07): the
+ * project, the script and its text. The risk engine asks the owner before the
+ * first run of each; the same unchanged script then runs without asking until
+ * JARVIS restarts. Changed text is a new script and asks again.
+ */
+const ranThisSession = new Set<string>();
+const scriptKey = (project: string, script: string) =>
+  `${realPathOf(project)}\u0000${script}\u0000${packageScripts(project)[script] ?? ''}`;
+
+export function scriptRanThisSession(project: string, script: string): boolean {
+  return ranThisSession.has(scriptKey(project, script));
+}
 
 /** Scripts JARVIS runs and waits for. */
 export const RUN_SCRIPTS = /^(test|build|lint|typecheck|type-check|check)(:[\w.-]+)?$/i;
@@ -398,6 +414,8 @@ export const devTool: AgentTool = {
           const project = needProject(args['project']);
           const problem = scriptProblem(project, args['script'], 'run');
           if (problem) throw new NotDone(problem);
+          // Reached only after the registry's checks (and the owner's yes, where asked).
+          ranThisSession.add(scriptKey(project, String(args['script']).trim()));
           body = await runScript(project, String(args['script']).trim());
           break;
         }
@@ -406,6 +424,7 @@ export const devTool: AgentTool = {
           const script = typeof args['script'] === 'string' && args['script'].trim() ? args['script'].trim() : 'dev';
           const problem = scriptProblem(project, script, 'server');
           if (problem) throw new NotDone(problem);
+          ranThisSession.add(scriptKey(project, script));
           body = await startServer(project, script, args['port']);
           break;
         }
