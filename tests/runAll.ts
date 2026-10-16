@@ -19,6 +19,15 @@
  *   npm test -- --only=a,b    exactly the tests named (an unknown name is an
  *                             error); package.json's test:* scripts use it, so
  *                             each test still gets its own data folder
+ *   npm test -- --live        also the live-provider tests (pnpm test:live):
+ *                             they need an API key and the network and act on
+ *                             this PC, so every other run skips them
+ *
+ * Verdicts: pass · fail · timeout (stopped at JARVIS_TEST_TIMEOUT_MS) ·
+ * blocked (the test found its environment unavailable: exit code 3 and a
+ * "BLOCKED: <reason>" line; never a pass) · skipped (a prerequisite this host
+ * is checked to lack, a live test not asked for, or --ci) · environment (failed
+ * where a listed prerequisite was not checked here).
  */
 
 import { spawn } from 'child_process';
@@ -141,13 +150,21 @@ function missingPrerequisite(name: string): string | undefined {
 const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
 
 /** Not a test — a helper imported by other tests. */
-const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll', 'chromeHelper', 'fakeTts', 'replyChecks']);
+const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll', 'chromeHelper', 'fakeTts', 'replyChecks', 'livePreflight']);
 
 const TIMEOUT_MS = Number(process.env['JARVIS_TEST_TIMEOUT_MS'] ?? 120_000);
+/** The exit code a test uses for "my environment is not available" (with a BLOCKED: line). */
+const BLOCKED_EXIT = 3;
+
+/** Tests that call the real LLM provider (and act on this PC): run only with --live. */
+function isLiveProviderTest(name: string): boolean {
+  return ENVIRONMENT_DEPENDENT[name] === 'a reachable LLM API';
+}
+const LIVE_HINT = 'live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)';
 
 interface Result {
   name: string;
-  status: 'pass' | 'fail' | 'timeout' | 'skipped';
+  status: 'pass' | 'fail' | 'timeout' | 'blocked' | 'skipped';
   ms: number;
   reason?: string;
   /** For a failure: its FAIL lines and last lines, so a CI log shows what broke. */
@@ -214,6 +231,8 @@ function runOne(file: string, name: string): Promise<Result> {
         resolve({ name, status: 'timeout', ms, detail });
       } else if (code === 0) {
         resolve({ name, status: 'pass', ms });
+      } else if (code === BLOCKED_EXIT && /^BLOCKED: /m.test(output)) {
+        resolve({ name, status: 'blocked', ms, reason: /^BLOCKED: (.*)$/m.exec(output)![1]!.trim().slice(0, 200) });
       } else {
         const lines = output.split('\n');
         const lastMeaningful = lines
@@ -240,6 +259,9 @@ async function main(): Promise<void> {
   const ciMode = args.includes('--ci');
   const filterArg = args.find((a) => a.startsWith('--filter='));
   const filter = filterArg ? filterArg.split('=')[1] ?? '' : '';
+  // Set before anything reads it: the tests run as children of this process.
+  if (args.includes('--live')) process.env['JARVIS_LIVE_TESTS'] = '1';
+  const liveOn = process.env['JARVIS_LIVE_TESTS'] === '1';
   const onlyArg = args.find((a) => a.startsWith('--only='));
   const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',').map((n) => n.trim()).filter(Boolean)) : undefined;
   await checkPrerequisites();
@@ -268,6 +290,11 @@ async function main(): Promise<void> {
   const results: Result[] = [];
   for (const { file, name } of files) {
     const needs = missingPrerequisite(name);
+    if (isLiveProviderTest(name) && !liveOn) {
+      results.push({ name, status: 'skipped', ms: 0, reason: LIVE_HINT });
+      console.log(`  SKIP  ${name.padEnd(44)} ${LIVE_HINT}`);
+      continue;
+    }
     if (ciMode && needs) {
       results.push({ name, status: 'skipped', ms: 0, reason: `needs ${needs}` });
       console.log(`  SKIP  ${name.padEnd(44)} needs ${needs}`);
@@ -276,17 +303,30 @@ async function main(): Promise<void> {
     const result = await runOne(file, name);
     results.push(result);
     const label = result.status.toUpperCase().padEnd(7);
-    const note = result.status === 'fail' && needs ? `  (expected here: needs ${needs})` : '';
+    const note = result.status === 'blocked' ? `  (${result.reason})` : result.status === 'fail' && needs ? `  (expected here: needs ${needs})` : '';
     console.log(`  ${label} ${name.padEnd(44)} ${result.ms}ms${note}`);
   }
 
   const passed = results.filter((r) => r.status === 'pass');
   const skipped = results.filter((r) => r.status === 'skipped');
+  const blocked = results.filter((r) => r.status === 'blocked');
   const failed = results.filter((r) => r.status === 'fail' || r.status === 'timeout');
   const envFailures = failed.filter((r) => missingPrerequisite(r.name));
   const realFailures = failed.filter((r) => !missingPrerequisite(r.name));
+  const timedOut = realFailures.filter((r) => r.status === 'timeout');
 
-  console.log(`\n=== ${passed.length} passed · ${realFailures.length} failed · ${envFailures.length} environment · ${skipped.length} skipped ===`);
+  console.log(`\n=== ${passed.length} passed · ${realFailures.length - timedOut.length} failed · ${timedOut.length} timed out · ${blocked.length} blocked · ${envFailures.length} environment · ${skipped.length} skipped ===`);
+
+  const why = new Map<string, string[]>();
+  for (const r of skipped) why.set(r.reason ?? 'skipped', [...(why.get(r.reason ?? 'skipped') ?? []), r.name]);
+  if (skipped.length) {
+    console.log('\nSkipped (not run, so not passed):');
+    for (const [reason, names] of why) console.log(`  - ${names.join(', ')}: ${reason}`);
+  }
+  if (blocked.length) {
+    console.log('\nBlocked, not verified (the environment the test needs was not available):');
+    for (const r of blocked) console.log(`  - ${r.name}: ${r.reason}`);
+  }
 
   if (envFailures.length) {
     console.log('\nFailed for a missing prerequisite, not a defect:');
@@ -299,6 +339,10 @@ async function main(): Promise<void> {
       console.log(`  - ${r.name}${r.reason ? `: ${r.reason}` : ''}`);
       for (const l of r.detail ?? []) console.log(`      ${l}`);
     }
+    process.exit(1);
+  }
+  if (blocked.length) {
+    console.log('\nNo failures, but the blocked tests above were not verified.');
     process.exit(1);
   }
 

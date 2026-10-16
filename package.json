@@ -16,6 +16,7 @@
     "test:pc-control": "tsc --noEmit && tsx tests/runAll.ts --only=systemStateSmokeTest,chromeStateSmokeTest,systemStateRouteTest,permissionSessionTest,actionQueueRecoveryTest,rollbackManagerTest,closeAppRouteTest,pcControlKernelTest,appControlTest,windowControlTest,browserControlTest,inputControlTest,mouseKeyboardControlTest,fileControlSafetyTest,processControlSafetyTest,systemControlSafetyTest,adminControlTest",
     "test:all": "npm run test:voice-core && npm run test:pc-control",
     "test:ci": "tsx tests/runAll.ts --ci",
+    "test:live": "tsx tests/runAll.ts --live --only=finalIntegrationSuiteTest,successfulExecutionLifecycleAuditTest",
     "typecheck": "tsc --noEmit",
     "verify:windows": "tsx scripts/verifyWindows.ts",
     "backup": "tsx backup.ts"
