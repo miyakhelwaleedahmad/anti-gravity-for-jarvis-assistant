@@ -27,7 +27,11 @@ export function findChromium(): string | undefined {
   return CANDIDATES.find((p) => p && fs.existsSync(p));
 }
 
-/** PowerShell 7: JARVIS_TEST_PWSH, else pwsh on the PATH. */
+/**
+ * PowerShell 7: JARVIS_TEST_PWSH, else pwsh on the PATH, else (Windows) where
+ * its installer puts it. A CMD window opened before the install does not have
+ * the new PATH yet.
+ */
 export function findPwsh(): string | undefined {
   const named = process.env['JARVIS_TEST_PWSH'];
   if (named) return fs.existsSync(named) ? named : undefined;
@@ -35,7 +39,19 @@ export function findPwsh(): string | undefined {
   for (const dir of (process.env['PATH'] ?? '').split(path.delimiter)) {
     if (dir && fs.existsSync(path.join(dir, exe))) return path.join(dir, exe);
   }
+  if (process.platform === 'win32') {
+    const installed = path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe');
+    if (fs.existsSync(installed)) return installed;
+  }
   return undefined;
+}
+
+/** Why findPwsh() found nothing, and what to do. */
+export function pwshMissingReason(): string {
+  const named = process.env['JARVIS_TEST_PWSH'];
+  if (named) return `JARVIS_TEST_PWSH names "${named}", which does not exist.`;
+  return 'No PowerShell 7 (pwsh) found. Install it (CMD: winget install --id Microsoft.PowerShell --source winget), '
+    + 'open a new CMD window and check with: pwsh -v. Or set JARVIS_TEST_PWSH to the full path of pwsh.exe.';
 }
 
 export async function freePort(): Promise<number> {

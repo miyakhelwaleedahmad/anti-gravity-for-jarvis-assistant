@@ -20,12 +20,12 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { findPwsh } from './chromeHelper.js';
+import { findPwsh, pwshMissingReason } from './chromeHelper.js';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pwsh = findPwsh();
 if (!pwsh) {
-  console.error('No PowerShell 7 (pwsh) found: set JARVIS_TEST_PWSH.');
+  console.error(pwshMissingReason());
   process.exit(1);
 }
 

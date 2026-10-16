@@ -44,6 +44,20 @@ ok('…with a warning naming the budget', warnings.length === 1 && /at least 320
 warnings.length = 0;
 planningWatchdogMs({ JARVIS_PLANNING_WATCHDOG_MS: '40000' }, (m) => warnings.push(m));
 ok('a value above the budget: no warning', warnings.length === 0);
+// The owner's .env: 30000 with a 20 s request timeout (3 × 20 s + 2 s = 62 s).
+const owners = planningWatchdogMs({ JARVIS_PLANNING_WATCHDOG_MS: '30000', JARVIS_LLM_TIMEOUT_MS: '20000' }, (m) => warnings.push(m));
+ok('30000 with a 20 s timeout: kept, not overridden', owners === 30_000, String(owners));
+ok('…with a warning that names 62000', warnings.length === 1 && /at least 62000/.test(warnings[0]!), warnings[0]);
+
+console.log('\n--- 2b. A setting that is not a number of milliseconds ---');
+for (const bad of ['abc', '-5', '0', '30s']) {
+  warnings.length = 0;
+  const got = planningWatchdogMs({ JARVIS_PLANNING_WATCHDOG_MS: bad }, (m) => warnings.push(m));
+  ok(`"${bad}": not used; the default (32000) instead, with a warning`, got === 32_000 && warnings.length === 1 && /not a positive number/.test(warnings[0]!), `${got}; ${warnings[0] ?? 'no warning'}`);
+}
+warnings.length = 0;
+planningWatchdogMs({ JARVIS_PLANNING_WATCHDOG_MS: '' }, (m) => warnings.push(m));
+ok('empty: the default, no warning', warnings.length === 0);
 
 console.log('\n--- 3. One source ---');
 const groq = fs.readFileSync(path.join(repo, 'bridge', 'groqProvider.ts'), 'utf8');

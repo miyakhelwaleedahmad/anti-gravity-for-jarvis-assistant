@@ -2,14 +2,15 @@
 
 What this repair did not close, why, and what to do about it. Each item names its finding ID in `REMEDIATION_TRACKER.md`.
 
-## 0. The owner's PC run
+## 0. The owner's PC runs
 
-`pnpm test` and `pnpm verify:windows` ran on the PC at `28b0d2b`; see TEST_RESULTS.md. Its three real failures are fixed here (PC-01 to PC-03) but not yet rerun on the PC.
+First run at `28b0d2b`: three real failures, fixed as PC-01 to PC-03. Second run at `ee1c8c8`: `pnpm test` 162 passed, 4 failed, 1 environment; `pnpm verify:windows` 16 passed, 1 failed. Those are fixed or changed as PC-06 to PC-11, and none is rerun on the PC yet. See TEST_RESULTS.md.
 
 Still unverified on the PC:
-- Notepad, window actions, Calculator, clipboard and the dev server: the approval was not answered;
-- `windowsScriptsTest`: needs PowerShell 7;
-- `dashboardHealthSystemTest`: its output was not captured.
+- **PowerShell session (PC-08):** the one-line framing was checked with PowerShell 7.4.6 on Linux, not with Windows PowerShell 5.1, which JARVIS runs. Both read `-Command -` the same way (PowerShell/PowerShell#21808), but 5.1 is unproven until the PC or the Windows CI job runs `windowsStateSessionTest` (its real-PowerShell section uses `powershell` on Windows). The 4 s poll limit in `dashboardHealthSystemTest` is measured only on the PC.
+- **Calculator (PC-09):** what minimised Calculator is not known. The check now restores it and reads its buttons again, and says so in its result. If Calculator keeps leaving the screen, the check fails after 3 restores. `data/logs/verify-windows.json` from the next run should show the window state before each press.
+- **`dashboardAccuracyTest` (PC-07):** needs Redis and a working LLM key; here it ran without a key only.
+- **`windowsScriptsTest` (PC-10):** needs PowerShell 7 installed on the PC.
 
 ## 1. Not verified on the owner's Windows PC (REL-09)
 

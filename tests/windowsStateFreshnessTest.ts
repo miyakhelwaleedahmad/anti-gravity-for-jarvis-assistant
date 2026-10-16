@@ -62,7 +62,7 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (d) => {
   pending += d;
   let m;
-  while ((m = pending.match(/^([\\s\\S]*?)Write-Output '__JARVIS_END__:(\\d+)'\\n/))) {
+  while ((m = pending.match(/^([\\s\\S]*?)Write-Output '__JARVIS_END__:(\\d+)'[^\\n]*\\n/))) {
     pending = pending.slice(m[0].length);
     const id = m[2];
     chain = chain.then(async () => {

@@ -517,15 +517,53 @@ await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async (deta
       .map((e: any) => ({ name: e.name, depth: e.depth, offscreen: e.offscreen }));
     const presses: Array<Record<string, unknown>> = [];
     details['presses'] = presses;
+    // On the owner's PC Calculator was minimised between two presses (the
+    // display and buttons were gone: 7 elements), so the next press found
+    // nothing. A minimised window is restored through JARVIS's own
+    // control_window, and its buttons are read again, since the references of
+    // the earlier listing no longer exist. Each restore is recorded and said;
+    // the sum must still come out as 3.
+    const restores: Array<Record<string, unknown>> = [];
+    details['restores'] = restores;
+    const MAX_RESTORES = 3;
+    const isMinimised = (s: unknown) => typeof s === 'object' && s !== null && (s as any).minimized === true;
+    const restore = async (before: string, reason: string) => {
+      need(restores.length < MAX_RESTORES, `Calculator kept leaving the screen (${reason} before ${before}; restored ${restores.length} times already)`);
+      const focus = await call('control_window', { action: 'focus', target: win.hwnd });
+      const deadline = Date.now() + 20_000;
+      for (;;) {
+        list = await call('ui_elements', { window: win.hwnd });
+        if ((list.body?.elements ?? []).some((e: any) => e.automationId === 'num1Button') || Date.now() >= deadline) break;
+        await sleep(1_000);
+      }
+      restores.push({
+        before, reason, focused: focus.success, check: focus.verification ?? null, ...(focus.success ? {} : { error: why(focus) }),
+        stateAfter: await stateOf(win.hwnd), elementsAfter: list.body?.elements?.length ?? 0,
+      });
+      console.log(`        Calculator was ${reason} before ${before}: ${focus.success ? 'restored' : `NOT restored (${why(focus)})`}; `
+        + `elements read again: ${list.body?.elements?.length ?? 0}`);
+      need(list.success, `its elements could not be read after restoring it: ${why(list)}`);
+    };
     for (const id of ['clearButton', 'num1Button', 'plusButton', 'num2Button', 'equalButton']) {
-      const button = (list.body.elements ?? []).find((e: any) => e.automationId === id);
-      if (!button && id === 'clearButton') continue;
-      need(button, `the ${id} button is not among its ${list.body.elements?.length ?? 0} elements`);
       // Step C evidence for each press: Calculator's window state before and
       // after (in front, minimised), the program in front after it, and
       // whether Calculator's elements, buttons and display are still there.
-      const stateBefore = await stateOf(win.hwnd);
-      const press = await call('ui_action', { action: 'invoke', ref: button.ref });
+      let stateBefore = await stateOf(win.hwnd);
+      if (isMinimised(stateBefore)) {
+        await restore(id, 'minimised');
+        stateBefore = await stateOf(win.hwnd);
+      }
+      let button = (list.body.elements ?? []).find((e: any) => e.automationId === id);
+      if (!button && id === 'clearButton') continue;
+      need(button, `the ${id} button is not among its ${list.body.elements?.length ?? 0} elements`);
+      let press = await call('ui_action', { action: 'invoke', ref: button.ref });
+      if (!press.success && isMinimised(await stateOf(win.hwnd))) {
+        // Minimised between the check above and the press: once more, with fresh references.
+        await restore(id, 'minimised during the press');
+        button = (list.body.elements ?? []).find((e: any) => e.automationId === id);
+        need(button, `the ${id} button is not among its ${list.body.elements?.length ?? 0} elements after restoring it`);
+        press = await call('ui_action', { action: 'invoke', ref: button.ref });
+      }
       const stateAfter = await stateOf(win.hwnd);
       const look = await calculatorLook(win.hwnd);
       const front = await frontApp(win.hwnd);
@@ -541,13 +579,16 @@ await check('apps.calculator', 'Calculator: 1 + 2 = 3, then closed', async (deta
       need(press.success, `${id} was not pressed: ${why(press)}`);
     }
     details['inFrontAfter'] = await windowState(win.hwnd).then((s) => s.foreground).catch((e) => `unknown: ${messageOf(e)}`);
+    // A minimised Calculator has no display element to read.
+    if (isMinimised(await stateOf(win.hwnd))) await restore('reading the display', 'minimised');
     list = await call('ui_elements', { window: win.hwnd });
     const display = (list.body?.elements ?? []).find((e: any) => e.automationId === 'CalculatorResults');
     need(display && /\b3\b/.test(String(display.name)), `the display shows "${display?.name ?? 'nothing JARVIS found'}"`);
     const closing: Record<string, unknown> = {};
     details['closing'] = closing;
     closed = await closeOwnWindow(win.hwnd, closing);
-    return { evidence: `"${display.name}"; ${closed}` };
+    const restored = restores.length > 0 ? `; Calculator was minimised and restored ${restores.length} time(s) (see "restores" in the report)` : '';
+    return { evidence: `"${display.name}"; ${closed}${restored}` };
   } catch (err) {
     details['windowsAtEnd'] = await calculatorWindows();
     details['stateAtEnd'] = await stateOf(win.hwnd);

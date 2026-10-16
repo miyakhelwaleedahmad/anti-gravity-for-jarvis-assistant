@@ -167,6 +167,7 @@ export class MemoryManager {
     }
 
     const dbPath = path.resolve(dataRoot(process.cwd()), memoryConfig.dbPath);
+    this.cacheScope = dbPath;
     const adapter = new JSONFile<MemoryDB>(dbPath);
 
     this.db = new Low<MemoryDB>(adapter, {
@@ -651,7 +652,7 @@ export class MemoryManager {
       console.error("[Memory] Remember fact write failed:", err);
     });
     console.log(`[Memory] Remembered immediately: "${cleanFact}"`);
-    invalidateVectorCache().catch(() => {});
+    this.factsChanged();
     invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
     this.dedupAndIndexFactInBackground(fastEntry);
     return;
@@ -756,7 +757,7 @@ export class MemoryManager {
 
     // REDIS: Invalidate cached search results — new fact may change rankings.
     // Fire-and-forget: cache miss is always safe (falls back to VectorPy).
-    invalidateVectorCache().catch(() => {});
+    this.factsChanged();
     invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
   }
 
@@ -782,7 +783,7 @@ export class MemoryManager {
             existingFact.confidence = Math.min(1.0, (existingFact.confidence || 0.8) + 0.05);
             this.db.data.longTerm = this.db.data.longTerm.filter(f => f.id !== entry.id);
             this.scheduledWrite().catch(err => console.error("[Memory] Background dedup write failed:", err));
-            invalidateVectorCache().catch(() => {});
+            this.factsChanged();
             invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
             console.log('[Memory] Background dedup merged a duplicate fact.');
             return;
@@ -810,6 +811,20 @@ export class MemoryManager {
    * Cache is invalidated on every fact write/update/delete.
    */
   private queryCache = new Map<string, { expiresAt: number; data: { fact: LongTermFact; score: number }[] }>();
+  /** The memory store's file: Redis results are cached per store. */
+  private cacheScope = 'default';
+  /** The latest cache bump (factsChanged); a search waits for it. */
+  private cacheBump: Promise<void> = Promise.resolve();
+
+  /**
+   * The stored facts changed (added, merged, trimmed, forgotten): no cached
+   * search answer from before may be served. Clears this process's 30 s
+   * cache and bumps the Redis generation (awaited by the next search).
+   */
+  private factsChanged(): void {
+    this.queryCache.clear();
+    this.cacheBump = invalidateVectorCache(this.cacheScope).catch(() => {});
+  }
 
   async searchFactsWithScores(query: string, topK = 5): Promise<{ fact: LongTermFact; score: number }[]> {
     this.ensureInit();
@@ -827,9 +842,17 @@ export class MemoryManager {
 
     let results: { fact: LongTermFact; score: number }[] = [];
 
+    // A fact remembered a moment ago: its cache bump must land before the
+    // cache is read, or the answer cached before it would be served.
+    await this.cacheBump;
+
     // ── REDIS fast path: return cached result if available ────────────────
-    const cached = await getCachedVectorResult<{ fact: LongTermFact; score: number }[]>(query, topK);
-    if (cached && cached.length > 0) {
+    const cached = await getCachedVectorResult<{ fact: LongTermFact; score: number }[]>(query, topK, this.cacheScope);
+    // Served only if every fact in it still exists here; otherwise it is out
+    // of date (or from another store) and the search runs again.
+    const cacheCurrent = !!cached && cached.length > 0
+      && cached.every((r) => r && r.fact && this.db.data.longTerm.some((f) => f.id === r.fact.id));
+    if (cached && cacheCurrent) {
       console.log(`[Memory] Redis cache hit for query: "${query.slice(0, 40)}"`);
       // Still apply reinforcement on cache hits — data is live LowDB refs
       const now = Date.now();
@@ -907,7 +930,7 @@ export class MemoryManager {
 
     // ── REDIS: store result for next hit (fire-and-forget) ────────────────
     if (results.length > 0) {
-      cacheVectorResult(query, topK, results).catch(() => {});
+      cacheVectorResult(query, topK, results, this.cacheScope).catch(() => {});
     }
 
     this.queryCache.set(cacheKey, { expiresAt: Date.now() + 30_000, data: results });
@@ -1032,7 +1055,7 @@ export class MemoryManager {
 
       // REDIS: invalidate after decay — stale cached results must not surface
       if (removedFacts.length > 0) {
-        invalidateVectorCache().catch(() => {});
+        this.factsChanged();
         invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
       }
     }
@@ -1057,7 +1080,7 @@ export class MemoryManager {
     const vectorIndex: string[] = [];
     for (const f of found) {
       vectorIndex.push(await this.deleteVectorReported(f.fact));
-      invalidateVectorCache(f.fact).catch(() => {});
+      this.factsChanged();
     }
     invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
     return { removed: found.map((f) => ({ id: f.id, fact: f.fact })), vectorIndex };
@@ -1075,7 +1098,7 @@ export class MemoryManager {
         console.warn(`[Memory] forgetFact: vector delete failed for "${target.fact.slice(0, 40)}": ${err}`)
       );
       // REDIS: invalidate so forgotten fact can't be served from cache
-      invalidateVectorCache(target.fact).catch(() => {});
+      this.factsChanged();
       invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
     }
   }

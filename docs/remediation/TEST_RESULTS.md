@@ -24,7 +24,8 @@ Kinds of evidence, kept apart below:
 | Phase C (`0c41e7b`) | 154 | 0 | 9 | clean |
 | Phases E, F, G (`2bc7075`, `7ff1866`) | 157 | 0 | 9 | clean |
 | CI fixes (`ccc9e84`) | 157 | 0 | 9 | clean |
-| PC fixes (this commit), non-CI mode, Redis running | 161 | 0 | 6 environment | clean |
+| PC fixes (`295c4f5`, `ee1c8c8`), non-CI mode, Redis running | 161 | 0 | 6 environment | clean |
+| Second PC run fixes (this commit), CI mode, Redis running | 160 | 0 | 9 | clean |
 
 The 9 skipped are the same tests as before (table below). None counts as a pass.
 
@@ -49,6 +50,21 @@ The first run of these changes on the owner's PC. The owner reported these resul
 - **Passed on the PC with its keys present:** `finalIntegrationSuiteTest` and `successfulExecutionLifecycleAuditTest`. Several of their commands are routed without the model, so this is partial live-provider evidence.
 - **Control Center:** `controlCenterTest`, including its real-registry section, passed on the PC.
 - **`verify:windows`:** the only failure is the unanswered approval. Notepad, window actions, Calculator, clipboard and the dev server were skipped, not passed.
+
+### Second run (`ee1c8c8`)
+
+The owner reported these results; they were not run from here. The approval was typed in the real approval box.
+
+| Run | Passed | Failed | Environment |
+|---|---|---|---|
+| `pnpm test` | 162 | 4 | 1 |
+| `pnpm verify:windows` | 16 | 1 | — |
+
+- **Failed:**
+  - `dashboardAccuracyTest`, `dashboardHealthSystemTest`: "llm=unknown" (PC-07); the second also had the 6.3 s poll (PC-08);
+  - `vectorSupervisorDashboardTest`, `verifyAfterActTest`: the stale Redis cache (PC-06).
+- **Environment:** `windowsScriptsTest`, no PowerShell 7 (PC-10).
+- **`verify:windows`:** Calculator was minimised after the first press (PC-09). Notepad, window actions, clipboard, screenshot and the dev server passed. Their window lookups used the fresh-PowerShell fallback, since the session's queries timed out (PC-08).
 
 Not yet rerun on the PC after the fixes below.
 
@@ -153,6 +169,13 @@ Coverage, final run (c8 10.1.3; only files the tests load; `tests/` excluded):
 | goalRuntimeTest (extended) | PC-01 | 63/63 | 60/63: `paused/running`, executor started, `pending` |
 | serverExitRaceTest | PC-02 | 4/4 | 2/4: "runs but does not answer" in the gap |
 | approvalGateStructuredTest (extended) | PC-05 | 66/66 | new setting |
+| memoryCacheTest | PC-06 | 9/9 | 4/9: a stale cached answer, another store's answer, "(empty)" after a write |
+| vectorSupervisorDashboardTest, verifyAfterActTest | PC-06 | 8/8 and 23/23, each twice in a row with Redis | the second run failed |
+| healthStatusTest | PC-07 | 10/10 | 7/10: "unknown … not checked yet" on the first probe; 0 tools read "online" |
+| windowsStateSessionTest (extended) | PC-08 | 17/17, with real PowerShell 7.4.6 | stops at the first query over several lines: "PS query timed out after 300ms" |
+| windowsStateFreshnessTest | PC-08 | 17/17 | its stand-in only took the old end line (6 failed until it accepted the one-line form) |
+| windowsScriptsTest | PC-10 | 47/47, with real PowerShell 7.4.6 | — |
+| llmTimingTest (extended) | PC-11 | 20/20 | 16/20: "abc", "-5", "0", "30s" fell back without a warning |
 | tests/python (fake encoder) | TEST-01 | 23, 23, 33, 12 | old encoder failed 10 of 300 `PYTHONHASHSEED` values |
 
 Converted to the real speech path (TEST-02), all passing:

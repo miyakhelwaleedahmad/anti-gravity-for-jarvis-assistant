@@ -59,6 +59,8 @@ export interface HealthSnapshot {
 
 /** How old the last LLM result may be before the dashboard starts a fresh check. */
 const LLM_RECHECK_MS = 3 * 60_000;
+/** How long the first probe waits for the first LLM check (the check itself gives up at 5 s). */
+const LLM_FIRST_CHECK_WAIT_MS = 6_000;
 
 // ─── HealthManager ────────────────────────────────────────────────────────────
 
@@ -208,7 +210,8 @@ class HealthManager {
 
   // ── Probe: LLM ─────────────────────────────────────────────────────────────
 
-  private llmCheckRunning = false;
+  /** The LLM check in flight, if any. */
+  private llmCheck: Promise<void> | null = null;
 
   /**
    * The configured provider's real state: the last request or probe that
@@ -221,12 +224,21 @@ class HealthManager {
   private async probeLLM(): Promise<ServiceHealth> {
     try {
       const { llmStatus } = await import('../bridge/llmStatus.js');
-      if (llmStatus.snapshot().hasKey && llmStatus.isStale(LLM_RECHECK_MS) && !this.llmCheckRunning) {
-        this.llmCheckRunning = true;
-        import('../bridge/groqProvider.js')
+      const neverChecked = llmStatus.isStale(Number.POSITIVE_INFINITY);
+      if (llmStatus.snapshot().hasKey && llmStatus.isStale(LLM_RECHECK_MS) && !this.llmCheck) {
+        this.llmCheck = import('../bridge/groqProvider.js')
           .then(({ groqProvider }) => groqProvider.ping(AbortSignal.timeout(5_000)))
-          .catch(() => { /* recorded in llmStatus */ })
-          .finally(() => { this.llmCheckRunning = false; });
+          .then(() => undefined, () => undefined) // the result is recorded in llmStatus
+          .finally(() => { this.llmCheck = null; });
+      }
+      // Never checked yet: wait for that first check (at most LLM_FIRST_CHECK_WAIT_MS)
+      // instead of reporting "unknown". The first probe after start always said
+      // "unknown", so the system read as offline until a later poll. Later
+      // re-checks stay in the background, as before.
+      if (neverChecked && this.llmCheck) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([this.llmCheck, new Promise<void>((r) => { timer = setTimeout(r, LLM_FIRST_CHECK_WAIT_MS); })]);
+        if (timer) clearTimeout(timer);
       }
       const h = llmStatus.health();
       return { name: 'llm', status: h.status, detail: h.detail, checkedAt: Date.now() };
@@ -242,10 +254,11 @@ class HealthManager {
       const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');
       try { await import('../core/terminalTools.js'); } catch { /* the count below then shows the tools are missing */ }
       const count = toolRegistryV2.names().length;
+      // No tools yet: still starting, not "online" with nothing to run.
       return {
         name: 'tool_registry',
-        status: 'online',
-        detail: `${count} tools registered`,
+        status: count > 0 ? 'online' : 'loading',
+        detail: count > 0 ? `${count} tools registered` : 'no tools registered yet',
         checkedAt: Date.now(),
       };
     } catch (err) {

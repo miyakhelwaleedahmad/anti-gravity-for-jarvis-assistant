@@ -68,7 +68,7 @@ const END_TOKEN = '__JARVIS_END__';
  *   - Add-Type compiled the C# helper on every poll; it now compiles once per
  *     session.
  */
-const INLINE_SCRIPT = `
+export const INLINE_SCRIPT = `
 try {
   if (-not ('FastWinAPI' -as [type])) {
     Add-Type @"
@@ -99,6 +99,28 @@ public class FastWinAPI {
 } catch {
   '{"activeWindow":{"title":"","processName":"","pid":0},"openApps":[]}'
 }`;
+
+/**
+ * One query as one line of stdin.
+ *
+ * `-Command -` reads stdin like the interactive prompt: a statement that spans
+ * several lines (the window query's try/catch) only runs after a blank line
+ * (PowerShell/PowerShell#21808: "You still need the trailing newlines to
+ * ensure PowerShell sees the end of the `}` and runs it"). None was sent, so
+ * each query ran only when the next one arrived: on the owner's PC every
+ * query timed out ("PS query timed out after 15000ms", then "still finishing
+ * a slow query") and every reading came from the slower fresh PowerShell.
+ *
+ * As one complete line it runs as soon as the line ends, and `finally` writes
+ * the end line even when the command fails.
+ */
+export function framedQuery(command: string, id: string): string {
+  const encoded = Buffer.from(command, 'utf8').toString('base64');
+  return `try { & ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')))) } finally { Write-Output '${END_TOKEN}:${id}' }\n`;
+}
+
+/** Terminal control sequences PowerShell 7 writes around its output. */
+const CONTROL_SEQUENCES = /\x1b\[[0-9;?]*[A-Za-z]/g;
 
 /** The session is running another query, or still finishing one that timed out. */
 export class PSBusyError extends Error {}
@@ -167,7 +189,7 @@ export class PersistentPSSession {
         const token = new RegExp(`${END_TOKEN}:(\\d+)`);
         let m: RegExpExecArray | null;
         while ((m = token.exec(this.buffer)) !== null) {
-          const text = this.buffer.substring(0, m.index).trim();
+          const text = this.buffer.substring(0, m.index).replace(CONTROL_SEQUENCES, '').trim();
           this.buffer = this.buffer.substring(m.index + m[0].length);
           const id = m[1]!;
           if (this.current && this.current.id === id) {
@@ -278,7 +300,7 @@ export class PersistentPSSession {
         reject(new Error(`PS query timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
       this.current = { id, resolve, reject, timer };
-      this.proc!.stdin!.write(`${command}\nWrite-Output '${END_TOKEN}:${id}'\n`, 'utf8');
+      this.proc!.stdin!.write(framedQuery(command, id), 'utf8');
     });
   }
 

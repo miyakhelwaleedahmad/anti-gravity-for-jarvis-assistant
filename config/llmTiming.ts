@@ -27,17 +27,21 @@ export function llmRequestBudgetMs(env: NodeJS.ProcessEnv = process.env): number
 /**
  * How long PLANNING may last: JARVIS_PLANNING_WATCHDOG_MS when set, else at
  * least the request budget (and never below the old 15 s). A set value below
- * the budget is kept, with a warning: it will cut retries off.
+ * the budget is kept, with a warning: it will cut retries off. A value that is
+ * not a positive number of milliseconds is not used, and the warning says so.
  */
 export function planningWatchdogMs(env: NodeJS.ProcessEnv = process.env, warn: (m: string) => void = console.warn): number {
   const budget = llmRequestBudgetMs(env);
+  const fallback = Math.max(15_000, budget);
   const raw = env['JARVIS_PLANNING_WATCHDOG_MS'];
-  const set = raw !== undefined && raw.trim() !== '' ? Number(raw) : NaN;
-  if (Number.isFinite(set) && set > 0) {
-    if (set < budget) {
-      warn(`[Config] JARVIS_PLANNING_WATCHDOG_MS=${set} is below one model request's retries (${LLM_MAX_ATTEMPTS} × ${llmTimeoutMs(env)} ms): slow answers will be cut off. Use at least ${budget}.`);
-    }
-    return set;
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const set = Number(raw);
+  if (!Number.isFinite(set) || set <= 0) {
+    warn(`[Config] JARVIS_PLANNING_WATCHDOG_MS="${raw.trim().slice(0, 40)}" is not a positive number of milliseconds: using ${fallback} instead. Leave it empty for that default, or set at least ${budget}.`);
+    return fallback;
   }
-  return Math.max(15_000, budget);
+  if (set < budget) {
+    warn(`[Config] JARVIS_PLANNING_WATCHDOG_MS=${set} is below one model request's retries (${LLM_MAX_ATTEMPTS} × ${llmTimeoutMs(env)} ms): slow answers will be cut off. Use at least ${budget}.`);
+  }
+  return set;
 }

@@ -9,6 +9,11 @@
 
 import { healthManager } from '../monitoring/healthManager.js';
 import { nodeBridge } from '../bridge/nodeBridge.js';
+import { registerAllTools } from '../core/tools/index.js';
+
+// As JARVIS does at start: "online" needs a tool registry with tools in it
+// (an empty one now reads as "loading").
+registerAllTools();
 
 let passed = 0;
 let failed = 0;

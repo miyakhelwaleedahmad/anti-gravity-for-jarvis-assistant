@@ -24,6 +24,8 @@ The branch is pushed (normal pushes only) and CI runs on it. `main` was not touc
 | `ccc9e84` | — | Flaky Python test encoder; server output kept for the diagnosis 6 → 20 lines (did not fix the Windows case) |
 | `6100112`, `a5a126f` | — | These docs; Windows test diagnostics |
 | `86ca10d` | — | Windows: dev server output caught (not detached) |
+| `295c4f5`, `ee1c8c8` | — | First PC run: PC-01 to PC-05 |
+| the commit after `ee1c8c8` | — | Second PC run: PC-06 to PC-12 |
 
 ## What changed, in short
 
@@ -99,6 +101,9 @@ The branch is pushed (normal pushes only) and CI runs on it. `main` was not touc
 | REL-05 | Cancelling one of two identical requests failed the other (old: 8/10) | Each caller follows its own signal; the shared call stops only when all have cancelled |
 | PERF-02 | With a 2-call quota, background calls used it and the owner got a 429 (simulated provider) | Background calls wait while the owner talks |
 | ARCH-05 | A disable could write `manual_by_cli\n[AUDIT] forged line`; open_app asked a typed request by voice | The real request source decides |
+| PC-06 | After "remember", a search could get an old or empty cached answer from Redis (a second test run failed) | The cache is per store and goes stale on every write |
+| PC-07 | The first health probe said "LLM: unknown", so JARVIS read as offline; an empty tool registry read "online" | The first probe waits up to 6 s for the LLM check; no tools reads "loading" |
+| PC-08 | Every query of the background PowerShell session timed out (a poll took 6.3 s; window reads fell back to a fresh PowerShell) | Each query is one line, so PowerShell runs it at once: 10–15 ms warm with PowerShell 7 here |
 
 ### Who decides what (ARCH-05)
 
@@ -146,19 +151,24 @@ Use **CMD**, in the JARVIS folder. Run one step at a time.
    ```
    The last line shows passed · failed · skipped. Please send the "Real failures" list if there is one. Windows CI has run these changes; this is the first run on your PC (REL-09).
 
-4. Run the Windows check. When the approval box appears, type `approve` and press Enter. You have 30 s by default; for more time, add `JARVIS_APPROVAL_TIMEOUT_S=120` to `.env` first. No answer means the five control checks are skipped, not passed.
+4. Run the Windows check. When the approval box appears, type `approve` and press Enter. You have 30 s by default. For 120 s, either add `JARVIS_APPROVAL_TIMEOUT_S=120` to `.env`, or, for this CMD window only, run this first (no spaces around `=`):
+   ```
+   set JARVIS_APPROVAL_TIMEOUT_S=120
+   ```
+   No answer means the control checks are skipped, not passed.
    ```
    pnpm verify:windows
    ```
-   It writes `data\logs\verify-windows.json`; send that file back.
+   It writes `data\logs\verify-windows.json`; send that file back. If Calculator is minimised again, its result says it was restored, and the file shows its window state before each press.
 
    Optional, to run `windowsScriptsTest` as well, install PowerShell 7 (CMD):
    ```
    winget install --id Microsoft.PowerShell --source winget
    ```
+   Then open a new CMD window and run `pwsh -v`; it should print `PowerShell 7.…`.
 
 5. Check your `.env` (a text editor is fine):
-   - if it has `JARVIS_PLANNING_WATCHDOG_MS=20000`, empty the value; JARVIS warns at start otherwise;
+   - if it has a value for `JARVIS_PLANNING_WATCHDOG_MS` (yours was 30000), empty it: the default then follows `JARVIS_LLM_TIMEOUT_MS` (62000 with 20000). JARVIS warns at start otherwise;
    - optional: `JARVIS_VOICE_APPROVAL_MAX_RISK=1` to type every level-2 approval too;
    - move the token from `ai_workflows\_config\github my persnal tokens.txt` into `.env` as `GITHUB_TOKEN=...`, then delete that file yourself.
 
