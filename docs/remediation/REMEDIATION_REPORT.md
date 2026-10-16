@@ -26,6 +26,7 @@ The branch is pushed (normal pushes only) and CI runs on it. `main` was not touc
 | `86ca10d` | — | Windows: dev server output caught (not detached) |
 | `295c4f5`, `ee1c8c8` | — | First PC run: PC-01 to PC-05 |
 | `12c6925` | — | Second PC run: PC-06 to PC-12 |
+| `8fb9ef7` to `3a7d1b6` | Audit pass | SEC-07, SEC-09 (test), TEST-01, ARCH-08, ARCH-07, ARCH-04, ARCH-02, ARCH-01; checklist `docs/audit/JARVIS_REPAIR_CHECKLIST.md` |
 
 ## What changed, in short
 

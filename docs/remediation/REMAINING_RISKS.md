@@ -38,11 +38,11 @@ Not exercised on any Windows machine:
 
 | ID | Status | What stays | Next step |
 |---|---|---|---|
-| ARCH-01 | first steps | `core/orchestrator.ts` is still 2,834 lines | Continue behind `routeGoldenTest`: (1) the rest of the deterministic router → `core/routes/`, (2) planning → `core/planner.ts`, (3) synthesis and spoken replies → `core/replies.ts` |
-| ARCH-02 | owners chosen | Two health systems, three buses, two memory front ends | Health: `healthManager` reads from `healthChecker`. Buses: move `core/agents/events.ts` and `brainLoop` off `messageBus`, then retire it. Memory: `memoryManager` the only writer |
+| ARCH-01 | named seams split | `core/orchestrator.ts` is 2,243 lines: request lifecycle, planning prompt assembly, synthesis and streaming, speech, barge-in, watchdog, recovery | Accepted for this repair: these share request state and run through the LLM. Next, only with a scripted-model golden test per path |
+| ARCH-02 | health agrees; naming fixed | Two health loops (dashboard snapshot, self-healing records) read the same source per service. A Redis failure is recorded on `memory_to_context`, whose repair (`memoryManager.init()`) does not touch Redis | If Redis failures show up on the PC, give Redis its own pipeline and repair |
 | ARCH-03 | narrowed | Shared fields on the orchestrator: `currentAbortController`, `currentProcessCallId`, `continueOffer`, conversation-end flags | Move them into the request scope one at a time, each with a two-request test like `requestScopeTest` §3 |
-| ARCH-04 | policy lists moved | The risk engine imports validators that sit next to their tools (`validateDeveloperCommand`, `packageScripts`, `resolveTargetUrl`, git checks) | Move each into `security/` with its tool re-exporting it, as done for `protectedTargets` |
-| ARCH-07 | shutdown and barge-in done | ~700 `console.*` calls; no levelled logger | Add a small logger with levels and redaction; convert module by module |
+| ARCH-04 | done | The risk engine still reads live state kept next to tools (element refs, dev servers, project scripts, push target); these are lookups, not rules | — |
+| ARCH-07 | one request in one file | Many `console.*` calls remain for the owner's console; the trace file has state changes, security events, tool calls and task-graph events | Convert remaining modules to the levelled logger as they are touched |
 | ARCH-09 / PERF-04 | measured, unchanged | Synchronous archive writes (2–20 ms here) | Change to `fs.promises` if stutter is heard after large agent runs |
 | PERF-02 | simulated | Not measured against a live provider | On the PC: count 429 replies in `logs` during a goal while talking to JARVIS; tune `JARVIS_BACKGROUND_YIELD_MS` |
 | PERF-05 | needs readings | No budgets set | Run JARVIS with `JARVIS_CONTROL_CENTER=1` during a goal and read the resource figures; set agent concurrency from them |

@@ -9,6 +9,8 @@ How each finding was checked in this pass:
 
 Statuses: **Fixed** (in this repair, with a regression test) · **Already Fixed** (before this repair; evidence from this pass) · **Not Reproducible** (measured; not a problem worth a change) · **Blocked** (needs the owner's PC, live keys or an owner action) · **Accepted Risk** · **Open** · **In Progress**.
 
+Final gate for this pass (Linux, Node 22, Redis running, `npx tsx tests/runAll.ts --ci`): **166 passed, 0 failed, 9 skipped** (each skip needs Windows, a live LLM key, a `.venv`, a bridge token or PowerShell 7; see `docs/remediation/TEST_RESULTS.md`). Python checks 23/23, 23/23, 33/33, 12/12; `tsc --noEmit` clean.
+
 "Passed" below means run here on Linux (Node 22), and on Windows CI where noted. None of it is a run on the owner's PC.
 
 ## Probes against the current code

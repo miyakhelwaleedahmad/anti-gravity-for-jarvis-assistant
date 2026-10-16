@@ -25,7 +25,8 @@ Kinds of evidence, kept apart below:
 | Phases E, F, G (`2bc7075`, `7ff1866`) | 157 | 0 | 9 | clean |
 | CI fixes (`ccc9e84`) | 157 | 0 | 9 | clean |
 | PC fixes (`295c4f5`, `ee1c8c8`), non-CI mode, Redis running | 161 | 0 | 6 environment | clean |
-| Second PC run fixes (this commit), CI mode, Redis running | 160 | 0 | 9 | clean |
+| Second PC run fixes (`12c6925`), CI mode, Redis running | 160 | 0 | 9 | clean |
+| Audit pass (`3a7d1b6`), CI mode, Redis running | 166 | 0 | 9 | clean |
 
 The 9 skipped are the same tests as before (table below). None counts as a pass.
 
@@ -191,6 +192,23 @@ Converted to the real speech path (TEST-02), all passing:
 - worldStateTest
 
 `voiceApprovalTest` keeps its own speaker model; the reason is in the file.
+
+### Added in the audit pass (`jarvis-audit-2026-10`)
+
+| Test | Finding | Final | On the old code |
+|---|---|---|---|
+| projectScriptPolicyTest (extended) | SEC-07 | 13/13 | 5/13 |
+| fallbackPolicyTest (extended) | SEC-09 | 14/14 | new check; behaviour already right |
+| testScriptIsolationTest | TEST-01 | 4/4 | 0/4 |
+| docsHygieneTest | ARCH-08 | 7/7 | 0/7 |
+| requestTraceLogTest | ARCH-07 | 8/8 | 2/7 |
+| policyOwnershipTest (extended) | ARCH-04 | 11/11 | 7/11 |
+| redisHealthAgreementTest | ARCH-02 | 11/11 | 5/11 (the healer never reached Redis; the dashboard probe hung) |
+| sourceFileNamesTest | ARCH-02 | 4/4 | 2/4 |
+| routeGoldenTest (extended) | ARCH-01 | 441/441 | 365/367 and 439/441 before steps 2 and 4 (only the "lives in the new module" checks failed) |
+| replyGoldenTest | ARCH-01 | 32/32 | 30/32 (same) |
+
+Python: vector persistence 23/23, vector startup 23/23, vector access 33/33, TTS retry 12/12. `tsc --noEmit` clean.
 
 ## Measurements
 

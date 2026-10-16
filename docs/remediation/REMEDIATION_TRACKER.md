@@ -97,3 +97,19 @@ The owner's `pnpm test` gave 160 passed, 3 failed and 3 "environment"; `pnpm ver
 | PC-10 | FIXED_AND_TESTED | `windowsScriptsTest`: no PowerShell 7 on the PC. The message did not say how to install it, nor that `JARVIS_TEST_PWSH` named a missing file | `findPwsh()` also looks in `C:\Program Files\PowerShell\7` (a CMD window opened before the install lacks the new PATH); the message gives the winget command and `pwsh -v`; `.env.example` documents it. JARVIS itself stays on Windows PowerShell 5.1 | `windowsScriptsTest` 47/47 with PowerShell 7.4.6 here; both missing-pwsh messages checked |
 | PC-11 | FIXED_AND_TESTED | "JARVIS_PLANNING_WATCHDOG_MS=30000 is below … Use at least 62000": `.env.example`'s commented example was 30000 next to a 20 s timeout. A value like "abc" or "0" fell back to the default without a word | Example now 62000 with the formula (leave empty to follow the timeout). A set value is still used as set, with the warning; a value that is not a positive number of milliseconds is not used, with a warning | `llmTimingTest` 20/20: the owner's 30000 with 20 s kept and warned; "abc", "-5", "0", "30s" use the default with a warning; empty: no warning |
 | PC-12 | DOCUMENTED | How to give the approval box more time | `.env.example`: a `.env` line, CMD `set JARVIS_APPROVAL_TIMEOUT_S=120`, PowerShell `$env:JARVIS_APPROVAL_TIMEOUT_S = "120"` | — |
+
+## Audit pass (`jarvis-audit-2026-10`, from `0f1f84a`)
+
+The owner's full audit (write-ups, diagrams, probes) re-checked every finding against the code. Per-finding detail: `docs/audit/JARVIS_REPAIR_CHECKLIST.md`. Rows above that changed:
+
+| Finding ID | Status now | What this pass found and did | Tests | Commit |
+|---|---|---|---|---|
+| SEC-07 | FIXED_AND_TESTED | Gap: a script of a project outside JARVIS ran at the owner's request with no question. Now asked once per session per script body | `projectScriptPolicyTest` 13/13 (old 5/13) | `8fb9ef7` |
+| SEC-09 | ALREADY_FIXED (test added) | A fallback is recorded in the call history under its own name | `fallbackPolicyTest` 14/14 | `6dc14e6` |
+| TEST-01 | FIXED_AND_TESTED | Gap: `test:latency`, `test:voice-core`, `test:pc-control` ran outside the runner and wrote into real memory and goals; now `runAll.ts --only=` | `testScriptIsolationTest` 4/4 (old 0/4) | `b2bd4fe` |
+| ARCH-08 | FIXED_AND_TESTED | Leftovers: `W:\` Chrome hints in code, stale requirements comment, README counts; 9 Python stubs and 20 old reports moved (not deleted) | `docsHygieneTest` 7/7 (old 0/7) | `fd72ce1` |
+| ARCH-07 | FIXED_AND_TESTED | The roadmap's bar was not met: state changes, security events and tool calls now join the structured log under the request's trace id, without arguments | `requestTraceLogTest` 8/8 (old 2/7) | `e10733f` |
+| ARCH-04 | FIXED_AND_TESTED | open_app and run_command allow-lists moved into `security/` byte for byte | `policyOwnershipTest` 11/11 (old 7/11) | `7739dfe` |
+| ARCH-02 | FIXED_AND_TESTED | The self-healing Redis probe called a function that never existed and always said ok; the dashboard probe could hang. One shared `probeRedis()`. `core/recoveryPlanner.ts` → `core/stepRecovery.ts`. Events and conversation memory checked: one transport, one store | `redisHealthAgreementTest` 11/11 (old 5/11), `sourceFileNamesTest` 4/4 (old 2/4) | `62ae200`, `b090423` |
+| ARCH-01 | FIXED_AND_TESTED (named seams) | Planning tool selection, spoken replies and the deterministic router moved out; 2,849 → 2,243 lines. The stateful coordinator stays (accepted) | `routeGoldenTest` 441/441, `replyGoldenTest` 32/32 | `f1de430`, `589d4a5`, `e97739c` |
+
