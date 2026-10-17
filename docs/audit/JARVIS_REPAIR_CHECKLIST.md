@@ -228,6 +228,17 @@ Also in the write-ups but not register findings: **PERF-06** (pollers; "reasonab
 | | |
 |---|---|
 | **Seen** | After `winget install --id Microsoft.PowerShell`, `pwsh -v` answered `PowerShell 7.6.7`, yet in the same CMD window the runner skipped `windowsScriptsTest` with "No PowerShell 7 (pwsh) found". (`pnpm test:live` passed 2/2 against the real provider in the same run: `finalIntegrationSuiteTest` 104 s, `successfulExecutionLifecycleAuditTest` 17 s.) |
-| **Likely cause** | `findPwsh()` only accepted a file that `fs.existsSync` reports. A Windows app execution alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`) is started by CMD but reported missing by `fs.existsSync`. Not confirmed on the PC (`where pwsh` shows it). |
+| **Cause (confirmed on the PC)** | `findPwsh()` only accepted a file that `fs.existsSync` reports. On the owner's PC `where pwsh` gives `C:\Users\imac\AppData\Local\Microsoft\WindowsApps\pwsh.exe`: a Windows app execution alias, which CMD starts but `fs.existsSync` reports missing. |
 | **Fix** | After the PATH and Program Files checks, ask the system to start `pwsh` and accept it only if it reports version 7 or later; the result is cached. |
-| **Proof** | Here: on PATH, found (1 ms); absent, none (4 ms); on PATH but hidden from `fs.existsSync` (the alias case, simulated): found by the new step, and `windowsScriptsTest` passes through the runner (22.8 s). `tsc --noEmit` clean; `windowsStateSessionTest`, `browserObservationTest`, `browserControlAgentTest`, `desktopControlTest`, `errorRecoveryTest` pass. Not yet run on the owner's PC. |
+| **Proof** | Here: on PATH, found (1 ms); absent, none (4 ms); on PATH but hidden from `fs.existsSync` (the alias case, simulated): found by the new step, and `windowsScriptsTest` passes through the runner (22.8 s). `tsc --noEmit` clean; `windowsStateSessionTest`, `browserObservationTest`, `browserControlAgentTest`, `desktopControlTest`, `errorRecoveryTest` pass. **On the owner's PC at `881ff63`: `windowsScriptsTest` PASS (88.6 s), PowerShell 7.6.7.** |
+
+### The owner's PC after PC-13 to PC-17
+
+| Run | Result |
+|---|---|
+| `pnpm test` at `1d9fc19` | 172 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 3 skipped (the two live tests, not asked for; PowerShell 7 not yet installed) |
+| `pnpm test:live` at `1d9fc19`, real provider | 2 passed: `finalIntegrationSuiteTest` 104 s, `successfulExecutionLifecycleAuditTest` 17 s |
+| `windowsScriptsTest` at `881ff63`, PowerShell 7.6.7 | PASS, 88.6 s |
+
+Near the runner's 120 s limit on this PC: `finalIntegrationSuiteTest` (104 s) and `windowsScriptsTest` (88.6 s). A slower day could show them as TIMEOUT without a defect.
+
