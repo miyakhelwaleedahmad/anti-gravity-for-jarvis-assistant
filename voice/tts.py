@@ -20,6 +20,11 @@ Phase 4 — Voice Pipeline Reliability:
   - speaking_end guaranteed even on mixer init failure (already existed) and on
     all new error paths.
 
+VOICE-003 — offline fallback voice: when both edge-tts attempts give no audio,
+  the phrase is spoken by Windows' built-in voice (System.Speech, through
+  PowerShell, text passed as base64 data) or pyttsx3 if installed, written to a
+  WAV file and played the same way. JARVIS_TTS_FALLBACK=off turns it off.
+
 Original fixes preserved:
   CRIT-4: pygame.mixer.init() wrapped in try/except — hardware error sent over WS
   HIGH-1: _worker_task stored as instance var, cancelled in stop()
@@ -28,9 +33,11 @@ Original fixes preserved:
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
+import subprocess
 import time
 import tempfile
 import warnings
@@ -58,6 +65,8 @@ TTS_EDGE_RETRY_TIMEOUT  = float(os.environ.get("JARVIS_TTS_EDGE_RETRY_TIMEOUT", 
 TTS_POLL_INTERVAL = float(os.environ.get("JARVIS_TTS_POLL_INTERVAL", "0.02"))
 # After the audio device fails to open, how long before a later phrase tries it again (VOICE-004).
 TTS_MIXER_RETRY_S = float(os.environ.get("JARVIS_TTS_MIXER_RETRY_S", "10"))
+# The longest an offline voice may take to write one phrase (VOICE-003).
+TTS_FALLBACK_TIMEOUT = float(os.environ.get("JARVIS_TTS_FALLBACK_TIMEOUT", "20"))
 
 # Phase 4: Base acoustic settling gap (ms). Actual gap = base + 15ms×words, capped at max.
 TTS_POST_PLAY_BASE_MS = float(os.environ.get("JARVIS_TTS_POST_PLAY_BASE_MS", "100"))
@@ -82,6 +91,77 @@ def _bridge_ready_payload(role: str) -> dict:
         "JARVIS_BRIDGE_TOKEN is required for NodeBridge authentication. "
         "Set it in .env, or set JARVIS_BRIDGE_DEV_MODE=true only for local insecure development."
     )
+
+
+def _ps_literal(value: str) -> str:
+    """A PowerShell expression for value, carried as base64 so it is data, never code."""
+    blob = base64.b64encode(value.encode("utf-8")).decode("ascii")
+    return f"[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{blob}'))"
+
+
+def _sapi_command(text: str, path: str) -> list:
+    """Windows' built-in voice (System.Speech) writing text to a WAV file at path."""
+    script = (
+        "Add-Type -AssemblyName System.Speech; "
+        "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+        f"$s.SetOutputToWaveFile({_ps_literal(path)}); "
+        f"$s.Speak({_ps_literal(text)}); "
+        "$s.Dispose()"
+    )
+    return ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
+
+
+def _has_audio(path: str) -> bool:
+    try:
+        return os.path.getsize(path) > 0
+    except OSError:
+        return False
+
+
+def _speak_windows_sapi(text: str, path: str) -> bool:
+    try:
+        r = subprocess.run(
+            _sapi_command(text, path), capture_output=True, timeout=TTS_FALLBACK_TIMEOUT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.error(f"Windows voice fallback failed: {exc}")
+        return False
+    if r.returncode != 0:
+        log.error(f"Windows voice fallback failed: {r.stderr.decode(errors='replace').strip()[:300]}")
+        return False
+    return _has_audio(path)
+
+
+def _speak_pyttsx3(text: str, path: str) -> bool:
+    try:
+        import pyttsx3
+        engine = pyttsx3.init()
+        engine.save_to_file(text, path)
+        engine.runAndWait()
+    except Exception as exc:
+        log.error(f"pyttsx3 fallback failed: {exc}")
+        return False
+    return _has_audio(path)
+
+
+def _offline_voices() -> list:
+    """
+    Offline voices to try, in order, when edge-tts gives no audio (VOICE-003):
+    (name, fn(text, wav_path) -> bool). JARVIS_TTS_FALLBACK=off turns them off.
+    """
+    if os.environ.get("JARVIS_TTS_FALLBACK", "auto").strip().lower() == "off":
+        return []
+    engines = []
+    if os.name == "nt":
+        engines.append(("windows-sapi", _speak_windows_sapi))
+    try:
+        import importlib.util
+        if importlib.util.find_spec("pyttsx3") is not None:
+            engines.append(("pyttsx3", _speak_pyttsx3))
+    except (ImportError, ValueError):
+        pass
+    return engines
 
 
 def _estimate_post_play_gap(text: str) -> float:
@@ -121,6 +201,12 @@ class TTSEngine:
         self._speaking_event_open     = False
         self._end_sent_for_current_item = False
         self._tmp_path: str = os.path.join(tempfile.gettempdir(), "jarvis_tts_audio.mp3")
+        self._fallback_path: str = os.path.join(tempfile.gettempdir(), "jarvis_tts_fallback.wav")
+        self._fallback_engines = _offline_voices()
+        if self._fallback_engines:
+            log.info(f"Offline fallback voice(s): {', '.join(n for n, _ in self._fallback_engines)}")
+        else:
+            log.info("No offline fallback voice (JARVIS_TTS_FALLBACK=off, or none available).")
 
         try:
             import pygame
@@ -292,6 +378,27 @@ class TTSEngine:
 
         return False
 
+    async def _synthesize_fallback(self, text: str) -> str:
+        """Try each offline voice; the name of the one that wrote audio, or ""."""
+        for name, fn in self._fallback_engines:
+            if self._interrupt_flag:
+                return ""
+            try:
+                os.remove(self._fallback_path)
+            except OSError:
+                pass
+            log.warning(f"edge-tts gave no audio; trying the offline voice {name}.")
+            # The speaking watchdog allowed for edge-tts; give it this voice's limit.
+            await self._send_lifecycle_event(
+                "speaking_delay", "synthesis_fallback", {"extra_ms": int(TTS_FALLBACK_TIMEOUT * 1000)},
+            )
+            try:
+                if await asyncio.to_thread(fn, text, self._fallback_path):
+                    return name
+            except Exception as exc:
+                log.error(f"Offline voice {name} failed: {exc}")
+        return ""
+
     async def speak(self, text: str) -> None:
         """Convert text to speech and play back with reliable interrupt handling."""
         if not text.strip():
@@ -315,17 +422,22 @@ class TTSEngine:
                 return
 
             success = await self._synthesize_with_retry(text)
+            play_path, voice = self._tmp_path, ""
+            if not success and not self._interrupt_flag:
+                voice = await self._synthesize_fallback(text)
+                success = bool(voice)
+                play_path = self._fallback_path
 
             # ── INTERRUPT CHECK 4: after synthesis, before playback ───────────
             if self._interrupt_flag or not success:
                 if self._interrupt_flag:
                     self._note_outcome("interrupted")
                 else:
-                    log.error(f"TTS synthesis failed after all retries. Skipping: {text[:60]}")
-                    self._note_outcome("synthesis_failed", "edge-tts gave no audio")
+                    log.error(f"TTS synthesis failed after all retries and fallbacks. Skipping: {text[:60]}")
+                    self._note_outcome("synthesis_failed", "edge-tts gave no audio, and no offline voice did")
                 return
 
-            self._pygame.mixer.music.load(self._tmp_path)
+            self._pygame.mixer.music.load(play_path)
             self._pygame.mixer.music.play()
             await self._send_speaking_start("playback_start")
 
@@ -335,7 +447,7 @@ class TTSEngine:
                     self._pygame.mixer.music.stop()
                     break
                 await asyncio.sleep(TTS_POLL_INTERVAL)
-            self._note_outcome("interrupted" if self._interrupt_flag else "played")
+            self._note_outcome("interrupted" if self._interrupt_flag else "played", f"fallback: {voice}" if voice else "")
 
             self._pygame.mixer.music.unload()
 

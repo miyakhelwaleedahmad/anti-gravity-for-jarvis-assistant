@@ -69,6 +69,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm run typecheck
+      - name: Windows offline voice writes audio (VOICE-003)
+        run: python tests/python/test_tts_windows_voice.py
       - name: Test (Windows)
         env:
           JARVIS_TEST_FULL_OUTPUT: '1'
@@ -126,3 +128,5 @@ jobs:
         run: python tests/python/test_tts_retry_delay.py
       - name: TTS audio device failure (VOICE-004)
         run: python tests/python/test_tts_audio_device.py
+      - name: Offline TTS fallback when edge-tts fails (VOICE-003)
+        run: python tests/python/test_tts_fallback.py

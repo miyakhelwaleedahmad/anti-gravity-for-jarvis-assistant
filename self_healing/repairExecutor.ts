@@ -185,6 +185,11 @@ export class RepairExecutor {
     return this.result(action, true, `"${action.target}" disabled.`);
   }
 
+  /**
+   * Only moves the label in fallbackRouter; nothing in tts.py reads it. The
+   * real fallback is in voice/tts.py (VOICE-003): when edge-tts gives no
+   * audio for a phrase, it speaks that phrase with an offline voice.
+   */
   private activateFallbackTTS(action: RecoveryAction): ExecutionResult {
     const next = fallbackRouter.markTTSFailed(fallbackRouter.getTTSEngine());
     const msg = next ? `TTS switched to fallback: ${next}` : "All TTS engines exhausted.";

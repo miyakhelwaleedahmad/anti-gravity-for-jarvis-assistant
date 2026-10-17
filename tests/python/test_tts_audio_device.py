@@ -23,6 +23,7 @@ import types
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "voice"))
 os.environ["JARVIS_TTS_MIXER_RETRY_S"] = "0"   # retry on the next phrase (the default waits 10 s)
+os.environ["JARVIS_TTS_FALLBACK"] = "off"   # these checks are about edge-tts; the offline voice has its own test
 sys.modules.setdefault("websockets", types.ModuleType("websockets"))
 
 passed = failed = 0

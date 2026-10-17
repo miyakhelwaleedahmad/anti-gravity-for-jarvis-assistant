@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(ROOT, "voice"))
 
 os.environ["JARVIS_TTS_EDGE_TIMEOUT"] = "0.2"
 os.environ["JARVIS_TTS_EDGE_RETRY_TIMEOUT"] = "0.3"
+os.environ["JARVIS_TTS_FALLBACK"] = "off"   # these checks are about edge-tts; the offline voice has its own test
 
 sys.modules.setdefault("websockets", types.ModuleType("websockets"))
 

@@ -9,8 +9,8 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | 1 | VOICE-001 | Same reply twice: second never spoken, JARVIS deaf 12 s | **Fixed** | `ttsRepeatDeliveryTest` 2/4 → 4/4 | `4f496f6` |
 | 2 | VOICE-002 | Answer slower than the planning watchdog dropped silently | **Fixed** (code); owner's `.env` line still to check | `planningTimeoutSpeechTest` 2/4 → 4/4; `llmTimingTest` 18/20 → 20/20 | `3b9d933` |
 | 3 | VOICE-004 | Audio-device failure mutes TTS for the run, unreported | **Fixed** | `test_tts_audio_device.py` 1/6 → 6/6 | `55b915b` |
-| 4 | VOICE-005 | Speech health = "text was sent" | **Fixed** | `speechOutcomeHealthTest` 2/7 → 7/7; `test_tts_audio_device.py` +3 outcome checks (fail before) | see below |
-| 5 | VOICE-003 | No real TTS fallback; old edge-tts allowed | Open | | |
+| 4 | VOICE-005 | Speech health = "text was sent" | **Fixed** | `speechOutcomeHealthTest` 2/7 → 7/7; `test_tts_audio_device.py` +3 outcome checks (fail before) | `f792aba` |
+| 5 | VOICE-003 | No real TTS fallback; old edge-tts allowed | **Fixed** (Windows voice: CI check; not yet heard on the owner's PC) | `test_tts_fallback.py` 1/9 → 10/10; `test_tts_windows_voice.py` (Windows CI) | (this commit) |
 | 6 | SEC-101 | Launched apps and voice services inherit every secret | Open | | |
 | 7 | TEST-101 | `windowControlTest` passes without PowerShell | Open | | |
 | 8 | SEC-102 + cleanup | Unused stdin "yes" helpers, dead bridge code, `ts-node` | Open | | |
@@ -57,3 +57,13 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Test first** | New `tests/speechOutcomeHealthTest.ts` (real bridge, `tts.py` stand-in that reports an outcome): old code 2/7: a reply that failed to synthesise left speech "healthy" and the dashboard "online"; a `hardware_error` changed nothing. `tests/python/test_tts_audio_device.py` gained 3 outcome checks that fail on `tts.py` without this change. |
 | **Fix** | `tts.py` puts `outcome` (`played`, `synthesis_failed`, `no_audio_device`, `interrupted`) and a short `detail` on every `speaking_end`; a failure in a turn is kept over a later success. The bridge records success or failure from it and from `hardware_error`, keeps `lastSpeechOutcome`, and no longer counts a send as success. A (re)connecting `tts.py` starts clean. The dashboard shows TTS "degraded: connected, but the last reply was not played: synthesis failed (…)". Three failures in 10 minutes let the existing watchdog restart `tts.py`. |
 | **Proof** | 7/7 and 9/9; `test_tts_retry_delay.py` 12/12; neighbours pass (`healthStatusTest`, `providerHealthTest`, `vectorSupervisorDashboardTest`, `parallelizationTimeoutAuditTest`, `ttsSpeakingLifecycleTest`, `speakingWatchdogQueueTest`, `voiceApprovalTest`, `bridgeSecurityTest`, `scenarioIntegrationTest`, `errorRecoveryTest`); `dashboardAccuracyTest`/`dashboardHealthSystemTest` environment-only here (no LLM key), as before. `tsc --noEmit` clean. |
+
+## 5. VOICE-003
+
+| | |
+|---|---|
+| **Confirmed** | `voice/tts.py` had one engine. When both edge-tts attempts failed the phrase was dropped. The self-healing `fallback_tts` action (`self_healing/repairExecutor.ts`) only moved a label in `fallbackRouter`, which nothing in `tts.py` reads. `requirements.txt` allowed `edge-tts>=6.1.9`; versions before 7.2.7 get HTTP 403 from Microsoft's service, per the audit. |
+| **Test first** | New `tests/python/test_tts_fallback.py` (edge-tts stand-in that always fails with a 403, pygame stand-in): old code 1/9 — no fallback list, nothing played, no PowerShell command builder. |
+| **Fix** | After edge-tts gives no audio (and no interrupt), `tts.py` tries offline voices in order: Windows' built-in voice (System.Speech via `powershell -NoProfile -NonInteractive`, text and path passed base64-encoded so they are data, not code), then `pyttsx3` if installed (not added as a dependency). The voice writes a WAV file that plays through the same pygame path. JARVIS is sent `speaking_delay` (+`JARVIS_TTS_FALLBACK_TIMEOUT`, default 20 s) so the speaking watchdog waits. The turn reports `played` with `detail: "fallback: windows-sapi"`, or `synthesis_failed` if every voice failed. `JARVIS_TTS_FALLBACK=off` turns it off. `requirements.txt`: `edge-tts>=7.2.7,<8` (7.3.1 is current on PyPI). |
+| **Proof** | `test_tts_fallback.py` 10/10; `test_tts_audio_device.py` 9/9 and `test_tts_retry_delay.py` 12/12 (both now set `JARVIS_TTS_FALLBACK=off`, since they test edge-tts paths); `py_compile` clean. New `tests/python/test_tts_windows_voice.py` runs the real Windows voice on the Windows CI job and checks it writes a RIFF/WAVE file; on Linux it says SKIP. |
+| **Not verified** | Hearing the fallback voice on the owner's PC. To check (CMD): `set JARVIS_TTS_FALLBACK=auto` and run `python tests\python\test_tts_windows_voice.py`, expecting `3 passed`. Upgrading edge-tts on the PC: `pip install -U "edge-tts>=7.2.7,<8"`. |
