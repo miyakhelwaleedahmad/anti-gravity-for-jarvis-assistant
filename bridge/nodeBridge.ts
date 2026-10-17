@@ -121,7 +121,6 @@ export class NodeBridge {
   private readyClients: Map<string, WebSocket> = new Map();
   private clientRoles: Map<WebSocket, string> = new Map();
   private commandQueue: Map<string, QueuedCommand[]> = new Map();
-  private pendingListen: boolean = false;
   private pendingListenStart: boolean = false;
   private pendingListenStartedAt: number | null = null;
   private pendingListenWarningTimer: ReturnType<typeof setTimeout> | null = null;
@@ -322,13 +321,6 @@ export class NodeBridge {
         }
       }
       this.commandQueue.delete(role);
-
-      // Legacy listen flush (action: listen)
-      if ((role === "stt" || role === "all") && this.pendingListen) {
-        console.log(`[NodeBridge] Flushing pending listen command to STT.`);
-        this.pendingListen = false;
-        this.send(ws, { type: "command", payload: { action: "listen" } });
-      }
     });
 
     // CRIT-4: Hardware error from Python voice module
@@ -384,17 +376,6 @@ export class NodeBridge {
 
           if (msg.type === "wake_word") {
             console.log(`[NodeBridge] 🔍 Ready clients at wake word: ${[...this.readyClients.keys()].join(", ") || "NONE"}`);
-          }
-
-          // ✅ FIXED: Missing ACK System handling
-          if (msg.type === ("ack" as any) && msg.id) {
-            const pending = (this as any).pendingAcks?.get(msg.id);
-            if (pending) {
-              clearTimeout(pending.timeout);
-              pending.resolve();
-              (this as any).pendingAcks.delete(msg.id);
-            }
-            return;
           }
 
           if (msg.type === "stt_result" && msg.payload?.text) {
@@ -548,61 +529,6 @@ export class NodeBridge {
     }
   }
 
-  async askForConfirmation(action: string, timeoutMs: number = 10000): Promise<boolean> {
-    return new Promise((resolve) => {
-      console.log(`[NodeBridge] Security Action required: ${action}. Waiting for CLI confirmation...`);
-      // Ask through the CLI for safety instead of voice which is prone to hallucinations
-      this.speakToClients(`Sir, I need your confirmation to ${action}. Please type confirm in the console.`);
-      
-      const timeout = setTimeout(() => {
-        console.log("\n[NodeBridge] Confirmation timed out. Aborting.");
-        resolve(false);
-      }, timeoutMs);
-
-      // Check stdin for confirmation
-      const onData = (data: Buffer) => {
-        const input = data.toString().trim().toLowerCase();
-        if (["confirm", "yes", "y", "proceed", "do it"].includes(input)) {
-           clearTimeout(timeout);
-           process.stdin.removeListener('data', onData);
-           resolve(true);
-        } else if (["cancel", "no", "n", "abort", "stop"].includes(input)) {
-           clearTimeout(timeout);
-           process.stdin.removeListener('data', onData);
-           resolve(false);
-        }
-      };
-      
-      process.stdin.on('data', onData);
-    });
-  }
-
-  waitForTextConfirmation(timeoutMs: number = 10000): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const accepted = new Set(["confirm", "yes", "approve", "approved", "proceed", "do it"]);
-      const denied = new Set(["cancel", "no", "deny", "abort", "stop"]);
-      let settled = false;
-
-      const finish = (value?: string, error?: Error) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        this._bridgeEvents.removeListener("stt_text", onText);
-        if (error) reject(error);
-        else resolve(value ?? "");
-      };
-
-      const onText = (text: string) => {
-        const clean = String(text).trim().toLowerCase();
-        if (accepted.has(clean)) finish("CONFIRM");
-        if (denied.has(clean)) finish("DENY");
-      };
-
-      const timer = setTimeout(() => finish(undefined, new Error("APPROVAL_TIMEOUT")), timeoutMs);
-      this._bridgeEvents.on("stt_text", onText);
-    });
-  }
-
   send(ws: WebSocket, msg: BridgeMessage): void {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(msg));
@@ -650,19 +576,6 @@ export class NodeBridge {
       console.log(`[NodeBridge] ⏳ ${role} not READY — queueing command`);
       const existing = this.commandQueue.get(role) ?? [];
       existing.push({ message: msg, timestamp: Date.now() });
-      this.commandQueue.set(role, existing);
-    }
-  }
-
-  sendToClient(role: string, message: object): void {
-    const client = this.readyClients.get(role);
-    if (client && client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(message));
-      console.log(`[NodeBridge] 📨 Sent to ${role}:`, message);
-    } else {
-      console.log(`[NodeBridge] ⏳ ${role} not READY — queueing command`);
-      const existing = this.commandQueue.get(role) ?? [];
-      existing.push({ message, timestamp: Date.now() });
       this.commandQueue.set(role, existing);
     }
   }
