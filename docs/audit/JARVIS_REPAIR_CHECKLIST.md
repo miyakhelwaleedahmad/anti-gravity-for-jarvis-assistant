@@ -242,3 +242,12 @@ Also in the write-ups but not register findings: **PERF-06** (pollers; "reasonab
 
 Near the runner's 120 s limit on this PC: `finalIntegrationSuiteTest` (104 s) and `windowsScriptsTest` (88.6 s). A slower day could show them as TIMEOUT without a defect.
 
+
+## Coverage check of the audit ZIP (second upload, `a11f1450-jarvis-audit-2026-10.zip`)
+
+Byte-for-byte the same ZIP as the first upload (SHA-256 `24b97444…f147`, 44 files: 13 reports, 18 diagrams, 13 probe files).
+
+| Check | Result |
+|---|---|
+| Every finding ID named in any of the 44 files has a row above | Yes, except three: **PERF-01** (the register's own alias for REL-01, fixed); **PERF-06** (background pollers; the audit already calls it mitigated: Graphify `graphify_file_neighbors` on `perception/systemStateObserver.ts` and the branch code show the pollers still go through the one persistent PowerShell session, intervals configurable); **PERF-08** (agent verification delay, a documented choice; `JARVIS_AGENT_VERIFY=0` and `JARVIS_AGENT_VERIFY_TIMEOUT_MS` still control it, `sevenAgentTest`). Neither PERF-06 nor PERF-08 is among the register's 54 findings |
+| Probes run against today's code | All of them. The two not in the table at the top: `perfProbe.mts`: registry overhead 0.26 / 0.14 / 0.05 ms per call (low sequential / medium sequential / medium parallel), same order as the audit's 0.12–0.18 / 0.04–0.07 / 0.03; `checkRefs.py`: 477 citations, 19 no longer resolve, all explained: 14 by this repair's own moves (orchestrator shortened, ARCH-01; `core/recoveryPlanner.ts` → `core/stepRecovery.ts`, ARCH-02; Python stubs → `_legacy/`, ARCH-08; `tools/terminalTool.ts` rules → `security/developerCommands.ts`, ARCH-04), 5 by files that did not exist at `30605cf` either (the audit names them as already removed or as a suggestion) |
