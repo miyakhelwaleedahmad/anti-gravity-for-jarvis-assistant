@@ -186,22 +186,38 @@ def _calibrate_energy() -> float:
         return _calibrated_energy
 
 
+VAD_FRAME_SAMPLES = 320     # 20 ms at 16 kHz
+VAD_MIN_VOICED_FRAMES = 5   # 100 ms of frames above the threshold
+
+
 def _vad_gate(audio_data, noise_floor: float) -> bool:
     """
-    Phase 4: Voice Activity Gate — simple RMS energy check.
-    Returns True if the audio passes (is likely real speech).
-    Returns False if the audio is below the noise floor × STT_MIN_ENERGY_RATIO,
-    indicating silence or electronic noise.
+    Phase 4: Voice Activity Gate — energy check before Whisper.
+    Returns True if the audio passes (is likely real speech): at least 100 ms
+    of 20 ms frames whose RMS reaches noise_floor × STT_MIN_ENERGY_RATIO.
+
+    VOICE-009: it used one RMS over the whole recording, which includes the
+    pause the recogniser waits for after speech. A short, soft "yes" averaged
+    below the threshold and was dropped; a single loud click averaged above it.
     """
     try:
         import numpy as np
         raw = audio_data.get_raw_data(convert_rate=16000, convert_width=2)
         samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
-        rms = float(np.sqrt(np.mean(samples ** 2))) if len(samples) > 0 else 0.0
         threshold = noise_floor * STT_MIN_ENERGY_RATIO
-        passes = rms >= threshold
+        frames = len(samples) // VAD_FRAME_SAMPLES
+        if frames == 0:
+            log.info("[STT] VAD gate rejected audio: shorter than one 20 ms frame. Suppressing Whisper call.")
+            return False
+        frame_rms = np.sqrt(np.mean(samples[: frames * VAD_FRAME_SAMPLES].reshape(frames, VAD_FRAME_SAMPLES) ** 2, axis=1))
+        voiced = int(np.count_nonzero(frame_rms >= threshold))
+        passes = voiced >= VAD_MIN_VOICED_FRAMES
         if not passes:
-            log.info(f"[STT] VAD gate rejected audio: RMS={rms:.0f} < threshold={threshold:.0f} (noise_floor={noise_floor:.0f}×{STT_MIN_ENERGY_RATIO}). Suppressing Whisper call.")
+            log.info(
+                f"[STT] VAD gate rejected audio: {voiced * 20} ms above threshold={threshold:.0f} "
+                f"(noise_floor={noise_floor:.0f}×{STT_MIN_ENERGY_RATIO}; needs {VAD_MIN_VOICED_FRAMES * 20} ms; "
+                f"loudest frame RMS={float(frame_rms.max()):.0f}). Suppressing Whisper call."
+            )
         return passes
     except Exception as e:
         log.debug(f"[STT] VAD gate error ({e}) — passing audio through.")

@@ -16,9 +16,9 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | 8 | SEC-102 + cleanup | Unused stdin "yes" helpers, dead bridge code, `ts-node` | **Fixed** | `approvalPathsTest` 0/7 → 7/7 | `dc99250` + docs `343c84a` |
 | 9 | VOICE-008 | Echo filter drops short user phrases | **Fixed** | `echoShortReplyTest` 7/12 → 13/13 | `0e210d9` |
 | 10 | REL-101 | Two tests near the 120 s limit on the owner's PC | **Fixed** (limits only; the owner's PC run is the check) | runner output shows the limit; no new test (runner change) | `5c0ae37` |
-| 11 | VOICE-007 / TEST-102 | Voice tests never use the real hand-off; no real `tts.py` test | **Fixed** (new end-to-end test; found and fixed a VOICE-005 gap) | `realTtsHandoffTest` 13/13 (without the tts.py fix: 11/13) | (this commit) |
+| 11 | VOICE-007 / TEST-102 | Voice tests never use the real hand-off; no real `tts.py` test | **Fixed** (new end-to-end test; found and fixed a VOICE-005 gap) | `realTtsHandoffTest` 13/13 (without the tts.py fix: 11/13) | `49de8d6` |
 | 12 | VOICE-006 | Voice barge-in during speech impossible | Open | | |
-| 13 | VOICE-009 | STT energy gate averages over silence | Open | | |
+| 13 | VOICE-009 | STT energy gate averages over silence | **Fixed** (synthetic audio; real microphone not tested) | `test_stt_vad_gate.py` 3/5 → 5/5 | (this commit) |
 | — | APR-001 | Lowercase "yes" rejected | Not reproducible (audit) | `approvalTypeAheadTest` 9/9 | — |
 
 ## 1. VOICE-001
@@ -130,3 +130,12 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **CI** | Both `build-and-test` (Linux) and `windows` install Python 3.12 + pygame + websockets and set `JARVIS_TEST_PYTHON`, so the test runs there, not BLOCKED. |
 | **Proof** | Here: 13/13; `test_tts_fallback.py` 10/10, `test_tts_audio_device.py` 9/9, `test_tts_retry_delay.py` 12/12. |
 | **Not done** | The older tests that use `fakeTts.ts` were not converted; they still test JARVIS's side against a stand-in, and this test now covers the real hand-off. Real speakers and Microsoft's service are not part of it; on the owner's PC, `pnpm verify:windows` and hearing JARVIS are the check. |
+
+## 12. VOICE-009
+
+| | |
+|---|---|
+| **Confirmed** | `voice/stt.py` `_vad_gate()` took one RMS over the whole recording, which includes the pause the recogniser waits for after speech. New `tests/python/test_stt_vad_gate.py` (synthetic 16 kHz audio) on the old code: 3/5 — a short, soft "yes" with the pause after it was rejected (whole-clip RMS ~250 against a 450 threshold, the word itself ~707), and a single 20 ms click in silence passed (whole-clip RMS ~570). |
+| **Fix** | The gate measures 20 ms frames and passes when at least 100 ms of them reach `noise_floor × JARVIS_STT_MIN_ENERGY_RATIO`. The threshold and the ratio setting are unchanged; audio shorter than one frame is rejected; numpy missing still lets audio through, as before. The log line now says how many ms were above the threshold and the loudest frame. |
+| **Proof** | 5/5; `py_compile` clean; added to CI `python-checks`. |
+| **Not verified** | A real microphone on the owner's PC. If short words are still dropped, the log shows `VAD gate rejected audio: N ms above threshold=…`; lowering `JARVIS_STT_MIN_ENERGY_RATIO` in `.env` (default 1.5) is the setting to try. |
