@@ -222,3 +222,12 @@ Also in the write-ups but not register findings: **PERF-06** (pollers; "reasonab
 | **Seen** | `FAIL windowsScriptsTest 1876ms (expected here: needs PowerShell 7, pwsh (JARVIS_TEST_PWSH))`: the runner ran a test whose prerequisite its own check had already found missing, and the test said so by failing. |
 | **Fix** | Run directly without PowerShell 7, the test prints `BLOCKED: <how to install>` and exits 3 (blocked, not a failure of the scripts). The runner skips, in every mode, a test whose host-checked prerequisite is missing (PowerShell 7, Chromium), with the reason and the install steps; previously only `--ci` did. Nothing is installed or changed on the PC. |
 | **Proof** | Direct run without pwsh: BLOCKED with the install steps, exit 3; with `JARVIS_TEST_PWSH` naming a missing file: BLOCKED naming it. Runner without pwsh: SKIP with the reason. **With real PowerShell 7.4.6 here (`JARVIS_TEST_PWSH`): PASS (26 s).** Windows CI (`windows-latest`, pwsh preinstalled) passed it at `b81aeac`. Not run on the owner's PC: PowerShell 7 is not installed there. |
+
+### PC-17: PowerShell 7 installed, but the tests still found none
+
+| | |
+|---|---|
+| **Seen** | After `winget install --id Microsoft.PowerShell`, `pwsh -v` answered `PowerShell 7.6.7`, yet in the same CMD window the runner skipped `windowsScriptsTest` with "No PowerShell 7 (pwsh) found". (`pnpm test:live` passed 2/2 against the real provider in the same run: `finalIntegrationSuiteTest` 104 s, `successfulExecutionLifecycleAuditTest` 17 s.) |
+| **Likely cause** | `findPwsh()` only accepted a file that `fs.existsSync` reports. A Windows app execution alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`) is started by CMD but reported missing by `fs.existsSync`. Not confirmed on the PC (`where pwsh` shows it). |
+| **Fix** | After the PATH and Program Files checks, ask the system to start `pwsh` and accept it only if it reports version 7 or later; the result is cached. |
+| **Proof** | Here: on PATH, found (1 ms); absent, none (4 ms); on PATH but hidden from `fs.existsSync` (the alias case, simulated): found by the new step, and `windowsScriptsTest` passes through the runner (22.8 s). `tsc --noEmit` clean; `windowsStateSessionTest`, `browserObservationTest`, `browserControlAgentTest`, `desktopControlTest`, `errorRecoveryTest` pass. Not yet run on the owner's PC. |

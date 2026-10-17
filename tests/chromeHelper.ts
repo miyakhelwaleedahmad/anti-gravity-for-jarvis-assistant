@@ -6,7 +6,7 @@
  * finds a PowerShell 7 (pwsh) for the script checks (windowsScriptsTest).
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
@@ -29,12 +29,26 @@ export function findChromium(): string | undefined {
 
 /**
  * PowerShell 7: JARVIS_TEST_PWSH, else pwsh on the PATH, else (Windows) where
- * its installer puts it. A CMD window opened before the install does not have
- * the new PATH yet.
+ * its installer puts it, else whatever the system starts as `pwsh`. A CMD
+ * window opened before the install does not have the new PATH yet.
+ *
+ * The last step is for app execution aliases (%LOCALAPPDATA%\Microsoft\
+ * WindowsApps\pwsh.exe, how some installs provide pwsh): CMD runs them, but
+ * fs.existsSync says they do not exist. On the owner's PC `pwsh -v` answered
+ * "PowerShell 7.6.7" in the same window where the tests reported none; such
+ * an alias is the likely reason (not confirmed).
  */
+let pwshLookup: { path: string | undefined } | undefined;
+
 export function findPwsh(): string | undefined {
   const named = process.env['JARVIS_TEST_PWSH'];
   if (named) return fs.existsSync(named) ? named : undefined;
+  if (pwshLookup) return pwshLookup.path;
+  pwshLookup = { path: lookUpPwsh() };
+  return pwshLookup.path;
+}
+
+function lookUpPwsh(): string | undefined {
   const exe = process.platform === 'win32' ? 'pwsh.exe' : 'pwsh';
   for (const dir of (process.env['PATH'] ?? '').split(path.delimiter)) {
     if (dir && fs.existsSync(path.join(dir, exe))) return path.join(dir, exe);
@@ -43,6 +57,11 @@ export function findPwsh(): string | undefined {
     const installed = path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe');
     if (fs.existsSync(installed)) return installed;
   }
+  // Let the system find and start it, and count it only if it says it is 7 or later.
+  const r = spawnSync(exe, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.Major'], {
+    encoding: 'utf8', timeout: 20_000, windowsHide: true,
+  });
+  if (r.status === 0 && Number(String(r.stdout).trim()) >= 7) return exe;
   return undefined;
 }
 
