@@ -197,6 +197,10 @@ class TTSEngine:
         # (VOICE-005): played, synthesis_failed, no_audio_device, playback_failed, interrupted.
         self._turn_outcome = ""
         self._turn_detail = ""
+        # The bridge's ids of the replies in this turn, and the voice that played
+        # them, sent on speaking_end so each outcome belongs to its reply.
+        self._turn_ids: list = []
+        self._turn_engine = ""
         self._pygame: Any = None
         self._speaking_event_open     = False
         self._end_sent_for_current_item = False
@@ -276,11 +280,18 @@ class TTSEngine:
         self._end_sent_for_current_item = True
         self.speaking = False
         self._speaking_event_open = False
-        extra = {"outcome": self._turn_outcome} if self._turn_outcome else None
+        extra = {"outcome": self._turn_outcome} if self._turn_outcome else {}
         if extra and self._turn_detail:
             extra["detail"] = self._turn_detail
+        if extra and self._turn_engine:
+            extra["engine"] = self._turn_engine
+        if self._turn_ids:
+            extra["ids"] = list(self._turn_ids)
         self._turn_outcome = ""
         self._turn_detail = ""
+        self._turn_ids = []
+        self._turn_engine = ""
+        extra = extra or None
         await self._send_lifecycle_event("speaking_end", reason, extra)
 
     def _note_outcome(self, outcome: str, detail: str = "") -> None:
@@ -294,7 +305,10 @@ class TTSEngine:
     async def _worker(self) -> None:
         log.info("Started TTS processing queue worker.")
         while self.running:
-            text = await self.audio_queue.get()
+            item = await self.audio_queue.get()
+            text, req_id = item if isinstance(item, tuple) else (item, "")
+            if req_id:
+                self._turn_ids.append(req_id)
             self._interrupt_flag = False
             self._end_sent_for_current_item = False
             try:
@@ -448,6 +462,8 @@ class TTSEngine:
                     break
                 await asyncio.sleep(TTS_POLL_INTERVAL)
             self._note_outcome("interrupted" if self._interrupt_flag else "played", f"fallback: {voice}" if voice else "")
+            if not self._interrupt_flag:
+                self._turn_engine = voice or "edge-tts"
 
             self._pygame.mixer.music.unload()
 
@@ -515,8 +531,9 @@ class TTSEngine:
 
                             if msg_type == "tts":
                                 text = msg.get("payload", {}).get("text", "")
+                                req_id = str(msg.get("payload", {}).get("id", "") or "")
                                 if text:
-                                    await self.audio_queue.put(text)
+                                    await self.audio_queue.put((text, req_id) if req_id else text)
                                     log.info(f"Queued: {text[:30]}…")
 
                             elif msg_type == "tts_stop" or (

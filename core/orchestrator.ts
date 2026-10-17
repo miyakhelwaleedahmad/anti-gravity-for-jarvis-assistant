@@ -424,6 +424,17 @@ export class JarvisOrchestrator {
           }
           this._conversationStarted = false;
           agentStateMachine.reset();
+        } else if (!nodeBridge.speechInFlight && !conversationBus.isSpeaking) {
+          // SPEAKING, but no reply is on its way to tts.py (not connected, its
+          // connection dropped, voice off): no speaking_end will come to end
+          // the request. Before, it waited for the speaking watchdog (VOICE-001).
+          console.log('[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.');
+          if (!this._conversationEndHandled) {
+            this._conversationEndHandled = true;
+            if (this._conversationStarted) conversationBus.conversationEnded();
+          }
+          this._conversationStarted = false;
+          agentStateMachine.reset();
         } else {
           console.log('[Orchestrator] State is SPEAKING — deferring reset and conversationEnded to IDLE until TTS completes.');
           this.isConversationEndDeferred = true;
@@ -2170,6 +2181,7 @@ export class JarvisOrchestrator {
 
     if (data.fromState === AgentState.SPEAKING) {
       console.warn('[Orchestrator] SPEAKING watchdog reset received. Forcing TTS recovery cleanup.');
+      nodeBridge.noteSpeechTimedOut();
       nodeBridge.sendToRole('tts', { type: 'command', payload: { action: 'stop' } });
       nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
       if (this.isConversationEndDeferred) {

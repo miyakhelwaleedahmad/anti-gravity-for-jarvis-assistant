@@ -38,6 +38,11 @@ const { orchestrator } = await import('../core/orchestrator.js');
 const { modelRouter } = await import('../bridge/modelRouter.js');
 const { memoryManager } = await import('../memory/memoryManager.js');
 const { nodeBridge } = await import('../bridge/nodeBridge.js');
+const { attachSilentTtsClient } = await import('./ttsBridgeClient.js');
+// tts.py is connected and still speaking when a request ends, as on the PC:
+// without one, a request ends at once at IDLE (VOICE-001), which is not what
+// "moved the state to IDLE under the new one" checks.
+attachSilentTtsClient(nodeBridge);
 const { agentStateMachine, AgentState } = await import('../core/agentStateMachine.js');
 
 let passed = 0;
@@ -54,7 +59,8 @@ await memoryManager.init();
 
 // Everything JARVIS says goes through speakToClients; speak() itself stays real.
 let spoken: string[] = [];
-nodeBridge.speakToClients = ((text: string) => { spoken.push(text); }) as typeof nodeBridge.speakToClients;
+const realSpeak = nodeBridge.speakToClients.bind(nodeBridge);
+nodeBridge.speakToClients = ((text: string, opts?: { allowRepeat?: boolean }) => { spoken.push(text); realSpeak(text, opts); }) as typeof nodeBridge.speakToClients;
 
 // Stand-in model. A planning call follows the plan set for its request; a
 // planning call can be held until it is aborted, as the real one was.

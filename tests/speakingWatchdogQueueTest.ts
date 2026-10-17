@@ -82,6 +82,9 @@ console.log('\n--- The conversation bus guard (it reopens the mic) allows for qu
 {
   const { conversationBus } = await import('../core/conversationBus.js');
   const { nodeBridge } = await import('../bridge/nodeBridge.js');
+  const { attachSilentTtsClient } = await import('./ttsBridgeClient.js');
+  // tts.py is connected; its speaking_start/end are sent below by hand.
+  attachSilentTtsClient(nodeBridge);
   let ends = 0;
   conversationBus.subscribe('speaking:end', () => { ends++; });
   const question = 'Sir, I need your approval to turn on full control mode. Say approve, or say deny.';

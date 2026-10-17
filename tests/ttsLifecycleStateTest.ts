@@ -1,6 +1,12 @@
 import { orchestrator } from '../core/orchestrator.js';
 import { conversationBus } from '../core/conversationBus.js';
 import { agentStateMachine, AgentState } from '../core/agentStateMachine.js';
+import { nodeBridge } from '../bridge/nodeBridge.js';
+import { attachSilentTtsClient } from './ttsBridgeClient.js';
+
+// tts.py is connected; this test ends its speech itself. With no tts.py the
+// bridge ends the turn at once, since nothing else would (VOICE-001).
+attachSilentTtsClient(nodeBridge);
 
 let passed = 0;
 let failed = 0;

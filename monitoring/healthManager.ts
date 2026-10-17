@@ -268,7 +268,7 @@ class HealthManager {
 
   private async probePipelines(): Promise<ServiceHealth[]> {
     try {
-      const { nodeBridge } = await import('../bridge/nodeBridge.js');
+      const { nodeBridge, isSpeechFailure } = await import('../bridge/nodeBridge.js');
       const readyRoles = nodeBridge.getReadyClients();
       
       const results: ServiceHealth[] = [];
@@ -278,8 +278,8 @@ class HealthManager {
         const isReady = readyRoles.includes(svc);
         const displayName = svc === 'wakeword' ? 'wake_word' : svc;
         const heard = svc === 'tts' ? nodeBridge.lastSpeechOutcome : null;
-        if (isReady && heard && heard.outcome !== 'played') {
-          // VOICE-005: connected is not the same as heard.
+        if (isReady && heard && isSpeechFailure(heard.outcome)) {
+          // VOICE-005: connected (transport) is not the same as heard (delivery).
           results.push({
             name: displayName,
             status: 'degraded',
@@ -287,10 +287,12 @@ class HealthManager {
             checkedAt: Date.now()
           });
         } else if (isReady) {
+          // Stopped by the user (cancelled) or queued while disconnected is not a fault.
+          const last = heard ? `; last reply: ${heard.outcome.replace(/_/g, ' ')}${heard.engine ? ` (${heard.engine})` : ''}` : '';
           results.push({
             name: displayName,
             status: 'online',
-            detail: 'connected via bridge',
+            detail: `connected via bridge${last}`,
             checkedAt: Date.now()
           });
         } else {

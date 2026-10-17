@@ -140,6 +140,7 @@ if (ready) {
     ok(`tts.py was given the exact text${label}`, said.length === round && said[round - 1] === REPLY, JSON.stringify(said));
     ok(`it reported speaking_start, then speaking_end${label}`, ended && startIdx >= 0 && startIdx < endIdx, events.map((e) => e.type).join(' → ') || lastLines());
     ok(`speaking_end says the reply was played${label}`, end.outcome === 'played', JSON.stringify(end));
+    ok(`…by edge-tts, for this reply's id${label}`, end.engine === 'edge-tts' && Array.isArray(end.ids) && end.ids.length === 1 && !nodeBridge.speechInFlight, JSON.stringify(end));
     const idle = await until(() => agentStateMachine.currentState === AgentState.IDLE, 5_000);
     ok(`JARVIS is IDLE again${label}`, idle, agentStateMachine.currentState);
   }

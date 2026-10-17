@@ -21,6 +21,11 @@ const STT_READY_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_STT_READY_TIMEOU
 const MAX_PENDING_TTS = 3;
 /** A repeat of the phrase just queued, sooner than this and before it finished playing, is dropped. */
 const TTS_DEDUP_WINDOW_MS = 2_000;
+/** Speech outcomes that count against speech health (VOICE-005). */
+const SPEECH_FAILURES = new Set(["synthesis_failed", "no_audio_device", "playback_failed", "timed_out"]);
+export function isSpeechFailure(outcome: string): boolean {
+  return SPEECH_FAILURES.has(outcome);
+}
 
 export function getBridgeAuthStatus(): { requiresToken: boolean; devMode: boolean; tokenConfigured: boolean } {
   const isDev = (process.env.JARVIS_BRIDGE_DEV_MODE ?? "false").toLowerCase() === "true";
@@ -139,7 +144,15 @@ export class NodeBridge {
    * hardware_error (VOICE-005). "Speech output" used to be recorded healthy
    * when the text was sent, so a reply that never played changed nothing.
    */
-  lastSpeechOutcome: { outcome: string; detail: string; at: number } | null = null;
+  lastSpeechOutcome: { outcome: string; detail: string; at: number; engine?: string } | null = null;
+  /**
+   * Replies sent to tts.py and not ended yet, by request id (VOICE-005). Each
+   * tts message carries its id and tts.py lists the ids a speaking_end covers,
+   * so a late or repeated speaking_end cannot mark a newer reply as played or
+   * close the turn that reply is still waiting on.
+   */
+  private _inFlight = new Map<string, number>();
+  private _speechSeq = 0;
 
   // Bridge-level event emitter for internal events (client_connected, etc.)
   // Kept separate from the message-handler Map to avoid TypeScript conflicts.
@@ -173,6 +186,11 @@ export class NodeBridge {
 
   getReadyClients(): string[] {
     return Array.from(this.readyClients.keys());
+  }
+
+  /** Whether a reply sent to tts.py has not ended yet. With none, nothing will end the speaking turn. */
+  get speechInFlight(): boolean {
+    return this._inFlight.size > 0;
   }
 
   isRoleReady(role: string): boolean {
@@ -291,9 +309,7 @@ export class NodeBridge {
         console.log(`[NodeBridge] Flushing ${this.pendingTTS.length} queued TTS message(s).`);
         const flush = [...this.pendingTTS];
         this.pendingTTS = [];
-        for (const text of flush) {
-          this.send(ws, { type: "tts", payload: { text } });
-        }
+        for (const text of flush) this.sendTts(ws, text);
       }
 
       // ✅ FIX: Flush queued listen_start to STT when it becomes ready
@@ -417,6 +433,12 @@ export class NodeBridge {
 
       ws.on("close", () => {
         const role = this.clientRoles.get(ws);
+        // tts.py went away mid-reply: no speaking_end will come (VOICE-001).
+        if (role === "tts" && this.readyClients.get("tts") === ws && this._inFlight.size > 0) {
+          this._inFlight.clear();
+          this.noteSpeechOutcome("not_connected", "tts.py disconnected before the reply ended");
+          this.closeSpeakingTurn({ reason: "not_connected", outcome: "not_connected" });
+        }
         this.clients.delete(ws);
         this.authenticatedClients.delete(ws);
         
@@ -491,15 +513,45 @@ export class NodeBridge {
     conversationBus.noteSpeechQueued();
   }
 
-  /** Records whether the speech turn was heard (VOICE-005). An interrupted one is neither. */
-  private noteSpeechOutcome(outcome: string, detail = ""): void {
+  /**
+   * Records whether the speech turn was heard (VOICE-005). Only these count
+   * against speech health; interrupted and cancelled (the user stopped it) and
+   * not_connected (shown as the connection itself) are neither success nor
+   * failure. An interrupted turn leaves the last outcome as it was.
+   */
+  private noteSpeechOutcome(outcome: string, detail = "", engine = ""): void {
     if (outcome === "interrupted") return;
-    this.lastSpeechOutcome = { outcome, detail: detail.slice(0, 200), at: Date.now() };
+    this.lastSpeechOutcome = { outcome, detail: detail.slice(0, 200), at: Date.now(), ...(engine ? { engine: engine.slice(0, 40) } : {}) };
     if (outcome === "played") {
       pipelineRegistry.recordSuccess("brain_to_tts");
-    } else {
+    } else if (SPEECH_FAILURES.has(outcome)) {
       pipelineRegistry.recordFailure("brain_to_tts", `reply not played: ${outcome}${detail ? ` (${detail.slice(0, 120)})` : ""}`);
     }
+  }
+
+  /** The speaking watchdog gave up on the replies in flight (VOICE-005). */
+  noteSpeechTimedOut(): void {
+    if (this._inFlight.size === 0) return;
+    this._inFlight.clear();
+    this.noteSpeechOutcome("timed_out", "no speaking_end within the speaking watchdog");
+  }
+
+  private sendTts(ws: WebSocket, text: string): void {
+    const id = `tts-${++this._speechSeq}`;
+    this._inFlight.set(id, Date.now());
+    ws.send(JSON.stringify({ type: "tts", payload: { text, id } } satisfies BridgeMessage), (err) => {
+      // The socket closed under the send: the close handler ends the turn.
+      if (err) console.warn(`[NodeBridge] TTS send failed: ${err.message}`);
+    });
+  }
+
+  /** Ends the speaking turn: the same path as tts.py's speaking_end. */
+  private closeSpeakingTurn(payload: any = {}): void {
+    this.ttsEndedMs = Date.now();
+    this._lastQueuedTts = "";
+    agentStateMachine.noteSpeechFinished();
+    conversationBus.speakingEnded();
+    this._bridgeEvents.emit("speaking_end", payload);
   }
 
   handleSpeakingLifecycleSignal(type: "speaking_start" | "speaking_end", payload: any = {}): void {
@@ -513,13 +565,23 @@ export class NodeBridge {
     }
 
     console.log("[NodeBridge] RX type=speaking_end role=tts");
-    this.ttsEndedMs = Date.now();
-    this._lastQueuedTts = "";
+    if (Array.isArray(payload?.ids)) {
+      const covered = payload.ids.map(String).filter((id: string) => this._inFlight.delete(id));
+      if (covered.length === 0) {
+        console.log(`[NodeBridge] speaking_end for replies no longer in flight (${payload.ids.join(", ").slice(0, 80)}) — ignored.`);
+        return;
+      }
+    } else {
+      // A tts.py without ids: one speaking_end covers everything sent.
+      this._inFlight.clear();
+    }
     // No outcome (a turn stopped before anything was tried): nothing to record.
-    if (payload?.outcome) this.noteSpeechOutcome(String(payload.outcome), String(payload?.detail ?? ""));
-    agentStateMachine.noteSpeechFinished();
-    conversationBus.speakingEnded();
-    this._bridgeEvents.emit("speaking_end", payload);
+    if (payload?.outcome) this.noteSpeechOutcome(String(payload.outcome), String(payload?.detail ?? ""), String(payload?.engine ?? ""));
+    if (this._inFlight.size > 0) {
+      console.log(`[NodeBridge] ${this._inFlight.size} newer repl${this._inFlight.size === 1 ? "y" : "ies"} still in flight — speaking turn stays open.`);
+      return;
+    }
+    this.closeSpeakingTurn(payload);
   }
 
   removeListener(type: BridgeMessage["type"], handler: MessageHandler): void {
@@ -549,6 +611,10 @@ export class NodeBridge {
       console.log('[NodeBridge] 🛑 Stop command for TTS received. Clearing pendingTTS queue.');
       this.pendingTTS = [];
       this._lastQueuedTts = "";
+      if (this._inFlight.size > 0) {
+        this._inFlight.clear();
+        this.noteSpeechOutcome("cancelled", "stopped before it finished");
+      }
       agentStateMachine.noteSpeechFinished();
     }
 
@@ -610,7 +676,6 @@ export class NodeBridge {
     // The same for the guard that reopens the mic (else JARVIS hears itself).
     conversationBus.noteSpeechQueued();
 
-    const msg: BridgeMessage = { type: "tts", payload: { text: cleanText } };
     const ttsClient = this.readyClients.get("tts");
 
     if (!ttsClient || ttsClient.readyState !== WebSocket.OPEN) {
@@ -622,12 +687,17 @@ export class NodeBridge {
       }
       console.warn("[NodeBridge] No READY clients yet — queueing TTS.");
       this.pendingTTS.push(cleanText);
+      // Nothing will end this speaking turn: end it now, so JARVIS does not
+      // wait in SPEAKING with the wake word paused for the watchdog (VOICE-001).
+      // The reply is kept and spoken when tts.py connects.
+      this.noteSpeechOutcome("not_connected", "tts.py is not connected; the reply is queued");
+      if (this._inFlight.size === 0) this.closeSpeakingTurn({ reason: "not_connected", outcome: "not_connected" });
       return;
     }
 
     console.log(`[NodeBridge] → [tts] speak`);
     // Health is recorded from what tts.py reports back (speaking_end), not here.
-    ttsClient.send(JSON.stringify(msg));
+    this.sendTts(ttsClient, cleanText);
   }
 
   /**
