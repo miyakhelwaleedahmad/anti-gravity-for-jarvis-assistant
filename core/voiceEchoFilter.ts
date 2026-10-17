@@ -82,6 +82,34 @@ function overlapScore(cleanStt: string, cleanTts: string): { unigram: number; bi
   return { unigram, bigram, combined };
 }
 
+/** Whether `words` appear in `within`, whole and in order. */
+function containsWords(within: string[], words: string[]): boolean {
+  if (words.length === 0 || words.length > within.length) return false;
+  for (let i = 0; i + words.length <= within.length; i++) {
+    if (words.every((w, j) => within[i + j] === w)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the heard text is JARVIS's phrase coming back (VOICE-008). Before,
+ * any character fragment counted: "no" was an echo of "let me know", "here"
+ * of "here are", and "the second one" of "the first one or the second one?".
+ * Now it must be whole words of the phrase, in order, and either:
+ *   - the whole phrase, most of it (60%), or at least four words; or
+ *   - `shortFragments`: two or more words of something JARVIS just STATED
+ *     ("opening google" of "I am opening google for you"). After a question,
+ *     a short fragment is the user's answer, made of the question's words.
+ */
+function isEchoOf(heard: string, phrase: string, shortFragments = false): boolean {
+  const h = heard.split(/\s+/).filter(Boolean);
+  const p = phrase.split(/\s+/).filter(Boolean);
+  if (h.length === 0 || p.length === 0) return false;
+  if (containsWords(h, p)) return true;
+  if (!containsWords(p, h)) return false;
+  return h.length >= 4 || h.length / p.length >= 0.6 || (shortFragments && h.length >= 2);
+}
+
 export interface EchoDecision {
   isEcho: boolean;
   reason: string;
@@ -171,7 +199,7 @@ export function evaluateEcho(
   ];
 
   for (const phrase of commonPhrases) {
-    if (cleanStt.includes(phrase) || phrase.includes(cleanStt)) {
+    if (isEchoOf(cleanStt, phrase)) {
       return makeResult(true, `matched common phrase: ${phrase}`);
     }
   }
@@ -181,7 +209,7 @@ export function evaluateEcho(
   }
 
   // ── Guard 6: Exact/containment match ─────────────────────────────────────────
-  if (cleanStt === cleanTts || cleanTts.includes(cleanStt) || cleanStt.includes(cleanTts)) {
+  if (cleanStt === cleanTts || isEchoOf(cleanStt, cleanTts, !lastTtsText.includes('?'))) {
     return makeResult(true, 'exact/containment match with last TTS');
   }
 
