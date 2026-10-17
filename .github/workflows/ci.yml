@@ -54,6 +54,8 @@ jobs:
       # process through NODE_V8_COVERAGE; the report is kept as an artifact.
       - name: Coverage
         if: always()
+        env:
+          JARVIS_TEST_PYTHON: python
         run: npx --yes c8@10.1.3 --reporter=text-summary --reporter=lcov --exclude=tests/** --exclude=node_modules/** --exclude=dist/** node node_modules/tsx/dist/cli.mjs tests/runAll.ts --ci
 
       - uses: actions/upload-artifact@v4
