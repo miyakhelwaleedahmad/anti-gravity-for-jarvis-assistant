@@ -15,8 +15,8 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | 7 | TEST-101 | `windowControlTest` passes without PowerShell | **Fixed** (Windows side: needs Windows CI / owner's PC) | `windowControlTest` on Linux: 8/8 PASS → BLOCKED (exit 3) | `f2aac05` |
 | 8 | SEC-102 + cleanup | Unused stdin "yes" helpers, dead bridge code, `ts-node` | **Fixed** | `approvalPathsTest` 0/7 → 7/7 | `dc99250` + docs `343c84a` |
 | 9 | VOICE-008 | Echo filter drops short user phrases | **Fixed** | `echoShortReplyTest` 7/12 → 13/13 | `0e210d9` |
-| 10 | REL-101 | Two tests near the 120 s limit on the owner's PC | **Fixed** (limits only; the owner's PC run is the check) | runner output shows the limit; no new test (runner change) | (this commit) |
-| 11 | VOICE-007 / TEST-102 | Voice tests never use the real hand-off; no real `tts.py` test | Open | | |
+| 10 | REL-101 | Two tests near the 120 s limit on the owner's PC | **Fixed** (limits only; the owner's PC run is the check) | runner output shows the limit; no new test (runner change) | `5c0ae37` |
+| 11 | VOICE-007 / TEST-102 | Voice tests never use the real hand-off; no real `tts.py` test | **Fixed** (new end-to-end test; found and fixed a VOICE-005 gap) | `realTtsHandoffTest` 13/13 (without the tts.py fix: 11/13) | (this commit) |
 | 12 | VOICE-006 | Voice barge-in during speech impossible | Open | | |
 | 13 | VOICE-009 | STT energy gate averages over silence | Open | | |
 | — | APR-001 | Lowercase "yes" rejected | Not reproducible (audit) | `approvalTypeAheadTest` 9/9 | — |
@@ -119,3 +119,14 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Confirmed** | `tests/runAll.ts` stopped every test at one limit, 120 s (`JARVIS_TEST_TIMEOUT_MS`). On the owner's PC `finalIntegrationSuiteTest` took 104 s and `windowsScriptsTest` 88.6 s: a slower day would have turned them into timeouts with nothing wrong. |
 | **Fix** | Those two get their own limit, about 2.5× their measured time (270 s and 240 s); every other test keeps 120 s, and a higher `JARVIS_TEST_TIMEOUT_MS` still applies to all. A timeout now says which limit stopped it ("stopped at its time limit, 270 s"). No assertion, check or expected result changed. |
 | **Proof** | `JARVIS_TEST_TIMEOUT_MS=300` on a quick test: `TIMEOUT … stopped at its time limit, 300 ms`. `tsc --noEmit` clean. |
+
+## 11. VOICE-007 / TEST-102
+
+| | |
+|---|---|
+| **Confirmed** | Every voice test spoke to a stand-in for `tts.py` (`tests/fakeTts.ts`, `tests/ttsBridgeClient.ts`); nothing ran the real `voice/tts.py` behind the real bridge. A change on the Python side (handshake, message format, lifecycle, outcome) could break speech with all tests green. |
+| **Test** | New `tests/realTtsHandoffTest.ts`: the real bridge and orchestrator; the real `tts.py` as a child process, pygame on SDL's silent `dummy` driver. Only edge-tts is a stand-in module (silent MP3 frames, and a record of each text), so no network or speaker is needed. Checks: tts.py authenticates; `orchestrator.speak()` reaches it with the exact text; `speaking_start` then `speaking_end` with outcome `played`; JARVIS back to IDLE; the same reply a second time is spoken again; speech recorded healthy; audio that cannot be played is reported. Python: `JARVIS_TEST_PYTHON`, else JARVIS's `.venv`; without pygame/websockets it says BLOCKED. |
+| **Found by it** | A gap in VOICE-005: when playback threw (`TTS error: …`), `tts.py` ended the turn with no outcome, so the bridge recorded nothing and speech still looked healthy. Now that path records `playback_failed` with the error, and a failure in a turn is kept over a later success, like the other failures. Without this change the test fails 2 of 13 (a broken reply was recorded as "played"). |
+| **CI** | Both `build-and-test` (Linux) and `windows` install Python 3.12 + pygame + websockets and set `JARVIS_TEST_PYTHON`, so the test runs there, not BLOCKED. |
+| **Proof** | Here: 13/13; `test_tts_fallback.py` 10/10, `test_tts_audio_device.py` 9/9, `test_tts_retry_delay.py` 12/12. |
+| **Not done** | The older tests that use `fakeTts.ts` were not converted; they still test JARVIS's side against a stand-in, and this test now covers the real hand-off. Real speakers and Microsoft's service are not part of it; on the owner's PC, `pnpm verify:windows` and hearing JARVIS are the check. |

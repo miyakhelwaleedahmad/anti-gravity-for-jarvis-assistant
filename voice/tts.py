@@ -194,7 +194,7 @@ class TTSEngine:
         self._mixer_error        = ""
         self._pending_hardware_error = False
         # What happened to this speaking turn's phrases, sent on speaking_end
-        # (VOICE-005): played, synthesis_failed, no_audio_device, interrupted.
+        # (VOICE-005): played, synthesis_failed, no_audio_device, playback_failed, interrupted.
         self._turn_outcome = ""
         self._turn_detail = ""
         self._pygame: Any = None
@@ -285,7 +285,7 @@ class TTSEngine:
 
     def _note_outcome(self, outcome: str, detail: str = "") -> None:
         """A phrase's outcome for this turn's speaking_end; a failure in the turn is kept."""
-        failed = ("synthesis_failed", "no_audio_device")
+        failed = ("synthesis_failed", "no_audio_device", "playback_failed")
         if self._turn_outcome in failed and outcome not in failed:
             return
         self._turn_outcome = outcome
@@ -468,6 +468,9 @@ class TTSEngine:
             raise
         except Exception as exc:
             log.error(f"TTS error: {exc}")
+            # Before, this ended the turn with no outcome, and JARVIS kept
+            # showing speech as healthy (found by tests/realTtsHandoffTest.ts).
+            self._note_outcome("playback_failed", str(exc))
         finally:
             try:
                 if self._pygame and self._mixer_available:

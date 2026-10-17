@@ -31,6 +31,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # For realTtsHandoffTest: the real voice/tts.py (pygame on SDL's silent
+      # "dummy" driver) behind the real bridge (VOICE-007 / TEST-102).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pygame and websockets for the real tts.py test
+        run: python -m pip install --quiet pygame websockets
+
       - name: Typecheck
         run: pnpm run typecheck
 
@@ -38,6 +46,8 @@ jobs:
       # or a reachable LLM API. Those are reported as skipped with the reason,
       # so a genuine regression is the only thing that turns this red.
       - name: Test (platform-independent subset)
+        env:
+          JARVIS_TEST_PYTHON: python
         run: pnpm test -- --ci
 
       # Line coverage of the same run (TEST-01). c8 follows every test's child
@@ -67,6 +77,11 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pygame and websockets for the real tts.py test
+        run: python -m pip install --quiet pygame websockets
       - name: Typecheck
         run: pnpm run typecheck
       - name: Windows offline voice writes audio (VOICE-003)
@@ -75,6 +90,7 @@ jobs:
         env:
           JARVIS_TEST_FULL_OUTPUT: '1'
           JARVIS_TEST_CHROME_WAIT_MS: '60000'
+          JARVIS_TEST_PYTHON: python
         run: pnpm test -- --ci
 
   # Opt-in: tests that call a real LLM provider. Started by hand with
