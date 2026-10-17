@@ -19,6 +19,8 @@ const STT_READY_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_STT_READY_TIMEOU
 /** Phase 4: Maximum pending TTS phrases while TTS client is not ready.
  *  Drops the middle item (keep head + tail) to avoid stale queue buildup. */
 const MAX_PENDING_TTS = 3;
+/** A repeat of the phrase just queued, sooner than this and before it finished playing, is dropped. */
+const TTS_DEDUP_WINDOW_MS = 2_000;
 
 export function getBridgeAuthStatus(): { requiresToken: boolean; devMode: boolean; tokenConfigured: boolean } {
   const isDev = (process.env.JARVIS_BRIDGE_DEV_MODE ?? "false").toLowerCase() === "true";
@@ -124,8 +126,15 @@ export class NodeBridge {
   private pendingListenStartedAt: number | null = null;
   private pendingListenWarningTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingTTS: string[] = [];
-  /** Phase 4: last TTS text sent — prevents enqueueing identical adjacent phrases */
+  /**
+   * The phrase just queued, to drop a second copy queued at the same moment.
+   * Forgotten when that phrase finishes playing (speaking_end), when TTS is
+   * stopped, and after TTS_DEDUP_WINDOW_MS (VOICE-001: it used to be kept for
+   * ever, so the same reply to a second request was never spoken and JARVIS
+   * waited, deaf, for the 12 s SPEAKING watchdog).
+   */
   private _lastQueuedTts: string = "";
+  private _lastQueuedTtsAt = 0;
 
   // Bridge-level event emitter for internal events (client_connected, etc.)
   // Kept separate from the message-handler Map to avoid TypeScript conflicts.
@@ -502,6 +511,7 @@ export class NodeBridge {
 
     console.log("[NodeBridge] RX type=speaking_end role=tts");
     this.ttsEndedMs = Date.now();
+    this._lastQueuedTts = "";
     agentStateMachine.noteSpeechFinished();
     conversationBus.speakingEnded();
     this._bridgeEvents.emit("speaking_end", payload);
@@ -588,6 +598,7 @@ export class NodeBridge {
     if (role === 'tts' && msg.type === 'command' && msg.payload?.action === 'stop') {
       console.log('[NodeBridge] 🛑 Stop command for TTS received. Clearing pendingTTS queue.');
       this.pendingTTS = [];
+      this._lastQueuedTts = "";
       agentStateMachine.noteSpeechFinished();
     }
 
@@ -647,12 +658,13 @@ export class NodeBridge {
 
     if (!cleanText) return;
 
-    // Phase 4: Dedup — do not queue identical text twice in a row
-    if (cleanText === this._lastQueuedTts && !opts.allowRepeat) {
+    // Dedup: the same phrase queued twice while the first is still pending.
+    if (cleanText === this._lastQueuedTts && !opts.allowRepeat && Date.now() - this._lastQueuedTtsAt < TTS_DEDUP_WINDOW_MS) {
       console.log(`[NodeBridge] TTS dedup: identical phrase already queued — skipping: "${cleanText.slice(0, 60)}"`);
       return;
     }
     this._lastQueuedTts = cleanText;
+    this._lastQueuedTtsAt = Date.now();
 
     this.lastTtsText = cleanText;
     this.lastTtsTimestamp = Date.now();
