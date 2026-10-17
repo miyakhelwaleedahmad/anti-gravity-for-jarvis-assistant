@@ -182,11 +182,33 @@ export class ToolExecutionSandbox {
     }
   }
 
+  /**
+   * Audit lines are appended one after another. A failed write was dropped
+   * without a word; on Windows a file briefly held by another program (EBUSY,
+   * EPERM) lost the line of a high-risk call. It is tried once more, and a
+   * line that still cannot be written is reported.
+   */
+  private _auditWrites: Promise<void> = Promise.resolve();
+
   private _writeAuditLog(entry: Record<string, unknown>): void {
     const line = JSON.stringify(redactDeep(entry)) + '\n';
-    void this._auditReady?.then(() =>
-      fs.promises.appendFile(AUDIT_LOG_PATH, line, 'utf8').catch(() => {})
-    );
+    const append = () => fs.promises.appendFile(AUDIT_LOG_PATH, line, 'utf8');
+    this._auditWrites = this._auditWrites
+      .then(() => this._auditReady)
+      .then(append)
+      .catch(async (err: NodeJS.ErrnoException) => {
+        if (err?.code !== 'EBUSY' && err?.code !== 'EPERM') throw err;
+        await new Promise((r) => setTimeout(r, 100));
+        await append();
+      })
+      .catch((err: Error) => {
+        console.warn(`[ToolSandbox] Could not write the tool audit log (${AUDIT_LOG_PATH}): ${err?.message ?? err}`);
+      });
+  }
+
+  /** Resolves when every audit line queued so far has been written (or reported). */
+  flushAudit(): Promise<void> {
+    return this._auditWrites;
   }
 }
 

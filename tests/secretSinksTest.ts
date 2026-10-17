@@ -168,7 +168,8 @@ logger.info('test entry', { apiKey: `api_key=${GROQ}`, note: 'ok' });
 await actionAuditLog.log({ userCommand: `login with password: ${PASSWORD}`, normalizedIntent: 'x', action: 'x', target: `password: ${PASSWORD}`, permissionLevel: 0, riskLevel: 'safe', allowed: true, confirmationRequired: false, result: 'success', durationMs: 1 } as any);
 const highTool: any = { name: 'fake_high_tool', riskLevel: 'high', description: 'test', inputSchema: {}, fallbacks: [], execute: async () => 'ok' };
 await toolExecutionSandbox.run(highTool, { command: `deploy --key ${'x'.repeat(170)} ${GROQ}` });
-await sleep(400); // the structured log and the tool audit are written asynchronously
+await toolExecutionSandbox.flushAudit(); // the tool audit is written asynchronously
+await sleep(400); // and the structured log
 
 console.log('\n--- 5. Every file JARVIS wrote ---');
 await memoryManager.flush?.();
