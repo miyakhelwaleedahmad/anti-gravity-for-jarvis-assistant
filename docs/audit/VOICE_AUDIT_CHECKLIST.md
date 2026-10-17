@@ -14,8 +14,8 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | 6 | SEC-101 | Launched apps and voice services inherit every secret | **Fixed** | `childEnvCoverageTest` 5/8 → 8/8 (22 call sites listed before) | `99ca62d` |
 | 7 | TEST-101 | `windowControlTest` passes without PowerShell | **Fixed** (Windows side: needs Windows CI / owner's PC) | `windowControlTest` on Linux: 8/8 PASS → BLOCKED (exit 3) | `f2aac05` |
 | 8 | SEC-102 + cleanup | Unused stdin "yes" helpers, dead bridge code, `ts-node` | **Fixed** | `approvalPathsTest` 0/7 → 7/7 | `dc99250` + docs `343c84a` |
-| 9 | VOICE-008 | Echo filter drops short user phrases | **Fixed** | `echoShortReplyTest` 7/12 → 13/13 | (this commit) |
-| 10 | REL-101 | Two tests near the 120 s limit on the owner's PC | Open | | |
+| 9 | VOICE-008 | Echo filter drops short user phrases | **Fixed** | `echoShortReplyTest` 7/12 → 13/13 | `0e210d9` |
+| 10 | REL-101 | Two tests near the 120 s limit on the owner's PC | **Fixed** (limits only; the owner's PC run is the check) | runner output shows the limit; no new test (runner change) | (this commit) |
 | 11 | VOICE-007 / TEST-102 | Voice tests never use the real hand-off; no real `tts.py` test | Open | | |
 | 12 | VOICE-006 | Voice barge-in during speech impossible | Open | | |
 | 13 | VOICE-009 | STT energy gate averages over silence | Open | | |
@@ -111,3 +111,11 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Fix** | `isEchoOf()`: whole words of the phrase, in order, and either the whole phrase, most of it (60%), at least four words, or — only for JARVIS's last reply when it was a statement, not a question — two or more words ("opening google" of "I am opening google for you" stays echo, as `bargeInEchoTest` expects). After a question, a short fragment is taken as the user's answer. The fixed common-phrase list uses the strict rule, since JARVIS may not have just said that phrase. |
 | **Proof** | `echoShortReplyTest` 13/13 (old code failed the 5 user-reply cases); `bargeInEchoTest`, `echoWindowFromPlaybackEndTest`, `echoFilterCommandAcceptanceTest`, `echoFilterVerificationTest`, `voiceApprovalTest`, `voiceRouteMockTest`, `voiceContinuationFallbackTest`, `interruptGatingTest` pass. `tsc --noEmit` clean. |
 | **Not verified** | Real microphone and speakers on the owner's PC: how often a real echo is a 1-word or after-a-question fragment that now gets through. If JARVIS starts answering itself, the `[EchoFilter] accepted reason="…"` log line shows which rule let it through. |
+
+## 10. REL-101
+
+| | |
+|---|---|
+| **Confirmed** | `tests/runAll.ts` stopped every test at one limit, 120 s (`JARVIS_TEST_TIMEOUT_MS`). On the owner's PC `finalIntegrationSuiteTest` took 104 s and `windowsScriptsTest` 88.6 s: a slower day would have turned them into timeouts with nothing wrong. |
+| **Fix** | Those two get their own limit, about 2.5× their measured time (270 s and 240 s); every other test keeps 120 s, and a higher `JARVIS_TEST_TIMEOUT_MS` still applies to all. A timeout now says which limit stopped it ("stopped at its time limit, 270 s"). No assertion, check or expected result changed. |
+| **Proof** | `JARVIS_TEST_TIMEOUT_MS=300` on a quick test: `TIMEOUT … stopped at its time limit, 300 ms`. `tsc --noEmit` clean. |

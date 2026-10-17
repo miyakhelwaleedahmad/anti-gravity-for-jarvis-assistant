@@ -153,6 +153,17 @@ const TSX_CLI = createRequire(import.meta.url).resolve('tsx/cli');
 const NOT_A_TEST = new Set(['toolAuditHelper', 'runAll', 'chromeHelper', 'fakeTts', 'replyChecks', 'livePreflight', 'ttsBridgeClient']);
 
 const TIMEOUT_MS = Number(process.env['JARVIS_TEST_TIMEOUT_MS'] ?? 120_000);
+/**
+ * Tests that do a lot of real work get their own limit (REL-101). Measured on
+ * the owner's PC: finalIntegrationSuiteTest 104 s (twelve live commands),
+ * windowsScriptsTest 88.6 s (real PowerShell scripts), both close to 120 s.
+ * Each limit is about 2.5x its measured time; the rest keep TIMEOUT_MS.
+ */
+const SLOW_TEST_LIMIT_MS: Record<string, number> = {
+  finalIntegrationSuiteTest: 270_000,
+  windowsScriptsTest: 240_000,
+};
+const timeLimitFor = (name: string): number => Math.max(TIMEOUT_MS, SLOW_TEST_LIMIT_MS[name] ?? 0);
 /** The exit code a test uses for "my environment is not available" (with a BLOCKED: line). */
 const BLOCKED_EXIT = 3;
 
@@ -203,7 +214,8 @@ function runOne(file: string, name: string): Promise<Result> {
     child.stdout?.on('data', (d) => { output += d.toString(); });
     child.stderr?.on('data', (d) => { output += d.toString(); });
 
-    const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
+    const limitMs = timeLimitFor(name);
+    const timer = setTimeout(() => child.kill('SIGKILL'), limitMs);
 
     // Without a listener, a process that cannot be started raises an unhandled
     // 'error' event that kills the runner instead of failing this one test.
@@ -224,6 +236,7 @@ function runOne(file: string, name: string): Promise<Result> {
         const lines = output.split('\n').filter((l) => l.trim());
         const results = lines.filter((l) => /=== .*(passed|Results)|BENCHMARK SUMMARY/.test(l)).slice(-1)[0];
         const detail = [
+          `  stopped at its time limit, ${limitMs >= 1000 ? `${Math.round(limitMs / 1000)} s` : `${limitMs} ms`}`,
           results ? `  the checks finished (${results.trim().slice(0, 120)}) but the process did not exit` : '  stopped while still running its checks; its last lines:',
           ...lines.filter((l) => /^\s*(FAIL|✗|❌)/.test(l)).slice(0, 20),
           ...lines.slice(-10),
