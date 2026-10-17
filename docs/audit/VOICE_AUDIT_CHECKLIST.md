@@ -17,8 +17,8 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | 9 | VOICE-008 | Echo filter drops short user phrases | **Fixed** | `echoShortReplyTest` 7/12 → 13/13 | `0e210d9` |
 | 10 | REL-101 | Two tests near the 120 s limit on the owner's PC | **Fixed** (limits only; the owner's PC run is the check) | runner output shows the limit; no new test (runner change) | `5c0ae37` |
 | 11 | VOICE-007 / TEST-102 | Voice tests never use the real hand-off; no real `tts.py` test | **Fixed** (new end-to-end test; found and fixed a VOICE-005 gap) | `realTtsHandoffTest` 13/13 (without the tts.py fix: 11/13) | `49de8d6` |
-| 12 | VOICE-006 | Voice barge-in during speech impossible | Open | | |
-| 13 | VOICE-009 | STT energy gate averages over silence | **Fixed** (synthetic audio; real microphone not tested) | `test_stt_vad_gate.py` 3/5 → 5/5 | (this commit) |
+| 12 | VOICE-006 | Voice barge-in during speech impossible | **Deferred** (design change, not a bug fix) | — | — |
+| 13 | VOICE-009 | STT energy gate averages over silence | **Fixed** (synthetic audio; real microphone not tested) | `test_stt_vad_gate.py` 3/5 → 5/5 | `6761c44` |
 | — | APR-001 | Lowercase "yes" rejected | Not reproducible (audit) | `approvalTypeAheadTest` 9/9 | — |
 
 ## 1. VOICE-001
@@ -139,3 +139,11 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Fix** | The gate measures 20 ms frames and passes when at least 100 ms of them reach `noise_floor × JARVIS_STT_MIN_ENERGY_RATIO`. The threshold and the ratio setting are unchanged; audio shorter than one frame is rejected; numpy missing still lets audio through, as before. The log line now says how many ms were above the threshold and the loudest frame. |
 | **Proof** | 5/5; `py_compile` clean; added to CI `python-checks`. |
 | **Not verified** | A real microphone on the owner's PC. If short words are still dropped, the log shows `VAD gate rejected audio: N ms above threshold=…`; lowering `JARVIS_STT_MIN_ENERGY_RATIO` in `.env` (default 1.5) is the setting to try. |
+
+## 13. VOICE-006 (deferred)
+
+| | |
+|---|---|
+| **Confirmed** | While JARVIS speaks, `jarvis.ts` (`speaking:start`) pauses the wake-word listener and takes the microphone; it resumes on `speaking:end`. So the owner cannot interrupt by voice mid-reply. This is deliberate: without it JARVIS hears its own voice (the echo problems VOICE-008 and the echo filter deal with). |
+| **Why not fixed here** | Listening during playback needs acoustic echo cancellation, or a wake-word detector that reliably ignores JARVIS's own voice, plus a stop path from the wake-word service to `tts.py`. That changes the voice architecture and needs testing with the owner's real microphone and speakers; it is not a contained bug fix, and the repair rules say not to replace the architecture. |
+| **Next step (proposal)** | A separate phase: (1) measure on the owner's PC whether the wake-word model fires on JARVIS's own speech at normal volume; (2) if it does not, keep the wake-word listener running during playback with a raised threshold, and on detection send the existing TTS stop command; (3) test with real speakers before enabling by default. |
