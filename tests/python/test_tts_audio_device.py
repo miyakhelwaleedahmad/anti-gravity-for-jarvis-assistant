@@ -3,6 +3,8 @@ tests/python/test_tts_audio_device.py
 ─────────────────────────────────────────────────────────────────────────────
 VOICE-004: an audio device that fails to open is reported to JARVIS and tried
 again, instead of muting speech for the rest of the run in silence.
+VOICE-005: every speaking_end says what happened (played, synthesis_failed,
+no_audio_device, interrupted), so JARVIS can tell a reply that was heard.
 
 tts.py marked the mixer "initialised" before trying it, so one failed
 pygame.mixer.init() (headphones unplugged at start, the device in exclusive
@@ -102,19 +104,40 @@ print("\n=== TTS audio device failure (VOICE-004) ===\n")
 async def scenarios():
     e = tts.TTSEngine()
     e.websocket = FakeWS()
-    await e.speak("Opening Chrome, sir.")
-    errors = [m for m in e.websocket.sent if m["type"] == "hardware_error"]
-    ok("a failed audio device is reported to JARVIS", len(errors) == 1, json.dumps(e.websocket.sent))
-    ok("…with the reason", "audio endpoint" in json.dumps(errors), json.dumps(errors))
-    ok("…and the speaking turn still ends (no 12 s wait)", any(m["type"] == "speaking_end" for m in e.websocket.sent))
 
-    await e.speak("Still there, sir?")
+    async def turn(text):
+        """One speaking turn, as the worker runs it: the phrase, then speaking_end when the queue is empty."""
+        e.websocket.sent.clear()
+        e._end_sent_for_current_item = False
+        e._interrupt_flag = False
+        await e.speak(text)
+        await e._send_speaking_end("queue_empty", force=True)
+        return list(e.websocket.sent)
+
+    sent = await turn("Opening Chrome, sir.")
+    errors = [m for m in sent if m["type"] == "hardware_error"]
+    ok("a failed audio device is reported to JARVIS", len(errors) == 1, json.dumps(sent))
+    ok("…with the reason", "audio endpoint" in json.dumps(errors), json.dumps(errors))
+    ok("…and the speaking turn still ends (no 12 s wait)", any(m["type"] == "speaking_end" for m in sent))
+
+    sent = await turn("Still there, sir?")
     ok("the device is tried again on the next phrase", state["init_calls"] == 2, f"init calls: {state['init_calls']}")
-    ok("…and a failure that persists is not reported again", len([m for m in e.websocket.sent if m["type"] == "hardware_error"]) == 1)
+    ok("…and a failure that persists is not reported again", not [m for m in sent if m["type"] == "hardware_error"])
+    ends = [m["payload"] for m in sent if m["type"] == "speaking_end"]
+    ok("VOICE-005: a turn with no audio device ends with outcome no_audio_device", ends and ends[0].get("outcome") == "no_audio_device", json.dumps(ends))
 
     state["device_ok"] = True
-    await e.speak("Can you hear me now, sir?")
+    sent = await turn("Can you hear me now, sir?")
     ok("once the device works, the phrase is played", state["played"] == 1, f"played: {state['played']}")
+    ends = [m["payload"] for m in sent if m["type"] == "speaking_end"]
+    ok("VOICE-005: a turn that played ends with outcome played", ends and ends[0].get("outcome") == "played", json.dumps(ends))
+
+    async def no_audio(text):
+        return False
+    e._synthesize_with_retry = no_audio
+    sent = await turn("This will not synthesise, sir.")
+    ends = [m["payload"] for m in sent if m["type"] == "speaking_end"]
+    ok("VOICE-005: a phrase edge-tts could not synthesise ends with outcome synthesis_failed", ends and ends[0].get("outcome") == "synthesis_failed", json.dumps(ends))
 
 
 asyncio.run(scenarios())

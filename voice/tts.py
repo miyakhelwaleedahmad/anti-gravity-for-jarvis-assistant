@@ -113,6 +113,10 @@ class TTSEngine:
         self._mixer_next_try     = 0.0
         self._mixer_error        = ""
         self._pending_hardware_error = False
+        # What happened to this speaking turn's phrases, sent on speaking_end
+        # (VOICE-005): played, synthesis_failed, no_audio_device, interrupted.
+        self._turn_outcome = ""
+        self._turn_detail = ""
         self._pygame: Any = None
         self._speaking_event_open     = False
         self._end_sent_for_current_item = False
@@ -186,7 +190,20 @@ class TTSEngine:
         self._end_sent_for_current_item = True
         self.speaking = False
         self._speaking_event_open = False
-        await self._send_lifecycle_event("speaking_end", reason)
+        extra = {"outcome": self._turn_outcome} if self._turn_outcome else None
+        if extra and self._turn_detail:
+            extra["detail"] = self._turn_detail
+        self._turn_outcome = ""
+        self._turn_detail = ""
+        await self._send_lifecycle_event("speaking_end", reason, extra)
+
+    def _note_outcome(self, outcome: str, detail: str = "") -> None:
+        """A phrase's outcome for this turn's speaking_end; a failure in the turn is kept."""
+        failed = ("synthesis_failed", "no_audio_device")
+        if self._turn_outcome in failed and outcome not in failed:
+            return
+        self._turn_outcome = outcome
+        self._turn_detail = detail[:200]
 
     async def _worker(self) -> None:
         log.info("Started TTS processing queue worker.")
@@ -282,6 +299,7 @@ class TTSEngine:
 
         if not self._ensure_mixer():
             log.warning(f"Audio unavailable — sending lifecycle events and skipping TTS for: {text[:60]}")
+            self._note_outcome("no_audio_device", self._mixer_error or "audio output unavailable")
             if self._pending_hardware_error and self.websocket is not None:
                 self._pending_hardware_error = False
                 await self._notify_hardware_error(self.websocket)
@@ -300,8 +318,11 @@ class TTSEngine:
 
             # ── INTERRUPT CHECK 4: after synthesis, before playback ───────────
             if self._interrupt_flag or not success:
-                if not success:
+                if self._interrupt_flag:
+                    self._note_outcome("interrupted")
+                else:
                     log.error(f"TTS synthesis failed after all retries. Skipping: {text[:60]}")
+                    self._note_outcome("synthesis_failed", "edge-tts gave no audio")
                 return
 
             self._pygame.mixer.music.load(self._tmp_path)
@@ -314,6 +335,7 @@ class TTSEngine:
                     self._pygame.mixer.music.stop()
                     break
                 await asyncio.sleep(TTS_POLL_INTERVAL)
+            self._note_outcome("interrupted" if self._interrupt_flag else "played")
 
             self._pygame.mixer.music.unload()
 

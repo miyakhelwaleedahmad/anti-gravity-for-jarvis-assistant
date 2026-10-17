@@ -135,6 +135,12 @@ export class NodeBridge {
    */
   private _lastQueuedTts: string = "";
   private _lastQueuedTtsAt = 0;
+  /**
+   * What tts.py did with the last reply, from speaking_end's outcome or a
+   * hardware_error (VOICE-005). "Speech output" used to be recorded healthy
+   * when the text was sent, so a reply that never played changed nothing.
+   */
+  lastSpeechOutcome: { outcome: string; detail: string; at: number } | null = null;
 
   // Bridge-level event emitter for internal events (client_connected, etc.)
   // Kept separate from the message-handler Map to avoid TypeScript conflicts.
@@ -272,7 +278,10 @@ export class NodeBridge {
         pipelineRegistry.recordSuccess("wake_to_stt");
         pipelineRegistry.recordSuccess("stt_to_brain");
       } else if (role === "tts") {
+        // A (re)started tts.py: earlier failures are history; the next
+        // speaking_end says whether it is heard (VOICE-005).
         pipelineRegistry.recordSuccess("brain_to_tts");
+        this.lastSpeechOutcome = null;
       }
 
       // Emit bridge-level event so jarvis.ts can refresh dashboard immediately
@@ -325,7 +334,9 @@ export class NodeBridge {
     // CRIT-4: Hardware error from Python voice module
     this.on("hardware_error", (msg) => {
       const device = msg.payload?.device as string | undefined;
-      console.error(`[NodeBridge] ⚠️  Hardware error reported by: ${device ?? "unknown"}`);
+      const error = String(msg.payload?.error ?? "");
+      console.error(`[NodeBridge] ⚠️  Hardware error reported by: ${device ?? "unknown"}${error ? ` — ${error.slice(0, 160)}` : ""}`);
+      if (device === "tts") this.noteSpeechOutcome("no_audio_device", error || "audio output device unavailable");
     });
 
     this.wss.on("connection", (ws, req) => {
@@ -499,6 +510,17 @@ export class NodeBridge {
     conversationBus.noteSpeechQueued();
   }
 
+  /** Records whether the speech turn was heard (VOICE-005). An interrupted one is neither. */
+  private noteSpeechOutcome(outcome: string, detail = ""): void {
+    if (outcome === "interrupted") return;
+    this.lastSpeechOutcome = { outcome, detail: detail.slice(0, 200), at: Date.now() };
+    if (outcome === "played") {
+      pipelineRegistry.recordSuccess("brain_to_tts");
+    } else {
+      pipelineRegistry.recordFailure("brain_to_tts", `reply not played: ${outcome}${detail ? ` (${detail.slice(0, 120)})` : ""}`);
+    }
+  }
+
   handleSpeakingLifecycleSignal(type: "speaking_start" | "speaking_end", payload: any = {}): void {
     if (type === "speaking_start") {
       console.log("[NodeBridge] RX type=speaking_start role=tts");
@@ -512,6 +534,8 @@ export class NodeBridge {
     console.log("[NodeBridge] RX type=speaking_end role=tts");
     this.ttsEndedMs = Date.now();
     this._lastQueuedTts = "";
+    // No outcome (a turn stopped before anything was tried): nothing to record.
+    if (payload?.outcome) this.noteSpeechOutcome(String(payload.outcome), String(payload?.detail ?? ""));
     agentStateMachine.noteSpeechFinished();
     conversationBus.speakingEnded();
     this._bridgeEvents.emit("speaking_end", payload);
@@ -689,8 +713,8 @@ export class NodeBridge {
     }
 
     console.log(`[NodeBridge] → [tts] speak`);
+    // Health is recorded from what tts.py reports back (speaking_end), not here.
     ttsClient.send(JSON.stringify(msg));
-    pipelineRegistry.recordSuccess("brain_to_tts");
   }
 
   /**

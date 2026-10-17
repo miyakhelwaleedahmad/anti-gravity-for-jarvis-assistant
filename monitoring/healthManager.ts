@@ -277,7 +277,16 @@ class HealthManager {
       for (const svc of expectedServices) {
         const isReady = readyRoles.includes(svc);
         const displayName = svc === 'wakeword' ? 'wake_word' : svc;
-        if (isReady) {
+        const heard = svc === 'tts' ? nodeBridge.lastSpeechOutcome : null;
+        if (isReady && heard && heard.outcome !== 'played') {
+          // VOICE-005: connected is not the same as heard.
+          results.push({
+            name: displayName,
+            status: 'degraded',
+            detail: `connected, but the last reply was not played: ${heard.outcome.replace(/_/g, ' ')}${heard.detail ? ` (${heard.detail.slice(0, 80)})` : ''}`,
+            checkedAt: Date.now()
+          });
+        } else if (isReady) {
           results.push({
             name: displayName,
             status: 'online',

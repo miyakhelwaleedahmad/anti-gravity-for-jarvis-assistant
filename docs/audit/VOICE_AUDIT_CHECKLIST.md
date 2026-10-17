@@ -7,9 +7,9 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | # | ID | Finding | Status | Test (old → new) | Commit |
 |---|---|---|---|---|---|
 | 1 | VOICE-001 | Same reply twice: second never spoken, JARVIS deaf 12 s | **Fixed** | `ttsRepeatDeliveryTest` 2/4 → 4/4 | `4f496f6` |
-| 2 | VOICE-002 | Answer slower than the planning watchdog dropped silently | **Fixed** (code); owner's `.env` line still to check | `planningTimeoutSpeechTest` 2/4 → 4/4; `llmTimingTest` 18/20 → 20/20 | see below |
-| 3 | VOICE-004 | Audio-device failure mutes TTS for the run, unreported | **Fixed** | `tests/python/test_tts_audio_device.py` 1/6 → 6/6 | see below |
-| 4 | VOICE-005 | Speech health = "text was sent" | Open | | |
+| 2 | VOICE-002 | Answer slower than the planning watchdog dropped silently | **Fixed** (code); owner's `.env` line still to check | `planningTimeoutSpeechTest` 2/4 → 4/4; `llmTimingTest` 18/20 → 20/20 | `3b9d933` |
+| 3 | VOICE-004 | Audio-device failure mutes TTS for the run, unreported | **Fixed** | `test_tts_audio_device.py` 1/6 → 6/6 | `55b915b` |
+| 4 | VOICE-005 | Speech health = "text was sent" | **Fixed** | `speechOutcomeHealthTest` 2/7 → 7/7; `test_tts_audio_device.py` +3 outcome checks (fail before) | see below |
 | 5 | VOICE-003 | No real TTS fallback; old edge-tts allowed | Open | | |
 | 6 | SEC-101 | Launched apps and voice services inherit every secret | Open | | |
 | 7 | TEST-101 | `windowControlTest` passes without PowerShell | Open | | |
@@ -48,3 +48,12 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Test first** | New `tests/python/test_tts_audio_device.py` (stand-in `pygame` whose `mixer.init()` raises a WASAPI error, then recovers). Old code: 1/6: no `hardware_error`, one init attempt for two phrases, nothing played after the device came back. |
 | **Fix** | A failed init is tried again on a later phrase after `JARVIS_TTS_MIXER_RETRY_S` (10 s); the first failure of a run is sent to JARVIS as `hardware_error` with the error text; the opened format is logged on success. The speaking turn still ends at once. |
 | **Proof** | 6/6; `test_tts_retry_delay.py` 12/12; `py_compile` clean. Added to CI's `python-checks` job. Not run with a real audio device. |
+
+## 4. VOICE-005
+
+| | |
+|---|---|
+| **Confirmed** | `bridge/nodeBridge.ts` recorded `brain_to_tts` healthy on `ws.send`; nothing recorded a failure; `monitoring/healthManager.ts` showed TTS "online — connected via bridge" whenever `tts.py` was connected; `hardware_error` was only logged. |
+| **Test first** | New `tests/speechOutcomeHealthTest.ts` (real bridge, `tts.py` stand-in that reports an outcome): old code 2/7: a reply that failed to synthesise left speech "healthy" and the dashboard "online"; a `hardware_error` changed nothing. `tests/python/test_tts_audio_device.py` gained 3 outcome checks that fail on `tts.py` without this change. |
+| **Fix** | `tts.py` puts `outcome` (`played`, `synthesis_failed`, `no_audio_device`, `interrupted`) and a short `detail` on every `speaking_end`; a failure in a turn is kept over a later success. The bridge records success or failure from it and from `hardware_error`, keeps `lastSpeechOutcome`, and no longer counts a send as success. A (re)connecting `tts.py` starts clean. The dashboard shows TTS "degraded: connected, but the last reply was not played: synthesis failed (…)". Three failures in 10 minutes let the existing watchdog restart `tts.py`. |
+| **Proof** | 7/7 and 9/9; `test_tts_retry_delay.py` 12/12; neighbours pass (`healthStatusTest`, `providerHealthTest`, `vectorSupervisorDashboardTest`, `parallelizationTimeoutAuditTest`, `ttsSpeakingLifecycleTest`, `speakingWatchdogQueueTest`, `voiceApprovalTest`, `bridgeSecurityTest`, `scenarioIntegrationTest`, `errorRecoveryTest`); `dashboardAccuracyTest`/`dashboardHealthSystemTest` environment-only here (no LLM key), as before. `tsc --noEmit` clean. |

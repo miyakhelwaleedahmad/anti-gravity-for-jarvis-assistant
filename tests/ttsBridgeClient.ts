@@ -13,12 +13,17 @@ import WebSocket from 'ws';
 export interface TtsStandIn {
   /** The texts the bridge sent to the speech service, in order. */
   received: string[];
+  /** The outcome put on the next speaking_end, as tts.py reports it (VOICE-005). */
+  outcome: string;
+  /** Send a raw message, as tts.py would (e.g. hardware_error). */
+  send(msg: unknown): void;
   close(): void;
 }
 
 export async function connectTtsStandIn(port: number, token: string, playMs = 150): Promise<TtsStandIn> {
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
   const received: string[] = [];
+  const standIn = { received, outcome: 'played' } as TtsStandIn;
   await new Promise<void>((resolve, reject) => {
     ws.once('error', reject);
     ws.on('message', (raw) => {
@@ -30,9 +35,11 @@ export async function connectTtsStandIn(port: number, token: string, playMs = 15
       if (msg.type === 'tts') {
         received.push(String(msg.payload?.text ?? ''));
         ws.send(JSON.stringify({ type: 'speaking_start', payload: {} }));
-        setTimeout(() => ws.send(JSON.stringify({ type: 'speaking_end', payload: { reason: 'queue_empty' } })), playMs);
+        setTimeout(() => ws.send(JSON.stringify({ type: 'speaking_end', payload: { reason: 'queue_empty', outcome: standIn.outcome } })), playMs);
       }
     });
   });
-  return { received, close: () => ws.close() };
+  standIn.send = (msg) => ws.send(JSON.stringify(msg));
+  standIn.close = () => ws.close();
+  return standIn;
 }
