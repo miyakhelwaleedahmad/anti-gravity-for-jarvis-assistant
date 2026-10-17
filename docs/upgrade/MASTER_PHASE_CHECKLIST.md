@@ -168,7 +168,7 @@ passes. Results and dates: [PHASE_STATUS.md](PHASE_STATUS.md).
 - [!] PHASE COMPLETE (blocked on the Windows report, as P14)
 
 ## MA — Multi-agent system
-- [x] Audit (JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md) and research (RECURSIVE_AGENT_RESEARCH.md)
+- [x] Audit (docs/history/JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md) and research (RECURSIVE_AGENT_RESEARCH.md)
 - [x] Core runtime: factory, lifecycle, limits, permissions, dependencies, cancellation, timeouts, budgets, workspace, events, archive
 - [x] A2A v1.0 layer (in-process + optional localhost HTTP), checked with the official SDK client
 - [x] 7 specialists, worker roles, recursive spawning, the research example

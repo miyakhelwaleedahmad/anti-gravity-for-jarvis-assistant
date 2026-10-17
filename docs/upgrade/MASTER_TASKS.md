@@ -556,7 +556,7 @@ fails.
 ## MA — Multi-agent system
 
 ### MA.1 — Audit and research · High · [x]
-- JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md, RECURSIVE_AGENT_RESEARCH.md (17 repositories, licences checked, nothing copied).
+- docs/history/JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md, RECURSIVE_AGENT_RESEARCH.md (17 repositories, licences checked, nothing copied).
 
 ### MA.2 — Core runtime and A2A · Critical · [x] · depends on: MA.1
 - `core/agents/*`; tests `agentRuntimeTest` (102), `a2aProtocolTest` (56); SDK interop 10/10.

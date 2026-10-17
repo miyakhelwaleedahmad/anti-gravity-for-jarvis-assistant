@@ -7,7 +7,7 @@ This report is for the owner and for whoever works on JARVIS next. It covers:
 - how it was tested;
 - what is still unverified.
 
-The design reference is [docs/upgrade/MULTI_AGENT_SYSTEM.md](docs/upgrade/MULTI_AGENT_SYSTEM.md). The audit and research that came first are [JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md](JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md) and [RECURSIVE_AGENT_RESEARCH.md](RECURSIVE_AGENT_RESEARCH.md).
+The design reference is [docs/upgrade/MULTI_AGENT_SYSTEM.md](../upgrade/MULTI_AGENT_SYSTEM.md). The audit and research that came first are [JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md](JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md) and [RECURSIVE_AGENT_RESEARCH.md](../../RECURSIVE_AGENT_RESEARCH.md).
 
 ## 1. The existing architecture
 

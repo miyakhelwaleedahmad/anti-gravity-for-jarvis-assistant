@@ -7,7 +7,7 @@ Every agent:
 - reports to its parent, never to the user;
 - shares what it finds as it finds it.
 
-This page describes what is built. The earlier audit is `JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md`, and the external research behind the design is `RECURSIVE_AGENT_RESEARCH.md`.
+This page describes what is built. The earlier audit is `docs/history/JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md`, and the external research behind the design is `RECURSIVE_AGENT_RESEARCH.md`.
 
 ## Architecture
 

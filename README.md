@@ -187,6 +187,6 @@ control, and checks after every action. Plan, tasks and status:
 
 ## Further reading
 
-- `IMPLEMENTATION_PLAN.md` — what was repaired, verified, and what remains
+- `docs/history/IMPLEMENTATION_PLAN.md` — what was repaired, verified, and what remains
 - `docs/BASELINE.md` — measured state before the repair work
 - `_legacy/README.md` — what was quarantined and why

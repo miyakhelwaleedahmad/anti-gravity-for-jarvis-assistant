@@ -215,4 +215,4 @@ The external research that decides how A2A and other projects are used is in `RE
 
 ## Status after implementation
 
-This audit describes JARVIS before the multi-agent work and is kept as it was. The capabilities marked MISSING above are now implemented and tested; see [docs/upgrade/MULTI_AGENT_SYSTEM.md](docs/upgrade/MULTI_AGENT_SYSTEM.md) and [JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md](JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md), which also list what is still not verified.
+This audit describes JARVIS before the multi-agent work and is kept as it was. The capabilities marked MISSING above are now implemented and tested; see [docs/upgrade/MULTI_AGENT_SYSTEM.md](../upgrade/MULTI_AGENT_SYSTEM.md) and [JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md](JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md), which also list what is still not verified.

@@ -7,7 +7,7 @@ This file is the plan; every item below is done and tested (see `docs/GOAL_RUNTI
 
 ## 1. The architecture report, checked against this checkout
 
-`JARVIS_CURRENT_ARCHITECTURE_REPORT.md` was written from `fbb248f`; the only commit since is the report itself, so its findings still describe the code. Re-checked:
+`docs/history/JARVIS_CURRENT_ARCHITECTURE_REPORT.md` was written from `fbb248f`; the only commit since is the report itself, so its findings still describe the code. Re-checked:
 
 | # | Report finding | Still true? | Detail found in Phase 0 |
 |---|---|---|---|

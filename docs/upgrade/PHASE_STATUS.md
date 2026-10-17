@@ -1141,10 +1141,10 @@ Updated after every phase. Checklist: [MASTER_PHASE_CHECKLIST.md](MASTER_PHASE_C
 ## MA — Multi-agent system — IMPLEMENTED (tested here; not yet run on the owner's PC)
 
 - **Documents:**
-  - audit: [JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md](../../JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md);
+  - audit: [JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md](../history/JARVIS_MULTI_AGENT_ARCHITECTURE_AUDIT.md);
   - research: [RECURSIVE_AGENT_RESEARCH.md](../../RECURSIVE_AGENT_RESEARCH.md);
   - design: [MULTI_AGENT_SYSTEM.md](MULTI_AGENT_SYSTEM.md);
-  - report: [JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md](../../JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md).
+  - report: [JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md](../history/JARVIS_MULTI_AGENT_IMPLEMENTATION_REPORT.md).
 - **Implemented:**
   - `core/agents/`: Agent Manager/Factory, task manager, registry and Agent Cards, permissions, spawn policy, workspace, events on `messageBus`, A2A v1.0 server/client with an optional localhost HTTP endpoint, behaviours, the 7 specialists and 11 worker roles, and JARVIS's `delegate_task` / `agent_status` / `cancel_agent_task`.
   - `tools/githubTools.ts`: `github_search` and `github_repo`, read-only.
