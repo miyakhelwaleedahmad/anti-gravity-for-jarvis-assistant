@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { execa } from 'execa';
 import { cdpPort } from './cdpClient.js';
+import { childEnv } from '../system/childEnv.js';
 
 export interface ChromeTab {
   title: string;
@@ -23,7 +24,7 @@ async function isChromeProcessRunning(): Promise<boolean> {
     return false;
   }
   try {
-    const result = await execa('tasklist', ['/FI', 'IMAGENAME eq chrome.exe', '/NH'], { reject: false });
+    const result = await execa('tasklist', ['/FI', 'IMAGENAME eq chrome.exe', '/NH'], { reject: false, env: childEnv(), extendEnv: false });
     return result.stdout.toLowerCase().includes('chrome.exe');
   } catch {
     return false;

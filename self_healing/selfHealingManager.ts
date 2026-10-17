@@ -35,9 +35,35 @@ import { failureAnalytics } from "./failureAnalytics.js";
 import { alertManager } from "./alertManager.js";
 import { healthScorer } from "./healthScorer.js";
 import { healthChecker } from "./healthChecker.js";
+import { childEnv, looksSecret } from "../system/childEnv.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VOICE_DIR  = path.join(__dirname, "..", "voice");
+
+// ─── The voice services' environment (SEC-101) ───────────────────────────────
+
+/**
+ * Settings voice/*.py and vision/screen_capture.py read, and those of the
+ * libraries they load: pygame (SDL_), faster-whisper and its model download
+ * (HF_, CT2_), torch and its thread libraries (TORCH_, CUDA_, OMP_, MKL_, KMP_).
+ * HF_TOKEN is not passed: the Whisper models are public.
+ */
+const VOICE_ENV_PREFIXES = ["JARVIS_TTS_", "JARVIS_STT_", "JARVIS_WW_", "JARVIS_WAKEWORD_", "TTS_", "STT_", "VISION_", "SDL_", "PYTHON",
+  "HF_", "HUGGINGFACE_", "CT2_", "TORCH_", "CUDA_", "OMP_", "MKL_", "KMP_"];
+/** edge-tts and speech recognition reach Microsoft and Google through the user's proxy, if any. */
+const VOICE_ENV_NAMES = new Set(["BRIDGE_WS_URI", "JARVIS_BRIDGE_DEV_MODE", "LOG_LEVEL", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+  "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "PULSE_SERVER", "XDG_CACHE_HOME", "TESSDATA_PREFIX"]);
+
+/** The services' own settings from `env`; never a credential (the bridge token is added by the caller). */
+export function voiceServiceEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined || looksSecret(name)) continue;
+    const upper = name.toUpperCase();
+    if (VOICE_ENV_NAMES.has(upper) || VOICE_ENV_PREFIXES.some((p) => upper.startsWith(p))) out[name] = value;
+  }
+  return out;
+}
 
 // ─── Process Registry ─────────────────────────────────────────────────────────
 
@@ -114,6 +140,9 @@ export class SelfHealingManager extends EventEmitter {
     const proc = spawn(pythonExe, [scriptPath], {
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
+      // The bridge token and the services' own settings; no other key or
+      // token from .env (SEC-101).
+      env: childEnv({ JARVIS_BRIDGE_TOKEN: process.env.JARVIS_BRIDGE_TOKEN, ...voiceServiceEnv() }),
     });
 
     entry.proc = proc;

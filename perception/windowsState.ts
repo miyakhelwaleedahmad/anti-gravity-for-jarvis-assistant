@@ -24,6 +24,7 @@ import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { parseWindows, runPsFile, type WindowInfo } from './windowsProbe.js';
+import { childEnv } from '../system/childEnv.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -170,7 +171,7 @@ export class PersistentPSSession {
     }
 
     try {
-      this.proc = spawn(this.exe, this.args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      this.proc = spawn(this.exe, this.args, { stdio: ['pipe', 'pipe', 'pipe'], env: childEnv() });
 
       this.proc.unref();   // don't block Node.js exit
       // The process alone was not enough: its open stdin/stdout/stderr pipes
@@ -432,7 +433,7 @@ export async function getWindowsState(
         '-NoProfile',
         '-ExecutionPolicy', 'Bypass',
         '-File', scriptPath,
-      ], { reject: false, timeout: 2000 }); // PHASE3-PS-1: 3000→2000ms one-shot fallback
+      ], { reject: false, timeout: 2000, env: childEnv(), extendEnv: false }); // PHASE3-PS-1: 3000→2000ms one-shot fallback
 
       const code = result.exitCode ?? 'null/undefined';
       if (result.exitCode !== 0 || !result.stdout) {

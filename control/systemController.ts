@@ -8,6 +8,7 @@ import * as os from 'os';
 import { execa } from 'execa';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
+import { childEnv } from '../system/childEnv.js';
 
 export class SystemController {
   public async getSystemStatus(): Promise<string> {
@@ -47,7 +48,7 @@ export class SystemController {
       const { stdout } = await execa('powershell', [
         '-NoProfile', '-Command',
         'Get-Volume | Select-Object DriveLetter, FriendlyName, SizeRemaining, Size | ConvertTo-Json'
-      ], { reject: false });
+      ], { reject: false, env: childEnv(), extendEnv: false });
       return stdout.trim();
     } catch (err: any) {
       return JSON.stringify({ error: err.message });
@@ -63,7 +64,7 @@ export class SystemController {
       const { stdout } = await execa('powershell', [
         '-NoProfile', '-Command',
         'Get-CimInstance Win32_StartupCommand | Select-Object Name, Command, Location | ConvertTo-Json'
-      ], { reject: false });
+      ], { reject: false, env: childEnv(), extendEnv: false });
       return stdout.trim();
     } catch (err: any) {
       return JSON.stringify({ error: err.message });
@@ -88,7 +89,7 @@ export class SystemController {
     const uri = pageMap[page.toLowerCase()] || 'ms-settings:';
     
     const { spawn } = await import('child_process');
-    const proc = spawn('cmd.exe', ['/c', 'start', '', uri], { detached: true, stdio: 'ignore' });
+    const proc = spawn('cmd.exe', ['/c', 'start', '', uri], { detached: true, stdio: 'ignore', env: childEnv() });
     proc.unref();
 
     return `Opened system settings page: ${page}`;

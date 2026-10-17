@@ -9,8 +9,9 @@
  *   - system/processRunner (admin shell/PowerShell commands)
  *   - core/terminalTools (run_command)
  *   - tools/devTools through the registry (a project's package.json script)
- * (git, the git probe, the app opener and the Windows probe scripts use the
- * same childEnv(); the rule itself is checked in part 1.)
+ * (git, the git probe and the Windows probe scripts use the same childEnv();
+ * the rule itself is checked in part 1. Every other call site, the voice
+ * services and the app opener: tests/childEnvCoverageTest.ts, SEC-101.)
  * The secrets must be absent; PATH, the home folder and what the caller sets
  * on purpose (CI, FORCE_COLOR) must be there, and the programs must run.
  */

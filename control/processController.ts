@@ -8,6 +8,7 @@
 import { execa } from 'execa';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
+import { childEnv } from '../system/childEnv.js';
 
 const PROTECTED_PROCESSES = [
   'explorer', 'lsass', 'csrss', 'smss', 'svchost', 'wininit', 'services', 'winlogon',
@@ -32,7 +33,7 @@ export class ProcessController {
       const { stdout } = await execa('powershell', [
         '-NoProfile', '-Command',
         'Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet | ConvertTo-Json'
-      ], { reject: false });
+      ], { reject: false, env: childEnv(), extendEnv: false });
       
       const parsed = JSON.parse(stdout);
       const list = Array.isArray(parsed) ? parsed : [parsed];
@@ -78,7 +79,7 @@ export class ProcessController {
       throw new Error(`Process termination cancelled by user: ${match.name}`);
     }
 
-    await execa('powershell', ['-NoProfile', '-Command', `Stop-Process -Id ${match.pid} -Force`], { reject: false });
+    await execa('powershell', ['-NoProfile', '-Command', `Stop-Process -Id ${match.pid} -Force`], { reject: false, env: childEnv(), extendEnv: false });
     return `Successfully terminated process: ${match.name} (PID: ${match.pid})`;
   }
 
@@ -94,7 +95,7 @@ export class ProcessController {
     
     // Spawn back
     const { spawn } = await import('child_process');
-    const proc = spawn(name, [], { detached: true, stdio: 'ignore' });
+    const proc = spawn(name, [], { detached: true, stdio: 'ignore', env: childEnv() });
     proc.unref();
     
     return `Restarted process: ${name}`;

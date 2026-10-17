@@ -47,7 +47,7 @@ const isWindows = process.platform === 'win32';
 export async function killTree(pid: number | undefined): Promise<void> {
   if (!pid) return;
   if (isWindows) {
-    await execa('taskkill', ['/pid', String(pid), '/T', '/F'], { reject: false, windowsHide: true }).catch(() => undefined);
+    await execa('taskkill', ['/pid', String(pid), '/T', '/F'], { reject: false, windowsHide: true, env: childEnv(), extendEnv: false }).catch(() => undefined);
     return;
   }
   try { process.kill(-pid, 'SIGKILL'); } catch {

@@ -11,6 +11,7 @@ import { runAutomateScript } from './helper.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { rollbackManager } from './rollbackManager.js';
+import { childEnv } from '../system/childEnv.js';
 
 const APP_ALIASES: Record<string, string> = {
   'cmd': 'cmd.exe',
@@ -62,14 +63,16 @@ export class AppController {
           detached: true,
           stdio: 'ignore',
           shell: false,
-          windowsHide: true
+          windowsHide: true,
+          env: childEnv(),
         });
       } else {
         const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
         proc = spawn(cmd, [finalTarget], {
           detached: true,
           stdio: 'ignore',
-          shell: false
+          shell: false,
+          env: childEnv(),
         });
       }
 
@@ -164,7 +167,7 @@ export class AppController {
   private async isProcessRunningWin32(resolvedTarget: string): Promise<boolean> {
     const target = resolvedTarget.endsWith('.exe') ? resolvedTarget : `${resolvedTarget}.exe`;
     return new Promise<boolean>((resolve) => {
-      execFile('tasklist.exe', ['/fo', 'csv', '/nh'], { windowsHide: true }, (err, stdout) => {
+      execFile('tasklist.exe', ['/fo', 'csv', '/nh'], { windowsHide: true, env: childEnv() }, (err, stdout) => {
         if (err) {
           resolve(false);
           return;

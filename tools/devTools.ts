@@ -247,7 +247,7 @@ function alive(pid: number): boolean {
 function killTree(pid: number): Promise<void> {
   return new Promise((resolve) => {
     if (process.platform === 'win32') {
-      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, shell: false }, () => resolve());
+      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, shell: false, env: childEnv() }, () => resolve());
       return;
     }
     try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch { /* gone */ } }

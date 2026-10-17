@@ -22,6 +22,7 @@ import { adminController, checkServiceName } from './adminController.js';
 import { getChromeState } from '../perception/chromeState.js';
 import { getWindowsState } from '../perception/windowsState.js';
 import { getJarvisServiceState } from '../perception/jarvisServiceState.js';
+import { childEnv } from '../system/childEnv.js';
 
 export interface KernelResult {
   success: boolean;
@@ -320,7 +321,7 @@ export class PcControlKernel {
   public async revealFile(filePath: string): Promise<KernelResult> {
     return this.executeAction('revealFile', filePath, false, async () => {
       const { spawn } = await import('child_process');
-      const proc = spawn('explorer.exe', ['/select,', filePath], { detached: true, stdio: 'ignore' });
+      const proc = spawn('explorer.exe', ['/select,', filePath], { detached: true, stdio: 'ignore', env: childEnv() });
       proc.unref();
       return `Revealed ${filePath} in explorer`;
     });
@@ -389,7 +390,7 @@ export class PcControlKernel {
   public async checkService(serviceName: string): Promise<KernelResult> {
     return this.executeAction('checkService', serviceName, true, async () => {
       const name = checkServiceName(serviceName);
-      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', `Get-Service -Name '${name}' | Select-Object Status | ConvertTo-Json`], { reject: false });
+      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', `Get-Service -Name '${name}' | Select-Object Status | ConvertTo-Json`], { reject: false, env: childEnv(), extendEnv: false });
       return stdout.trim();
     });
   }
@@ -416,7 +417,7 @@ export class PcControlKernel {
 
   public async getBatteryStatusIfAvailable(): Promise<KernelResult> {
     return this.executeAction('getBatteryStatus', 'battery', true, async () => {
-      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining | ConvertTo-Json'], { reject: false });
+      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining | ConvertTo-Json'], { reject: false, env: childEnv(), extendEnv: false });
       return stdout.trim() || 'Battery not available (likely desktop PC)';
     });
   }
