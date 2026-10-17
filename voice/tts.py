@@ -56,6 +56,8 @@ TTS_EDGE_TIMEOUT        = float(os.environ.get("JARVIS_TTS_EDGE_TIMEOUT", "5.0")
 TTS_EDGE_RETRY_TIMEOUT  = float(os.environ.get("JARVIS_TTS_EDGE_RETRY_TIMEOUT", "4.0"))
 
 TTS_POLL_INTERVAL = float(os.environ.get("JARVIS_TTS_POLL_INTERVAL", "0.02"))
+# After the audio device fails to open, how long before a later phrase tries it again (VOICE-004).
+TTS_MIXER_RETRY_S = float(os.environ.get("JARVIS_TTS_MIXER_RETRY_S", "10"))
 
 # Phase 4: Base acoustic settling gap (ms). Actual gap = base + 15ms×words, capped at max.
 TTS_POST_PLAY_BASE_MS = float(os.environ.get("JARVIS_TTS_POST_PLAY_BASE_MS", "100"))
@@ -108,6 +110,9 @@ class TTSEngine:
         self._current_synth_task: Optional[asyncio.Task] = None
         self._mixer_available    = False
         self._mixer_initialized  = False
+        self._mixer_next_try     = 0.0
+        self._mixer_error        = ""
+        self._pending_hardware_error = False
         self._pygame: Any = None
         self._speaking_event_open     = False
         self._end_sent_for_current_item = False
@@ -122,18 +127,32 @@ class TTSEngine:
             self._pygame = None
 
     def _ensure_mixer(self) -> bool:
-        if self._mixer_initialized:
-            return self._mixer_available
-        self._mixer_initialized = True
+        """
+        Open the audio device, trying again on a later phrase after a failure
+        (VOICE-004: one failed init used to mute speech for the whole run).
+        The first failure of a run of failures is reported to JARVIS.
+        """
+        if self._mixer_available:
+            return True
         if self._pygame is None:
+            self._mixer_initialized = True
             return False
+        if self._mixer_initialized and time.time() < self._mixer_next_try:
+            return False
+        self._mixer_initialized = True
         try:
             self._pygame.mixer.init()
             self._mixer_available = True
-            log.info("TTS pygame.mixer.init() complete — audio hardware ready.")
+            self._mixer_error = ""
+            log.info(f"TTS pygame.mixer.init() complete — audio hardware ready: {self._pygame.mixer.get_init()}.")
         except Exception as e:
-            log.error(f"Audio hardware init failed: {e}. TTS audio output disabled.")
+            first = not self._mixer_error
+            self._mixer_error = str(e)[:200]
+            self._mixer_next_try = time.time() + TTS_MIXER_RETRY_S
             self._mixer_available = False
+            log.error(f"Audio hardware init failed: {e}. Trying again in {TTS_MIXER_RETRY_S:.0f} s, on the next phrase.")
+            if first:
+                self._pending_hardware_error = True
         return self._mixer_available
 
     async def _send_lifecycle_event(self, event_type: str, reason: str = "", extra: Optional[dict] = None) -> bool:
@@ -263,6 +282,9 @@ class TTSEngine:
 
         if not self._ensure_mixer():
             log.warning(f"Audio unavailable — sending lifecycle events and skipping TTS for: {text[:60]}")
+            if self._pending_hardware_error and self.websocket is not None:
+                self._pending_hardware_error = False
+                await self._notify_hardware_error(self.websocket)
             await self._send_speaking_start("skipped_no_mixer")
             await self._send_speaking_end("skipped_no_mixer", force=True)
             return
@@ -321,7 +343,10 @@ class TTSEngine:
 
     async def _notify_hardware_error(self, ws) -> None:
         try:
-            msg = json.dumps({"type": "hardware_error", "payload": {"device": "tts"}})
+            payload = {"device": "tts"}
+            if self._mixer_error:
+                payload["error"] = self._mixer_error
+            msg = json.dumps({"type": "hardware_error", "payload": payload})
             await ws.send(msg)
             log.info("Sent hardware_error notification to NodeBridge.")
         except Exception:

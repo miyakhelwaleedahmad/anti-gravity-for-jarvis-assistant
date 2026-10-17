@@ -124,3 +124,5 @@ jobs:
 
       - name: TTS synthesis retry tells JARVIS it needs more time
         run: python tests/python/test_tts_retry_delay.py
+      - name: TTS audio device failure (VOICE-004)
+        run: python tests/python/test_tts_audio_device.py

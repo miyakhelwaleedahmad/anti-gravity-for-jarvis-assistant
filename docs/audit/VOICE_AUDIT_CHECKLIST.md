@@ -8,7 +8,7 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 |---|---|---|---|---|---|
 | 1 | VOICE-001 | Same reply twice: second never spoken, JARVIS deaf 12 s | **Fixed** | `ttsRepeatDeliveryTest` 2/4 → 4/4 | `4f496f6` |
 | 2 | VOICE-002 | Answer slower than the planning watchdog dropped silently | **Fixed** (code); owner's `.env` line still to check | `planningTimeoutSpeechTest` 2/4 → 4/4; `llmTimingTest` 18/20 → 20/20 | see below |
-| 3 | VOICE-004 | Audio-device failure mutes TTS for the run, unreported | Open | | |
+| 3 | VOICE-004 | Audio-device failure mutes TTS for the run, unreported | **Fixed** | `tests/python/test_tts_audio_device.py` 1/6 → 6/6 | see below |
 | 4 | VOICE-005 | Speech health = "text was sent" | Open | | |
 | 5 | VOICE-003 | No real TTS fallback; old edge-tts allowed | Open | | |
 | 6 | SEC-101 | Launched apps and voice services inherit every secret | Open | | |
@@ -39,3 +39,12 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Fix** | A watchdog set below the budget is raised to it, with a warning naming the value used. When the watchdog ends a request, JARVIS says "That took too long, sir. Please ask me again." (through `sendSpeech()`, past the aborted-request check, which is what silenced it). |
 | **Proof** | 4/4 and 20/20; neighbours pass (`errorRecoveryTest`, `supersededRequestTest`, `llmCancellationTest`, `llmClientBehaviourTest`, `providerFailoverTest`, `requestScopeTest`, `scenarioIntegrationTest`, `speakingWatchdogQueueTest`, `watchdogUnitTest` …). `tsc --noEmit` clean. |
 | **Owner** | With this fix a `JARVIS_PLANNING_WATCHDOG_MS=30000` line no longer cuts answers off (62000 is used), but removing the line is still cleaner. |
+
+## 3. VOICE-004
+
+| | |
+|---|---|
+| **Confirmed** | `voice/tts.py` `_ensure_mixer()` set `_mixer_initialized = True` before trying `pygame.mixer.init()`, so after one failure it never tried again; the only `hardware_error` was sent at connect time, before the lazy mixer had been tried. |
+| **Test first** | New `tests/python/test_tts_audio_device.py` (stand-in `pygame` whose `mixer.init()` raises a WASAPI error, then recovers). Old code: 1/6: no `hardware_error`, one init attempt for two phrases, nothing played after the device came back. |
+| **Fix** | A failed init is tried again on a later phrase after `JARVIS_TTS_MIXER_RETRY_S` (10 s); the first failure of a run is sent to JARVIS as `hardware_error` with the error text; the opened format is logged on success. The speaking turn still ends at once. |
+| **Proof** | 6/6; `test_tts_retry_delay.py` 12/12; `py_compile` clean. Added to CI's `python-checks` job. Not run with a real audio device. |
