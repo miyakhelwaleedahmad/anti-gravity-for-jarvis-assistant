@@ -2160,6 +2160,11 @@ export class JarvisOrchestrator {
       console.warn('[Orchestrator] PLANNING watchdog reset received — invoking safeReset().');
       // Route through safeReset() so all state is torn down atomically.
       this.safeReset(data.reason);
+      // VOICE-002: the reset aborts the request, and an aborted request may not
+      // speak, so it ended in silence. Say why, past that check: this is not
+      // the old request's reply but the reason it has none.
+      console.log(`[Orchestrator] JARVIS: ${PLANNING_TIMEOUT_REPLY}`);
+      this.sendSpeech(PLANNING_TIMEOUT_REPLY);
       return;
     }
 
@@ -2191,6 +2196,9 @@ const CONTINUE_OFFER_MS = 60_000;
 
 /** How long planning waits for stale world-state parts to be read again. */
 const WORLD_REFRESH_BUDGET_MS = 1_500;
+
+/** Said when the PLANNING watchdog ends a request (VOICE-002). */
+const PLANNING_TIMEOUT_REPLY = 'That took too long, sir. Please ask me again.';
 
 /** A task step as the world state shows it: "control_app close". */
 function stepLabel(node: { tool: string; args?: Record<string, unknown> }): string {

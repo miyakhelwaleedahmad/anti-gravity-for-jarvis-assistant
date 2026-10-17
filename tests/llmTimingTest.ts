@@ -6,7 +6,8 @@
  *
  *   1. the watchdog's default covers every attempt (32 s with the defaults,
  *      and it follows JARVIS_LLM_TIMEOUT_MS)
- *   2. a value set below that is kept, with a warning that says why
+ *   2. a value set below that is raised to it, with a warning that says why
+ *      (VOICE-002: below it, slow answers were cut off and nothing was said)
  *   3. the provider and the state machine read the same numbers
  *   4. the real state machine stays in PLANNING past the old 15 s mark while
  *      a slow request is still retrying (shortened timings)
@@ -39,14 +40,16 @@ ok('never below the old 15 s', planningWatchdogMs({ JARVIS_LLM_TIMEOUT_MS: '2000
 console.log('\n--- 2. A low setting ---');
 const warnings: string[] = [];
 const low = planningWatchdogMs({ JARVIS_PLANNING_WATCHDOG_MS: '20000' }, (m) => warnings.push(m));
-ok('kept', low === 20_000);
+// VOICE-002: a value below the budget cut off answers that would have
+// arrived, and the cut-off request was silent. It is raised to the budget.
+ok('raised to the budget', low === 32_000, String(low));
 ok('…with a warning naming the budget', warnings.length === 1 && /at least 32000/.test(warnings[0]!), warnings[0]);
 warnings.length = 0;
 planningWatchdogMs({ JARVIS_PLANNING_WATCHDOG_MS: '40000' }, (m) => warnings.push(m));
 ok('a value above the budget: no warning', warnings.length === 0);
 // The owner's .env: 30000 with a 20 s request timeout (3 × 20 s + 2 s = 62 s).
 const owners = planningWatchdogMs({ JARVIS_PLANNING_WATCHDOG_MS: '30000', JARVIS_LLM_TIMEOUT_MS: '20000' }, (m) => warnings.push(m));
-ok('30000 with a 20 s timeout: kept, not overridden', owners === 30_000, String(owners));
+ok('30000 with a 20 s timeout: raised to 62000', owners === 62_000, String(owners));
 ok('…with a warning that names 62000', warnings.length === 1 && /at least 62000/.test(warnings[0]!), warnings[0]);
 
 console.log('\n--- 2b. A setting that is not a number of milliseconds ---');
@@ -82,7 +85,8 @@ const derived = run({ JARVIS_PLANNING_WATCHDOG_MS: '' });
 const oldStyle = run({ JARVIS_PLANNING_WATCHDOG_MS: '500' });
 const stateOf = (r: ReturnType<typeof run>) => /AT_1200MS (\w+)/.exec(`${r.stdout}`)?.[1] ?? `none: ${(r.stderr ?? '').slice(-200)}`;
 ok('with the derived watchdog, still PLANNING while retries could run', stateOf(derived) === 'PLANNING', stateOf(derived));
-ok('with a watchdog shorter than the retries, it is reset (what happened before)', stateOf(oldStyle) === 'IDLE', stateOf(oldStyle));
+// Before VOICE-002 this request was reset here (IDLE), mid-retry, in silence.
+ok('a watchdog set shorter than the retries is raised: still PLANNING while retries could run', stateOf(oldStyle) === 'PLANNING', stateOf(oldStyle));
 ok('budget with these timings is 2.9 s', llmRequestBudgetMs({ JARVIS_LLM_TIMEOUT_MS: '300' }) === 2_900);
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);

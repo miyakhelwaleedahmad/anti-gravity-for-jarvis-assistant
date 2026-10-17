@@ -6,8 +6,8 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 
 | # | ID | Finding | Status | Test (old → new) | Commit |
 |---|---|---|---|---|---|
-| 1 | VOICE-001 | Same reply twice: second never spoken, JARVIS deaf 12 s | **Fixed** | `ttsRepeatDeliveryTest` 2/4 → 4/4 | see below |
-| 2 | VOICE-002 | Answer slower than the planning watchdog dropped silently | Open | | |
+| 1 | VOICE-001 | Same reply twice: second never spoken, JARVIS deaf 12 s | **Fixed** | `ttsRepeatDeliveryTest` 2/4 → 4/4 | `4f496f6` |
+| 2 | VOICE-002 | Answer slower than the planning watchdog dropped silently | **Fixed** (code); owner's `.env` line still to check | `planningTimeoutSpeechTest` 2/4 → 4/4; `llmTimingTest` 18/20 → 20/20 | see below |
 | 3 | VOICE-004 | Audio-device failure mutes TTS for the run, unreported | Open | | |
 | 4 | VOICE-005 | Speech health = "text was sent" | Open | | |
 | 5 | VOICE-003 | No real TTS fallback; old edge-tts allowed | Open | | |
@@ -29,3 +29,13 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Test first** | New `tests/ttsRepeatDeliveryTest.ts`, with the real `NodeBridge`, a real WebSocket client standing in for `tts.py` (new `tests/ttsBridgeClient.ts`: authenticates like `tts.py`, answers `speaking_start`/`speaking_end`) and the real `orchestrator.speak()`. Old code: 2 passed, 2 failed: second "Opening Chrome, sir." dropped (`TTS dedup … skipping`), state still SPEAKING after 5 s. |
 | **Fix** | The phrase is forgotten on `speaking_end`, on a TTS stop, and after 2 s (`TTS_DEDUP_WINDOW_MS`). The same phrase queued twice at the same moment is still sent once. |
 | **Proof** | 4/4: both replies reach the speech service; IDLE again after 163 ms. Neighbours pass (18 files: `speakingWatchdogQueueTest`, `ttsSpeakingLifecycleTest`, `voiceApprovalTest`, `stopClearsTtsQueueTest`, barge-in, echo, `bridgeSecurityTest`, `scenarioIntegrationTest` …). `tsc --noEmit` clean. |
+
+## 2. VOICE-002
+
+| | |
+|---|---|
+| **Confirmed** | `core/agentStateMachine.ts` PLANNING watchdog → `orchestrator.handleWatchdogReset()` → `safeReset()` aborts the request; `spokenForm()` refuses to speak for an aborted request, so nothing was said. `config/llmTiming.ts` kept a value below the retry budget (the owner's 30000 against 62000) with a warning only. |
+| **Test first** | New `tests/planningTimeoutSpeechTest.ts`: a real request planning against a stand-in model that never answers, then the state machine's own watchdog reset; real bridge and the `tts.py` stand-in. Old code: 2/4: `SPOKEN=[]`. `tests/llmTimingTest.ts`: its checks that a low value is "kept" now expect "raised to the budget"; old code 18/20. |
+| **Fix** | A watchdog set below the budget is raised to it, with a warning naming the value used. When the watchdog ends a request, JARVIS says "That took too long, sir. Please ask me again." (through `sendSpeech()`, past the aborted-request check, which is what silenced it). |
+| **Proof** | 4/4 and 20/20; neighbours pass (`errorRecoveryTest`, `supersededRequestTest`, `llmCancellationTest`, `llmClientBehaviourTest`, `providerFailoverTest`, `requestScopeTest`, `scenarioIntegrationTest`, `speakingWatchdogQueueTest`, `watchdogUnitTest` …). `tsc --noEmit` clean. |
+| **Owner** | With this fix a `JARVIS_PLANNING_WATCHDOG_MS=30000` line no longer cuts answers off (62000 is used), but removing the line is still cleaner. |

@@ -27,8 +27,10 @@ export function llmRequestBudgetMs(env: NodeJS.ProcessEnv = process.env): number
 /**
  * How long PLANNING may last: JARVIS_PLANNING_WATCHDOG_MS when set, else at
  * least the request budget (and never below the old 15 s). A set value below
- * the budget is kept, with a warning: it will cut retries off. A value that is
- * not a positive number of milliseconds is not used, and the warning says so.
+ * the budget is raised to it, with a warning (VOICE-002: below it, an answer
+ * still on its way was cut off and the request ended in silence; the owner's
+ * .env had 30000 against a 62000 budget). A value that is not a positive
+ * number of milliseconds is not used, and the warning says so.
  */
 export function planningWatchdogMs(env: NodeJS.ProcessEnv = process.env, warn: (m: string) => void = console.warn): number {
   const budget = llmRequestBudgetMs(env);
@@ -41,7 +43,8 @@ export function planningWatchdogMs(env: NodeJS.ProcessEnv = process.env, warn: (
     return fallback;
   }
   if (set < budget) {
-    warn(`[Config] JARVIS_PLANNING_WATCHDOG_MS=${set} is below one model request's retries (${LLM_MAX_ATTEMPTS} × ${llmTimeoutMs(env)} ms): slow answers will be cut off. Use at least ${budget}.`);
+    warn(`[Config] JARVIS_PLANNING_WATCHDOG_MS=${set} is below one model request's retries (${LLM_MAX_ATTEMPTS} × ${llmTimeoutMs(env)} ms) and would cut slow answers off: using ${budget}. Use at least ${budget}, or remove the line.`);
+    return budget;
   }
   return set;
 }
