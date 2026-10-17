@@ -12,7 +12,7 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | 4 | VOICE-005 | Speech health = "text was sent" | **Fixed** | `speechOutcomeHealthTest` 2/7 → 7/7; `test_tts_audio_device.py` +3 outcome checks (fail before) | `f792aba` |
 | 5 | VOICE-003 | No real TTS fallback; old edge-tts allowed | **Fixed** (Windows voice wrote a WAV on Windows CI, run 39030902139; not yet heard on the owner's PC) | `test_tts_fallback.py` 1/9 → 10/10; `test_tts_windows_voice.py` (Windows CI) | `ed9c37e` + follow-up `0e1d8b2` |
 | 6 | SEC-101 | Launched apps and voice services inherit every secret | **Fixed** | `childEnvCoverageTest` 5/8 → 8/8 (22 call sites listed before) | `99ca62d` |
-| 7 | TEST-101 | `windowControlTest` passes without PowerShell | **Fixed** (Windows side: needs Windows CI / owner's PC) | `windowControlTest` on Linux: 8/8 PASS → BLOCKED (exit 3) | `f2aac05` |
+| 7 | TEST-101 | `windowControlTest` passes without PowerShell | **Fixed** (PASS on Windows CI, run 39032166186; owner's PC not yet run) | `windowControlTest` on Linux: 8/8 PASS → BLOCKED (exit 3) | `f2aac05` |
 | 8 | SEC-102 + cleanup | Unused stdin "yes" helpers, dead bridge code, `ts-node` | **Fixed** | `approvalPathsTest` 0/7 → 7/7 | `dc99250` + docs `343c84a` |
 | 9 | VOICE-008 | Echo filter drops short user phrases | **Fixed** | `echoShortReplyTest` 7/12 → 13/13 | `0e210d9` |
 | 10 | REL-101 | Two tests near the 120 s limit on the owner's PC | **Fixed** (limits only; the owner's PC run is the check) | runner output shows the limit; no new test (runner change) | `5c0ae37` |
@@ -92,7 +92,8 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Confirmed** | `tests/windowControlTest.ts` checked only that a string came back. When PowerShell could not read the windows, `getWindowsState()` returned its empty result (pid 0, no apps), which is still a string: run directly on Linux it reported 8 passed, 0 failed. `focusWindow` passed with any message. Its peer `processControlSafetyTest` already fails honestly off Windows ("returns at least 1 process"); the runner skips both off Windows. |
 | **Fix** | Not Windows: BLOCKED (exit 3) with the reason. On Windows, PowerShell is asked directly how many windows have a title. If it lists any, JARVIS's list must be non-empty with a name, pid and title for each, and the active window must have pid > 0. If the desktop has none, or PowerShell cannot be asked, the result is BLOCKED with the reason, not a pass. Close below Level 2 must be refused; focusing a window that is not open must say "not found". |
 | **Proof** | Linux: exit 3, `BLOCKED: needs Windows…` (was 8/8 PASS). `tsc --noEmit` clean. |
-| **Not verified** | The Windows branch: Windows CI on the next push, and the owner's PC (CMD): `npx tsx tests\windowControlTest.ts`, expecting `8 passed, 0 failed`, with PowerShell's window count printed first. |
+| **Windows CI** | PASS on run 39032166186 (`f2aac05`), 0 blocked: the real-window checks held on a hosted Windows runner. |
+| **Not verified** | The owner's PC (CMD): `npx tsx tests\windowControlTest.ts`, expecting `8 passed, 0 failed`, with PowerShell's window count printed first. |
 
 ## 8. SEC-102 and cleanup
 
