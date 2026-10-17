@@ -1,74 +1,92 @@
 /**
  * tests/windowControlTest.ts
- * Verifies WindowController: getActiveWindow, listOpenWindows, and focus behavior.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WindowController on a real Windows desktop: the active window, the window
+ * list, the permission check on close, and focusing a window that is not open.
+ *
+ * TEST-101: this test used to pass anywhere. It checked only that a string
+ * came back, and when PowerShell could not read the windows, the empty
+ * result ("pid 0, no apps") was still a string: 8/8 on Linux. Now:
+ *   - not Windows: BLOCKED (exit 3), with the reason, never a pass;
+ *   - PowerShell is asked directly how many windows have a title; if it lists
+ *     any, JARVIS's list must not be empty and its active window must be a
+ *     real one (pid > 0). A desktop with no windows at all cannot show
+ *     anything: BLOCKED, with the reason;
+ *   - focusing a window that is not open must say it was not found.
  */
+import { execFileSync } from 'child_process';
 import { windowController } from '../control/windowController.js';
+
+function blocked(reason: string): never {
+  console.log(`BLOCKED: ${reason}`);
+  process.exit(3);
+}
+
+if (process.platform !== 'win32') blocked('needs Windows: JARVIS reads windows through Windows PowerShell.');
 
 let passed = 0;
 let failed = 0;
-
-function ok(label: string, condition: boolean) {
-  if (condition) {
-    console.log(`  ✅ PASS: ${label}`);
-    passed++;
-  } else {
-    console.error(`  ❌ FAIL: ${label}`);
-    failed++;
-  }
+function ok(label: string, condition: boolean, detail = '') {
+  const line = `${label}${detail ? ` (${detail})` : ''}`;
+  if (condition) { console.log(`  ✅ PASS: ${line}`); passed++; }
+  else { console.error(`  ❌ FAIL: ${line}`); failed++; }
 }
 
 console.log('\n=== Window Control Test ===\n');
 
-// ── Test 1: getActiveWindow() returns structure ───────────────────────────────
+// ── What Windows itself says is open ─────────────────────────────────────────
+let titled: number;
+try {
+  const out = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+    '@([System.Diagnostics.Process]::GetProcesses() | Where-Object { $_.MainWindowTitle }).Count'],
+  { encoding: 'utf8', timeout: 30_000, windowsHide: true });
+  titled = Number(out.trim());
+  if (!Number.isFinite(titled)) throw new Error(`unexpected answer "${out.trim()}"`);
+} catch (err) {
+  blocked(`PowerShell could not be asked which windows are open: ${(err as Error).message}`);
+}
+console.log(`  (PowerShell lists ${titled} window(s) with a title)`);
+if (titled === 0) blocked('this desktop has no window with a title, so there is nothing to read (a CI runner without a desktop?).');
+
+// ── Test 1: getActiveWindow() ─────────────────────────────────────────────────
 console.log('--- Test 1: getActiveWindow() ---');
-let activeWindow: string = '';
+let active: { title?: string; processName?: string; pid?: number } = {};
 try {
-  activeWindow = await windowController.getActiveWindow();
-  ok('getActiveWindow() resolves without throwing', true);
+  active = JSON.parse(await windowController.getActiveWindow());
+  ok('getActiveWindow() answers with a window', true);
 } catch (err: any) {
-  ok(`getActiveWindow() resolves without throwing (got: ${err.message})`, false);
+  ok('getActiveWindow() answers with a window', false, err.message);
 }
-ok('getActiveWindow() returns a string', typeof activeWindow === 'string');
-ok('getActiveWindow() returns non-empty string', activeWindow.length > 0);
+ok('…a real one, read from Windows (pid > 0)', (active.pid ?? 0) > 0, JSON.stringify(active));
 
-// ── Test 2: listOpenWindows() returns results ─────────────────────────────────
+// ── Test 2: listOpenWindows() ─────────────────────────────────────────────────
 console.log('\n--- Test 2: listOpenWindows() ---');
-let openWindows: string = '';
+let open: { name?: string; pid?: number; windowTitle?: string }[] = [];
 try {
-  openWindows = await windowController.listOpenWindows();
-  ok('listOpenWindows() resolves without throwing', true);
+  const parsed = JSON.parse(await windowController.listOpenWindows());
+  open = Array.isArray(parsed) ? parsed : [];
+  ok('listOpenWindows() answers with a list', Array.isArray(parsed));
 } catch (err: any) {
-  ok(`listOpenWindows() resolves without throwing (got: ${err.message})`, false);
+  ok('listOpenWindows() answers with a list', false, err.message);
 }
-ok('listOpenWindows() returns a string', typeof openWindows === 'string');
+ok('…that is not empty when Windows lists windows', open.length > 0, `${open.length} listed by JARVIS, ${titled} by PowerShell`);
+ok('…each with a name, pid and title', open.length > 0 && open.every((w) => w.name && (w.pid ?? 0) > 0 && w.windowTitle),
+  JSON.stringify(open.slice(0, 2)));
 
-// ── Test 3: closeCurrentWindow() at default permission level ──────────────────
+// ── Test 3: closeCurrentWindow() needs Level 2 ───────────────────────────────
 console.log('\n--- Test 3: closeCurrentWindow() permission check ---');
-// This is a destructive operation (Level 2). At default Level 0, should be blocked.
-let closeBlocked = false;
+let closeError = '';
 try {
   await windowController.closeCurrentWindow();
-  // If it doesn't throw, it might have closed something — that's concerning
-  closeBlocked = false;
 } catch (err: any) {
-  closeBlocked = err.message.toLowerCase().includes('permission') ||
-                 err.message.toLowerCase().includes('level') ||
-                 err.message.toLowerCase().includes('confirm') ||
-                 err.message.toLowerCase().includes('blocked');
+  closeError = err.message;
 }
-ok('closeCurrentWindow() at Level 0 is blocked or requires higher permission', closeBlocked);
+ok('closeCurrentWindow() below Level 2 is refused, nothing closed', /permission|level|confirm|blocked/i.test(closeError), closeError || 'it did not refuse');
 
-// ── Test 4: focusWindow() on a non-existent window gives friendly error ───────
-console.log('\n--- Test 4: focusWindow() on non-existent window ---');
-let focusResult: string = '';
-try {
-  focusResult = await windowController.focusWindow('definitely_not_open_window_xyz');
-  ok('focusWindow() resolves without throwing', true);
-} catch (err: any) {
-  focusResult = err.message;
-  ok('focusWindow() resolves without throwing', false);
-}
-ok('focusWindow() returns a string (success or error message)', focusResult.length > 0 || typeof focusResult === 'string');
+// ── Test 4: focusWindow() on a window that is not open ───────────────────────
+console.log('\n--- Test 4: focusWindow() on a window that is not open ---');
+const focus = await windowController.focusWindow('definitely_not_open_window_xyz');
+ok('focusWindow() says the window was not found', /not found/i.test(focus), focus);
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
-if (failed > 0) process.exit(1);
+process.exit(failed > 0 ? 1 : 0);

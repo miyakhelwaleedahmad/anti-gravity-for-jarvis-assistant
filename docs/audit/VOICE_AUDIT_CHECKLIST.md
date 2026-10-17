@@ -10,9 +10,9 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | 2 | VOICE-002 | Answer slower than the planning watchdog dropped silently | **Fixed** (code); owner's `.env` line still to check | `planningTimeoutSpeechTest` 2/4 → 4/4; `llmTimingTest` 18/20 → 20/20 | `3b9d933` |
 | 3 | VOICE-004 | Audio-device failure mutes TTS for the run, unreported | **Fixed** | `test_tts_audio_device.py` 1/6 → 6/6 | `55b915b` |
 | 4 | VOICE-005 | Speech health = "text was sent" | **Fixed** | `speechOutcomeHealthTest` 2/7 → 7/7; `test_tts_audio_device.py` +3 outcome checks (fail before) | `f792aba` |
-| 5 | VOICE-003 | No real TTS fallback; old edge-tts allowed | **Fixed** (Windows voice: CI check; not yet heard on the owner's PC) | `test_tts_fallback.py` 1/9 → 10/10; `test_tts_windows_voice.py` (Windows CI) | `ed9c37e` + follow-up `0e1d8b2` |
-| 6 | SEC-101 | Launched apps and voice services inherit every secret | **Fixed** | `childEnvCoverageTest` 5/8 → 8/8 (22 call sites listed before) | (this commit) |
-| 7 | TEST-101 | `windowControlTest` passes without PowerShell | Open | | |
+| 5 | VOICE-003 | No real TTS fallback; old edge-tts allowed | **Fixed** (Windows voice wrote a WAV on Windows CI, run 39030902139; not yet heard on the owner's PC) | `test_tts_fallback.py` 1/9 → 10/10; `test_tts_windows_voice.py` (Windows CI) | `ed9c37e` + follow-up `0e1d8b2` |
+| 6 | SEC-101 | Launched apps and voice services inherit every secret | **Fixed** | `childEnvCoverageTest` 5/8 → 8/8 (22 call sites listed before) | `99ca62d` |
+| 7 | TEST-101 | `windowControlTest` passes without PowerShell | **Fixed** (Windows side: needs Windows CI / owner's PC) | `windowControlTest` on Linux: 8/8 PASS → BLOCKED (exit 3) | (this commit) |
 | 8 | SEC-102 + cleanup | Unused stdin "yes" helpers, dead bridge code, `ts-node` | Open | | |
 | 9 | VOICE-008 | Echo filter drops short user phrases | Open | | |
 | 10 | REL-101 | Two tests near the 120 s limit on the owner's PC | Open | | |
@@ -84,3 +84,12 @@ Graphify's index is of `main` (131 commits behind this branch), so code was loca
 | **Fix** | Every listed call passes `env: childEnv()` (execa also `extendEnv: false`). The voice services get `childEnv({ JARVIS_BRIDGE_TOKEN, ...voiceServiceEnv() })`: the bridge token they connect with, and only their own and their libraries' settings (`JARVIS_TTS_*`, `JARVIS_STT_*`, `JARVIS_WW_*`, `TTS_*`, `VISION_*`, `SDL_*`, `PYTHON*`, `HF_*`, `CT2_*`, `TORCH_*`, `CUDA_*`, `OMP_*`, `MKL_*`, `KMP_*`, proxy and CA-bundle names), never a name that looks like a credential. `scripts/` is left out on purpose: those are the owner's own command-line tools, and `superviseJarvis.ts` starts JARVIS itself. |
 | **Proof** | `childEnvCoverageTest` 8/8; with it `childEnvTest`, `selfHealInstallTest`, `appControlTest`, `pcControlKernelTest`, `windowControlTest`, `windowsStateSessionTest`, `windowsStateFreshnessTest`, `adminControlTest`, `systemControlSafetyTest`, `filesAndDevToolsTest`, `chromeStateSmokeTest`, `desktopControlTest`, `voiceSettingsTest`, `securityBypassTest` pass (15 passed; `processControlSafetyTest` needs Windows). `tsc --noEmit` clean. |
 | **Not verified** | On the owner's PC: that tts.py, stt.py and wakeWords.py still start and work with the narrower environment (faster-whisper, torch and pygame were not run here). If one fails to start after this change, its log names the missing variable; it can be added to `VOICE_ENV_PREFIXES`/`VOICE_ENV_NAMES` in `self_healing/selfHealingManager.ts`. |
+
+## 7. TEST-101
+
+| | |
+|---|---|
+| **Confirmed** | `tests/windowControlTest.ts` checked only that a string came back. When PowerShell could not read the windows, `getWindowsState()` returned its empty result (pid 0, no apps), which is still a string: run directly on Linux it reported 8 passed, 0 failed. `focusWindow` passed with any message. Its peer `processControlSafetyTest` already fails honestly off Windows ("returns at least 1 process"); the runner skips both off Windows. |
+| **Fix** | Not Windows: BLOCKED (exit 3) with the reason. On Windows, PowerShell is asked directly how many windows have a title. If it lists any, JARVIS's list must be non-empty with a name, pid and title for each, and the active window must have pid > 0. If the desktop has none, or PowerShell cannot be asked, the result is BLOCKED with the reason, not a pass. Close below Level 2 must be refused; focusing a window that is not open must say "not found". |
+| **Proof** | Linux: exit 3, `BLOCKED: needs Windows…` (was 8/8 PASS). `tsc --noEmit` clean. |
+| **Not verified** | The Windows branch: Windows CI on the next push, and the owner's PC (CMD): `npx tsx tests\windowControlTest.ts`, expecting `8 passed, 0 failed`, with PowerShell's window count printed first. |
