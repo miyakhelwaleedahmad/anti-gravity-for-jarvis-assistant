@@ -43,7 +43,7 @@ const SAFE_PACKAGES = new Set([
 ]);
 
 /**
- * The version rule requirements.txt gives a package ("edge-tts>=6.1.9"), or
+ * The version rule requirements.txt gives a package ("edge-tts>=7.2.7,<8"), or
  * null when it has none. Installs follow the project's file, not "latest".
  */
 export function requirementFor(pkg: string, requirementsText: string): string | null {
@@ -142,7 +142,8 @@ export class RepairExecutor {
     if (!python) {
       return this.result(action, false, "", "BLOCKED: JARVIS's .venv was not found; install the Python packages with the setup steps (pip install -r requirements.txt inside .venv).");
     }
-    const command = `${path.relative(root, python)} -m pip install ${specs.join(" ")}`;
+    // Quoted: in CMD and PowerShell the > and < of a version range are redirections.
+    const command = `${path.relative(root, python)} -m pip install ${specs.map((s) => `"${s}"`).join(" ")}`;
     const approved = await approvalGate.requestApproval(
       "Install Python package",
       `Install: ${specs.join(" ")}`,

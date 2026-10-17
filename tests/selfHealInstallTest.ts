@@ -48,7 +48,10 @@ console.log('\n=== Self-healing package installs (SEC-15, REL-08) ===\n');
 
 console.log('--- 1. What may be installed ---');
 const requirements = fs.readFileSync(path.join(root, 'requirements.txt'), 'utf8');
-ok('edge-tts gets the requirements.txt version', requirementFor('edge-tts', requirements) === 'edge-tts>=6.1.9', String(requirementFor('edge-tts', requirements)));
+// The pin itself is checked against the file, so a version bump does not need a test change.
+const edgePin = /^edge-tts\s*([^#\s]+)/m.exec(requirements)?.[1] ?? 'missing';
+const EDGE = `edge-tts${edgePin}`;
+ok('edge-tts gets the requirements.txt version', requirementFor('edge-tts', requirements) === EDGE, String(requirementFor('edge-tts', requirements)));
 ok('SpeechRecognition too (names compared loosely)', requirementFor('speechrecognition', requirements) === 'SpeechRecognition>=3.10.0', String(requirementFor('speechrecognition', requirements)));
 let r = await install('difflib');
 ok('difflib (part of Python) is refused', !r.success && /not on allowlist: difflib/.test(r.error ?? ''), r.error);
@@ -73,14 +76,14 @@ if (process.platform === 'win32') {
 
   asked.length = 0; answer = false;
   r = await install('edge-tts');
-  ok('the owner is asked first', asked.length === 1 && /Install: edge-tts>=6\.1\.9/.test(String(asked[0]?.[1])), JSON.stringify(asked[0]?.slice(0, 2)));
-  ok('no: nothing runs, and the reply gives the command to run', !r.success && !fs.existsSync(record) && /pip install edge-tts>=6\.1\.9/.test(r.error ?? ''), r.error);
+  ok('the owner is asked first', asked.length === 1 && String(asked[0]?.[1]) === `Install: ${EDGE}`, JSON.stringify(asked[0]?.slice(0, 2)));
+  ok('no: nothing runs, and the reply gives the command to run', !r.success && !fs.existsSync(record) && (r.error ?? '').includes(`pip install "${EDGE}"`), r.error);
 
   answer = true;
   r = await install('edge-tts');
   const call = fs.existsSync(record) ? JSON.parse(fs.readFileSync(record, 'utf8')) : null;
   ok('yes: the .venv\'s Python runs pip', r.success && !!call, r.error ?? r.output);
-  ok('…with the requirements.txt version', JSON.stringify(call?.args) === JSON.stringify(['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', 'edge-tts>=6.1.9']), JSON.stringify(call?.args));
+  ok('…with the requirements.txt version', JSON.stringify(call?.args) === JSON.stringify(['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', EDGE]), JSON.stringify(call?.args));
   ok('…and without JARVIS\'s keys', call && !call.env.includes('OPENAI_API_KEY'));
 }
 
