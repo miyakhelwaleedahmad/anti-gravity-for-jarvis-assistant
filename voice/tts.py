@@ -351,8 +351,13 @@ class TTSEngine:
             try:
                 await asyncio.wait_for(asyncio.shield(synth_task), timeout=timeout)
                 self._current_synth_task = None
-                log.info(f"Synthesis OK on attempt {attempt} ({timeout}s timeout).")
-                return True  # success
+                if _has_audio(self._tmp_path):
+                    log.info(f"Synthesis OK on attempt {attempt} ({timeout}s timeout).")
+                    return True  # success
+                # VOICE-003: an empty file is no audio; it used to count as spoken.
+                log.error(f"edge-tts wrote no audio on attempt {attempt}.")
+                if attempt == 2:
+                    return False
 
             except asyncio.TimeoutError:
                 synth_task.cancel()
@@ -408,7 +413,9 @@ class TTSEngine:
             )
             try:
                 if await asyncio.to_thread(fn, text, self._fallback_path):
-                    return name
+                    if _has_audio(self._fallback_path):
+                        return name
+                    log.error(f"Offline voice {name} reported success but wrote no audio.")
             except Exception as exc:
                 log.error(f"Offline voice {name} failed: {exc}")
         return ""
@@ -430,6 +437,7 @@ class TTSEngine:
 
         log.info(f"Speaking: {text[:80]}{'…' if len(text) > 80 else ''}")
 
+        play_path = ""
         try:
             # ── INTERRUPT CHECK 3: before synthesis ───────────────────────────
             if self._interrupt_flag:
@@ -493,6 +501,12 @@ class TTSEngine:
                     self._pygame.mixer.music.unload()
             except Exception:
                 pass
+            # The fallback voice's WAV is per phrase; remove it once played.
+            if play_path == self._fallback_path:
+                try:
+                    os.remove(self._fallback_path)
+                except OSError:
+                    pass
 
     async def _notify_hardware_error(self, ws) -> None:
         try:

@@ -13,6 +13,10 @@ Windows, the built-in voice through PowerShell System.Speech, written to a
 WAV file and played through the same pygame path. JARVIS_TTS_FALLBACK=off
 turns it off. The text reaches PowerShell base64-encoded, never as code.
 
+Edge cases: an empty file from edge-tts or a fallback is no audio; a voice
+that throws is skipped once; a stop during fallback synthesis plays nothing;
+the engine that played is named; the fallback's WAV is removed after use.
+
 Runs without edge-tts, pygame, websockets, PowerShell or the network.
 """
 import asyncio
@@ -41,12 +45,18 @@ def ok(label, condition, detail=""):
         failed += 1
 
 
-class Communicate:   # edge-tts that always fails, as with no network or a 403
+EDGE = {"mode": "fail"}   # fail (no network or a 403), empty (a 0-byte file), ok
+
+
+class Communicate:   # stand-in edge-tts
     def __init__(self, *a, **k):
         pass
 
     async def save(self, path):
-        raise RuntimeError("403, message='Invalid response status'")
+        if EDGE["mode"] == "fail":
+            raise RuntimeError("403, message='Invalid response status'")
+        with open(path, "wb") as f:
+            f.write(b"" if EDGE["mode"] == "empty" else b"ID3 audio")
 
 
 edge = types.ModuleType("edge_tts")
@@ -114,7 +124,8 @@ async def scenarios():
 
     def stand_in(text, path):
         calls.append((text, path))
-        open(path, "wb").close()
+        with open(path, "wb") as f:   # an empty file would be "no audio"
+            f.write(b"RIFF audio")
         return True
 
     e = tts.TTSEngine()
@@ -143,6 +154,72 @@ async def scenarios():
     ok("JARVIS_TTS_FALLBACK=off: no fallback engines", getattr(off, "_fallback_engines", None) == [], str(getattr(off, "_fallback_engines", "missing")))
     del os.environ["JARVIS_TTS_FALLBACK"]
     del sys.modules["pyttsx3"]
+
+    print("\n--- Edge cases ---")
+    used = []
+
+    def good(text, path):
+        used.append("good")
+        with open(path, "wb") as f:
+            f.write(b"RIFF audio")
+        return True
+
+    def claims_but_empty(text, path):
+        used.append("empty")
+        open(path, "wb").close()
+        return True
+
+    def raises(text, path):
+        used.append("raises")
+        raise OSError("voice not installed")
+
+    e = tts.TTSEngine()
+    e.websocket = FakeWS()
+    EDGE["mode"] = "empty"
+    e._fallback_engines = [("good", good)]
+    ends = await turn(e, "Empty file, sir.")
+    ok("edge-tts writing an empty file counts as no audio: the fallback speaks", used == ["good"] and ends and ends[0].get("outcome") == "played", f"{used} {json.dumps(ends)}")
+    EDGE["mode"] = "fail"
+
+    used.clear()
+    e._fallback_engines = [("empty", claims_but_empty)]
+    ends = await turn(e, "Claims success, sir.")
+    ok("a fallback that says yes but wrote nothing is synthesis_failed, not played", ends and ends[0].get("outcome") == "synthesis_failed", json.dumps(ends))
+
+    used.clear()
+    e._fallback_engines = [("raises", raises), ("good", good)]
+    ends = await turn(e, "First voice broken, sir.")
+    ok("a fallback that throws is tried once, then the next one speaks", used == ["raises", "good"] and ends and ends[0].get("outcome") == "played", f"{used} {json.dumps(ends)}")
+    ok("…and the engine that played is named on speaking_end", ends and ends[0].get("engine") == "good", json.dumps(ends))
+    ok("the fallback's audio file is removed after playback", not os.path.exists(e._fallback_path), e._fallback_path)
+
+    used.clear()
+
+    def stopped_meanwhile(text, path):
+        used.append("stopped")
+        e._interrupt_flag = True   # the user's stop arrives while the voice works
+        with open(path, "wb") as f:
+            f.write(b"RIFF audio")
+        return True
+    e._fallback_engines = [("stopped", stopped_meanwhile), ("good", good)]
+    before = len(loaded)
+    ends = await turn(e, "Stop me, sir.")
+    ok("a stop during fallback synthesis: nothing is played, no other voice tried", len(loaded) == before and used == ["stopped"], f"{used}, played {len(loaded) - before}")
+    ok("…and the turn is not reported as played", not ends or ends[0].get("outcome") != "played", json.dumps(ends))
+    e._interrupt_flag = False
+
+    used.clear()
+    EDGE["mode"] = "ok"
+    e._fallback_engines = [("good", good)]
+    ends = await turn(e, "Normal reply, sir.")
+    ok("normal playback names edge-tts and does not touch the fallback", used == [] and ends and ends[0].get("engine") == "edge-tts", f"{used} {json.dumps(ends)}")
+    EDGE["mode"] = "fail"
+
+    none = tts.TTSEngine()
+    none.websocket = FakeWS()
+    none._fallback_engines = []   # e.g. Linux without pyttsx3, or a Windows voice that is missing
+    ends = await turn(none, "No voices, sir.")
+    ok("no fallback voice available: synthesis_failed, saying so", ends and ends[0].get("outcome") == "synthesis_failed" and "no offline voice" in ends[0].get("detail", ""), json.dumps(ends))
 
     print("\n--- The Windows voice gets the text as data, not as code ---")
     nasty = "Done'; Remove-Item C:\\\\ -Recurse; $(calc) `whoami` \"x\""

@@ -161,9 +161,9 @@ export function planRecovery(
     case "PythonProcessCrash": {
       actions.push({ kind: "restart_process", target: failure.module, meta: restartMeta });
 
-      if (failure.module.includes("tts")) {
-        actions.push({ kind: "fallback_tts", target: "pyttsx3" });
-      }
+      // No "fallback_tts" for tts.py (VOICE-003): it only moved a label that
+      // tts.py never read, and reported a switch. tts.py now falls back to an
+      // offline voice per phrase on its own; restarting it is the recovery.
       if (failure.module.includes("stt")) {
         actions.push({ kind: "fallback_stt", target: "speech_recognition" });
       }
