@@ -381,6 +381,7 @@ export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> 
   control_system: { reason: ON_WINDOWS },
   cancel_current_action: { reason: 'it stops work in progress; there is nothing left to look at' },
   delegate_task: { reason: 'it starts background agents; their result is checked and reported when they finish' },
+  self_repair: { reason: 'it starts a repair run that checks the failed effect itself (a played check phrase; a reconnect, then a real transcript) and reports the result when it finishes' },
   cancel_agent_task: { reason: 'the tool itself waits until the cancelled agents have stopped' },
 };
 

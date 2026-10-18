@@ -763,6 +763,12 @@ export class JarvisOrchestrator {
           const report = result?.success ? parseJson(result.output) : undefined;
           if (Array.isArray(report?.details)) console.log(`[Orchestrator] ${(report.details as string[]).join('\n')}`);
           this.speak(typeof report?.spoken === 'string' ? report.spoken : failureReply(result, 'I could not check myself, sir.'));
+        } else if (route.type === 'heal' || route.type === 'repair_last' || route.type === 'repair_continue' || route.type === 'repair_stop' || route.type === 'repair_explain_block') {
+          // Bounded runtime repair (core/repairRun.ts), through the registry like any action.
+          const action = { heal: 'heal', repair_last: 'last', repair_continue: 'continue', repair_stop: 'stop', repair_explain_block: 'explain' }[route.type];
+          const result = await runRoutedTool('self_repair', { action });
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.spoken === 'string' ? body.spoken : failureReply(result, 'I could not start the repair, sir.'));
         } else if (route.type === 'list_capabilities') {
           // Through the registry like any tool call; the full list goes to the console.
           const result = await runRoutedTool('list_capabilities', {});

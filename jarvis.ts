@@ -308,6 +308,10 @@ async function startJarvis() {
     // 0c. Failures observed from here on are kept, deduplicated by signature, in
     // data/repairs (core/issueStore.ts); ledger successes resolve what they prove.
     startIssueRecording(healthLedger);
+    // A repair that JARVIS's own restart interrupted waits for you (core/repairRun.ts).
+    const { repairRunner } = await import('./core/repairRun.js');
+    repairRunner.load();
+    if (repairRunner.active()?.status === 'AWAITING_APPROVAL') console.log('[Repair] ⏸️  A repair was interrupted by a restart; say "continue the repair" or "stop healing".');
 
     // 1. Parallel Core Systems Init (Memory + Goals)
     const tMemory = Date.now();

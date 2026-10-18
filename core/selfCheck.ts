@@ -172,7 +172,7 @@ export async function healthCheck(full: boolean, deps: SelfCheckDeps = {}): Prom
 /** The latest repair run, if any, and what the issue record says ("show the repair report"). */
 export async function repairReport(deps: SelfCheckDeps = {}): Promise<SelfCheckReport> {
   const now = deps.now?.() ?? Date.now();
-  const run = deps.latestRun?.();
+  const run = deps.latestRun ? deps.latestRun() : await defaultLatestRun();
   const active = issueStore.active();
   const weekAgo = now - 7 * 24 * 3600_000;
   const resolved = issueStore.all().filter((i) => i.status === 'RESOLVED' && i.resolvedAt && Date.parse(i.resolvedAt) >= weekAgo);
@@ -192,6 +192,11 @@ export async function repairReport(deps: SelfCheckDeps = {}): Promise<SelfCheckR
     `Full record: ${issueStore.dir()} (issues.json, occurrences.jsonl)`,
   ];
   return { mode: 'report', at: new Date(now).toISOString(), items, issues: active.slice(0, 10).map(issueLine), spoken, details };
+}
+
+async function defaultLatestRun(): Promise<ReturnType<NonNullable<SelfCheckDeps['latestRun']>>> {
+  const { repairRunner } = await import('./repairRun.js');
+  return repairRunner.latest();
 }
 
 function ago(ms: number): string {

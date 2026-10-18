@@ -100,6 +100,29 @@ const STUCK_QUESTION: readonly RegExp[] = [
   /^what is taking (?:you )?so long$|^whats taking (?:you )?so long$/,
 ];
 
+/**
+ * Repair of JARVIS itself (core/repairRun.ts). Like the self-check, these name
+ * JARVIS; "fix my app" stays the app diagnosis.
+ */
+const HEAL: readonly RegExp[] = [
+  new RegExp(`^(?:please )?(?:heal|repair|fix|recover) ${SELF}(?: now)?$`),
+  /^(?:go |move |switch )?(?:in|into|to) (?:self ?)?heal(?:ing)? mode$/,
+  // Not a bare "healing": a fragment of speech must not start a repair.
+  /^(?:start|begin|run) (?:self ?)?healing(?: mode)?$|^self ?healing(?: mode)?$|^healing mode$/,
+  /^(?:start |begin |run )?(?:a )?self ?repair$/,
+];
+const REPAIR_LAST: readonly RegExp[] = [
+  /^(?:fix|repair) (?:only )?(?:the |that )?(?:last|latest|current|previous) (?:problem|error|issue|failure)(?: only)?$/,
+  /^(?:fix|repair) (?:only )?(?:that|this) (?:problem|error|issue|failure)$/,
+];
+const REPAIR_CONTINUE = /^(?:continue|resume|carry on with) (?:the |your )?(?:repair|healing|self ?repair)$/;
+const REPAIR_STOP = /^(?:stop|cancel|abort|end|quit) (?:the |your )?(?:healing|repair|repairing|self ?repair|self ?healing)(?: mode)?$/;
+const REPAIR_EXPLAIN: readonly RegExp[] = [
+  /^why (?:cant|cannot|can not|couldnt|could not|didnt|did not|wont) (?:you|u) (?:fix|repair|heal) (?:it|that|this|yourself)$/,
+  /^why (?:is|was) (?:the )?(?:repair|healing) (?:blocked|stuck|failing|not working)$/,
+  /^what (?:is|was) blocking (?:the )?(?:repair|healing)$/,
+];
+
 /** "status" and its plain variants: answered from system_overview. */
 const SYSTEM_STATUS_PHRASES = new Set([
   'status', 'system status', 'pc status', 'computer status', 'system check',
@@ -240,6 +263,11 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   if (SELF_CHECK_QUICK.some((re) => re.test(clean))) return { type: 'health_check', reply: '' };
   if (REPAIR_REPORT.some((re) => re.test(clean))) return { type: 'repair_report', reply: '' };
   if (STUCK_QUESTION.some((re) => re.test(clean))) return { type: 'investigate_stuck', reply: '' };
+  if (REPAIR_STOP.test(clean)) return { type: 'repair_stop', reply: '' };
+  if (REPAIR_CONTINUE.test(clean)) return { type: 'repair_continue', reply: '' };
+  if (REPAIR_EXPLAIN.some((re) => re.test(clean))) return { type: 'repair_explain_block', reply: '' };
+  if (REPAIR_LAST.some((re) => re.test(clean))) return { type: 'repair_last', reply: '' };
+  if (HEAL.some((re) => re.test(clean))) return { type: 'heal', reply: '' };
 
   // 6. Help
   if (clean === 'help') {

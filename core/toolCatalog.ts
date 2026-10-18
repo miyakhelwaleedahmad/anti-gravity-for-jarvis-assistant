@@ -222,6 +222,17 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
   },
   self_check: observation('Checks JARVIS itself from observed outcomes (self-check, full self-check, repair report, why it is stuck). Changes nothing.',
     { format: 'json', description: 'mode, items[] (VERIFIED / FAILING / BLOCKED / NOT_VERIFIED / SKIPPED), issues[], spoken, details[]' }, 'SYSTEM'),
+  self_repair: withActions(
+    { category: 'SYSTEM', reversible: 'yes', external: 'none',
+      effect: "Restarts JARVIS's own voice services that failed, then checks they work again; or continues, stops or explains a repair. Changes no code, settings or files.",
+      output: { format: 'json', description: 'spoken, runId, status' } },
+    {
+      heal: { risk: 1, reversible: 'yes', effect: 'Restarts the voice services behind the open issues and checks the failed effect.' },
+      last: { risk: 1, reversible: 'yes', effect: 'The same, for the latest issue only.' },
+      continue: { risk: 1, reversible: 'yes', effect: 'Continues a repair that a restart of JARVIS interrupted.' },
+      stop: { risk: 1, reversible: 'no', effect: 'Stops the repair in progress; nothing new starts.' },
+      explain: { risk: 0, reversible: 'yes', effect: 'Says why an issue cannot be repaired here.' },
+    }),
   goal_status: observation('Reads the background goals: running work, approvals and reviews waiting, blocked goals, retries, schedule, progress.',
     { format: 'text', description: 'A sentence to say, then one line per goal' }, 'SYSTEM'),
   goal_control: withActions(
