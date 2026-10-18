@@ -342,6 +342,12 @@ class TTSEngine:
                 return False
 
             timeout = TTS_EDGE_TIMEOUT if attempt == 1 else TTS_EDGE_RETRY_TIMEOUT
+            # The audio file is reused for every phrase: remove the last one, so
+            # an attempt that writes nothing cannot replay the previous reply.
+            try:
+                os.remove(self._tmp_path)
+            except OSError:
+                pass
             communicate = edge_tts.Communicate(text, voice=TTS_VOICE, rate=TTS_RATE, pitch=TTS_PITCH)
 
             # Wrap synthesis in its own cancellable task for stop() to target

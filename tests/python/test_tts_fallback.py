@@ -55,6 +55,8 @@ class Communicate:   # stand-in edge-tts
     async def save(self, path):
         if EDGE["mode"] == "fail":
             raise RuntimeError("403, message='Invalid response status'")
+        if EDGE["mode"] == "silent":   # "succeeds" without writing anything
+            return
         with open(path, "wb") as f:
             f.write(b"" if EDGE["mode"] == "empty" else b"ID3 audio")
 
@@ -213,6 +215,15 @@ async def scenarios():
     e._fallback_engines = [("good", good)]
     ends = await turn(e, "Normal reply, sir.")
     ok("normal playback names edge-tts and does not touch the fallback", used == [] and ends and ends[0].get("engine") == "edge-tts", f"{used} {json.dumps(ends)}")
+    EDGE["mode"] = "fail"
+
+    used.clear()
+    EDGE["mode"] = "ok"
+    await turn(e, "First reply, sir.")          # leaves its audio file behind
+    EDGE["mode"] = "silent"
+    e._fallback_engines = []
+    ends = await turn(e, "Second reply, sir.")
+    ok("edge-tts writing nothing does not replay the last reply's file", ends and ends[0].get("outcome") == "synthesis_failed", json.dumps(ends))
     EDGE["mode"] = "fail"
 
     none = tts.TTSEngine()

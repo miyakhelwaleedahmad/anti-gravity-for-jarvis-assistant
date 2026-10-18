@@ -53,6 +53,8 @@ class Communicate:
         if isinstance(d, Exception):
             raise d
         await asyncio.sleep(d)
+        with open(path, "wb") as f:   # as edge-tts does: an audio file
+            f.write(b"ID3 audio")
 
 
 edge = types.ModuleType("edge_tts")
