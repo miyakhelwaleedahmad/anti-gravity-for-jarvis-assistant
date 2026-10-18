@@ -1,11 +1,11 @@
 # Self-healing: inventory of existing capabilities and regression evidence
 
-The self-healing work (Phases 1–2 so far) is an addition to JARVIS. This file lists what JARVIS already does, where it lives, which tests cover it, and the result of those tests on the code **before** any self-healing change and on the current code. It says what was not verified here.
+The self-healing work (Phases 1–3 so far) is an addition to JARVIS. This file lists what JARVIS already does, where it lives, which tests cover it, and the result of those tests on the code **before** any self-healing change and on the current code. It says what was not verified here.
 
 ## How it was checked
 
 - **Before:** commit `4cc0f67`, the last commit before any self-healing change, checked out in a separate git worktree.
-- **After:** the current branch (Phase 1 committed, Phase 2 added).
+- **After:** the current branch. Phase 2 was compared first (the table below), then Phase 3 again (its own section).
 - **Suite:** `npx tsx tests/runAll.ts --ci` on Linux, with Redis on 127.0.0.1 and a Python environment for the real speech test (`JARVIS_TEST_PYTHON`). Every test runs in its own empty data folder (`JARVIS_DATA_ROOT`), so no real memory, goals or permissions were touched.
 - **Registry snapshot:** a script loaded every tool and skill exactly as JARVIS does at startup (`registerAllTools()` plus the skill loader), then dumped:
   - each tool's name, risk level, metadata, input fields, fallbacks, retry policy and verifier;
@@ -23,6 +23,13 @@ The self-healing work (Phases 1–2 so far) is an addition to JARVIS. This file 
 | Skipped (environment) | 9 | 9 (the same 9) |
 | Tests whose result changed | — | none |
 | Registry snapshot | 75 tools, 7 specialists, 16 workers | **identical** (byte-for-byte) |
+
+### Phase 3 (read-only self-check) compared again
+
+- **Registry snapshot:** no tool removed or changed; one tool added (`self_check`, risk 0, read-only). Specialists, workers, base permission level, level-2 policy and the sample risk decisions are identical.
+- **Routing:** 276 phrases taken from the routing tests, each tried with the "try again?" offer open and closed, were run through the router on the baseline and on Phase 3. Only phrases that had no route before changed, and only to one of the four new routes. "system check" and "status" still mean the PC's status, and "fix my app" is still the app diagnosis. "what are the open issues" is deliberately not taken, since it may mean a repository's issues.
+- **Golden fixtures:** `routeGoldenTest` and `replyGoldenTest` failed once, because the capability replies now say "I have 76 tools" instead of 75. The fixtures were re-recorded with `--record`; with 76 mapped back to 75 they are byte-identical to before.
+- **Known limit:** every new request stops the foreground request in flight (`core/orchestrator.ts`, existing behaviour), and "why are you stuck?" is a request. It reads what was running *before* that happens, and says that asking stopped it; background goals and agents are not stopped. Answering without stopping it would mean changing how the orchestrator serialises requests, and that was not done.
 
 ## Capabilities
 
@@ -62,5 +69,9 @@ Each change only adds behaviour; no existing branch was removed. Recording a fai
 | `core/orchestrator.ts` | An unexpected error (not a rate limit, time-out, network error or abort) is recorded. The reply is unchanged. |
 | `monitoring/healthLedger.ts` | Phase 1. `isToolFault` now counts `VERIFICATION_FAILED` as a tool fault, so a tool whose effect was missing shows as degraded instead of being ignored. |
 | `jarvis.ts` | `startIssueRecording(healthLedger)` at startup. |
+| `core/deterministicRoutes.ts` | Phase 3: four routes for questions about JARVIS itself, checked after every existing route except help. |
+| `core/orchestrator.ts` | Phase 3: one branch for those routes, through the registry's `self_check` tool; before "why are you stuck?" supersedes the request in flight, it reads that request's state. |
+| `core/planningToolSelection.ts` | Phase 3: offers `self_check` to the model only for questions that name JARVIS ("yourself", "your health", "self check"). |
+| `core/tools/index.ts`, `core/toolCatalog.ts`, `README.md` | Phase 3: `self_check` registered with risk-0 metadata; README count 75 → 76. |
 
 New files are written only under `data/repairs/` (git-ignored) and, if enabled, the vault folder above.

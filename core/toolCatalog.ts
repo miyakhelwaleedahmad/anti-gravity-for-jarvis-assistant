@@ -220,6 +220,8 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     effect: 'Records a goal that JARVIS works on in the background; each action its agents take is checked and approved on its own.',
     output: { format: 'json', description: 'success, message, goalId, kind, schedule' },
   },
+  self_check: observation('Checks JARVIS itself from observed outcomes (self-check, full self-check, repair report, why it is stuck). Changes nothing.',
+    { format: 'json', description: 'mode, items[] (VERIFIED / FAILING / BLOCKED / NOT_VERIFIED / SKIPPED), issues[], spoken, details[]' }, 'SYSTEM'),
   goal_status: observation('Reads the background goals: running work, approvals and reviews waiting, blocked goals, retries, schedule, progress.',
     { format: 'text', description: 'A sentence to say, then one line per goal' }, 'SYSTEM'),
   goal_control: withActions(

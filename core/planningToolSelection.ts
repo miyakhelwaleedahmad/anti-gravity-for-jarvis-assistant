@@ -27,6 +27,7 @@ const FILE_ACTION = /\b(files?|folders?|directory|rename|move|delete|trash|resto
 const GIT_ACTION = /\b(git|commit|commits|branch|branches|push|repo|repository)\b/;
 // "stop my web server" did not offer `dev` (P13): the server may have a name.
 const DEV_ACTION = /\b(tests?|build|lint|typecheck|type check|dev server|(?:start|stop|restart) (?:the |my )?(?:[a-z]+ )?server|npm|pnpm|script|scripts)\b/;
+const SELF_QUESTION = /\b(?:yourself|your (?:health|errors?|issues|problems|status|repairs?)|self ?check|self ?test|(?:are|were) you (?:stuck|broken|ok|okay))\b/;
 const TROUBLE_WORDS = /\b(not working|isnt working|doesnt work|wont load|not loading|broken|crash(?:ed|es|ing)?|(?:is|went|keeps going) down|error page|blank page|failing)\b/;
 /** Pressing or typing in a Windows app, a dialog or a window (P14). */
 const DESKTOP_UI = /\b(dialog|window|notepad|calculator|explorer|settings|app|application|program|desktop|popup|pop up|message box|installer)\b/;
@@ -166,6 +167,8 @@ export function selectPlanningToolNames(input: string): string[] {
   if (BROWSER_QUESTION.test(clean)) {
     addIfRegistered('browser_state', 'browser_read_page', 'browser_page_structure');
   }
+  // Questions about JARVIS itself that the fixed routes do not take (core/selfCheck.ts).
+  if (SELF_QUESTION.test(clean)) addIfRegistered('self_check');
 
   // 2. Web search: ONLY if explicit search intent or not a pure app launch request
   if (isExplicitSearch || (!isLaunchIntent && /\b(google|web|internet|online|research)\b/i.test(clean))) {

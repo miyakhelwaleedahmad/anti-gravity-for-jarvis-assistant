@@ -65,6 +65,41 @@ const CONTINUE_QUESTION =
 const CONTINUE_YES = /^(?:yes|yes please|yeah|yep|try again|yes try again|go ahead)$/;
 const CONTINUE_NO = /^(?:no|no thanks|nope|leave it|dont)$/;
 
+/**
+ * Questions about JARVIS itself (core/selfCheck.ts), read-only. They name JARVIS
+ * ("yourself", "self check", "your health"): "system check" and "status" stay
+ * the PC's status, and "fix my app" stays the app diagnosis.
+ */
+const SELF = '(?:yourself|your ?self|jarvis)';
+const SELF_CHECK_QUICK: readonly RegExp[] = [
+  new RegExp(`^(?:please )?(?:check|test|diagnose|examine|inspect) ${SELF}(?: now)?$`),
+  /^(?:run |do |start )?(?:a |your )?(?:quick )?(?:self ?check|self ?test|self ?diagnostics?|helth check|health check)(?: on yourself)?(?: now)?$/,
+  /^(?:check|whats|what is|how is) (?:your|jarvis) (?:health|status|condition)$/,
+  /^(?:are you|is jarvis) (?:working|running) (?:properly|correctly|ok|okay|fine|right)$/,
+  /^(?:what is|whats) wrong with (?:you|yourself|jarvis)$/,
+  /^(?:do you|does jarvis) have (?:any )?(?:errors|problems|issues)$/,
+];
+const SELF_CHECK_FULL: readonly RegExp[] = [
+  /^(?:run |do |start )?(?:a |your )?(?:full|complete|deep|thorough|detailed) (?:self ?check|self ?test|self ?diagnostics?|health check|helth check|check of yourself|diagnostic(?:s)?(?: of yourself)?)(?: now)?$/,
+  new RegExp(`^(?:check|test|diagnose) ${SELF} (?:fully|completely|thoroughly|in full)$`),
+  new RegExp(`^(?:check|test) (?:all|every part) of ${SELF}$`),
+];
+const REPAIR_REPORT: readonly RegExp[] = [
+  /^(?:show|give|read|tell)(?: me)? (?:the |your |my )?(?:last |latest )?(?:repair|healing|self ?healing|fix) (?:report|results?|summary|log)$/,
+  /^(?:repair|healing|self ?healing) (?:report|results?|summary|status)$/,
+  /^what (?:did you|have you) (?:fix|fixed|repair|repaired)(?: (?:last|recently|today))?$/,
+  // "your": "what are the open issues" may be a repository's issues.
+  /^(?:whats|what is|what are) your (?:open|active|current) (?:issues|problems|errors)$/,
+];
+const STUCK_QUESTION: readonly RegExp[] = [
+  /^why (?:are|r) (?:you|u) (?:stuck|frozen|hanging|hung|so slow|taking so long|not responding|not answering|waiting)$/,
+  // normalizeVoiceInput drops a trailing "for": "what are you waiting for" arrives as "… waiting".
+  /^(?:what are you|what r u|are you) (?:stuck on|waiting for|waiting|stuck)$/,
+  /^(?:are you|r u) (?:stuck|frozen|hanging|hung)$/,
+  /^why (?:is it|is this) taking so long$/,
+  /^what is taking (?:you )?so long$|^whats taking (?:you )?so long$/,
+];
+
 /** "status" and its plain variants: answered from system_overview. */
 const SYSTEM_STATUS_PHRASES = new Set([
   'status', 'system status', 'pc status', 'computer status', 'system check',
@@ -199,6 +234,12 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   if (APP_TROUBLE.some((pattern) => pattern.test(clean))) {
     return { type: 'diagnose_app', reply: '' };
   }
+
+  // 5b. Questions about JARVIS itself: read-only answers (core/selfCheck.ts).
+  if (SELF_CHECK_FULL.some((re) => re.test(clean))) return { type: 'self_check_full', reply: '' };
+  if (SELF_CHECK_QUICK.some((re) => re.test(clean))) return { type: 'health_check', reply: '' };
+  if (REPAIR_REPORT.some((re) => re.test(clean))) return { type: 'repair_report', reply: '' };
+  if (STUCK_QUESTION.some((re) => re.test(clean))) return { type: 'investigate_stuck', reply: '' };
 
   // 6. Help
   if (clean === 'help') {

@@ -26,6 +26,7 @@ import { agentTools } from '../agents/jarvisAgents.js';
 import { goalTools } from '../goalTools.js';
 import { youtubeTools } from './youtubeTools.js';
 import { webResearchTools } from './webResearchTools.js';
+import { selfCheckTool } from './selfCheckTool.js';
 
 export function registerAllTools(): void {
   toolRegistryV2.registerMany([
@@ -59,6 +60,7 @@ export function registerAllTools(): void {
     ...goalTools,
     ...youtubeTools,
     ...webResearchTools,
+    selfCheckTool,
   ]);
 
   // Skills (skills/*) register later, so the dashboard's count is higher (e.g. 48 here, 74 there).

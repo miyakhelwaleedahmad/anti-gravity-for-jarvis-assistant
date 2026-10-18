@@ -38,6 +38,7 @@ import { registerAllTools } from './tools/index.js';
 import { SkillLoader } from './skillLoader.js';
 import { normalizeVoiceInput } from './voiceInput.js';
 import { recordFailure } from './issueStore.js';
+import { captureInFlight, noteInFlight } from './selfCheck.js';
 import { selectPlanningToolNames, shouldUseHeavyContext } from './planningToolSelection.js';
 import {
   describeCommandResult, desktopReply, devStatusReply, parseJson, repairFailure, systemStatusReply, trendingReply,
@@ -274,6 +275,20 @@ export class JarvisOrchestrator {
     await this.waitForSkills();
     const callId = Math.random().toString(36).substring(7);
     this.currentProcessCallId = callId;
+    // "Why are you stuck?" describes the request in flight, so that is read
+    // before this request's trace replaces it and the abort below stops it.
+    if (this.matchDeterministicCommand(input)?.type === 'investigate_stuck') {
+      try {
+        noteInFlight(captureInFlight({
+          state: String(agentStateMachine.currentState),
+          stateHistory: agentStateMachine.stateHistory,
+          graph: taskGraphEngine.getCurrentGraph(),
+          ...(approvalGate.pendingSummary() ? { approval: approvalGate.pendingSummary()! } : {}),
+        }));
+      } catch (err) {
+        console.warn('[Orchestrator] could not read the request in flight:', (err as Error).message);
+      }
+    }
     // One correlation id per request, so the plan, every tool call and the
     // outcome can be joined back together in the trace log (JARVIS-015).
     beginTrace(source, input);
@@ -741,6 +756,13 @@ export class JarvisOrchestrator {
           const result = await runRoutedTool('youtube_trending', { ...(d.region ? { region: d.region } : {}), ...(d.category ? { category: d.category } : {}) });
           if (result?.success && !/^\s*Error/.test(result.output)) console.log(`[Orchestrator] YouTube:\n${result.output}`);
           this.speak(trendingReply(result));
+        } else if (route.type === 'health_check' || route.type === 'self_check_full' || route.type === 'repair_report' || route.type === 'investigate_stuck') {
+          // Read-only questions about JARVIS itself (core/selfCheck.ts): nothing is repaired here.
+          const mode = { health_check: 'quick', self_check_full: 'full', repair_report: 'report', investigate_stuck: 'stuck' }[route.type];
+          const result = await runRoutedTool('self_check', { mode });
+          const report = result?.success ? parseJson(result.output) : undefined;
+          if (Array.isArray(report?.details)) console.log(`[Orchestrator] ${(report.details as string[]).join('\n')}`);
+          this.speak(typeof report?.spoken === 'string' ? report.spoken : failureReply(result, 'I could not check myself, sir.'));
         } else if (route.type === 'list_capabilities') {
           // Through the registry like any tool call; the full list goes to the console.
           const result = await runRoutedTool('list_capabilities', {});
