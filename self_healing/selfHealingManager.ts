@@ -80,6 +80,8 @@ interface ManagedProcess {
 export class SelfHealingManager extends EventEmitter {
   private static instance: SelfHealingManager;
   private processes = new Map<string, ManagedProcess>();
+  /** Processes stopped on purpose by restartService(): their exit is not a crash. */
+  private intendedStops = new WeakSet<ChildProcess>();
   private readonly MAX_RESTARTS = 3;
   private readonly RESTART_BACKOFF_MS = 3_000;
 
@@ -167,6 +169,10 @@ export class SelfHealingManager extends EventEmitter {
     });
 
     proc.on("exit", (code) => {
+      if (this.intendedStops.has(proc)) {
+        console.log(`[SelfHeal] ${label} stopped for a requested restart (code ${code}).`);
+        return;
+      }
       if (code !== 0 && code !== null) {
         failureDetector.reportError(
           `Process exited with code ${code}`,
@@ -200,6 +206,33 @@ export class SelfHealingManager extends EventEmitter {
     const delay = delayMs ?? (this.RESTART_BACKOFF_MS * entry.restarts);
     console.warn(`[SelfHeal] Scheduling restart of ${label} in ${delay}ms (attempt ${entry.restarts}/${this.MAX_RESTARTS})…`);
     setTimeout(() => this.spawnProcess(label), delay);
+  }
+
+  /**
+   * A restart asked for by a repair run (core/repairRun.ts): the running
+   * process, if any, is stopped and waited for before a new one starts, so two
+   * copies never run at once. Not counted as a crash. The automatic paths
+   * above (scheduleRestart) are unchanged.
+   */
+  async restartService(label: string, stopTimeoutMs = 10_000): Promise<{ ok: boolean; reason: string }> {
+    const key = [...this.processes.keys()].find((k) => k.toLowerCase() === label.toLowerCase());
+    const entry = key ? this.processes.get(key) : undefined;
+    if (!key || !entry) return { ok: false, reason: `${label} is not started by JARVIS in this run, so it cannot be restarted from here` };
+    if (entry.disabledAt) {
+      return { ok: false, reason: `${key} was disabled after repeated crashes at ${entry.disabledAt.toISOString()}; restart JARVIS to enable it again` };
+    }
+    const old = entry.proc;
+    if (old && old.exitCode === null && old.signalCode === null) {
+      this.intendedStops.add(old);
+      const exited = new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), stopTimeoutMs);
+        old.once("exit", () => { clearTimeout(timer); resolve(true); });
+      });
+      old.kill();
+      if (!(await exited)) return { ok: false, reason: `${key} did not stop within ${Math.round(stopTimeoutMs / 1000)} s` };
+    }
+    this.spawnProcess(key);
+    return { ok: true, reason: `${key} restarted` };
   }
 
   // ── Failure Pipeline ──────────────────────────────────────────────────────
