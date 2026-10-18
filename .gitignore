@@ -90,6 +90,9 @@ data/episodes.jsonl
 # Agent task archives (requests and results; read by the goal runtime on restart) — runtime data, never commit.
 data/agents/
 
+# Issue records and failure occurrences (core/issueStore.ts) — runtime data, never commit.
+data/repairs/
+
 # Live runtime state is written ONLY under data/runtime/, which is ignored.
 #
 # data/goals.json, memory/taskHistory.json, memory/userMemory.json and

@@ -131,6 +131,6 @@ query ─► rag/retrieve.ts ─► vector search ─► manifest join ─► ci
 
 ## What is NOT here
 
-- **No Obsidian integration.** No code, no imports, no configuration.
+- **No Obsidian integration, other than an opt-in mirror of repair issues.** `core/obsidianMirror.ts` writes issue notes to `<vault>/JARVIS/Repairs/` only when `JARVIS_OBSIDIAN_VAULT` is set; it reads nothing from the vault and never overwrites a note it did not write. The issue record itself is `data/repairs/` (`core/issueStore.ts`).
 - **No scheduler** wired into the running system.
 - **`core/brain.ts` is not the brain.** It and the whole messageBus pipeline are unreachable and now live in `_legacy/`.

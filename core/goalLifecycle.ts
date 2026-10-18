@@ -176,6 +176,10 @@ export interface TaskFailure {
   action: string;
   /** What should change on the next attempt. */
   advice?: string;
+  /** The failure's shared signature (core/failureSignature.ts). */
+  signature?: string;
+  /** The issue it was recorded under (core/issueStore.ts), for a fault rather than a refusal or a wait. */
+  issueId?: string;
 }
 
 export interface TaskResult {

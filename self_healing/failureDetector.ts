@@ -8,6 +8,10 @@
 import { EventEmitter } from "events";
 import type { ChildProcess } from "child_process";
 import { classifyFailure, type ClassifiedFailure } from "./failureClassifier.js";
+import { recordFailure } from "../core/issueStore.js";
+
+/** The effect pipeline a Python service serves: its issues resolve when that effect works again. */
+const SERVICE_PIPELINE: Record<string, string> = { tts: "brain_to_tts", stt: "stt_to_brain", wakeword: "wake_to_stt" };
 
 // ─── Public event shape ───────────────────────────────────────────────────────
 
@@ -83,6 +87,16 @@ export class FailureDetector extends EventEmitter {
 
     const event: FailureEvent = { failure, pid };
     this.emit("failure", event);
+
+    // The persistent record: one occurrence, deduplicated into one issue per signature.
+    const pipeline = SERVICE_PIPELINE[module];
+    recordFailure({
+      component: failure.signature.component,
+      message: failure.message,
+      error: raw,
+      ...(pipeline ? { pipeline } : {}),
+      severity: failure.severity === "critical" ? "high" : failure.severity,
+    });
 
     // Always log so we have a record
     console.error(

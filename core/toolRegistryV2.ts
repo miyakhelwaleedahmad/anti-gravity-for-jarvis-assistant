@@ -34,6 +34,8 @@ import { buildApprovalRequest } from '../security/approvalRequest.js';
 import { redact, redactDeep } from '../security/redactor.js';
 import { verifyCall, type Verification, type Verifier } from './verifiers.js';
 import { healthLedger, isToolFault, LEDGER_PIPELINES } from '../monitoring/healthLedger.js';
+import { recordFailure } from './issueStore.js';
+import type { FailureSignature } from './failureSignature.js';
 
 /** Execution risk: drives sandboxing, caching and queueing (not permissions). */
 export type RiskLevel = 'low' | 'medium' | 'high';
@@ -277,6 +279,8 @@ export class ToolRegistryV2 {
   private _metrics = new Map<string, ToolMetrics>();
   /** Execution history ring buffer (max 200 entries) */
   private _history: ExecutionRecord[] = [];
+  /** Per tool, the signature and issue of its latest faulty call (core/issueStore.ts). */
+  private _lastFault = new Map<string, { signature: FailureSignature; issueId: string; at: number }>();
   /** When each tool was last dispatched, for the per-minute limits. */
   private _callTimes = new Map<string, number[]>();
   private readonly HISTORY_MAX = 200;
@@ -962,12 +966,12 @@ export class ToolRegistryV2 {
           if (isTimeout && policy.skipRetryOnTimeout) {
             console.warn(`[ToolRegistry] Tool "${toolName}" timed out — no retry per policy.`);
             this._recordMetric(toolName, false, durationMs, errMsg);
-            this._pushHistory({ tool: toolName, args, success: false, durationMs, error: errMsg, attemptNumber, timestamp: Date.now() });
+            this._pushHistory({ tool: toolName, args, success: false, durationMs, error: errMsg, attemptNumber, timestamp: Date.now() }, err);
             break;
           }
 
           this._recordMetric(toolName, false, durationMs, errMsg);
-          this._pushHistory({ tool: toolName, args, success: false, durationMs, error: errMsg, attemptNumber, timestamp: Date.now() });
+          this._pushHistory({ tool: toolName, args, success: false, durationMs, error: errMsg, attemptNumber, timestamp: Date.now() }, err);
 
           if (attempt < policy.maxRetries) {
             console.warn(`[ToolRegistry] Tool "${toolName}" threw (attempt ${attempt + 1}/${policy.maxRetries + 1}): ${errMsg}. Retrying...`);
@@ -1089,7 +1093,18 @@ export class ToolRegistryV2 {
     this._callListeners.push(fn);
   }
 
-  private _pushHistory(record: ExecutionRecord): void {
+  /**
+   * The signature and issue the registry recorded for the tool's latest faulty
+   * call at or after `since`, so another layer (reflection) names the failure
+   * the same way instead of re-deriving it from reworded text.
+   */
+  lastFault(tool: string, since = 0): { signature: FailureSignature; issueId: string; at: number } | undefined {
+    const f = this._lastFault.get(tool);
+    return f && f.at >= since ? f : undefined;
+  }
+
+  /** `thrown`: the exception, when the tool threw (its stack gives the source location). */
+  private _pushHistory(record: ExecutionRecord, thrown?: unknown): void {
     if (this._history.length >= this.HISTORY_MAX) {
       this._history.shift(); // drop oldest
     }
@@ -1104,7 +1119,21 @@ export class ToolRegistryV2 {
     // Tool health from what happened: a call that ran, or one that crashed or
     // timed out. A refusal, a denied approval or bad input is not a tool fault.
     if (kept.success) healthLedger.record(LEDGER_PIPELINES.tools, true, `${kept.tool} ran`);
-    else if (isToolFault(kept.error)) healthLedger.record(LEDGER_PIPELINES.tools, false, `${kept.tool}: ${String(kept.error).slice(0, 160)}`);
+    else if (isToolFault(kept.error)) {
+      healthLedger.record(LEDGER_PIPELINES.tools, false, `${kept.tool}: ${String(kept.error).slice(0, 160)}`);
+      // The persistent record: every faulty call is an occurrence of its tool's issue.
+      const issue = recordFailure({
+        component: `tool:${kept.tool}`, tool: kept.tool, pipeline: LEDGER_PIPELINES.tools,
+        message: String(kept.error), ...(thrown !== undefined ? { error: thrown } : {}),
+      });
+      if (issue) {
+        this._lastFault.set(kept.tool, {
+          signature: { id: issue.signature, component: issue.component, tool: kept.tool, category: issue.category, normalized: issue.normalized },
+          issueId: issue.issueId,
+          at: kept.timestamp,
+        });
+      }
+    }
     const { args: _args, ...call } = kept;
     for (const fn of this._callListeners) {
       try { fn(call); } catch { /* a trace listener must not break the call */ }

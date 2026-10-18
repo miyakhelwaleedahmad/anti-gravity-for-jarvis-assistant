@@ -15,6 +15,8 @@
 
 import 'dotenv/config';
 import { wireExecutionTracing } from './monitoring/traceWiring.js';
+import { startIssueRecording } from './core/issueStore.js';
+import { healthLedger } from './monitoring/healthLedger.js';
 import { configValidator } from './config/configValidator.js';
 import { llmConfig } from './config/llmconfig.js';
 import * as readline from 'readline';
@@ -302,6 +304,10 @@ async function startJarvis() {
     // 0b. Join the structured logger to the task graph's event stream so a
     // request produces one traceable, correlated record (JARVIS-015).
     wireExecutionTracing();
+
+    // 0c. Failures observed from here on are kept, deduplicated by signature, in
+    // data/repairs (core/issueStore.ts); ledger successes resolve what they prove.
+    startIssueRecording(healthLedger);
 
     // 1. Parallel Core Systems Init (Memory + Goals)
     const tMemory = Date.now();

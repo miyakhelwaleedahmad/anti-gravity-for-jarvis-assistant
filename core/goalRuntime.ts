@@ -50,6 +50,7 @@ import {
 } from './goalLifecycle.js';
 import { goalKind, goalManager as defaultManager, isManaged, MAX_TASK_ATTEMPTS, newId, type Goal, type GoalManager } from './goalManager.js';
 import { classifyFailure, decideRecovery, DEFAULT_RETRY, type FailureInfo, type RetrySettings } from './goalRecovery.js';
+import { recordFailure } from './issueStore.js';
 import { dueTimesBetween, nextRunAfter } from './goalSchedule.js';
 import type { GoalPlanner } from './goalPlanner.js';
 import { verifyCriteria, type Judge } from './goalVerifier.js';
@@ -691,7 +692,7 @@ export class GoalRuntime extends EventEmitter {
         },
       });
     } catch (err) {
-      outcome = { ok: false, failure: { message: err instanceof Error ? err.message : String(err) } };
+      outcome = { ok: false, failure: { message: err instanceof Error ? err.message : String(err), error: err } };
     } finally {
       clearInterval(heartbeat);
     }
@@ -743,7 +744,26 @@ export class GoalRuntime extends EventEmitter {
     t.nextAttemptAt = decision.nextAttemptAt;
     t.waitingFor = decision.waitingFor;
     if (outcome.result?.findings?.length) t.checkpoint = { at: now, note: `partial findings of attempt ${attemptId}`, partial: outcome.result.findings.slice(0, 5) };
-    t.failures.push({ at: now, attemptId, class: cls, message: failure.message.slice(0, 300), action: decision.action, ...(decision.advice ? { advice: decision.advice } : {}) });
+    // A fault (a transient or unrecoverable failure) goes to the issue record; a refusal,
+    // a wait for approval or budget, missing evidence or an interruption is not a fault.
+    const issue = cls === 'transient' || cls === 'unrecoverable'
+      ? recordFailure({
+          component: decision.signature?.component ?? 'goal_task',
+          message: failure.message,
+          ...(failure.error !== undefined ? { error: failure.error } : {}),
+          ...(failure.tool ? { tool: failure.tool } : {}),
+          ...(failure.code ? { code: failure.code } : {}),
+          correlationId: attemptId,
+          taskId: t.id,
+          goalId: g.id,
+        })
+      : undefined;
+    t.failures.push({
+      at: now, attemptId, class: cls, message: failure.message.slice(0, 300), action: decision.action,
+      ...(decision.advice ? { advice: decision.advice } : {}),
+      ...(decision.signature ? { signature: decision.signature.id } : {}),
+      ...(issue ? { issueId: issue.issueId } : {}),
+    });
     if (t.failures.length > 20) t.failures.splice(0, t.failures.length - 20);
     if (TERMINAL_TASK_STATUSES.has(t.status)) t.finishedAt = now;
     this.manager.note(g, { event: 'task_failed', reason: `"${t.title}" ${cls}: ${decision.action}`, taskId: t.id });

@@ -37,6 +37,7 @@ import { conversationBus } from './conversationBus.js';
 import { registerAllTools } from './tools/index.js';
 import { SkillLoader } from './skillLoader.js';
 import { normalizeVoiceInput } from './voiceInput.js';
+import { recordFailure } from './issueStore.js';
 import { selectPlanningToolNames, shouldUseHeavyContext } from './planningToolSelection.js';
 import {
   describeCommandResult, desktopReply, devStatusReply, parseJson, repairFailure, systemStatusReply, trendingReply,
@@ -391,6 +392,9 @@ export class JarvisOrchestrator {
         fallback = 'I cannot reach my reasoning backend, sir. Please check your connection.';
       } else {
         fallback = 'I encountered an unexpected error, sir. Please try again.';
+        // Rate limits, time-outs and network errors are recorded by the provider
+        // (the language model's ledger outcome); this is everything else.
+        recordFailure({ component: 'orchestrator', message: err instanceof Error ? `${err.name}: ${err.message}` : errStr, error: err });
       }
 
       // Spoken as this request (it was not aborted), whatever context called process().

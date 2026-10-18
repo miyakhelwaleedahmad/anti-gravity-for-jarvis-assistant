@@ -27,6 +27,7 @@ import type { ILLMMessage } from '../bridge/llmTypes.js';
 import { toolRegistryV2 } from './toolRegistryV2.js';
 import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
 import { verificationFailedReply } from './verifiers.js';
+import { failureSignature, type FailureSignature } from './failureSignature.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,8 @@ export interface ReflectionResult {
   summary: string;
   shouldSpeak: boolean;    // Whether to vocalize the outcome
   voiceMessage?: string;   // What to say via TTS
+  /** One per failed node: the shared signature (core/failureSignature.ts), the same the tool registry records. */
+  failureSignatures?: FailureSignature[];
 }
 
 // ─── Phase 1: Pre-Execution Types ─────────────────────────────────────────────
@@ -498,6 +501,11 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
 
     // Determine dominant failure class across all failed nodes
     const classifications = failedNodes.map(n => classifyError(n.error ?? ''));
+    // The signature the tool registry recorded for this call, when it recorded one (the
+    // node's error text is reworded on the way); otherwise one from the node's error.
+    const failureSignatures = failedNodes.map(n =>
+      toolRegistryV2.lastFault(n.tool, n.startedAt ?? 0)?.signature
+        ?? failureSignature({ component: `tool:${n.tool}`, tool: n.tool, message: n.error ?? '' }));
     let dominantClass = this.getDominantClass(classifications);
     let dominantStrategy = this.getDominantStrategy(classifications, dominantClass);
     let llmContext = '';
@@ -556,6 +564,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
       repairStrategy: effectiveStrategy,
       repairArgs,
       summary,
+      failureSignatures,
       shouldSpeak: effectiveStrategy === 'abort',
       voiceMessage: effectiveStrategy === 'abort'
         ? this.refusalVoiceMessage(failedNodes) ?? this.buildFailureVoiceMessage(graph.goal, dominantClass, failedNodes)
@@ -682,6 +691,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     summary: string;
     shouldSpeak: boolean;
     voiceMessage?: string;
+    failureSignatures?: FailureSignature[];
   }): ReflectionResult {
     return {
       outcome: params.outcome,
@@ -693,6 +703,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
       summary: params.summary,
       shouldSpeak: params.shouldSpeak,
       voiceMessage: params.voiceMessage,
+      ...(params.failureSignatures ? { failureSignatures: params.failureSignatures } : {}),
     };
   }
 

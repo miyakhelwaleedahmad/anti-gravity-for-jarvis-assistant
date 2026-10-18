@@ -19,6 +19,7 @@
  */
 
 import type { FailureClass, GoalTask, GoalTaskStatus } from './goalLifecycle.js';
+import { failureSignature, withErrorName, type FailureSignature } from './failureSignature.js';
 
 export interface FailureInfo {
   /** Set when the caller already knows the class. */
@@ -28,6 +29,20 @@ export interface FailureInfo {
   message: string;
   /** How an approval this attempt asked for ended. */
   approval?: 'denied' | 'timeout' | 'unavailable';
+  /** The tool that failed, when one did (the signature then matches the tool registry's). */
+  tool?: string;
+  /** The thrown value, when there was one: its stack gives the source location. */
+  error?: unknown;
+}
+
+/** The shared signature (core/failureSignature.ts) of a goal-task failure. */
+export function goalFailureSignature(f: FailureInfo): FailureSignature {
+  return failureSignature({
+    component: f.tool ? `tool:${f.tool}` : 'goal_task',
+    message: withErrorName(f.message, f.error),
+    ...(f.tool ? { tool: f.tool } : {}),
+    ...(f.code ? { code: f.code } : {}),
+  });
 }
 
 const PATTERNS: [RegExp, FailureClass][] = [
@@ -80,6 +95,8 @@ export interface RecoveryDecision {
   advice?: string;
   /** Whether this attempt counts against the task's attempts. */
   countsAsAttempt: boolean;
+  /** The failure's shared signature, the same one the service classifier and reflection give it. */
+  signature?: FailureSignature;
 }
 
 export interface DecideInput {
@@ -92,8 +109,12 @@ export interface DecideInput {
   retry?: RetrySettings;
 }
 
-/** Bounded, explicit recovery for one failed attempt. */
-export function decideRecovery({ task, failure, cls, toolCalls, now, retry = DEFAULT_RETRY }: DecideInput): RecoveryDecision {
+/** Bounded, explicit recovery for one failed attempt, with the failure's signature. */
+export function decideRecovery(input: DecideInput): RecoveryDecision {
+  return { ...decide(input), signature: goalFailureSignature(input.failure) };
+}
+
+function decide({ task, failure, cls, toolCalls, now, retry = DEFAULT_RETRY }: DecideInput): RecoveryDecision {
   const attemptsLeft = task.attempts < task.maxAttempts;
   const actedOutside = task.sideEffects === 'possible' && toolCalls !== 0;
   const msg = failure.message.slice(0, 200);
