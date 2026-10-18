@@ -99,6 +99,7 @@ console.log('--- 1. The rules ---');
   ok('speech recognition depends on the wake word: failing while it fails', l.status(P.stt, ['stt', 'wakeword']).state === 'failing', l.status(P.stt, ['stt', 'wakeword']).detail);
   ok('a refusal is not a tool fault', !isToolFault('Permission denied.') && !isToolFault('Not installed: the owner did not approve.') && !isToolFault('RATE_LIMITED: …'));
   ok('a crash or timeout is', isToolFault('TIMEOUT: the process was stopped') && isToolFault('TypeError: cannot read properties of undefined'));
+  ok('a failed check of the effect is, even when its evidence says "not found"', isToolFault('VERIFICATION_FAILED: the window was not found after closing'));
 }
 
 // ── 2. Fault injection ───────────────────────────────────────────────────────

@@ -96,6 +96,9 @@ export function ledgerLabel(p: LedgerPipeline): string {
 /** Whether a failed tool call is a fault of JARVIS's tools, not a refusal or the user's input. */
 export function isToolFault(error: string | undefined): boolean {
   if (!error) return false;
+  // The tool said it worked and the check of its effect says it did not: always a fault,
+  // whatever the evidence says ("window not found" is the effect missing, not bad input).
+  if (/^VERIFICATION_FAILED\b/.test(error)) return true;
   const e = error.toLowerCase();
   const notAFault = /permission|denied|not approved|did not approve|cancel|refused|blocked|rate.?limit|not found|no such|does not exist|invalid|validation|required|unknown tool|not allowed|policy|needs full control|interrupted|superseded|aborted/;
   return !notAFault.test(e);
