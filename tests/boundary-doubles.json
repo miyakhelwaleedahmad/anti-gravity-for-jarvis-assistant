@@ -1,0 +1,196 @@
+{
+  "about": "Tests that replace a speech or tool-registry boundary (speak, speakToClients, sendToRole, a toolRegistryV2 method, or tests/fakeTts.ts). Each must be listed here with what it replaces and why; tests/boundaryDoublesTest.ts fails on any unlisted or stale entry. A stand-in once hid real defects at exactly these boundaries (BUG-02, VOICE-001).",
+  "realBoundaryTests": {
+    "speech": [
+      "realTtsHandoffTest",
+      "ttsDeliveryLifecycleTest"
+    ],
+    "registry": [
+      "toolExecutionPipelineVerificationTest",
+      "verifyAfterActTest"
+    ]
+  },
+  "files": {
+    "tests/agentSpecialistsTest.ts": {
+      "replaces": [
+        "registry:execute"
+      ],
+      "reason": "wraps execute only to record which tools the specialists call, then calls the real execute"
+    },
+    "tests/approvalGateStructuredTest.ts": {
+      "replaces": [
+        "installFakeTts",
+        "speakToClients"
+      ],
+      "reason": "speakToClients records the spoken approval question and sets playback times, to check when the answer window opens; the real bridge-to-tts.py path is tested by realTtsHandoffTest; uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/approvalTypeAheadTest.ts": {
+      "replaces": [
+        "speakToClients"
+      ],
+      "reason": "speakToClients is silenced: the test is about typed answers arriving before the question is spoken"
+    },
+    "tests/backgroundResearchTest.ts": {
+      "replaces": [
+        "registry:execute"
+      ],
+      "reason": "wraps execute only to record which tools run, then calls the real execute"
+    },
+    "tests/bargeInProcessingTest.ts": {
+      "replaces": [
+        "sendToRole"
+      ],
+      "reason": "sendToRole records the stop command sent to tts.py on barge-in; restored afterwards"
+    },
+    "tests/errorRecoveryTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/fakeTts.ts": {
+      "replaces": [
+        "installFakeTts",
+        "sendToRole",
+        "speakToClients"
+      ],
+      "reason": "the shared stand-in for tts.py itself (speakToClients reports speaking_start/end; sendToRole accepts commands)"
+    },
+    "tests/jarvisAgentIntegrationTest.ts": {
+      "replaces": [
+        "speakToClients"
+      ],
+      "reason": "speakToClients records the agents' spoken results; the real bridge-to-tts.py path is tested by realTtsHandoffTest"
+    },
+    "tests/noGroqForLocalCommandsTest.ts": {
+      "replaces": [
+        "registry:execute"
+      ],
+      "reason": "open_app is a dry run so the test opens no app on the test machine; the test is about local commands not calling the language model. The real open_app path is tested by openAppSmokeTest and scenarioIntegrationTest"
+    },
+    "tests/noThinkMemoryTest.ts": {
+      "replaces": [
+        "speakToClients"
+      ],
+      "reason": "speakToClients records what would be spoken, to check that <think> text never reaches speech; restored afterwards"
+    },
+    "tests/promptInjectionFlowTest.ts": {
+      "replaces": [
+        "installFakeTts",
+        "registry:execute"
+      ],
+      "reason": "wraps execute to record the destructive tool's real result (the real execute runs); uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/registryRepairHonestyTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/repairRunTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/requestScopeTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/riskEngineTest.ts": {
+      "replaces": [
+        "installFakeTts",
+        "registry:riskOf"
+      ],
+      "reason": "riskOf throws once, as fault injection: unreadable metadata must refuse the call; restored right after; uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/scenarios/harness.ts": {
+      "replaces": [
+        "speak",
+        "speakToClients"
+      ],
+      "reason": "the scenario harness records replies at speak and silences speakToClients; scenarios test planning and tools in a real browser, not audio; the real audio path is tested by realTtsHandoffTest"
+    },
+    "tests/secretSinksTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/selfCheckTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/sevenAgentTest.ts": {
+      "replaces": [
+        "registry:execute"
+      ],
+      "reason": "wraps execute only to record which tools the agents call, then calls the real execute"
+    },
+    "tests/skillLoadOrderTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/speechStateTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/stopClearsTtsQueueTest.ts": {
+      "replaces": [
+        "sendToRole"
+      ],
+      "reason": "sendToRole records the stop command sent to tts.py; restored afterwards"
+    },
+    "tests/supersededRequestTest.ts": {
+      "replaces": [
+        "speakToClients"
+      ],
+      "reason": "records each phrase and then calls the real speakToClients"
+    },
+    "tests/systemObservationTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/taskFailureHonestyTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/toolRegistryMetadataTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/verifyAfterActTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/voiceApprovalTest.ts": {
+      "replaces": [
+        "speak",
+        "speakToClients"
+      ],
+      "reason": "a simulated speech stream: speak and speakToClients record what was said and set playback times, to test spoken approval and echo rejection; the real path is tested by realTtsHandoffTest"
+    },
+    "tests/worldStateTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    }
+  }
+}
