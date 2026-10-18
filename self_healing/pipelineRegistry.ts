@@ -114,6 +114,19 @@ export class PipelineRegistry extends EventEmitter {
     // Only update map, don't necessarily emit just for success
   }
 
+  /**
+   * A (re)started service: earlier failures are history, but nothing has
+   * worked yet either. Before, a connection was recorded as a success
+   * ("healthy") for speech recognition, the wake word and speech output.
+   */
+  resetFailures(pipeline: string): void {
+    pipeline = canonicalPipeline(pipeline);
+    const health = this.getOrCreate(pipeline);
+    health.failureCount = 0;
+    health.autoHealAttempts = 0;
+    if (health.status === "broken" || health.status === "degraded") health.status = health.lastSuccess ? "healthy" : "unknown";
+  }
+
   recordFailure(pipeline: string, error: string): void {
     pipeline = canonicalPipeline(pipeline);
     const health = this.getOrCreate(pipeline);

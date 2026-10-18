@@ -33,6 +33,7 @@ import { getAgentIds, getAgentPath, getGoalContext, getRepairReason, getRequestS
 import { buildApprovalRequest } from '../security/approvalRequest.js';
 import { redact, redactDeep } from '../security/redactor.js';
 import { verifyCall, type Verification, type Verifier } from './verifiers.js';
+import { healthLedger, isToolFault, LEDGER_PIPELINES } from '../monitoring/healthLedger.js';
 
 /** Execution risk: drives sandboxing, caching and queueing (not permissions). */
 export type RiskLevel = 'low' | 'medium' | 'high';
@@ -1100,6 +1101,10 @@ export class ToolRegistryV2 {
       ...(record.error !== undefined ? { error: redact(record.error) } : {}),
     };
     this._history.push(kept);
+    // Tool health from what happened: a call that ran, or one that crashed or
+    // timed out. A refusal, a denied approval or bad input is not a tool fault.
+    if (kept.success) healthLedger.record(LEDGER_PIPELINES.tools, true, `${kept.tool} ran`);
+    else if (isToolFault(kept.error)) healthLedger.record(LEDGER_PIPELINES.tools, false, `${kept.tool}: ${String(kept.error).slice(0, 160)}`);
     const { args: _args, ...call } = kept;
     for (const fn of this._callListeners) {
       try { fn(call); } catch { /* a trace listener must not break the call */ }

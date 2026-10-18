@@ -88,9 +88,9 @@ export class OpenAICompatibleProvider implements ILLMProvider {
       ...(res.data?.usage
         ? {
             usage: {
-              promptTokens: res.data.usage.prompt_tokens ?? 0,
-              completionTokens: res.data.usage.completion_tokens ?? 0,
-              totalTokens: res.data.usage.total_tokens ?? 0,
+              promptTokens: res.data.usage.prompt_tokens ?? null,
+              completionTokens: res.data.usage.completion_tokens ?? null,
+              totalTokens: res.data.usage.total_tokens ?? null,
             },
           }
         : {}),

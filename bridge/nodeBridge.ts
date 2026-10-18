@@ -9,6 +9,7 @@ import { agentStateMachine } from "../core/agentStateMachine.js";
 import http from "http";
 import { createHash, timingSafeEqual } from "crypto";
 import { assertLoopbackBind } from "../security/remoteAccess.js";
+import { healthLedger, LEDGER_PIPELINES } from "../monitoring/healthLedger.js";
 
 const LOCALHOST_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const BRIDGE_DEV_MODE = process.env.JARVIS_BRIDGE_DEV_MODE === "true";
@@ -288,16 +289,16 @@ export class NodeBridge {
       console.log(`[NodeBridge] ✅ READY client registered: ${role}`);
       console.log(`[NodeBridge] 📋 Ready clients: ${[...this.readyClients.keys()].join(", ")}`);
 
-      // ✅ Sync pipelineRegistry so dashboard shows connected immediately
+      // A (re)started service: earlier failures are history, but connecting
+      // is not success. Recognition, wake word and speech output are recorded
+      // working when they produce a transcript, a detection or a played reply
+      // (healthLedger); this used to mark them healthy here.
       if (role === "wakeword") {
-        pipelineRegistry.recordSuccess("wake_to_stt");
+        pipelineRegistry.resetFailures("wake_to_stt");
       } else if (role === "stt") {
-        pipelineRegistry.recordSuccess("wake_to_stt");
-        pipelineRegistry.recordSuccess("stt_to_brain");
+        pipelineRegistry.resetFailures("stt_to_brain");
       } else if (role === "tts") {
-        // A (re)started tts.py: earlier failures are history; the next
-        // speaking_end says whether it is heard (VOICE-005).
-        pipelineRegistry.recordSuccess("brain_to_tts");
+        pipelineRegistry.resetFailures("brain_to_tts");
         this.lastSpeechOutcome = null;
       }
 
@@ -345,6 +346,8 @@ export class NodeBridge {
       const error = String(msg.payload?.error ?? "");
       console.error(`[NodeBridge] ⚠️  Hardware error reported by: ${device ?? "unknown"}${error ? ` — ${error.slice(0, 160)}` : ""}`);
       if (device === "tts") this.noteSpeechOutcome("no_audio_device", error || "audio output device unavailable");
+      if (device === "stt") healthLedger.record(LEDGER_PIPELINES.stt, false, `hardware_error: ${(error || "speech recognition unavailable").slice(0, 160)}`);
+      if (device === "wakeword") healthLedger.record(LEDGER_PIPELINES.wake, false, `hardware_error: ${(error || "wake word unavailable").slice(0, 160)}`);
     });
 
     this.wss.on("connection", (ws, req) => {
@@ -391,11 +394,13 @@ export class NodeBridge {
           }
 
           if (msg.type === "wake_word") {
+            healthLedger.record(LEDGER_PIPELINES.wake, true, "wake word detected");
             console.log(`[NodeBridge] 🔍 Ready clients at wake word: ${[...this.readyClients.keys()].join(", ") || "NONE"}`);
           }
 
           if (msg.type === "stt_result" && msg.payload?.text) {
             const text = msg.payload.text;
+            healthLedger.record(LEDGER_PIPELINES.stt, true, "transcript produced");
             const role = this.clientRoles.get(ws) || "unknown";
             if (DEBUG_LOGS) {
               console.log(`[NodeBridge] RX type=stt_result role=${role} text="${text}"`);
@@ -524,7 +529,9 @@ export class NodeBridge {
     this.lastSpeechOutcome = { outcome, detail: detail.slice(0, 200), at: Date.now(), ...(engine ? { engine: engine.slice(0, 40) } : {}) };
     if (outcome === "played") {
       pipelineRegistry.recordSuccess("brain_to_tts");
+      healthLedger.record(LEDGER_PIPELINES.tts, true, engine ? `played (${engine.slice(0, 40)})` : "played");
     } else if (SPEECH_FAILURES.has(outcome)) {
+      healthLedger.record(LEDGER_PIPELINES.tts, false, `${outcome}${detail ? `: ${detail.slice(0, 120)}` : ""}`);
       pipelineRegistry.recordFailure("brain_to_tts", `reply not played: ${outcome}${detail ? ` (${detail.slice(0, 120)})` : ""}`);
     }
   }
@@ -728,6 +735,7 @@ export class NodeBridge {
       const pendingMs = Date.now() - (this.pendingListenStartedAt ?? Date.now());
       const payload = { reason: "listen_start_timeout", pendingMs };
       console.warn(`[NodeBridge] STT still not READY after ${pendingMs}ms. Keeping wake-word continuation fallback active.`);
+      healthLedger.record(LEDGER_PIPELINES.stt, false, `not ready to listen after ${pendingMs} ms`);
       this._bridgeEvents.emit("stt_unavailable", payload);
     }, Math.max(1, timeoutMs));
     this.pendingListenWarningTimer.unref?.();

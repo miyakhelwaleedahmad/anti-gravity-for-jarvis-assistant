@@ -21,6 +21,7 @@ import { llmStatus } from "./llmStatus.js";
 import { pipelineRegistry, LLM_PIPELINE } from "../self_healing/pipelineRegistry.js";
 import crypto from "crypto";
 import { LLM_MAX_ATTEMPTS, llmTimeoutMs } from '../config/llmTiming.js';
+import { healthLedger, LEDGER_PIPELINES } from '../monitoring/healthLedger.js';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -68,10 +69,14 @@ function createRequestSignal(parentSignal?: AbortSignal): { signal: AbortSignal;
 function noteOk(): void {
   llmStatus.recordSuccess("request");
   pipelineRegistry.recordSuccess(LLM_PIPELINE);
+  healthLedger.record(LEDGER_PIPELINES.llm, true, "chat answered");
 }
 function noteFail(err: unknown): void {
   const c = llmStatus.recordFailure(err, "request");
   if (c.kind !== "rate_limit" && c.kind !== "aborted") pipelineRegistry.recordFailure(LLM_PIPELINE, `${c.kind}: ${c.message}`);
+  // A rate limit is not a restart reason, but the request did fail: the
+  // ledger says so. A cancelled request is the caller's choice.
+  if (c.kind !== "aborted") healthLedger.record(LEDGER_PIPELINES.llm, false, `${c.kind}: ${String(c.message).slice(0, 160)}`);
 }
 
 /** Display name of the configured provider, for logs and errors. */
@@ -364,10 +369,12 @@ export class GroqProvider implements ILLMProvider {
       const message = choice.message ?? {};
       this.handle429Success();
 
+      // Not reported is null, not 0: a budget or a cost view must not count
+      // missing data as "used nothing".
       const usage = {
-        promptTokens: data.usage?.prompt_tokens ?? 0,
-        completionTokens: data.usage?.completion_tokens ?? 0,
-        totalTokens: data.usage?.total_tokens ?? 0,
+        promptTokens: typeof data.usage?.prompt_tokens === "number" ? data.usage.prompt_tokens : null,
+        completionTokens: typeof data.usage?.completion_tokens === "number" ? data.usage.completion_tokens : null,
+        totalTokens: typeof data.usage?.total_tokens === "number" ? data.usage.total_tokens : null,
       };
 
       if (finishReason === "tool_calls" || (message.tool_calls && message.tool_calls.length > 0)) {

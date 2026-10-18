@@ -48,10 +48,11 @@ export interface ILLMResponse {
   content: string;
   /** Populated when the LLM chose to call one or more tools */
   tool_calls?: ILLMToolCall[];
+  /** null: the provider did not report it (not "zero tokens"). */
   usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
+    promptTokens: number | null;
+    completionTokens: number | null;
+    totalTokens: number | null;
   };
 }
 

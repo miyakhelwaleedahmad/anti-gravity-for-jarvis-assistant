@@ -1246,7 +1246,9 @@ class TaskContext implements AgentContext {
     this.manager.charge(this.task.taskId, 'llmCalls', 1);
     this.manager.tasks.touch(this.task.taskId);
     const response = await this.manager.withLlmSlot(this.task, () => modelRouter.chat({ ...request, signal: this.signal }));
-    this.manager.charge(this.task.taskId, 'tokens', response.usage?.totalTokens ?? 0, false);
+    // Unreported usage is unknown, not zero: nothing is charged for it.
+    const tokens = response.usage?.totalTokens;
+    if (typeof tokens === 'number') this.manager.charge(this.task.taskId, 'tokens', tokens, false);
     this.manager.tasks.touch(this.task.taskId);
     return response;
   }

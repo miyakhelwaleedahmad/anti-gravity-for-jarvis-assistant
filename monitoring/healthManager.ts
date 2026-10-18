@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { dataRoot } from '../core/workspaceRoot.js';
 import { vectorHeaders } from '../memory/vectorAuth.js';
+import { healthLedger, LEDGER_PIPELINES, type LedgerPipeline } from './healthLedger.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -239,6 +240,12 @@ class HealthManager {
         if (timer) clearTimeout(timer);
       }
       const h = llmStatus.health();
+      // The model list answering (a ping) does not prove chat works: when the
+      // last chat request failed, the language model is not "online".
+      const chat = healthLedger.status(LEDGER_PIPELINES.llm);
+      if (h.status === 'online' && (chat.state === 'degraded' || chat.state === 'failing')) {
+        return { name: 'llm', status: 'degraded', detail: `${h.detail}; but ${chat.detail}`, checkedAt: Date.now() };
+      }
       return { name: 'llm', status: h.status, detail: h.detail, checkedAt: Date.now() };
     } catch {
       return { name: 'llm', status: 'unknown', detail: 'config unavailable', checkedAt: Date.now() };
@@ -277,22 +284,27 @@ class HealthManager {
       for (const svc of expectedServices) {
         const isReady = readyRoles.includes(svc);
         const displayName = svc === 'wakeword' ? 'wake_word' : svc;
+        // Self-healing Phase 1: connected (transport) is not the same as
+        // working (effect). The ledger holds what each service last produced:
+        // a played reply, a transcript, a detection.
+        const pipeline: LedgerPipeline = svc === 'tts' ? LEDGER_PIPELINES.tts : svc === 'stt' ? LEDGER_PIPELINES.stt : LEDGER_PIPELINES.wake;
+        const effect = healthLedger.status(pipeline, readyRoles);
         const heard = svc === 'tts' ? nodeBridge.lastSpeechOutcome : null;
-        if (isReady && heard && isSpeechFailure(heard.outcome)) {
-          // VOICE-005: connected (transport) is not the same as heard (delivery).
-          results.push({
-            name: displayName,
-            status: 'degraded',
-            detail: `connected, but the last reply was not played: ${heard.outcome.replace(/_/g, ' ')}${heard.detail ? ` (${heard.detail.slice(0, 80)})` : ''}`,
-            checkedAt: Date.now()
-          });
+        if (isReady && (effect.state === 'degraded' || effect.state === 'failing')) {
+          const what = svc === 'tts' && heard && isSpeechFailure(heard.outcome)
+            ? `the last reply was not played: ${heard.outcome.replace(/_/g, ' ')}${heard.detail ? ` (${heard.detail.slice(0, 80)})` : ''}`
+            : effect.detail;
+          results.push({ name: displayName, status: 'degraded', detail: `connected, but ${what}`, checkedAt: Date.now() });
+        } else if (isReady && (effect.state === 'unknown' || effect.state === 'stale')) {
+          // Connected, but nothing proves it works yet (or not recently).
+          results.push({ name: displayName, status: 'unknown', detail: `connected; ${effect.state === 'unknown' ? 'not verified yet' : effect.detail}`, checkedAt: Date.now() });
         } else if (isReady) {
           // Stopped by the user (cancelled) or queued while disconnected is not a fault.
           const last = heard ? `; last reply: ${heard.outcome.replace(/_/g, ' ')}${heard.engine ? ` (${heard.engine})` : ''}` : '';
           results.push({
             name: displayName,
             status: 'online',
-            detail: `connected via bridge${last}`,
+            detail: `connected via bridge; ${effect.detail}${last}`,
             checkedAt: Date.now()
           });
         } else {
