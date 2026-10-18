@@ -146,6 +146,19 @@ if (ready) {
   }
   ok('speech is recorded as healthy', nodeBridge.lastSpeechOutcome?.outcome === 'played', JSON.stringify(nodeBridge.lastSpeechOutcome));
 
+  // A slow answer: the planning watchdog ends the request (VOICE-002), and
+  // the real tts.py says so.
+  events.length = 0;
+  const saidBefore = fs.readFileSync(spoken, 'utf8').trim().split('\n').length;
+  agentStateMachine.transition(AgentState.PLANNING);   // a request waiting on the model
+  (agentStateMachine as unknown as { _watchdogReset(s: unknown, r: string): void })._watchdogReset(AgentState.PLANNING, 'planning_timeout');
+  await until(() => events.some((e) => e.type === 'speaking_end'), 20_000);
+  const timeoutSaid = fs.readFileSync(spoken, 'utf8').trim().split('\n').slice(saidBefore);
+  const timeoutEnd = events.find((e) => e.type === 'speaking_end')?.payload ?? {};
+  ok('a planning timeout: the real tts.py is given the timeout message', timeoutSaid.length === 1 && /too long/i.test(timeoutSaid[0] ?? ''), JSON.stringify(timeoutSaid));
+  ok('…and plays it', timeoutEnd.outcome === 'played', JSON.stringify(timeoutEnd));
+  ok('…and JARVIS is IDLE, ready for the next request', await until(() => agentStateMachine.currentState === AgentState.IDLE, 5_000), agentStateMachine.currentState);
+
   // Audio that cannot be played: before, the turn ended with no outcome and
   // speech still looked healthy (this test found it).
   events.length = 0;

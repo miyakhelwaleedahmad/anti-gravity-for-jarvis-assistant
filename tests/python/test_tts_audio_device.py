@@ -140,6 +140,24 @@ async def scenarios():
     ends = [m["payload"] for m in sent if m["type"] == "speaking_end"]
     ok("VOICE-005: a phrase edge-tts could not synthesise ends with outcome synthesis_failed", ends and ends[0].get("outcome") == "synthesis_failed", json.dumps(ends))
 
+    # A device that stays broken: with the real retry delay, phrases in a row
+    # do not each try to open it again (no retry storm), and each still ends.
+    broken = tts.TTSEngine()
+    broken.websocket = FakeWS()
+    state["device_ok"] = False
+    tts.TTS_MIXER_RETRY_S = 10.0
+    calls_before = state["init_calls"]
+    ends_seen = 0
+    for i in range(6):
+        broken.websocket.sent.clear()
+        broken._end_sent_for_current_item = False
+        await broken.speak(f"Phrase {i}, sir.")
+        await broken._send_speaking_end("queue_empty", force=True)
+        ends_seen += sum(1 for m in broken.websocket.sent if m["type"] == "speaking_end")
+    ok("a device that stays broken is tried once in 10 s, not on every phrase", state["init_calls"] - calls_before == 1, f"{state['init_calls'] - calls_before} tries for 6 phrases")
+    ok("…and every one of those turns still ends", ends_seen == 6, f"{ends_seen} speaking_end")
+    tts.TTS_MIXER_RETRY_S = 0.0
+
 
 asyncio.run(scenarios())
 print(f"\n=== Results: {passed} passed, {failed} failed ===")
