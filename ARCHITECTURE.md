@@ -129,6 +129,25 @@ query ─► rag/retrieve.ts ─► vector search ─► manifest join ─► ci
 - Document chunks and conversational facts share one vector store, distinguished by the `doc:` id prefix.
 - Retrieval depends on the sentence-transformers model. Without it the vector service answers `503`, `searchVector()` returns no hits, and `search_documents` says document search is unavailable (it asks `searchVector()` to rethrow; before, it reported "nothing matched"). Conversational fact recall still falls back to lexical search.
 
+## Self-healing (health from effects, issues, bounded repair)
+
+An addition beside the existing self-healing services (`self_healing/*`), which keep restarting crashed voice services as before.
+
+- **Health from effects** — `monitoring/healthLedger.ts`. A pipeline is healthy only after its work was seen to happen: a reply played, a transcript produced, a wake-word detection, a chat answered, a tool that ran. A connection alone is not success. No evidence means `unknown`. The dashboard (`healthManager`) reads this ledger.
+- **One failure signature** — `core/failureSignature.ts`, shared by the service classifier, reflection and goal recovery. Each keeps its own classes for its own decisions.
+- **Issues and occurrences** — `core/issueStore.ts`, under `data/repairs/`:
+  - every failure is appended to `occurrences.jsonl` with its time, correlation id, task/goal id and source location (`core/sourceLocation.ts`; `EXTERNAL`/`UNKNOWN` with a reason, never a guessed line);
+  - repeats update one issue in `issues.json`. Resolving one needs evidence; a resolved issue that returns is reopened, with a recurrence count.
+- **Read-only questions** — `core/selfCheck.ts` behind the `self_check` tool: "check yourself", "run a full self-check", "show the repair report", "why are you stuck".
+- **Bounded runtime repair** — `core/repairRun.ts` behind the `self_repair` tool: "heal yourself", "fix the last problem", "continue the repair", "stop healing", "why can't you fix it".
+  - The only action is `selfHealingManager.restartService()`, which stops the old process before starting the new one. It is then checked by the effect: a played check phrase for speech output, or a real transcript or detection for recognition and the wake word.
+  - One run at a time, 2 attempts, 20 minutes, and no model tokens. The same failure twice stops the run.
+  - A run interrupted by a restart of JARVIS waits for "continue the repair".
+  - Code defects, the language model, missing programs and tool failures end `BLOCKED` with the reason. Code repair in a worktree is not implemented.
+- **Guards**
+  - `tests/boundaryDoublesTest.ts`: every test stand-in for speech or the tool registry is listed in `tests/boundary-doubles.json` with a reason.
+  - `tests/selfHealingHonestyTest.ts`: no reply claims that everything works or that all errors are fixed.
+
 ## What is NOT here
 
 - **No Obsidian integration, other than an opt-in mirror of repair issues.** `core/obsidianMirror.ts` writes issue notes to `<vault>/JARVIS/Repairs/` only when `JARVIS_OBSIDIAN_VAULT` is set; it reads nothing from the vault and never overwrites a note it did not write. The issue record itself is `data/repairs/` (`core/issueStore.ts`).
