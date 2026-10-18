@@ -27,5 +27,5 @@
   "command: did not finish": "The command did not finish normally, sir. killed",
   "command: other text, short": "Opened notepad.",
   "command: other text, long": "Done, sir. The output is in the console.",
-  "capabilities, with identity": "I am JARVIS, your assistant, sir. I have 75 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \"list your tools\" for each tool and its risk."
+  "capabilities, with identity": "I am JARVIS, your assistant, sir. I have 76 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \"list your tools\" for each tool and its risk."
 }

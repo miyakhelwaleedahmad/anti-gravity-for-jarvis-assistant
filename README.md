@@ -23,7 +23,7 @@ core/taskGraphEngine.ts      runs the plan as a parallel DAG, with retries (no a
       ↓
 core/toolRegistryV2.ts       single dispatch point: schema validation, authz, retry, fallback, caching
       ↓
-skills/*  and  control/*     75 tools (49 built in, 26 from skills); the control layer drives Windows
+skills/*  and  control/*     76 tools (50 built in, 26 from skills); the control layer drives Windows
       ↓
 memory/                      LowDB (source of truth) + Redis cache + vector search + optional graph
 ```
