@@ -21,6 +21,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { isPlaceholderKey, resolveProviderSettings } from './llmconfig.js';
+import { llmRequestBudgetMs, planningWatchdogMs } from './llmTiming.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,6 +101,20 @@ export class ConfigValidator {
           fix: isGemini ? `Set ${field}=gemini-3.5-flash (or another model your key lists).` : `Set ${field} to a Groq model, or set JARVIS_LLM_PROVIDER=gemini.`,
         });
       }
+    }
+
+    // ── WARNING: planning watchdog shorter than one model request (VOICE-002) ─
+    // planningWatchdogMs() already raises such a value; this puts it in the
+    // startup report, where the owner sees what to change in .env.
+    const watchdogNotes: string[] = [];
+    const watchdog = planningWatchdogMs(process.env, (m) => watchdogNotes.push(m));
+    if (watchdogNotes.length > 0) {
+      issues.push({
+        level: 'WARNING',
+        field: 'JARVIS_PLANNING_WATCHDOG_MS',
+        message: `${watchdogNotes[0]!.replace(/^\[Config\] /, '')} JARVIS uses ${watchdog} ms.`,
+        fix: `In .env set JARVIS_PLANNING_WATCHDOG_MS=${llmRequestBudgetMs(process.env)} or more, or remove the line (the default follows the request timeout).`,
+      });
     }
 
     // ── CRITICAL: Bridge port ────────────────────────────────────────────────

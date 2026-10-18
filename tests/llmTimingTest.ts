@@ -62,6 +62,26 @@ warnings.length = 0;
 planningWatchdogMs({ JARVIS_PLANNING_WATCHDOG_MS: '' }, (m) => warnings.push(m));
 ok('empty: the default, no warning', warnings.length === 0);
 
+console.log('\n--- 2b. The startup config check reports it ---');
+// jarvis.ts runs configValidator.validate() at startup; it said nothing about
+// the watchdog, so the owner's 30000 was only a console warning (VOICE-002).
+{
+  const { configValidator } = await import('../config/configValidator.js');
+  const saved = { w: process.env['JARVIS_PLANNING_WATCHDOG_MS'], t: process.env['JARVIS_LLM_TIMEOUT_MS'] };
+  const issuesWith = (w: string | undefined) => {
+    if (w === undefined) delete process.env['JARVIS_PLANNING_WATCHDOG_MS']; else process.env['JARVIS_PLANNING_WATCHDOG_MS'] = w;
+    process.env['JARVIS_LLM_TIMEOUT_MS'] = '20000';
+    return configValidator.validate().issues.filter((i) => i.field === 'JARVIS_PLANNING_WATCHDOG_MS');
+  };
+  const owners = issuesWith('30000');
+  ok("the owner's 30000 (20 s requests) is a startup WARNING", owners.length === 1 && owners[0]!.level === 'WARNING', JSON.stringify(owners));
+  ok('…saying what is used and what to set', /62000/.test(owners[0]?.message ?? '') && /62000|remove/i.test(owners[0]?.fix ?? ''), owners[0]?.fix);
+  ok('a bad value is reported too', issuesWith('half a minute').length === 1);
+  ok('no line, or a safe value: nothing reported', issuesWith(undefined).length === 0 && issuesWith('90000').length === 0);
+  if (saved.w === undefined) delete process.env['JARVIS_PLANNING_WATCHDOG_MS']; else process.env['JARVIS_PLANNING_WATCHDOG_MS'] = saved.w;
+  if (saved.t === undefined) delete process.env['JARVIS_LLM_TIMEOUT_MS']; else process.env['JARVIS_LLM_TIMEOUT_MS'] = saved.t;
+}
+
 console.log('\n--- 3. One source ---');
 const groq = fs.readFileSync(path.join(repo, 'bridge', 'groqProvider.ts'), 'utf8');
 const sm = fs.readFileSync(path.join(repo, 'core', 'agentStateMachine.ts'), 'utf8');
