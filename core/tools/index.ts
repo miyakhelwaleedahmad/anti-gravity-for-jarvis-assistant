@@ -28,6 +28,7 @@ import { youtubeTools } from './youtubeTools.js';
 import { webResearchTools } from './webResearchTools.js';
 import { selfCheckTool } from './selfCheckTool.js';
 import { selfRepairTool } from './selfRepairTool.js';
+import { codeRepairTool } from './codeRepairTool.js';
 
 export function registerAllTools(): void {
   toolRegistryV2.registerMany([
@@ -63,6 +64,7 @@ export function registerAllTools(): void {
     ...webResearchTools,
     selfCheckTool,
     selfRepairTool,
+    codeRepairTool,
   ]);
 
   // Skills (skills/*) register later, so the dashboard's count is higher (e.g. 48 here, 74 there).

@@ -769,6 +769,11 @@ export class JarvisOrchestrator {
           const result = await runRoutedTool('self_repair', { action });
           const body = result?.success ? parseJson(result.output) : undefined;
           this.speak(typeof body?.spoken === 'string' ? body.spoken : failureReply(result, 'I could not start the repair, sir.'));
+        } else if (route.type === 'propose_code_repair') {
+          // Risk 3: the registry asks for a typed approval; the tool refuses any other kind.
+          const result = await runRoutedTool('propose_code_repair', {});
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.spoken === 'string' ? body.spoken : failureReply(result, 'I could not start the code repair, sir.'));
         } else if (route.type === 'list_capabilities') {
           // Through the registry like any tool call; the full list goes to the console.
           const result = await runRoutedTool('list_capabilities', {});

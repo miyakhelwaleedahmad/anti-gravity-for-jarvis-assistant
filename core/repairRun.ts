@@ -121,7 +121,7 @@ export function planFor(issue: Issue): RepairPlan {
   }
   if (issue.category === 'code_defect') {
     const where = issue.sourceLocation.status === 'KNOWN' ? ` at ${issue.sourceLocation.file}:${issue.sourceLocation.line}` : '';
-    return { kind: 'blocked', reason: `it looks like a fault in JARVIS's code${where}; a code change is needed, and code repair (in an isolated worktree, with your typed approval) is not enabled` };
+    return { kind: 'blocked', reason: `it looks like a fault in JARVIS's code${where}; a code change is needed, which a restart cannot make. Say or type "propose a code repair" for a patch on a separate branch (it needs your typed approval and is never merged by JARVIS)` };
   }
   if (issue.category === 'environment') {
     return { kind: 'blocked', reason: `something is missing on this machine (${issue.summary.slice(0, 120)}); it needs installing or connecting by you` };

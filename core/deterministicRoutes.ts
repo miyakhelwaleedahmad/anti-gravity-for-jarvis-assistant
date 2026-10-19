@@ -115,6 +115,8 @@ const REPAIR_LAST: readonly RegExp[] = [
   /^(?:fix|repair) (?:only )?(?:the |that )?(?:last|latest|current|previous) (?:problem|error|issue|failure)(?: only)?$/,
   /^(?:fix|repair) (?:only )?(?:that|this) (?:problem|error|issue|failure)$/,
 ];
+/** Code repair is only ever proposed on a branch (core/codeRepair.ts), and needs a typed approval. */
+const PROPOSE_CODE_REPAIR = /^(?:propose|prepare|write|draft|make) (?:a |the )?(?:code )?(?:fix|repair|patch)(?: for (?:the |that |this )?(?:last |latest |current )?(?:code )?(?:error|issue|problem|defect|bug))?$|^(?:fix|repair) your (?:own )?code$/;
 const REPAIR_CONTINUE = /^(?:continue|resume|carry on with) (?:the |your )?(?:repair|healing|self ?repair)$/;
 const REPAIR_STOP = /^(?:stop|cancel|abort|end|quit) (?:the |your )?(?:healing|repair|repairing|self ?repair|self ?healing)(?: mode)?$/;
 const REPAIR_EXPLAIN: readonly RegExp[] = [
@@ -264,6 +266,7 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   if (REPAIR_REPORT.some((re) => re.test(clean))) return { type: 'repair_report', reply: '' };
   if (STUCK_QUESTION.some((re) => re.test(clean))) return { type: 'investigate_stuck', reply: '' };
   if (REPAIR_STOP.test(clean)) return { type: 'repair_stop', reply: '' };
+  if (PROPOSE_CODE_REPAIR.test(clean)) return { type: 'propose_code_repair', reply: '' };
   if (REPAIR_CONTINUE.test(clean)) return { type: 'repair_continue', reply: '' };
   if (REPAIR_EXPLAIN.some((re) => re.test(clean))) return { type: 'repair_explain_block', reply: '' };
   if (REPAIR_LAST.some((re) => re.test(clean))) return { type: 'repair_last', reply: '' };

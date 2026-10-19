@@ -233,6 +233,11 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
       stop: { risk: 1, reversible: 'no', effect: 'Stops the repair in progress; nothing new starts.' },
       explain: { risk: 0, reversible: 'yes', effect: 'Says why an issue cannot be repaired here.' },
     }),
+  propose_code_repair: {
+    category: 'DEVELOPMENT', risk: 3, reversible: 'yes', external: 'none',
+    effect: "Writes a proposed fix for a fault in JARVIS's own code on a separate jarvis/repair/* branch and checks it there; the running code is not changed and nothing is merged.",
+    output: { format: 'json', description: 'started, issueId, spoken' },
+  },
   goal_status: observation('Reads the background goals: running work, approvals and reviews waiting, blocked goals, retries, schedule, progress.',
     { format: 'text', description: 'A sentence to say, then one line per goal' }, 'SYSTEM'),
   goal_control: withActions(
