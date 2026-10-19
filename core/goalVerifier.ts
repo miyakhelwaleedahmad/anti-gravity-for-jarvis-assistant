@@ -135,7 +135,7 @@ export function modelJudge(chat?: (req: { messages: { role: 'system' | 'user'; c
     try {
       const send: NonNullable<typeof chat> = chat ?? (async (req) => {
         const { modelRouter } = await import('../bridge/modelRouter.js');
-        return modelRouter.chat(req as never);
+        return modelRouter.chat({ ...(req as object), category: 'review' } as never);
       });
       const res = await send({
         messages: [

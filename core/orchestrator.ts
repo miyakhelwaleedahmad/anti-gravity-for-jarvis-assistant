@@ -1345,7 +1345,7 @@ export class JarvisOrchestrator {
 
       const llmStart = performance.now();
       console.log(`[Timing] LLM call starting — model=${llmConfig.model} totalTokensEst=${totalTokens}`);
-      const response = await modelRouter.chat(request);
+      const response = await modelRouter.chat({ ...request, category: 'planning' });
       const llmMs = Math.round(performance.now() - llmStart);
       // Record in plan stage timings for the outer table
       const planTimings = this.planState().timings;
@@ -1635,7 +1635,7 @@ export class JarvisOrchestrator {
       if (this.config.streamingEnabled) {
         await this.streamSynthesis(synthesisRequest, originalInput);
       } else {
-        const resp = await modelRouter.chat(synthesisRequest);
+        const resp = await modelRouter.chat({ ...synthesisRequest, category: 'conversation' });
         const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
         await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
@@ -1666,7 +1666,7 @@ export class JarvisOrchestrator {
     try {
       process.stdout.write('\n🤖 JARVIS: ');
 
-      for await (let chunk of modelRouter.streamChat(request)) {
+      for await (let chunk of modelRouter.streamChat({ ...request, category: 'conversation' })) {
         if (this.isInterrupted()) {
           console.log('\n[Orchestrator] 🛑 Stream interrupted.');
           break;
@@ -1729,7 +1729,7 @@ export class JarvisOrchestrator {
     } catch (err) {
       console.error('[Orchestrator] Synthesis stream failed, fallback to direct synthesis:', err);
       try {
-        const resp = await modelRouter.chat(request);
+        const resp = await modelRouter.chat({ ...request, category: 'conversation' });
         const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
         await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
@@ -1890,7 +1890,7 @@ export class JarvisOrchestrator {
 
       process.stdout.write('\n🤖 JARVIS (Direct Stream): ');
 
-      for await (let chunk of modelRouter.streamChat(request)) {
+      for await (let chunk of modelRouter.streamChat({ ...request, category: 'conversation' })) {
         if (this.isInterrupted()) {
           console.log('\n[Orchestrator] 🛑 Stream interrupted.');
           break;
@@ -1949,7 +1949,7 @@ export class JarvisOrchestrator {
     } catch (err) {
       console.error('[DirectStream] Streaming failed, falling back to blocking chat:', err);
       try {
-        const resp = await modelRouter.chat(request);
+        const resp = await modelRouter.chat({ ...request, category: 'conversation' });
         const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '').trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
         await agentMemory.addConversationMessage('assistant', reply);

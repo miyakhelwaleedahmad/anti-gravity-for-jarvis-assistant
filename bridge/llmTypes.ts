@@ -40,6 +40,11 @@ export interface ILLMRequest {
   tools?: any[];
   /** "auto" lets the model decide; "none" disables tool calling */
   tool_choice?: "auto" | "none" | "required";
+  /**
+   * What kind of work this is (bridge/modelCategories.ts), for the usage
+   * record. Never sent to a provider: each builds its request body field by field.
+   */
+  category?: import("./modelCategories.js").ModelCategory;
 }
 
 // ─── Response ─────────────────────────────────────────────────────────────────

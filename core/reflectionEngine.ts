@@ -198,6 +198,7 @@ Do not include any other text.`,
     const response = await modelRouter.chat({
       model: llmConfig.model,
       messages,
+      category: 'repair_plan',
     });
 
     const rawContent = (response.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
@@ -337,7 +338,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
         },
       ];
 
-      const response = await modelRouter.chat({ model: llmConfig.model, messages });
+      const response = await modelRouter.chat({ model: llmConfig.model, messages, category: 'planning' });
       const raw = (response.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       const jsonMatch = /\[[\s\S]*\]/.exec(raw);
       if (!jsonMatch) return [];

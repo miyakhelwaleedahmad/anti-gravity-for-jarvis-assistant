@@ -1,10 +1,13 @@
 import { llmConfig } from "../config/llmconfig.js";
 import { groqProvider } from "./groqProvider.js";
 import { openaiProvider } from "./openaiProvider.js";
+import { anthropicProvider } from "./anthropicProvider.js";
 import type { ILLMMessage, ILLMProvider, ILLMRequest, ILLMResponse } from "./llmTypes.js";
 import { llmStatus } from "./llmStatus.js";
 import { redact } from "../security/redactor.js";
 import { yieldToForeground } from "../core/foregroundGate.js";
+import { recordUsage, routeFor, type ModelCategory } from "./modelCategories.js";
+import { getTraceId } from "../core/traceContext.js";
 
 /**
  * The request with credentials replaced in every message: tool output, memory,
@@ -38,6 +41,12 @@ export function redactRequest(request: ILLMRequest): ILLMRequest {
  */
 export class ModelRouter {
   private providers: Map<string, ILLMProvider> = new Map();
+  /**
+   * Providers reached only when a category names them (e.g. "anthropic").
+   * They never join the failover order, so a key in .env cannot silently
+   * move ordinary requests to another provider.
+   */
+  private namedOnly: Map<string, ILLMProvider> = new Map();
 
   /**
    * @param primary name the primary client is registered under — the active
@@ -48,10 +57,74 @@ export class ModelRouter {
     // One OpenAI-compatible client serves Groq or Gemini; see config/llmconfig.ts.
     this.providers.set(primary, groqProvider);
     this.providers.set("openai", openaiProvider);
+    // Reached only through a category that names it (JARVIS_MODEL_<CATEGORY>=anthropic…).
+    this.namedOnly.set("anthropic", anthropicProvider);
   }
 
   registerProvider(name: string, provider: ILLMProvider) {
     this.providers.set(name, provider);
+  }
+
+  /** A provider used only by the categories that name it (bridge/modelCategories.ts). */
+  registerNamedProvider(name: string, provider: ILLMProvider) {
+    this.namedOnly.set(name, provider);
+  }
+
+  /**
+   * A call for one kind of work: the category's model, provider, time limit
+   * and token cap from configuration (bridge/modelCategories.ts).
+   */
+  async categoryChat(category: ModelCategory, request: ILLMRequest): Promise<ILLMResponse> {
+    const route = routeFor(category);
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(Object.assign(new Error(`${category} call timed out after ${route.timeoutMs} ms`), { name: "TimeoutError" })), route.timeoutMs);
+    const onAbort = () => timeout.abort(request.signal?.reason);
+    request.signal?.addEventListener("abort", onAbort, { once: true });
+    const routed: ILLMRequest = { ...request, model: route.model, max_tokens: request.max_tokens ?? route.maxTokens, category, signal: timeout.signal };
+    try {
+      const named = this.namedOnly.get(route.provider);
+      if (named) return await this.callNamed(route.provider, named, routed);
+      if (route.provider !== "default" && !this.providers.has(route.provider)) {
+        throw new Error(`The ${category} category names provider "${route.provider}", which is not configured.`);
+      }
+      return await this.chat(routed, route.provider === "default" ? undefined : route.provider);
+    } finally {
+      clearTimeout(timer);
+      request.signal?.removeEventListener("abort", onAbort);
+    }
+  }
+
+  private async callNamed(name: string, provider: ILLMProvider, request: ILLMRequest): Promise<ILLMResponse> {
+    request = redactRequest(request);
+    const started = Date.now();
+    try {
+      const response = await provider.chat(request);
+      this.noteUsage(request, name, started, true, false, false, response);
+      return response;
+    } catch (err) {
+      this.noteUsage(request, name, started, false, false, false, undefined, err);
+      throw err;
+    }
+  }
+
+  /** One usage record per call (bridge/modelCategories.ts); never lets recording break the call. */
+  private noteUsage(request: ILLMRequest, provider: string, started: number, ok: boolean, fallbackUsed: boolean, streamed: boolean, response?: ILLMResponse, err?: unknown): void {
+    try {
+      const correlationId = getTraceId();
+      recordUsage({
+        category: request.category ?? "unspecified",
+        provider,
+        model: request.model ?? "(provider default)",
+        ...(correlationId ? { correlationId } : {}),
+        latencyMs: Date.now() - started,
+        ok,
+        fallbackUsed,
+        streamed,
+        promptTokens: response?.usage?.promptTokens ?? null,
+        completionTokens: response?.usage?.completionTokens ?? null,
+        ...(err ? { error: redact(String((err as Error)?.message ?? err)).slice(0, 200) } : {}),
+      });
+    } catch { /* the record is optional; the call is not */ }
   }
 
   /**
@@ -93,6 +166,7 @@ export class ModelRouter {
     await this.backgroundWaits(request);
     const order = this.failoverOrder(providerName);
     let lastError: unknown;
+    const started = Date.now();
 
     for (const name of order) {
       const provider = this.providers.get(name);
@@ -108,6 +182,7 @@ export class ModelRouter {
           console.warn(`[ModelRouter] ${order[0]} failed (${reason.slice(0, 120)}); answered by the fallback "${name}".`);
           llmStatus.recordFallback(order[0]!, name, reason);
         }
+        this.noteUsage(request, name, started, true, name !== order[0], false, response);
         return response;
       } catch (err) {
         lastError = err;
@@ -120,6 +195,7 @@ export class ModelRouter {
       }
     }
 
+    this.noteUsage(request, order[order.length - 1] ?? "none", started, false, order.length > 1, false, undefined, lastError);
     throw lastError instanceof Error
       ? lastError
       : new Error(`All LLM providers failed: ${order.join(", ")}`);
@@ -147,12 +223,16 @@ export class ModelRouter {
     }
 
     let yielded = false;
+    const started = Date.now();
     try {
       for await (const chunk of stream.call(provider, request)) {
         yielded = true;
         yield chunk;
       }
+      // A stream reports no token counts here: null, not 0.
+      this.noteUsage(request, selectedProviderName, started, true, false, true);
     } catch (err) {
+      if (yielded || request.signal?.aborted) this.noteUsage(request, selectedProviderName, started, false, false, true, undefined, err);
       // Mid-reply failures and cancellations are not retried: the caller has
       // already spoken part of the answer, or asked for it to stop.
       if (yielded || request.signal?.aborted) throw err;

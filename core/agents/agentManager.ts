@@ -1245,7 +1245,7 @@ class TaskContext implements AgentContext {
     if (left.tokens <= 0) throw new BudgetExceededError('tokens', this.task.taskId);
     this.manager.charge(this.task.taskId, 'llmCalls', 1);
     this.manager.tasks.touch(this.task.taskId);
-    const response = await this.manager.withLlmSlot(this.task, () => modelRouter.chat({ ...request, signal: this.signal }));
+    const response = await this.manager.withLlmSlot(this.task, () => modelRouter.chat({ ...request, signal: this.signal, category: request.category ?? 'planning' }));
     // Unreported usage is unknown, not zero: nothing is charged for it.
     const tokens = response.usage?.totalTokens;
     if (typeof tokens === 'number') this.manager.charge(this.task.taskId, 'tokens', tokens, false);

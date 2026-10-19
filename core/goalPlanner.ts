@@ -137,7 +137,7 @@ type Chat = (req: { messages: { role: 'system' | 'user'; content: string }[]; te
 
 async function defaultChat(): Promise<Chat> {
   const { modelRouter } = await import('../bridge/modelRouter.js');
-  return (req) => modelRouter.chat(req as never);
+  return (req) => modelRouter.chat({ ...(req as object), category: 'planning' } as never);
 }
 
 export class ModelGoalPlanner implements GoalPlanner {
