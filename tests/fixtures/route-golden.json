@@ -211,7 +211,7 @@
     "heavy": true
   },
   "what can you do": {
-    "route": "{\"type\":\"what_can_you_do\",\"reply\":\"I have 77 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \\\"list your tools\\\" for each tool and its risk.\"}",
+    "route": "{\"type\":\"what_can_you_do\",\"reply\":\"I have 78 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \\\"list your tools\\\" for each tool and its risk.\"}",
     "normalized": "what do",
     "tools": [
       "open_app",
@@ -222,7 +222,7 @@
     "heavy": true
   },
   "who are you": {
-    "route": "{\"type\":\"what_can_you_do\",\"reply\":\"I am JARVIS, your assistant, sir. I have 77 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \\\"list your tools\\\" for each tool and its risk.\"}",
+    "route": "{\"type\":\"what_can_you_do\",\"reply\":\"I am JARVIS, your assistant, sir. I have 78 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \\\"list your tools\\\" for each tool and its risk.\"}",
     "normalized": "who are you",
     "tools": [
       "open_app",
@@ -233,7 +233,7 @@
     "heavy": true
   },
   "list your capabilities": {
-    "route": "{\"type\":\"list_capabilities\",\"reply\":\"I have 77 tools in 9 groups, sir; 8 of them include high-risk actions. The full list with the risk of each is in the console.\"}",
+    "route": "{\"type\":\"list_capabilities\",\"reply\":\"I have 78 tools in 9 groups, sir; 9 of them include high-risk actions. The full list with the risk of each is in the console.\"}",
     "normalized": "list your capabilities",
     "tools": [
       "list_capabilities"
