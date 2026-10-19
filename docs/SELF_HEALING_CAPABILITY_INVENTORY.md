@@ -1,6 +1,6 @@
 # Self-healing: inventory of existing capabilities and regression evidence
 
-The self-healing work (Phases 1–5) is an addition to JARVIS. This file lists what JARVIS already does, where it lives, which tests cover it, and the result of those tests on the code **before** any self-healing change and on the current code. It says what was not verified here.
+The self-healing work (Phases 1–5, then code repair and model routing) is an addition to JARVIS. This file lists what JARVIS already does, where it lives, which tests cover it, and the result of those tests on the code **before** any self-healing change and on the current code. It says what was not verified here.
 
 ## How it was checked
 
@@ -46,6 +46,19 @@ The self-healing work (Phases 1–5) is an addition to JARVIS. This file lists w
 
   The guard that keeps the automatic path from also restarting it only matters where a killed process exits with code 1, which is Windows. It is exercised there by the Windows CI job, not on your PC.
 
+### Code repair and model routing compared again
+
+- **Suite:** 184 passed, 0 failed, 9 skipped (the same 9). No test that existed before changed its result.
+- **Registry snapshot:** no tool removed or changed; three added in total (`self_check`, `self_repair`, `propose_code_repair` risk 3). Specialists, workers, permission level, level-2 policy and sample risk decisions are identical to the pre-self-healing commit.
+- **Golden fixtures:**
+  - The reply fixture differs only in the tool count.
+  - The route fixture's capability list says "9 of them include high-risk actions" instead of 8, because the new risk-3 tool is in the DEVELOPMENT group. That is an accurate change, not a regression.
+- **Model calls:** the existing calls now carry a category label (planning, conversation, repair_plan, review); their model and request are unchanged. `modelRoutingTest` checks that the real Groq/Gemini body builder does not send the label.
+- **New dependency:** `@anthropic-ai/sdk` 0.131.0, pinned exactly; chosen as the newest release more than two weeks old. It is loaded only by the optional Claude provider.
+- **Not verified:**
+  - No live Claude call: there is no key here, and the tests use a stand-in for the SDK client.
+  - No model-written patch: the code-repair test scripts the author and reviewer. The worktree, git, linter, regression-test-fails-first check and test runs are real, on a fixture repository with a planted bug.
+
 ### Existing defect found, not changed
 
 - **Defect:** `selfHealingManager.scheduleRestart()` starts a new process without stopping a running one (`self_healing/selfHealingManager.ts`, `spawnProcess`).
@@ -76,6 +89,7 @@ The self-healing work (Phases 1–5) is an addition to JARVIS. This file lists w
 | Approval gates | `security/approvalGate.ts`, `security/approvalScope.ts` | `approvalGateStructuredTest`, `approvalPathsTest`, `nestedApprovalTest`, `securityBypassTest`, `approvalTypeAheadTest`, `promptInjectionFlowTest` | pass | pass | Answering a real prompt on your PC |
 | Redaction and secrets | `security/redactor.ts`, `security/secretFiles.ts` | `redactionTest`, `secretSinksTest`, `secretFileTest` | pass | pass | — |
 | Health dashboard and watchdogs | `monitoring/healthManager.ts`, `self_healing/*` | `healthStatusTest`, `providerHealthTest`, `watchdogUnitTest`, `selfHealInstallTest` | pass | pass | `dashboardAccuracyTest`, `dashboardHealthSystemTest` are skipped here (need a reachable LLM API and Windows PowerShell) |
+| **New:** code repair (propose only), model routing, optional Claude | `core/codeRepair.ts`, `core/worktreeExecutor.ts`, `bridge/modelCategories.ts`, `bridge/anthropicProvider.ts` | `codeRepairTest` (real git worktree on a planted-bug fixture), `modelRoutingTest` | — | pass | **Yes:** a real code repair with a live model, the worktree beside your checkout on Windows paths, and a live Claude call if you add a key |
 | **New:** self-check, issue record, bounded repair | `monitoring/healthLedger.ts`, `core/issueStore.ts`, `core/selfCheck.ts`, `core/repairRun.ts` | `healthLedgerTest`, `issueStoreTest`, `selfCheckTest`, `repairRunTest`, `boundaryDoublesTest`, `selfHealingHonestyTest` | — | pass | **Yes:** "heal yourself" restarting the real TTS/STT/wake-word processes, the check phrase played through your speakers, and a real transcript closing a speech-recognition issue |
 | **Obsidian connection** | **Not in this repository.** No code, configuration or MCP server refers to Obsidian; `.obsidian/` is only listed in `.gitignore`. | — | — | — | If you connect to Obsidian through something on your PC (Claude Desktop MCP, an Obsidian plugin), it was not visible here and was not tested. Phase 2's note mirror is **off** unless `JARVIS_OBSIDIAN_VAULT` is set, and then writes only under `<vault>/JARVIS/Repairs/` |
 

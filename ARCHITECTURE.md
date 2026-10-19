@@ -143,7 +143,19 @@ An addition beside the existing self-healing services (`self_healing/*`), which 
   - The only action is `selfHealingManager.restartService()`, which stops the old process before starting the new one. It is then checked by the effect: a played check phrase for speech output, or a real transcript or detection for recognition and the wake word.
   - One run at a time, 2 attempts, 20 minutes, and no model tokens. The same failure twice stops the run.
   - A run interrupted by a restart of JARVIS waits for "continue the repair".
-  - Code defects, the language model, missing programs and tool failures end `BLOCKED` with the reason. Code repair in a worktree is not implemented.
+  - Code defects, the language model, missing programs and tool failures end `BLOCKED` with the reason.
+- **Code repair, propose only** — `core/codeRepair.ts` and `core/worktreeExecutor.ts` behind the `propose_code_repair` tool. The command is "propose a code repair".
+  - Approval: risk 3, so it must be typed; the tool also refuses any approval not typed at the console, so voice never approves it.
+  - Only an open code defect at a known line qualifies; nothing in `security/` or `tests/`.
+  - The patch is written in a git worktree on `jarvis/repair/<id>`, beside the checkout. A diff linter rejects forbidden paths (security policy, `.env`, dependency files, `data/`, `.git`, CI) and weakened tests (deleted tests, removed assertions, skips, raised time limits).
+  - The new regression test must fail before the fix. The type check and the related tests run in the worktree with no keys; then a reviewer checks the diff.
+  - At most 2 attempts, and the same failing checks twice stops it.
+  - Result: a commit on the repair branch for you to review and merge, never merged by JARVIS. The checkout is compared before and after.
+- **Model per kind of work** — `bridge/modelCategories.ts`: intent, conversation, planning, repair_plan, coding, review; set by `JARVIS_MODEL_<KIND>` alone. Every call through `modelRouter` gets a usage record: category, provider, model, correlation id, latency, fallback, and tokens (`null` when not reported). Cost appears only from a configured price table.
+- **Claude (optional)** — `bridge/anthropicProvider.ts`, on the official SDK.
+  - Used only by a kind of work that names `anthropic`, and never in the failover, so a key in `.env` doesn't move ordinary requests.
+  - The model is looked up before its first use. A refusal is an error, never an empty answer.
+  - Not tested live here: no key.
 - **Guards**
   - `tests/boundaryDoublesTest.ts`: every test stand-in for speech or the tool registry is listed in `tests/boundary-doubles.json` with a reason.
   - `tests/selfHealingHonestyTest.ts`: no reply claims that everything works or that all errors are fixed.
