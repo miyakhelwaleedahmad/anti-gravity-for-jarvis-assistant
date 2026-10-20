@@ -20,7 +20,7 @@
  *   5. Persistence: a new store reads the issues back; a corrupt file is set
  *      aside, not lost; a file of an unknown schema is never overwritten.
  *   6. Redaction: a key in a message never reaches the files.
- *   7. Obsidian mirror: off by default; writes to its own folder, moves to
+ *   7. Obsidian mirror: off by default; only an Obsidian vault; writes to its own folder, moves to
  *      Resolved/, never overwrites a note it did not write.
  *   8. The three classifiers (service, reflection, goal recovery) give the
  *      same failure the same signature, and the real tool registry, ledger
@@ -203,21 +203,40 @@ ok('off unless JARVIS_OBSIDIAN_VAULT is set', mirrorIssue(issue).syncStatus === 
 const vault = path.join(root, 'vault');
 ok('a vault folder that does not exist: failed, not synced', mirrorIssue(issue, vault).syncStatus === 'failed');
 fs.mkdirSync(vault);
+const notVault = mirrorIssue(issue, vault);
+ok('a folder that is not an Obsidian vault (no .obsidian): failed, nothing written', notVault.syncStatus === 'failed' && /not an Obsidian vault/.test(notVault.error ?? '') && !fs.existsSync(path.join(vault, 'JARVIS')));
+fs.mkdirSync(path.join(vault, '.obsidian'));
+// A copy an earlier version wrote in JARVIS/Repairs is removed once the note is in its error space.
+fs.mkdirSync(path.join(vault, 'JARVIS', 'Repairs'), { recursive: true });
+const legacy = path.join(vault, 'JARVIS', 'Repairs', `${issue.issueId}.md`);
+fs.writeFileSync(legacy, `---\njarvis_issue_id: ${issue.issueId}\n---\nold\n`);
 const m1 = mirrorIssue(issue, vault);
-const note = path.join(vault, 'JARVIS', 'Repairs', `${issue.issueId}.md`);
-ok('writes its own note in JARVIS/Repairs', m1.syncStatus === 'synced' && m1.path === `JARVIS/Repairs/${issue.issueId}.md` && fs.existsSync(note));
+const note = path.join(vault, 'JARVIS', '01 Active Errors', `${issue.issueId}.md`);
+ok('writes its own note in JARVIS/01 Active Errors', m1.syncStatus === 'synced' && m1.path === `JARVIS/01 Active Errors/${issue.issueId}.md` && fs.existsSync(note));
+ok('…the earlier JARVIS/Repairs copy (ours) is removed', !fs.existsSync(legacy));
 const text = fs.readFileSync(note, 'utf8');
 ok('…with the issue id, status and a redacted summary', text.includes(`jarvis_issue_id: ${issue.issueId}`) && text.includes('status: OPEN') && !text.includes(secret));
+ok('…marked as a JARVIS note for the second brain', text.includes('jarvis_managed: true') && text.includes(`jarvis_id: ${issue.issueId}`));
 leaky.resolve(issue.issueId, { passed: true, evidence: 'chat answered with the new key' });
 const m2 = mirrorIssue(issue, vault);
-ok('resolved: moved to Resolved/, the open note removed', m2.syncStatus === 'synced' && fs.existsSync(path.join(vault, 'JARVIS', 'Repairs', 'Resolved', `${issue.issueId}.md`)) && !fs.existsSync(note));
+ok('resolved: moved to 02 Resolved Errors, the open note removed', m2.syncStatus === 'synced' && fs.existsSync(path.join(vault, 'JARVIS', '02 Resolved Errors', `${issue.issueId}.md`)) && !fs.existsSync(note));
 const other = leaky.recordOccurrence({ component: 'service:wakeword', message: 'wake word model missing' }).issue;
-const otherNote = path.join(vault, 'JARVIS', 'Repairs', `${other.issueId}.md`);
+const otherNote = path.join(vault, 'JARVIS', '01 Active Errors', `${other.issueId}.md`);
 fs.writeFileSync(otherNote, '# My own note\n\nnot written by JARVIS\n');
 const m3 = mirrorIssue(other, vault);
 ok('a note JARVIS did not write is never overwritten: conflict', m3.syncStatus === 'conflict' && fs.readFileSync(otherNote, 'utf8') === '# My own note\n\nnot written by JARVIS\n');
 fs.writeFileSync(otherNote, `---\r\njarvis_issue_id: ${other.issueId}\r\n---\r\nold\r\n`);
 ok('…its own note saved with Windows line endings is still recognised', mirrorIssue(other, vault).syncStatus === 'synced');
+const linkedVault = path.join(root, 'linked-vault');
+const outside = path.join(root, 'outside-folder');
+fs.mkdirSync(path.join(linkedVault, '.obsidian'), { recursive: true });
+fs.mkdirSync(outside);
+let linked = false;
+try { fs.symlinkSync(outside, path.join(linkedVault, 'JARVIS'), 'junction'); linked = true; } catch { /* no link permission */ }
+if (linked) {
+  const ml = mirrorIssue(other, linkedVault);
+  ok('a JARVIS folder that links out of the vault: failed, nothing written outside', ml.syncStatus === 'failed' && /links out of the vault/.test(ml.error ?? '') && fs.readdirSync(outside).length === 0, JSON.stringify(ml));
+}
 process.env['JARVIS_OBSIDIAN_VAULT'] = vault;
 leaky.flush();
 ok('the store records the sync status on the issue', leaky.get(other.issueId)!.obsidian?.syncStatus === 'synced');

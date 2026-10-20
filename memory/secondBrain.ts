@@ -215,7 +215,8 @@ export class SecondBrain {
     const r = this.reg();
     const created: string[] = [];
     const existing: string[] = [];
-    if (this.vault.ensureDir(v, '')) created.push(BRAIN_ROOT);
+    try { if (this.vault.ensureDir(v, '')) created.push(BRAIN_ROOT); }
+    catch (err) { return { ok: false, created, existing, migrated: [], message: `The second brain is not available: ${(err as Error).message}.` }; }
     const at = new Date(this.now()).toISOString();
     for (const c of r.categories) {
       if (c.mergedInto) continue;
@@ -244,10 +245,11 @@ export class SecondBrain {
       let files: string[] = [];
       try { files = fs.readdirSync(dir).filter((f) => /^iss-[0-9a-f]{12}\.md$/.test(f)); } catch { continue; }
       for (const f of files) {
-        const src = path.join(dir, f);
+        let src: string, dst: string;
+        try { src = this.vault.resolve(v, `${from.split(path.sep).join('/')}/${f}`); dst = this.vault.resolve(v, `${to}/${f}`); }
+        catch (err) { this.op('migrate_skipped', `${f}: ${(err as Error).message}`); continue; }   // a link out of the vault
         const text = fs.readFileSync(src, 'utf8');
         if (!new RegExp(`^jarvis_issue_id: ${f.replace(/\.md$/, '')}\\r?$`, 'm').test(text)) continue;   // not ours
-        const dst = path.join(v, BRAIN_ROOT, to, f);
         if (fs.existsSync(dst)) continue;
         fs.renameSync(src, dst);
         moved.push(`${from}/${f}`.split(path.sep).join('/'));
@@ -334,6 +336,7 @@ export class SecondBrain {
     const text = redact(input.text.trim());
     const title = safeName(input.title ?? text.split(/[.\n]/)[0]!.slice(0, 70), 70);
     const st = this.vault.state();
+    if (!st.ok && st.reason === 'not_configured') return { status: 'skipped', reason: st.detail };
     const c = this.classify({ text, title, ...(input.type ? { type: input.type } : {}) });
     const id = contentId('mem', terms(text).sort().join(' ') || text.toLowerCase());
     const rel = `${c.category.folder}/${title}.md`;
@@ -568,7 +571,8 @@ export class SecondBrain {
       if (entry.category === 'lessons' || entry.category === 'preferences') score *= 1.3;
       note ??= this.vault.readAny(st.vault, p);
       const lines = (note?.body ?? '').split('\n').filter((l) => q.some((t) => l.toLowerCase().includes(t)) && !l.startsWith('- 20'));
-      hits.push({ path: p, title: entry.title, score, snippet: lines.slice(0, 2).join(' ').slice(0, 300), managed: entry.managed, ...(entry.category ? { category: entry.category } : {}) });
+      // The owner's notes may hold a credential: never passed on.
+      hits.push({ path: p, title: entry.title, score, snippet: redact(lines.slice(0, 2).join(' ')).slice(0, 300), managed: entry.managed, ...(entry.category ? { category: entry.category } : {}) });
     }
     return hits.sort((a, b) => b.score - a.score).slice(0, k);
   }
@@ -592,6 +596,7 @@ export class SecondBrain {
   noteResolvedIssue(issue: { issueId: string; signature: string; component: string; summary: string; category: string; recurrenceCount: number; verification?: { passed: boolean; evidence: string }; sourceLocation?: { status: string; file?: string; line?: number } }): RememberResult {
     if (!issue.verification?.passed || !issue.verification.evidence) return { status: 'skipped', reason: 'not verified, so not a lesson' };
     const st = this.vault.state();
+    if (!st.ok && st.reason === 'not_configured') return { status: 'skipped', reason: st.detail };
     const title = safeName(`Lesson ${issue.component} ${issue.summary.slice(0, 50)}`, 70);
     const where = issue.sourceLocation?.status === 'KNOWN' ? `${issue.sourceLocation.file}:${issue.sourceLocation.line}` : (issue.sourceLocation?.status ?? 'UNKNOWN');
     const body = [`# ${title}`, '', `**Failure:** ${issue.summary}`, '', `**Where:** ${where} · **Kind:** ${issue.category} · **Signature:** ${issue.signature}`, '',
@@ -615,6 +620,7 @@ export class SecondBrain {
     const rel = `07 Daily Logs/${day}.md`;
     const line = `- ${new Date(now).toISOString().slice(11, 16)} ${outcome === 'success' ? 'done' : outcome}: ${redact(input).replace(/\s+/g, ' ').slice(0, 120)}${reason ? ` — ${redact(reason).replace(/\s+/g, ' ').slice(0, 160)}` : ''}`;
     const st = this.vault.state();
+    if (!st.ok && st.reason === 'not_configured') return;
     if (!st.ok) { this.vault.queue({ op: 'append', path: rel, content: line, id: `daily-${day}` }); return; }
     this.appendLine(st.vault, rel, `daily-${day}`, `# ${day}`, line);
   }
@@ -625,6 +631,21 @@ export class SecondBrain {
     if (lines.filter((l) => l.startsWith('- ')).length >= LIMITS.dailyLines) return;
     lines.push(line);
     this.vault.writeManaged(v, rel, id, { jarvis_kind: 'log', category: 'daily' }, lines.join('\n') + '\n');
+  }
+
+  /** JARVIS notes waiting in the Memory Inbox. */
+  inboxCount(): number {
+    const st = this.vault.state();
+    return st.ok ? this.notesIn(st.vault, this.category('inbox')!.folder).filter((n) => n.managed).length : 0;
+  }
+
+  /** The most recent lesson notes. */
+  lessons(k = 5): { path: string; title: string }[] {
+    const st = this.vault.state();
+    if (!st.ok) return [];
+    return this.notesIn(st.vault, this.category('lessons')!.folder)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, k)
+      .map((n) => ({ path: n.path, title: path.basename(n.path, '.md') }));
   }
 
   // ─── status and sync ────────────────────────────────────────────────────────
@@ -659,26 +680,61 @@ export function holdsSecret(text: string): boolean { return hasSecret(text); }
 
 export const secondBrain = new SecondBrain();
 
+/** Memory types for long-term fact sources; other sources (system, agent_failure, …) are not mirrored. */
+const SOURCE_TYPES: Record<string, string | undefined> = {
+  conversation: undefined, user: undefined, user_feedback: undefined, owner: undefined,
+  lesson: 'experience', agents: 'knowledge', relation: 'knowledge',
+};
+
+/**
+ * A long-term fact JARVIS decided to keep (memoryManager.rememberFact) is also
+ * classified into the second brain, when a vault is configured. Only owner,
+ * lesson, research and relation facts of importance 5 or more; never blocks
+ * or fails the caller.
+ */
+export function ingestFact(fact: string, source: string, importance: number): void {
+  if (!(source in SOURCE_TYPES) || importance < 5) return;
+  if (!process.env['JARVIS_OBSIDIAN_VAULT']?.trim()) return;
+  setImmediate(() => {
+    try {
+      const type = SOURCE_TYPES[source];
+      secondBrain.remember({ text: fact, source, ...(type ? { type } : {}) });
+    } catch (err) { console.warn('[SecondBrain] ⚠️ fact not filed:', (err as Error).message); }
+  });
+}
+
 let started = false;
-/** At startup: initialize if a vault is configured, sync the outbox, and keep both up periodically. */
-export function startSecondBrain(log: (s: string) => void = console.log): void {
+/**
+ * At startup: initialize if a vault is configured, sync the outbox, keep
+ * syncing periodically, and turn verified issue resolutions into lessons
+ * (queued while the vault is away). Nothing at all when no vault is set.
+ */
+export function startSecondBrain(
+  log: (s: string) => void = console.log,
+  onResolved?: (fn: (issue: Parameters<SecondBrain['noteResolvedIssue']>[0]) => void) => void,
+): void {
   if (started) return;
-  started = true;
   const st = secondBrain.vault.state();
-  if (!st.ok) {
-    if (st.reason !== 'not_configured') log(`[SecondBrain] ⚠️ ${st.detail}`);
-    return;
-  }
-  try {
-    const init = secondBrain.initialize();
-    log(`[SecondBrain] ${init.message}`);
-    const s = secondBrain.sync();
-    if (s.written || s.left) log(`[SecondBrain] Sync: ${s.written} queued write(s) applied, ${s.left} left.`);
-  } catch (err) {
-    log(`[SecondBrain] ⚠️ ${(err as Error).message}`);
+  if (!st.ok && st.reason === 'not_configured') return;
+  started = true;
+  onResolved?.((issue) => { try { secondBrain.noteResolvedIssue(issue); } catch (err) { log(`[SecondBrain] ⚠️ lesson not saved: ${(err as Error).message}`); } });
+  if (!st.ok) log(`[SecondBrain] ⚠️ ${st.detail}; memories are queued until it is back.`);
+  else {
+    try {
+      const init = secondBrain.initialize();
+      log(`[SecondBrain] ${init.message}`);
+      const s = secondBrain.sync();
+      if (s.written || s.left) log(`[SecondBrain] Sync: ${s.written} queued write(s) applied, ${s.left} left.`);
+    } catch (err) {
+      log(`[SecondBrain] ⚠️ ${(err as Error).message}`);
+    }
   }
   const timer = setInterval(() => {
-    try { secondBrain.sync(); } catch { /* reported by status */ }
+    try {
+      const was = secondBrain.status().initialized;
+      if (!was && secondBrain.vault.state().ok) secondBrain.initialize();
+      secondBrain.sync();
+    } catch { /* reported by status */ }
   }, 15 * 60_000);
   timer.unref?.();
 }

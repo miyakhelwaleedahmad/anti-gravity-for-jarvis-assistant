@@ -136,6 +136,11 @@ export class Vault {
     const problem = brainPathProblem(rel);
     if (problem) throw new Error(problem);
     const root = this.brainDir(vault);
+    // The JARVIS folder itself must not be a link out of the vault.
+    if (fs.existsSync(root)) {
+      const r = path.relative(fs.realpathSync(vault), fs.realpathSync(root));
+      if (r.startsWith('..') || path.isAbsolute(r)) throw new Error(`${BRAIN_ROOT} is a link out of the vault; nothing is written through it`);
+    }
     const target = path.resolve(root, rel);
     const inside = path.relative(root, target);
     if (inside.startsWith('..') || path.isAbsolute(inside)) throw new Error(`${rel} leaves the JARVIS folder`);
@@ -153,6 +158,7 @@ export class Vault {
 
   ensureDir(vault: string, rel: string): boolean {
     const dir = rel ? this.resolve(vault, rel) : this.brainDir(vault);
+    if (!rel && fs.existsSync(dir)) this.resolve(vault, 'probe.md');   // checks that JARVIS/ is not a link out
     if (fs.existsSync(dir)) return false;
     fs.mkdirSync(dir, { recursive: true });
     return true;

@@ -271,6 +271,22 @@ console.log('\n--- 8. Paths ---');
     ok('search does not follow the link', !sb.search('guitar outside').some((h) => h.path.includes('Linked')));
   } else console.log('  (links not permitted here: link checks skipped)');
   ok('readAny refuses a path outside the vault', vault.readAny(V, '../outside/secret.md') === undefined);
+  // The JARVIS folder itself linked out of the vault.
+  const V3 = makeVault('vault3');
+  const elsewhere = path.join(root, 'elsewhere');
+  fs.mkdirSync(elsewhere);
+  let rootLinked = false;
+  try { fs.symlinkSync(elsewhere, path.join(V3, 'JARVIS'), 'junction'); rootLinked = true; } catch { /* no link permission */ }
+  if (rootLinked) {
+    const r3 = brain(V3, 'd3').initialize();
+    ok('a JARVIS folder that links out of the vault: refused, nothing written there', !r3.ok && /link out of the vault/.test(r3.message) && fs.readdirSync(elsewhere).length === 0, r3.message);
+  }
+  // A credential in the owner's own note never reaches a model through search.
+  fs.writeFileSync(path.join(V, 'My Notes', 'Keys.md'), '# Server keys\nstaging deploy key sk-ant-api03-ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponm for the staging deploy\n');
+  sb.reset();
+  const keyHits = sb.search('staging deploy key');
+  ok('a secret in an owner\'s note is redacted in search results', keyHits.some((h) => h.path === 'My Notes/Keys.md') && !JSON.stringify(keyHits).includes('ZYXWVUTSRQPONMLKJ'), JSON.stringify(keyHits[0]));
+  ok('…and the owner\'s note itself is unchanged', fs.readFileSync(path.join(V, 'My Notes', 'Keys.md'), 'utf8').includes('ZYXWVUTSRQPONMLKJ'));
 }
 
 // ── 9. Offline and sync ──────────────────────────────────────────────────────

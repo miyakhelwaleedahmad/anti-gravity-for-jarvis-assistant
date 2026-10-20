@@ -312,6 +312,12 @@ async function startJarvis() {
     const { repairRunner } = await import('./core/repairRun.js');
     repairRunner.load();
     if (repairRunner.active()?.status === 'AWAITING_APPROVAL') console.log('[Repair] ⏸️  A repair was interrupted by a restart; say "continue the repair" or "stop healing".');
+    // The second brain in the Obsidian vault (memory/secondBrain.ts): only when JARVIS_OBSIDIAN_VAULT is set.
+    try {
+      const { startSecondBrain } = await import('./memory/secondBrain.js');
+      const { issueStore } = await import('./core/issueStore.js');
+      startSecondBrain(console.log, (fn) => { issueStore.onResolved(fn); });
+    } catch (err) { console.warn('[SecondBrain] ⚠️ not started:', (err as Error).message); }
 
     // 1. Parallel Core Systems Init (Memory + Goals)
     const tMemory = Date.now();

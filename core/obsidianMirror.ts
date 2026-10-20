@@ -9,9 +9,12 @@
  * reuse. This writes plain Markdown files into a vault folder, which is how
  * Obsidian stores notes; nothing else is needed.
  *
- *   off by default    JARVIS_OBSIDIAN_VAULT must name an existing vault folder
- *   its own folder    <vault>/JARVIS/Repairs/<issueId>.md, and
- *                     <vault>/JARVIS/Repairs/Resolved/<issueId>.md once resolved
+ *   off by default    JARVIS_OBSIDIAN_VAULT must name an existing Obsidian
+ *                     vault (a folder holding .obsidian); never another folder
+ *   its own folder    <vault>/JARVIS/01 Active Errors/<issueId>.md, and
+ *                     <vault>/JARVIS/02 Resolved Errors/<issueId>.md once
+ *                     resolved (the second brain's error spaces). A copy left
+ *                     in the earlier JARVIS/Repairs folders is removed if ours.
  *   never clobbers    a file is overwritten or moved only if its frontmatter
  *                     carries this issue's `jarvis_issue_id`; any other file at
  *                     that path is left alone and the sync reported as a conflict
@@ -34,7 +37,10 @@ export interface MirrorResult {
   at?: string;
 }
 
-const FOLDER = path.join('JARVIS', 'Repairs');
+const ACTIVE = path.join('JARVIS', '01 Active Errors');
+const RESOLVED = path.join('JARVIS', '02 Resolved Errors');
+/** Where earlier versions wrote the same notes. */
+const LEGACY = [path.join('JARVIS', 'Repairs'), path.join('JARVIS', 'Repairs', 'Resolved')];
 
 export function vaultDir(): string | undefined {
   const v = process.env['JARVIS_OBSIDIAN_VAULT']?.trim();
@@ -43,8 +49,17 @@ export function vaultDir(): string | undefined {
 
 function notePath(issue: Issue): string {
   if (!/^iss-[0-9a-f]{12}$/.test(issue.issueId)) throw new Error(`unexpected issue id ${issue.issueId}`);
-  const resolved = issue.status === 'RESOLVED';
-  return path.join(FOLDER, ...(resolved ? ['Resolved'] : []), `${issue.issueId}.md`);
+  return path.join(issue.status === 'RESOLVED' ? RESOLVED : ACTIVE, `${issue.issueId}.md`);
+}
+
+/** True when the nearest existing folder of `target` is really outside the vault (a link or junction out). */
+function leavesVault(vault: string, target: string): boolean {
+  let probe = path.dirname(target);
+  while (!fs.existsSync(probe) && probe.length > vault.length) probe = path.dirname(probe);
+  try {
+    const r = path.relative(fs.realpathSync(vault), fs.realpathSync(probe));
+    return r.startsWith('..') || path.isAbsolute(r);
+  } catch { return true; }
 }
 
 /** True if the file is missing or is this issue's own note. */
@@ -67,6 +82,9 @@ export function renderNote(issue: Issue): string {
   const lines = [
     '---',
     `jarvis_issue_id: ${issue.issueId}`,
+    'jarvis_managed: true',
+    `jarvis_id: ${issue.issueId}`,
+    'jarvis_kind: error',
     'jarvis_record: repair-issue',
     'schema_version: 1',
     `status: ${issue.status}`,
@@ -136,7 +154,9 @@ export function mirrorIssue(issue: Issue, vault = vaultDir()): MirrorResult {
   } catch {
     return { syncStatus: 'failed', path: rel, error: 'the JARVIS_OBSIDIAN_VAULT folder does not exist', at };
   }
+  if (!fs.existsSync(path.join(vault, '.obsidian'))) return { syncStatus: 'failed', path: rel, error: 'JARVIS_OBSIDIAN_VAULT has no .obsidian folder, so it is not an Obsidian vault', at };
   const target = path.join(vault, rel);
+  if (leavesVault(vault, target)) return { syncStatus: 'failed', path: rel, error: 'the JARVIS folder links out of the vault; nothing was written', at };
   if (!ownsOrMissing(target, issue.issueId)) {
     return { syncStatus: 'conflict', path: rel, error: 'a note JARVIS did not write is at this path; it was left unchanged', at };
   }
@@ -145,10 +165,12 @@ export function mirrorIssue(issue: Issue, vault = vaultDir()): MirrorResult {
   } catch (err) {
     return { syncStatus: 'failed', path: rel, error: (err as Error).message, at };
   }
-  // The note moved folders (resolved, or reopened): remove the old copy, if it is ours.
-  const other = path.join(vault, issue.status === 'RESOLVED' ? path.join(FOLDER, `${issue.issueId}.md`) : path.join(FOLDER, 'Resolved', `${issue.issueId}.md`));
-  if (fs.existsSync(other) && ownsOrMissing(other, issue.issueId)) {
-    try { fs.unlinkSync(other); } catch { /* the new note is written; a stale copy is harmless */ }
+  // The note moved folders (resolved, reopened, or from the earlier location): remove the old copy, if it is ours.
+  for (const dir of [issue.status === 'RESOLVED' ? ACTIVE : RESOLVED, ...LEGACY]) {
+    const other = path.join(vault, dir, `${issue.issueId}.md`);
+    if (fs.existsSync(other) && ownsOrMissing(other, issue.issueId)) {
+      try { fs.unlinkSync(other); } catch { /* the new note is written; a stale copy is harmless */ }
+    }
   }
   return { syncStatus: 'synced', path: rel.split(path.sep).join('/'), at };
 }

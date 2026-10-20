@@ -187,6 +187,7 @@ export class IssueStore {
   private issues = new Map<string, Issue>();
   private loaded = false;
   private dirty = new Set<string>();
+  private resolvedListeners = new Set<(issue: Issue) => void>();
   private timer: NodeJS.Timeout | null = null;
   private seq = 0;
   /** Set when the file on disk could not be read as ours; the store then refuses to overwrite it. */
@@ -346,11 +347,20 @@ export class IssueStore {
       issue.resolvedAt = iso;
       delete issue.blockedReason;
       delete issue.nextAction;
+      for (const fn of this.resolvedListeners) {
+        try { fn(issue); } catch (err) { console.warn('[IssueStore] ⚠️ a resolution listener failed:', (err as Error).message); }
+      }
     } else {
       this.move(issue, 'OPEN', `verification failed: ${evidence}`, iso);
     }
     this.markDirty(issueId);
     return issue;
+  }
+
+  /** Called after each verified resolution (the second brain turns it into a lesson). Returns an unsubscribe. */
+  onResolved(fn: (issue: Issue) => void): () => void {
+    this.resolvedListeners.add(fn);
+    return () => { this.resolvedListeners.delete(fn); };
   }
 
   /** Add a diagnosis fact or hypothesis (kept separate: a hypothesis is not a fact). */
