@@ -5,11 +5,17 @@
  *   1. Initial state reports actual status based on live service availability
  *   2. When services become healthy, overallStatus accurately transitions to ONLINE
  *   3. Dashboard does not get stuck in DEGRADED state after recovery
+ *
+ * Since self-healing Phase 1 a voice service is "online" only when it is
+ * connected AND the health ledger has seen it work (bridge/nodeBridge.ts
+ * records a detection, a transcript, a played reply); connected alone reads
+ * "unknown". The test checks both.
  */
 
 import { healthManager } from '../monitoring/healthManager.js';
 import { nodeBridge } from '../bridge/nodeBridge.js';
 import { registerAllTools } from '../core/tools/index.js';
+import { healthLedger, LEDGER_PIPELINES } from '../monitoring/healthLedger.js';
 
 // As JARVIS does at start: "online" needs a tool registry with tools in it
 // (an empty one now reads as "loading").
@@ -50,10 +56,19 @@ async function runTests() {
     ['wakeword', { readyState: 1 }],
   ]);
 
+  const connectedOnly = await healthManager.probe();
+  assert(['stt', 'tts', 'wake_word'].every((k) => (connectedOnly.services as any)[k]?.status !== 'online'),
+    'Connected alone is not reported online (nothing has proved the service works yet)');
+
+  // What the bridge records when each service does its job.
+  healthLedger.record(LEDGER_PIPELINES.wake, true, 'wake word detected');
+  healthLedger.record(LEDGER_PIPELINES.stt, true, 'transcript produced');
+  healthLedger.record(LEDGER_PIPELINES.tts, true, 'played');
+
   const snap2 = await healthManager.probe();
-  assert(snap2.services.stt?.status === 'online', 'STT reports online when client is connected');
-  assert(snap2.services.tts?.status === 'online', 'TTS reports online when client is connected');
-  assert(snap2.services.wake_word?.status === 'online', 'WakeWord reports online when client is connected');
+  assert(snap2.services.stt?.status === 'online', 'STT reports online when connected and a transcript was seen');
+  assert(snap2.services.tts?.status === 'online', 'TTS reports online when connected and a reply was played');
+  assert(snap2.services.wake_word?.status === 'online', 'WakeWord reports online when connected and a detection was seen');
 
   // ── Test 3: Full System Recovery to ONLINE ───────────────────────────
   console.log('\n--- Test 3: Dynamic transition to ONLINE when all services are healthy ---');

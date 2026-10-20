@@ -14,13 +14,19 @@
 
 // Blank every variable the validator reads before llmconfig's dotenv import
 // runs: dotenv never overrides a variable that is already defined.
-for (const name of [
+const PROVIDER_VARS = [
   'GEMINI_API_KEY', 'GEMINI_API_URL', 'GROQ_API_KEY', 'GROQ_API_URL', 'XAI_API_KEY',
   'JARVIS_LLM_PROVIDER', 'JARVIS_BRAIN_MODEL', 'JARVIS_FAST_MODEL', 'JARVIS_LLM_REASONING_EFFORT',
-]) process.env[name] = '';
+];
+// The validator's other inputs (timing, bridge port, Redis): an owner's .env
+// with, say, a short planning watchdog or another port made these cases fail.
+const OTHER_VALIDATOR_VARS = ['JARVIS_LLM_TIMEOUT_MS', 'JARVIS_PLANNING_WATCHDOG_MS', 'BRIDGE_PORT', 'REDIS_HOST'];
+for (const name of [...PROVIDER_VARS, ...OTHER_VALIDATOR_VARS]) process.env[name] = '';
 
 const { resolveProviderSettings, isPlaceholderKey, geminiOpenAIBaseURL } = await import('../config/llmconfig.js');
 const { configValidator } = await import('../config/configValidator.js');
+// .env has been read (and skipped for these); unset, they take their defaults.
+for (const name of OTHER_VALIDATOR_VARS) delete process.env[name];
 
 let passed = 0;
 let failed = 0;
@@ -106,10 +112,7 @@ console.log('\n--- Thinking control ---');
 
 console.log('\n--- Startup validator ---');
 function validateWith(env: Record<string, string>) {
-  for (const name of ['GEMINI_API_KEY', 'GEMINI_API_URL', 'GROQ_API_KEY', 'GROQ_API_URL', 'XAI_API_KEY',
-    'JARVIS_LLM_PROVIDER', 'JARVIS_BRAIN_MODEL', 'JARVIS_FAST_MODEL', 'JARVIS_LLM_REASONING_EFFORT']) {
-    process.env[name] = env[name] ?? '';
-  }
+  for (const name of PROVIDER_VARS) process.env[name] = env[name] ?? '';
   return configValidator.validate();
 }
 {
