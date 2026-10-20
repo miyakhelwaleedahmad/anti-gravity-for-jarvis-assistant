@@ -92,6 +92,24 @@ const verifySaveRelation: Verifier = async (args) => {
     : failed('it is not in long-term memory');
 };
 
+/** memory_brain: a written note is really in the vault; reads and status need no check. */
+const verifyMemoryBrain: Verifier = async (args, output) => {
+  const action = text(args, 'action');
+  let body: { success?: boolean; result?: { path?: string; status?: string }; folder?: string; created?: string[] } = {};
+  try { body = JSON.parse(output); } catch { return unverifiable('the result was not JSON'); }
+  if (!body.success) return failed('the action reported failure');
+  const { secondBrain } = await import('../memory/secondBrain.js');
+  const st = secondBrain.vault.state();
+  if (!st.ok) return body.result?.status === 'queued' ? verified('queued in the outbox until the vault is back') : failed(st.detail);
+  if (action === 'remember' || action === 'remember_preference') {
+    const p = body.result?.path;
+    return p && exists(path.join(st.vault, p)) ? verified(`${p} is in the vault`) : failed('the note is not in the vault');
+  }
+  if (action === 'create_space') return body.folder && exists(path.join(st.vault, 'JARVIS', body.folder)) ? verified(`${body.folder} exists`) : failed('the folder is not in the vault');
+  if (action === 'init') return exists(path.join(st.vault, 'JARVIS', '00 Index', 'JARVIS Memory Index.md')) ? verified('the main index is in the vault') : failed('the main index is missing');
+  return verified('the vault is connected and the action reported its result');
+};
+
 /** forget_memory: the removed facts are no longer in the fact store; the index's own report counts. */
 const verifyForgetMemory: Verifier = async (_args, output) => {
   let body: { success?: boolean; removed?: Array<{ id: string }>; vectorIndex?: string[] } = {};
@@ -367,6 +385,7 @@ export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> 
   control_file: verifyControlFile,
   save_relation: verifySaveRelation,
   forget_memory: verifyForgetMemory,
+  memory_brain: verifyMemoryBrain,
   ingest_documents: verifyIngest,
   enable_full_control_session: verifyFullControl(true),
   disable_full_control_session: verifyFullControl(false),

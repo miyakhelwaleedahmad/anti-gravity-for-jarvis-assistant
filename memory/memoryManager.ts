@@ -653,6 +653,8 @@ export class MemoryManager {
     });
     console.log(`[Memory] Remembered immediately: "${cleanFact}"`);
     this.factsChanged();
+    // Filed in the second brain too (Obsidian vault), when one is configured.
+    import('./secondBrain.js').then(({ ingestFact }) => ingestFact(cleanFact, source, importance)).catch(() => { /* optional */ });
     invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
     this.dedupAndIndexFactInBackground(fastEntry);
     return;

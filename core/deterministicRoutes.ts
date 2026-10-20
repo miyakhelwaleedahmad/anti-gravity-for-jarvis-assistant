@@ -19,7 +19,7 @@ import { matchDesktopRoute } from './desktopRouting.js';
 import { matchAgentRoute } from './agentRouting.js';
 import { capabilitiesReply, capabilityListReply } from './replyText.js';
 
-export interface DeterministicRoute { type: string; target?: string; reply: string; specialist?: string }
+export interface DeterministicRoute { type: string; target?: string; reply: string; specialist?: string; value?: string }
 
 const CAPABILITY_LIST_PHRASES = new Set([
   'list your tools', 'list your capabilities', 'list all your tools', 'show your tools',
@@ -115,6 +115,31 @@ const REPAIR_LAST: readonly RegExp[] = [
   /^(?:fix|repair) (?:only )?(?:the |that )?(?:last|latest|current|previous) (?:problem|error|issue|failure)(?: only)?$/,
   /^(?:fix|repair) (?:only )?(?:that|this) (?:problem|error|issue|failure)$/,
 ];
+/**
+ * The second brain (core/tools/secondBrainTool.ts). A command that points at
+ * something earlier in the conversation ("remember this preference", "a space
+ * for this subject") is left to the planner, which has that context.
+ */
+const BRAIN: readonly { action: string; re: RegExp }[] = [
+  { action: 'init', re: /^(?:initiali[sz]e|set ?up|start|create|build) (?:your |the |my )?second brain$/ },
+  { action: 'review_inbox', re: /^(?:review|organi[sz]e|sort|check|go through|clean up)(?: and (?:organi[sz]e|sort|review))? (?:the |your )?memory inbox$/ },
+  { action: 'organize', re: /^(?:organi[sz]e|tidy|tidy up|clean up|sort) (?:your |the )?(?:memory|memories|notes|second brain)$/ },
+  { action: 'status', re: /^(?:check|test|verify) (?:your |the )?(?:memory|second brain|vault|obsidian|obsidian vault) connection$|^(?:is|are) (?:your )?(?:memory|second brain|obsidian|vault) connected$/ },
+  { action: 'lessons', re: /^what (?:have you|did you) learn(?:ed|t)? from (?:your )?(?:previous |past |earlier |recent |the )?(?:failures|mistakes|errors)$/ },
+  { action: 'unresolved', re: /^(?:show|list|tell|give)(?: me)? (?:the |your |all |all the |my )?(?:unresolved|open|active) errors$|^(?:what are|whats) (?:the |your )?unresolved errors$/ },
+  { action: 'find_error', re: /^(?:find|show me|tell me|when was) (?:the )?last time (.+?) (?:happened|occurred|came up|appeared)$/ },
+  { action: 'remember_preference', re: /^remember (?:this|my|that|the) preference (?:that |is )?(.+)$/ },
+  { action: 'create_space', re: /^(?:create|make|start|add) (?:a )?(?:new )?memory space (?:for|about|on) (.+)$/ },
+  { action: 'search', re: /^(?:search|look in|look through) (?:your |my )?(?:notes|second brain|vault|obsidian(?: vault)?)(?: for)? (.+)$/ },
+];
+const CONTEXT_PAYLOAD = /^(?:this|that|it|these|those)(?: subject| topic| one)?$/;
+
+/** The words after a brain command, with the speaker's own casing (for remembered text). */
+export function brainPayload(raw: string, action: string): string {
+  if (action === 'remember_preference') return /preference\b\s*(?:that\s+|is\s+)?[:,-]?\s*(.+)$/i.exec(raw.trim())?.[1]?.trim() ?? '';
+  return '';
+}
+
 /** Code repair is only ever proposed on a branch (core/codeRepair.ts), and needs a typed approval. */
 const PROPOSE_CODE_REPAIR = /^(?:propose|prepare|write|draft|make) (?:a |the )?(?:code )?(?:fix|repair|patch)(?: for (?:the |that |this )?(?:last |latest |current )?(?:code )?(?:error|issue|problem|defect|bug))?$|^(?:fix|repair) your (?:own )?code$/;
 const REPAIR_CONTINUE = /^(?:continue|resume|carry on with) (?:the |your )?(?:repair|healing|self ?repair)$/;
@@ -271,6 +296,14 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   if (REPAIR_EXPLAIN.some((re) => re.test(clean))) return { type: 'repair_explain_block', reply: '' };
   if (REPAIR_LAST.some((re) => re.test(clean))) return { type: 'repair_last', reply: '' };
   if (HEAL.some((re) => re.test(clean))) return { type: 'heal', reply: '' };
+  for (const { action, re } of BRAIN) {
+    const m = re.exec(clean);
+    if (!m) continue;
+    let value = (m[1] ?? '').trim();
+    if (action === 'find_error') value = value.replace(/^(?:this|that|the|an?)\s*/, '').replace(/^error$/, '').replace(/\s*error$/, '').trim();
+    if ((action === 'create_space' || action === 'remember_preference' || action === 'search') && (!value || CONTEXT_PAYLOAD.test(value))) break;
+    return { type: 'memory_brain', target: action, reply: '', ...(value ? { value } : {}) };
+  }
 
   // 6. Help
   if (clean === 'help') {

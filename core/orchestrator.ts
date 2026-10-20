@@ -43,7 +43,7 @@ import { selectPlanningToolNames, shouldUseHeavyContext } from './planningToolSe
 import {
   describeCommandResult, desktopReply, devStatusReply, parseJson, repairFailure, systemStatusReply, trendingReply,
 } from './replyText.js';
-import { matchDeterministicCommand, type DeterministicRoute } from './deterministicRoutes.js';
+import { matchDeterministicCommand, brainPayload, type DeterministicRoute } from './deterministicRoutes.js';
 export { capabilitiesReply, describeCommandResult, desktopReply, devStatusReply, systemStatusReply, trendingReply } from './replyText.js';
 export { normalizeVoiceInput } from './voiceInput.js';
 import type { ILLMMessage, ILLMToolCall } from '../bridge/llmTypes.js';
@@ -382,6 +382,12 @@ export class JarvisOrchestrator {
           ).catch(() => {});
         }
         this.activeGoals.delete(callId);
+      }
+      // One line per real task in the second brain's daily log (only with a vault configured).
+      if (shouldCreateGoal) {
+        import('../memory/secondBrain.js')
+          .then(({ secondBrain }) => secondBrain.noteTaskOutcome(input, loopOutcome, loopOutcome === 'success' ? undefined : record.failReason))
+          .catch(() => { /* optional */ });
       }
     } catch (err) {
       console.error('[Orchestrator] ❌ Unhandled error in agent loop:', err);
@@ -769,6 +775,13 @@ export class JarvisOrchestrator {
           const result = await runRoutedTool('self_repair', { action });
           const body = result?.success ? parseJson(result.output) : undefined;
           this.speak(typeof body?.spoken === 'string' ? body.spoken : failureReply(result, 'I could not start the repair, sir.'));
+        } else if (route.type === 'memory_brain') {
+          // The second brain (Obsidian vault) and error history, through the registry like any action.
+          const action = route.target ?? 'status';
+          const value = brainPayload(input, action) || route.value || '';
+          const result = await runRoutedTool('memory_brain', { action, value });
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.message === 'string' ? body.message : failureReply(result, 'I could not reach my second brain, sir.'));
         } else if (route.type === 'propose_code_repair') {
           // Risk 3: the registry asks for a typed approval; the tool refuses any other kind.
           const result = await runRoutedTool('propose_code_repair', {});

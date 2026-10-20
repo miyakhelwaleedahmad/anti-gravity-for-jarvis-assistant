@@ -18,6 +18,7 @@
 import { memoryManager } from './memoryManager.js';
 import { graphMemory } from './graphMemory.js';
 import { getCachedRecentMessages } from './redisCache.js';
+import { secondBrain } from './secondBrain.js';
 import { AdaptiveLruCache } from '../core/adaptiveRamManager.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -144,6 +145,13 @@ export class UnifiedContextBuilder {
 
     const parallelMs = performance.now() - parallelStart;
 
+    // 4. The second brain (Obsidian vault): a few bounded notes, as data. Empty when no vault is configured.
+    let brainStr = '';
+    if (includeHeavy) {
+      try { brainStr = secondBrain.retrieveForTask(query); }
+      catch (err) { console.warn('[UnifiedContext] second brain retrieval failed:', (err as Error).message); }
+    }
+
     // ── Priority memory selection: sort STM by recency, LTM already ranked ───
     const stm = stmRaw as any[];
     const formattedStm = stm
@@ -181,7 +189,7 @@ ${trimmedLtm || (includeHeavy ? 'No relevant facts found.' : 'Skipped (fast/simp
 
 [GRAPH RELATIONSHIPS]
 ${trimmedGraph || (includeHeavy ? 'No explicit relationships found.' : 'Skipped (fast/simple query).')}
-
+${brainStr ? `\n[SECOND BRAIN NOTES]\n${brainStr}\n` : ''}
 [CONTEXT BUDGET]
 STM: ${tokenEst.stm}tok | LTM: ${tokenEst.ltm}tok | Graph: ${tokenEst.graph}tok | Total: ${tokenEst.total}/${budget}tok
 ==============================

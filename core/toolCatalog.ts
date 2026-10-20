@@ -301,6 +301,23 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     effect: 'Removes remembered facts from the fact store and the search index.',
     output: { format: 'json', description: 'JSON: removed facts, factStore, vectorIndex (per fact: deleted or why not), message' },
   },
+  memory_brain: withActions(
+    { category: 'MEMORY', reversible: 'partial', external: 'none',
+      effect: "Reads and organizes JARVIS's notes in the owner's Obsidian vault; writes only JARVIS's own notes under <vault>/JARVIS.",
+      output: { format: 'json', description: 'success, action, message, and the notes, issues or result of the action' } },
+    {
+      status: { risk: 0, reversible: 'yes', effect: 'Checks the vault connection and queued writes.' },
+      search: { risk: 0, reversible: 'yes', effect: 'Searches the vault, the owner\'s notes included (read only).' },
+      find_error: { risk: 0, reversible: 'yes', effect: 'Finds the last occurrence of an error in the issue record.' },
+      lessons: { risk: 0, reversible: 'yes', effect: 'Reads verified fixes and lesson notes.' },
+      unresolved: { risk: 0, reversible: 'yes', effect: 'Lists open errors from the issue record.' },
+      init: { risk: 1, reversible: 'partial', effect: 'Creates the missing JARVIS folders, indexes and templates; keeps what exists.' },
+      organize: { risk: 1, reversible: 'partial', effect: 'Moves JARVIS notes into fitting spaces, may add or merge spaces; never touches the owner\'s notes.' },
+      review_inbox: { risk: 1, reversible: 'partial', effect: 'The same as organize, reporting what is left in the Memory Inbox.' },
+      remember: { risk: 1, reversible: 'partial', effect: 'Writes or updates one JARVIS note in the best-fitting space.' },
+      remember_preference: { risk: 1, reversible: 'partial', effect: 'Writes or updates one note in Preferences.' },
+      create_space: { risk: 1, reversible: 'partial', effect: 'Creates a memory space: a folder, its index and template.' },
+    }),
   ingest_documents: {
     category: 'MEMORY', risk: 1, reversible: 'partial', external: 'none',
     effect: 'Indexes files or a folder for document search.',
