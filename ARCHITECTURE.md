@@ -160,8 +160,33 @@ An addition beside the existing self-healing services (`self_healing/*`), which 
   - `tests/boundaryDoublesTest.ts`: every test stand-in for speech or the tool registry is listed in `tests/boundary-doubles.json` with a reason.
   - `tests/selfHealingHonestyTest.ts`: no reply claims that everything works or that all errors are fixed.
 
+## Second brain (Obsidian vault)
+
+Off unless `JARVIS_OBSIDIAN_VAULT` names a folder holding `.obsidian`. JARVIS never picks another folder and never creates a vault.
+
+- **Where it writes** — `memory/vault.ts`.
+  - Only under `<vault>/JARVIS/`: relative paths, no `..`, no Windows-reserved names, no link out of that folder.
+  - A note JARVIS writes carries `jarvis_managed: true` and its `jarvis_id`. Only such notes are updated, moved or appended to. The owner's notes are read and searched, never changed.
+- **Spaces** — `memory/secondBrain.ts`.
+  - Initial: `00 Index` … `09 Templates`. Each has an index note, and content spaces have a template. `00 Index/JARVIS Memory Index.md` lists them all.
+  - Startup (`jarvis.ts`) initializes what is missing. A repeat creates nothing.
+- **Filing** — deterministic keyword scoring, no model call.
+  - An item goes to its best-fitting space, or to `08 Memory Inbox`. A near-duplicate updates the existing note.
+  - Three inbox notes sharing a subject over two days create a new space. At most 2 a day and 40 in all; overlapping names are refused.
+  - Redundant added spaces are merged; the old index is kept as a pointer.
+  - Decisions are kept in `data/brain/registry.json`, operations in `data/brain/operations.jsonl`.
+- **Feeds**
+  - Long-term facts JARVIS keeps: owner, lesson, research and relation facts, importance 5+ (`memoryManager.rememberFact`).
+  - One daily-log line per real task (orchestrator).
+  - A lesson for each verified issue resolution (`issueStore.onResolved`).
+- **Errors** — `core/obsidianMirror.ts` mirrors open issues to `01 Active Errors` and resolved ones to `02 Resolved Errors`. The issue record (`data/repairs/`) stays the authority.
+- **Retrieval** — on planning (heavy) contexts, at most 4 notes / 1,500 characters, wrapped as untrusted data (`memory/unifiedContextBuilder.ts`).
+- **Offline** — writes queue in `data/brain/outbox.jsonl` and are replayed at startup and every 15 minutes.
+- **Commands** — `memory_brain` tool (`core/tools/secondBrainTool.ts`): reads are risk 0, writes risk 1.
+- **Tests** — `secondBrainTest`, `secondBrainIntegrationTest`.
+
 ## What is NOT here
 
-- **No Obsidian integration, other than an opt-in mirror of repair issues.** `core/obsidianMirror.ts` writes issue notes to `<vault>/JARVIS/Repairs/` only when `JARVIS_OBSIDIAN_VAULT` is set; it reads nothing from the vault and never overwrites a note it did not write. The issue record itself is `data/repairs/` (`core/issueStore.ts`).
+- **No Obsidian plugin or MCP server.** The second brain (below) reads and writes the vault's Markdown files directly; nothing runs inside Obsidian.
 - **No scheduler** wired into the running system.
 - **`core/brain.ts` is not the brain.** It and the whole messageBus pipeline are unreachable and now live in `_legacy/`.
