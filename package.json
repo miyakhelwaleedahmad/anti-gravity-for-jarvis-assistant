@@ -8,7 +8,7 @@
     "dev": "tsx jarvis.ts",
     "dev:supervised": "tsx scripts/superviseJarvis.ts",
     "build": "tsc",
-    "start": "node dist/jarvis.js",
+    "start": "tsx jarvis.ts",
     "clean": "rimraf dist",
     "test": "tsx tests/runAll.ts",
     "test:latency": "tsx tests/runAll.ts --only=latencySmokeTest",

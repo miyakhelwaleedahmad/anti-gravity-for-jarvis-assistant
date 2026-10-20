@@ -81,9 +81,13 @@ startup and tells you exactly what is missing and how to fix it.
 
 ```bash
 pnpm dev        # start JARVIS (tsx jarvis.ts)
-pnpm build      # compile to dist/
-pnpm start      # run the compiled build
+pnpm start      # the same: start JARVIS from the source
+pnpm build      # type-check and compile to dist/ (a check; JARVIS does not run from dist/)
 ```
+
+JARVIS runs from the source folder: it finds its memory, data, skills and
+PowerShell scripts there. A copy compiled into `dist/` would look for all of
+them inside `dist/`, where they are not.
 
 The vector-memory service and the Python voice/vision processes are spawned and
 supervised automatically by `self_healing/selfHealingManager.ts` — you do not
