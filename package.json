@@ -19,6 +19,7 @@
     "test:live": "tsx tests/runAll.ts --live --only=finalIntegrationSuiteTest,successfulExecutionLifecycleAuditTest",
     "typecheck": "tsc --noEmit",
     "verify:windows": "tsx scripts/verifyWindows.ts",
+    "check:brain": "tsx scripts/checkBrain.ts",
     "backup": "tsx backup.ts"
   },
   "dependencies": {

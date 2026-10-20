@@ -46,7 +46,13 @@ export function checkVault(env: Record<string, string | undefined> = process.env
   const vault = path.resolve(raw);
   let st: fs.Stats;
   try { st = fs.statSync(vault); } catch { return { ok: false, reason: 'missing', detail: `the vault folder ${vault} does not exist (is the drive connected?)` }; }
-  if (!st.isDirectory()) return { ok: false, reason: 'not_a_folder', detail: `${vault} is not a folder` };
+  if (!st.isDirectory()) {
+    // A common slip: the path of a note instead of the vault. Name the vault above it; never use it on our own.
+    let up = path.dirname(vault);
+    while (!fs.existsSync(path.join(up, '.obsidian')) && path.dirname(up) !== up) up = path.dirname(up);
+    const hint = fs.existsSync(path.join(up, '.obsidian')) ? `; the vault that holds it is ${up}: set JARVIS_OBSIDIAN_VAULT=${up}` : '; set JARVIS_OBSIDIAN_VAULT to the vault folder (the one that holds .obsidian)';
+    return { ok: false, reason: 'not_a_folder', detail: `${vault} is a file, not a folder${hint}` };
+  }
   if (!fs.existsSync(path.join(vault, '.obsidian'))) {
     return { ok: false, reason: 'not_obsidian', detail: `${vault} has no .obsidian folder, so it is not an Obsidian vault; open it once in Obsidian, or correct JARVIS_OBSIDIAN_VAULT` };
   }

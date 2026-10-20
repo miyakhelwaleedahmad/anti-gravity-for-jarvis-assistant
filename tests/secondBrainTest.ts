@@ -69,6 +69,12 @@ console.log('\n--- 1. Which vault ---');
   ok('missing folder → missing', (checkVault({ JARVIS_OBSIDIAN_VAULT: path.join(root, 'nope') }) as any).reason === 'missing');
   fs.writeFileSync(path.join(root, 'afile'), 'x');
   ok('a file → not_a_folder', (checkVault({ JARVIS_OBSIDIAN_VAULT: path.join(root, 'afile') }) as any).reason === 'not_a_folder');
+  const nv = path.join(root, 'notevault');
+  fs.mkdirSync(path.join(nv, '.obsidian'), { recursive: true });
+  fs.mkdirSync(path.join(nv, 'Daily'));
+  fs.writeFileSync(path.join(nv, 'Daily', 'Today.md'), '# today\n');
+  const noteSt = checkVault({ JARVIS_OBSIDIAN_VAULT: path.join(nv, 'Daily', 'Today.md') }) as any;
+  ok('a note\'s path instead of the vault: refused, and the vault above it is named (not used)', noteSt.ok === false && noteSt.reason === 'not_a_folder' && noteSt.detail.includes(`set JARVIS_OBSIDIAN_VAULT=${nv}`) && !fs.existsSync(path.join(nv, 'JARVIS')), noteSt.detail);
   const plain = path.join(root, 'plain');
   fs.mkdirSync(plain);
   const st = checkVault({ JARVIS_OBSIDIAN_VAULT: plain });
@@ -334,6 +340,25 @@ console.log('\n--- 10. Lessons and daily log ---');
   const day = new Date(clock).toISOString().slice(0, 10);
   const log = fs.readFileSync(J(V, '07 Daily Logs', `${day}.md`), 'utf8');
   ok('task outcomes are appended to today\'s log', (log.match(/done: summarise my email/g) ?? []).length === 2);
+}
+
+// ── 11. pnpm check:brain ─────────────────────────────────────────────────────
+console.log('\n--- 11. Connection check (pnpm check:brain) ---');
+{
+  const { checkBrainConnection } = await import('../memory/brainCheck.js');
+  const V4 = makeVault('vault4');
+  fs.mkdirSync(path.join(V4, 'Mine'), { recursive: true });
+  fs.writeFileSync(path.join(V4, 'Mine', 'Note.md'), '# Mine\nkeep me\n');
+  const before = walk(V4);
+  const r = checkBrainConnection({ env: { JARVIS_OBSIDIAN_VAULT: V4 }, dataDir: path.join(root, 'd4') });
+  ok('a real vault: write, read, search and cleanup all pass', r.ok && ['vault', 'write', 'read', 'search', 'cleanup'].every((s) => r.steps.find((x) => x.step === s)?.ok), JSON.stringify(r.steps));
+  ok('…and leaves the vault as it was (the owner\'s note untouched, no test note left)', JSON.stringify(walk(V4)) === JSON.stringify(before) && fs.readFileSync(path.join(V4, 'Mine', 'Note.md'), 'utf8') === '# Mine\nkeep me\n', walk(V4).join(', '));
+  const kept = checkBrainConnection({ env: { JARVIS_OBSIDIAN_VAULT: V4 }, dataDir: path.join(root, 'd4'), keep: true });
+  ok('--keep leaves the test note for the owner to see', kept.ok && fs.readdirSync(path.join(V4, 'JARVIS')).some((f) => f.startsWith('JARVIS Connection Check')));
+  const bad = checkBrainConnection({ env: { JARVIS_OBSIDIAN_VAULT: path.join(root, 'no-vault-here') }, dataDir: path.join(root, 'd4') });
+  ok('a wrong path: fails at the vault step with the reason, writes nothing', !bad.ok && bad.steps.length === 1 && /does not exist/.test(bad.steps[0]!.detail) && !fs.existsSync(path.join(root, 'no-vault-here')));
+  const unset = checkBrainConnection({ env: {}, dataDir: path.join(root, 'd4') });
+  ok('not set: says which setting is missing', !unset.ok && /JARVIS_OBSIDIAN_VAULT is not set/.test(unset.steps[0]!.detail));
 }
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
