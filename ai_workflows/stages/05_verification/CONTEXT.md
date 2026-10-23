@@ -35,9 +35,8 @@ pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTe
 pnpm test -- --ci
 ```
 
-The runner checks open_app for "youtube" in dry-run mode only. The "notepad"
-and "cmd" variants and the timing of "open YouTube for me" are not covered by
-an isolated test; "open YouTube for me" is checked live (below), with the owner.
+No isolated test covers open_app "notepad"/"cmd" or "open YouTube for me";
+the last is checked live (below), with the owner.
 
 ## Live Voice Verification (Required for Voice Bugs)
 
