@@ -30,6 +30,7 @@ import { orchestrator, normalizeVoiceInput }    from './core/orchestrator.js';
 import { brainLoop }       from './core/brainLoop.js';
 import { conversationBus } from './core/conversationBus.js';
 import { agentStateMachine, AgentState, speechStartMovesState, tryTransition } from './core/agentStateMachine.js';
+import { endListening as endListeningSession } from './core/listenSession.js';
 import { evaluateEcho }    from './core/voiceEchoFilter.js';
 import { mergePendingVoiceContinuation, shouldUseContinuationContext, accumulateContinuationFragment } from './core/voiceContinuation.js';
 import { queuedCommandMaxAgeMs, DROPPED_COMMAND_NOTICE, followUpSeconds, visionEnabled } from './core/voiceSettings.js';
@@ -548,6 +549,27 @@ async function startJarvis() {
       }
     });
 
+    /**
+     * A listen session that produced nothing (stt_no_speech, or the LISTENING
+     * watchdog): JARVIS goes back to waiting for the wake word. Before this,
+     * a session whose audio the VAD gate rejected sent nothing back: the state
+     * stayed LISTENING, STT kept the mic and the wake word stayed paused, so
+     * JARVIS was deaf until something unrelated resumed it (BUG-1).
+     */
+    const endListening = (reason: string): void => endListeningSession(reason, {
+      micOwner: () => _micOwner,
+      releaseSttMic: (why) => releaseMic(MicOwner.STT, why),
+      setListening: (on) => { isSttListening = on; },
+      resumeWakeWord: () => nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } }),
+      log: (event, why) => sttJsLog(event, '', why),
+    });
+
+    nodeBridge.on('stt_no_speech', (msg) => {
+      const reason = String((msg.payload as any)?.reason ?? 'no_speech').slice(0, 60);
+      console.log(`[JARVIS] STT heard nothing to transcribe (${reason}); back to the wake word.`);
+      endListening(`stt_${reason}`);
+    });
+
     // ── Voice Loop Part 2: STT result → orchestrator → TTS ─────────────────
     nodeBridge.on('stt_result', async (msg) => {
       isSttListening = false;
@@ -761,6 +783,7 @@ async function startJarvis() {
 
     agentStateMachine.on('watchdog_reset', (data) => {
       console.log(`[JARVIS] Watchdog reset from ${data.fromState} (${data.reason}) — resuming mic & draining queue.`);
+      if (data.fromState === AgentState.LISTENING) endListening('listening_watchdog');
       nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
       drainVoiceInputQueue();
     });

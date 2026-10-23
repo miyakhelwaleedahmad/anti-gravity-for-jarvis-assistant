@@ -98,7 +98,7 @@ export interface VisionFrameData {
 }
 
 export interface BridgeMessage {
-  type: "tts" | "stt_result" | "wake_word" | "command" | "response" | "error" | "status" | "client_ready" | "hardware_error" | "speaking_start" | "speaking_end" | "speaking_delay" | "listen_start" | "vision_frame" | "vision_start" | "vision_stop";
+  type: "tts" | "stt_result" | "stt_no_speech" | "wake_word" | "command" | "response" | "error" | "status" | "client_ready" | "hardware_error" | "speaking_start" | "speaking_end" | "speaking_delay" | "listen_start" | "vision_frame" | "vision_start" | "vision_stop";
   payload: any;
   id?: string;
 }

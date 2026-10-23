@@ -520,6 +520,7 @@ class STTEngine:
             })
             try:
                 await self.websocket.send(msg)
+                self._result_sent = True
                 log.info(f"STT result sent. raw='{raw[:80]}' normalized='{normalized[:80]}'")
             except Exception as exc:
                 log.error(f"Send error: {exc}")
@@ -555,13 +556,31 @@ class STTEngine:
                 self._pending_stt_queue.insert(0, text)  # put back for next attempt
                 break
 
+    async def _send_no_speech(self, reason: str) -> None:
+        """
+        End a listen session that produced no transcript (BUG-1): NodeBridge
+        returns to IDLE, frees the mic and resumes the wake word. Without it
+        the session ended in silence and JARVIS stayed deaf in LISTENING.
+        """
+        stt_log("STT_NO_SPEECH", raw="", note=reason)
+        if not self.websocket:
+            return
+        try:
+            await self.websocket.send(json.dumps({"type": "stt_no_speech", "payload": {"reason": reason}}))
+            log.info(f"[STT] No speech to send ({reason}); told NodeBridge.")
+        except Exception as exc:
+            log.error(f"[STT] Could not send stt_no_speech: {exc}")
+
     async def listen_and_transcribe(self) -> None:
         """
         Record audio, transcribe, normalize, and send result.
         Phase 4: Runs energy calibration before recording; applies VAD gate
         before invoking Whisper to eliminate phantom transcriptions.
+        Every session ends with an stt_result or an stt_no_speech (BUG-1).
         """
         self._timed_out = False
+        self._result_sent = False
+        no_speech = "no_result"
 
         try:
             # Phase 4: calibrate energy threshold in the recording thread
@@ -573,6 +592,7 @@ class STTEngine:
                 if getattr(self, '_timed_out', False):
                     log.info("[STT] Listen timed out (no speech detected) — suppressing empty transcript.")
                     stt_log("STT_TIMEOUT", raw="", note="no speech detected within timeout")
+                    no_speech = "timeout"
                 elif not self._hardware_ok and self.websocket:
                     try:
                         msg = json.dumps({"type": "hardware_error", "payload": {"device": "stt"}})
@@ -580,6 +600,7 @@ class STTEngine:
                         stt_log("STT_HARDWARE_ERROR", raw="", note="microphone unavailable")
                     except Exception:
                         pass
+                    no_speech = "hardware_error"
                 return
 
             audio_data, noise_floor = result
@@ -587,6 +608,7 @@ class STTEngine:
             # Phase 4: Voice Activity Gate — reject electronic/ambient noise
             if not _vad_gate(audio_data, noise_floor):
                 stt_log("STT_VAD_REJECTED", raw="", note=f"below noise floor×{STT_MIN_ENERGY_RATIO}")
+                no_speech = "vad_rejected"
                 return
 
             text = await asyncio.to_thread(self._transcribe, audio_data)
@@ -594,15 +616,21 @@ class STTEngine:
             if not text:
                 log.info("[STT] Empty transcription from Whisper — suppressing empty result.")
                 stt_log("STT_EMPTY", raw="", note="Whisper returned empty string")
+                no_speech = "empty_transcript"
             else:
                 log.debug(f"Whisper raw result: '{text}'")
                 normalized = normalize_stt(text)
                 log.debug(f"Normalized result:  '{normalized}'")
                 stt_log("STT_TRANSCRIBED", raw=text, normalized=normalized)
                 await self._send_result(text)
+                no_speech = "not_sent"   # used only if _send_result did not deliver it
 
         except Exception as e:
             log.error(f"Exception in listen_and_transcribe: {e}")
+            no_speech = "error"
+        finally:
+            if not self._result_sent:
+                await self._send_no_speech(no_speech)
             
     async def _locked_listen(self) -> None:
         if self.session_lock.locked():

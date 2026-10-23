@@ -20,6 +20,9 @@
  *   SPEAKING  → auto-resets to IDLE after SPEAKING_WATCHDOG_MS (default 12s)
  *               Protects against tts.py crashing without sending speaking_end.
  *   PLANNING  → auto-resets to IDLE after PLANNING_WATCHDOG_MS (default: the LLM retry budget, 32 s)
+ *   LISTENING → auto-resets to IDLE after LISTENING_WATCHDOG_MS (default 35 s): STT
+ *               that never answers (it crashed, or an old stt.py) cannot keep
+ *               JARVIS deaf with the mic held
  *               Protects against LLM hanging indefinitely.
  */
 
@@ -45,6 +48,17 @@ export function estimateSpeechMs(text: string): number {
 
 // Derived from the model request's own retries (PERF-03, config/llmTiming.ts).
 const PLANNING_WATCHDOG_MS = planningWatchdogMs();
+
+/**
+ * Longest a listen session may take: calibration (0.5 s), waiting for speech
+ * (JARVIS_STT_LISTEN_TIMEOUT, 5 s), the phrase (JARVIS_STT_PHRASE_TIME_LIMIT,
+ * 20 s) and transcription, with a margin. stt.py ends every session itself
+ * (stt_result or stt_no_speech); this is the backstop when it does not.
+ */
+export function listeningWatchdogMs(env: Record<string, string | undefined> = process.env): number {
+  const v = Number(env['JARVIS_LISTENING_WATCHDOG_MS']);
+  return Number.isFinite(v) && v >= 1_000 ? Math.min(v, 300_000) : 35_000;
+}
 
 // ─── State Enum ───────────────────────────────────────────────────────────────
 
@@ -121,6 +135,7 @@ export class AgentStateMachine extends EventEmitter {
   // ── Watchdog timers ──────────────────────────────────────────────────────────
   private _speakingWatchdog: ReturnType<typeof setTimeout> | null = null;
   private _planningWatchdog: ReturnType<typeof setTimeout> | null = null;
+  private _listeningWatchdog: ReturnType<typeof setTimeout> | null = null;
 
   get currentState(): AgentState {
     return this._state;
@@ -179,8 +194,10 @@ export class AgentStateMachine extends EventEmitter {
     // ── Watchdog management ────────────────────────────────────────────────────
     if (prev === AgentState.SPEAKING)  this._clearSpeakingWatchdog();
     if (prev === AgentState.PLANNING)  this._clearPlanningWatchdog();
+    if (prev === AgentState.LISTENING) this._clearListeningWatchdog();
     if (newState === AgentState.SPEAKING) this._armSpeakingWatchdog();
     if (newState === AgentState.PLANNING) this._armPlanningWatchdog();
+    if (newState === AgentState.LISTENING) this._armListeningWatchdog();
 
     // ── Event emission ─────────────────────────────────────────────────────────
     this.emit('transition', { from: prev, to: newState });
@@ -288,6 +305,25 @@ export class AgentStateMachine extends EventEmitter {
     }, PLANNING_WATCHDOG_MS);
   }
 
+  private _armListeningWatchdog(): void {
+    this._clearListeningWatchdog();
+    const ms = listeningWatchdogMs();
+    this._listeningWatchdog = setTimeout(() => {
+      this._listeningWatchdog = null;
+      if (this._state !== AgentState.LISTENING) return;
+      console.warn(`[AgentStateMachine] ⏰ LISTENING watchdog fired after ${ms}ms: no transcript and no "no speech" from STT. Resetting to IDLE.`);
+      this._watchdogReset(AgentState.LISTENING, 'listening_timeout');
+    }, ms);
+    this._listeningWatchdog.unref?.();
+  }
+
+  private _clearListeningWatchdog(): void {
+    if (this._listeningWatchdog !== null) {
+      clearTimeout(this._listeningWatchdog);
+      this._listeningWatchdog = null;
+    }
+  }
+
   private _clearPlanningWatchdog(): void {
     if (this._planningWatchdog !== null) {
       clearTimeout(this._planningWatchdog);
@@ -313,6 +349,7 @@ export class AgentStateMachine extends EventEmitter {
       this._recordHistory(AgentState.IDLE);
       this._clearSpeakingWatchdog();
       this._clearPlanningWatchdog();
+      this._clearListeningWatchdog();
       this.emit('transition', { from: fromState, to: AgentState.IDLE });
       this.emit('state_changed', AgentState.IDLE);
       this.emit('idle');
