@@ -37,6 +37,16 @@ import {
   cacheEmbedding,
 } from "./redisCache.js";
 
+/**
+ * Whether search may return the fact. "Failed task: …" notes (source
+ * agent_failure) are a log, not knowledge: returned for planning they were
+ * reinforced (+0.5 importance per use) until they filled memory (BUG-15).
+ * They stay on disk; failures are recorded as episodes and on the goal.
+ */
+function recallable(f: { source?: string }): boolean {
+  return f.source !== 'agent_failure';
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface MemoryEntry {
@@ -855,7 +865,8 @@ export class MemoryManager {
     await this.cacheBump;
 
     // ── REDIS fast path: return cached result if available ────────────────
-    const cached = await getCachedVectorResult<{ fact: LongTermFact; score: number }[]>(query, topK, this.cacheScope);
+    const cached = (await getCachedVectorResult<{ fact: LongTermFact; score: number }[]>(query, topK, this.cacheScope))
+      ?.filter((r) => r?.fact && recallable(r.fact)) ?? null;
     // Served only if every fact in it still exists here; otherwise it is out
     // of date (or from another store) and the search runs again.
     const cacheCurrent = !!cached && cached.length > 0
@@ -896,7 +907,7 @@ export class MemoryManager {
           const matched =
             (vr.fact_id ? this.db.data.longTerm.find(f => f.id === vr.fact_id) : undefined)
             ?? this.db.data.longTerm.find(f => f.fact === vr.text);
-          if (matched) {
+          if (matched && recallable(matched)) {
             results.push({ fact: matched, score: vr.score });
           }
         }
@@ -909,7 +920,7 @@ export class MemoryManager {
     if (results.length === 0) {
       const tokens = query.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
       if (tokens.length === 0) {
-        results = this.getLongTermFacts(topK).map(f => ({ fact: f, score: 0.5 }));
+        results = this.getLongTermFacts(topK).filter(recallable).map(f => ({ fact: f, score: 0.5 }));
       } else {
         const scored = this.db.data.longTerm.map((f) => {
           const factLower = f.fact.toLowerCase();
@@ -917,7 +928,7 @@ export class MemoryManager {
           return { fact: f, score: score * 0.2 };
         });
         results = scored
-          .filter((s) => s.score > 0)
+          .filter((s) => s.score > 0 && recallable(s.fact))
           .sort((a, b) => b.score - a.score || b.fact.importance - a.fact.importance)
           .slice(0, topK);
       }

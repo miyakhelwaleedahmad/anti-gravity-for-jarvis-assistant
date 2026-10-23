@@ -1024,11 +1024,8 @@ export class JarvisOrchestrator {
         }
         console.log(`[Orchestrator] ⛔ Aborting after ${repairCycles} repair cycle(s).`);
 
-        // Store failure as long-term memory
-        await agentMemory.rememberFact(
-          `Failed task: "${input.substring(0, 100)}" — ${reflection.failureClass ?? 'unknown error'}`,
-          7, 'agent_failure'
-        );
+        // Not stored as a long-term fact (BUG-15): the reflection's task_failed
+        // episode and the goal's failReason record it.
 
         // Detect safety-blocked scenarios to report accurate goal outcome
         const isBlocked = reflection.failureClass === 'tool_error' &&
