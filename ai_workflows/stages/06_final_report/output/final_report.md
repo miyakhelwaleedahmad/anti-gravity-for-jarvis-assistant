@@ -1,6 +1,7 @@
 # Final Report — [Replace with Bug Name]
 
-> Stage: 06_final_report
+> Stage: 06_final_report · Template. Copy to `ai_workflows/runs/<run>/final_report.md`
+> and fill in the copy; leave this file blank.
 > Status: [ ] Complete
 > Date: [fill in]
 
@@ -9,6 +10,7 @@
 ## 1. Root Cause
 
 [Exact description of what was broken and why]
+Reproduction label (02b): [ ]
 
 ---
 
@@ -22,19 +24,27 @@
 
 ## 3. Test Results Summary
 
-| Test | Status |
+Copied from `verification.md` (machine: [ ], commit: [ ]):
+
+| Check | Status |
 |---|---|
-| `npx tsc --noEmit` | ✅/❌ |
-| `nodeBridgeSingletonTest.ts` | ✅/❌ |
-| `voiceRouteMockTest.ts` | ✅/❌ |
-| `interruptGatingTest.ts` | ✅/❌ |
-| `openAppSmokeTest.ts youtube` | ✅/❌ |
-| `deterministicCommandRouteTest.ts` | ✅/❌ |
-| Live voice test | ✅/❌/N/A |
+| `pnpm run typecheck` | ✅/❌ |
+| Regression test `<name>` | ✅/❌ |
+| Required group (`pnpm test -- --only=…`) | ✅/❌ |
+| `pnpm test -- --ci` (BLOCKED/SKIPPED listed) | ✅/❌ |
+| Live verification | ✅/❌/owed/N/A |
 
 ---
 
-## 4. Unresolved Risks
+## 4. Review
+
+- Decision (05b): [ ] PASS / [ ] CHANGES REQUIRED / [ ] BLOCKED
+- Reviewer independent: [ ] Yes / [ ] No — "reviewed, not independently"
+- Open findings: [ ]
+
+---
+
+## 5. Unresolved Risks
 
 | Risk | Severity | Recommended Action |
 |---|---|---|
@@ -42,23 +52,22 @@
 
 ---
 
-## 5. Next Recommended Step
+## 6. Next Recommended Step
 
 [What should be done next — specific and actionable]
 
 ---
 
-## 6. Verdict
+## 7. Verdict
 
-- [ ] ✅ Bug confirmed fixed — live voice verified, all tests pass
-- [ ] ⚠️ Bug partially fixed — remaining issues listed above
-- [ ] ❌ Bug not fixed — see unresolved risks
+- [ ] ✅ Fixed and verified — tests pass, live check passed if required, review PASS by an independent reviewer
+- [ ] ⚠️ Partially fixed / not verified — owed checks, BLOCKED items or non-independent review listed above
+- [ ] ❌ Not fixed — see unresolved risks
 
 ---
 
-## 7. Post-Report Checklist
+## 8. Post-Report Checklist
 
-- [ ] `_config/JARVIS_CURRENT_STATUS.md` updated
-- [ ] `ai_workflows/CONTEXT.md` updated if system status changed
-- [ ] Git commit created: `git commit -m "Fix [bug]: [description]"`
-- [ ] Stable tag created (with user approval): `git tag stable-[feature]-v[N]`
+- [ ] Committed only the reviewed files, staged by name; `git diff --cached --name-only` checked
+- [ ] Stable tag only after live verification and only at the owner's request
+- [ ] Next: `07_closure` (tracker update and run record happen there)

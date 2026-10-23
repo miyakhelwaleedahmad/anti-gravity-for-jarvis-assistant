@@ -1,105 +1,9 @@
-# DEVELOPMENT_CHECKLIST.md — Step-by-Step Development Workflow
+# DEVELOPMENT_CHECKLIST.md — Per-Run Checklist
 
-> Follow this checklist for every bug fix or feature change.
-> Do not skip steps. Do not self-approve.
-
----
-
-## The 8-Step Workflow
-
-### Step 1 — Intake
-```
-[ ] Read the problem statement carefully
-[ ] Collect exact error messages or failure logs
-[ ] List the files that are likely relevant
-[ ] Document symptoms in stages/01_intake/output/issue_brief.md
-[ ] Do NOT edit any code in this step
-[ ] Do NOT form conclusions in this step — only collect facts
-```
-
----
-
-### Step 2 — Diagnosis
-```
-[ ] Read only the relevant files (see _config/CONTEXT_LOADING_RULES.md)
-[ ] Trace the control flow from input to output
-[ ] Identify the exact line or component where failure occurs
-[ ] List all probable root causes (most likely first)
-[ ] Document in stages/02_diagnosis/output/diagnosis.md
-[ ] Do NOT edit any code in this step
-```
-
----
-
-### Step 3 — Patch Plan
-```
-[ ] Write the exact proposed change (file, line range, before/after)
-[ ] List every file that would change
-[ ] List every test that must pass after the change
-[ ] Identify if live voice verification is required
-[ ] Document in stages/03_patch_plan/output/patch_plan.md
-[ ] Do NOT implement anything yet
-[ ] Wait for explicit human approval before proceeding
-```
-
----
-
-### Step 4 — Human Approval
-```
-[ ] Present the patch plan to the user
-[ ] Wait for explicit "approved" or "proceed" confirmation
-[ ] Do NOT assume silence = approval
-[ ] If the user asks for changes to the plan, revise and wait again
-```
-
----
-
-### Step 5 — Implementation
-```
-[ ] Apply ONLY the approved changes
-[ ] Keep diffs small and focused
-[ ] Do NOT add unrelated changes ("while I'm here..." is forbidden)
-[ ] Record every changed file in stages/04_implementation/output/change_log.md
-[ ] Run TypeScript compile immediately after changes: npx tsc --noEmit
-[ ] Fix any compile errors before moving on
-```
-
----
-
-### Step 6 — Tests
-```
-[ ] Run all tests from _config/TEST_MATRIX.md
-[ ] Record honest pass/fail for each test
-[ ] If any test fails: stop, diagnose, do not proceed to verification
-[ ] Record results in stages/05_verification/output/verification.md
-```
-
----
-
-### Step 7 — Live Verification (if voice/runtime-related)
-```
-[ ] Start JARVIS: pnpm run dev
-[ ] Wait for all READY clients: wakeword, stt, tts
-[ ] Say the trigger phrase: "Jarvis open YouTube for me"
-[ ] Confirm browser opens https://www.youtube.com/
-[ ] Confirm TTS speaks
-[ ] Capture full terminal log output
-[ ] Paste captured logs into verification report
-[ ] Do NOT mark bug fixed without completing this step for voice bugs
-```
-
----
-
-### Step 8 — Final Report
-```
-[ ] Summarize root cause found
-[ ] Summarize files changed and why
-[ ] Summarize test results
-[ ] List any unresolved risks
-[ ] List next recommended step
-[ ] Document in stages/06_final_report/output/final_report.md
-[ ] Update _config/JARVIS_CURRENT_STATUS.md with new state
-```
+> The stage contracts in `stages/<stage>/CONTEXT.md` are the rules; the
+> order and both approval gates are in `ai_workflows/CLAUDE.md`. This file
+> is only a checklist to copy into a run. Do not skip steps. Do not
+> self-approve.
 
 ---
 
@@ -110,45 +14,59 @@
 ❌ Never edit protected files without recording exactly why
 ❌ Never mark a bug fixed because a mock test passes
    — Live voice bugs require live voice verification
+❌ Never present an inferred cause or a mock result as a reproduction
 ❌ Never self-approve a patch to a critical runtime file
+❌ Never call a review independent when the implementer did it
+❌ Never edit data/repairs/issues.json or write vault lessons by hand
 ❌ Never make multiple unrelated changes in one step
-❌ Never skip the final report
+❌ Never skip the final report or the closure record
 ```
 
 ---
 
-## Per-Bug Checklist Template
+## Per-Run Checklist Template
 
-Copy this for each new bug:
+Copy this into the run folder for each new run:
 
 ```markdown
-## Bug: [description]
+## Run: [YYYY-MM-DD_slug] — [description]
 
-### Intake
-- [ ] Symptoms documented
+### 01 Intake
+- [ ] Symptoms documented; issue record read (or "not read" + reason)
 - [ ] Relevant files listed
 - [ ] No code edited
 
-### Diagnosis
-- [ ] Root cause identified
+### 02 Diagnosis
+- [ ] Root cause identified, evidence labelled observed / inferred
 - [ ] Control flow traced
 - [ ] No code edited
 
-### Patch Plan
-- [ ] Exact diff written
-- [ ] Files to change listed
-- [ ] Tests identified
-- [ ] Human approved: [ ]
+### 02b Reproduction
+- [ ] Label: [REPRODUCED / … / BLOCKED]
+- [ ] Failing test command and output, or exception written out
 
-### Implementation
+### 03 Patch Plan
+- [ ] Exact diff written; files and protected files listed
+- [ ] Tests identified (regression test first)
+- [ ] Gate 1 — human approved: [ ] (date, words)
+
+### 04 Implementation
 - [ ] Only approved changes applied
-- [ ] npx tsc --noEmit: [ ] PASS
+- [ ] pnpm run typecheck: [ ] PASS
 
-### Verification
-- [ ] All tests: [ ] PASS
-- [ ] Live test (if voice): [ ] PASS / N/A
+### 05 Verification
+- [ ] Runner tests: [ ] PASS (BLOCKED/SKIPPED listed)
+- [ ] Live test (if voice/Windows/browser): [ ] PASS / owed / N/A
 
-### Final Report
-- [ ] Documented
-- [ ] JARVIS_CURRENT_STATUS.md updated
+### 05b Review
+- [ ] Decision: [ ] PASS / CHANGES REQUIRED / BLOCKED
+- [ ] Reviewer independent: [ ] yes / no
+
+### 06 Final Report
+- [ ] Verdict matches evidence; reviewed files committed by name
+
+### 07 Closure
+- [ ] Run folder complete; tracker row updated (or none)
+- [ ] Follow-ups listed separately
+- [ ] Gate 2 — push/merge/tag approved by the owner: [ ]
 ```

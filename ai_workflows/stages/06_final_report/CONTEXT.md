@@ -1,74 +1,54 @@
 # Stage 06 — Final Report
 
-## Purpose
-Produce a complete, honest summary of the work done.
+Produce a complete, honest summary of the run, then commit the reviewed
+files by name.
 
-## What You Are Allowed to Do
-```
-✅ Summarize the root cause found
-✅ Summarize all files changed and why
-✅ Summarize test results (copy from verification report)
-✅ List unresolved risks or follow-up items
-✅ Recommend the next step
-✅ Write the final report in output/final_report.md
-✅ Update the status tracker named in _config/SOURCES_OF_TRUTH.md
-```
+## Inputs
 
-## What You Must NOT Do
-```
-❌ Do not claim a bug is fixed if verification was incomplete
-❌ Do not omit unresolved risks
-❌ Do not edit runtime files in this stage
-❌ Do not start working on the next bug in this stage
-```
+| Source | Load | Why |
+|---|---|---|
+| `runs/<run>/diagnosis.md`, `reproduction.md` | Root cause, label, exception | What was wrong, how it was shown |
+| `runs/<run>/change_log.md` | Changed files | What changed |
+| `runs/<run>/verification.md` | Results, owed checks | Evidence |
+| `runs/<run>/review.md` | Decision, independence, findings | Review outcome |
 
-## Final Report Format
+## Process
 
-```markdown
-# Final Report — [Bug Name]
-Date: [date]
-
-## 1. Root Cause
-[Exact description of what was broken and why]
-
-## 2. Files Changed
-| File | What Changed |
-|---|---|
-| path/to/file.ts | [description] |
-
-## 3. Test Results
-[Copy from 05_verification/output/verification.md]
-
-## 4. Unresolved Risks
-- [Any remaining risks]
-- [Any follow-up items]
-
-## 5. Next Recommended Step
-[What should be done next]
-
-## 6. Verdict
-[ ] Bug confirmed fixed — live voice verified
-[ ] Bug partially fixed — remaining issues listed above
-[ ] Bug not fixed — see unresolved risks
-```
-
-## Post-Report Actions
-
-After writing the final report:
-
-```
-1. Update the tracker named in _config/SOURCES_OF_TRUTH.md
-   (_config/JARVIS_CURRENT_STATUS.md only points to it)
-2. Update ai_workflows/CONTEXT.md if system status changed
-3. Commit only the files changed for this fix, staged by name:
+1. Summarize the root cause, files changed and why, and test results
+   (copied from the verification record, not retyped from memory).
+2. Copy the review decision and whether the reviewer was independent.
+3. List unresolved risks, owed live checks and follow-up items.
+4. Choose the verdict (in `output/final_report.md`):
+   - Fixed and verified: tests pass, live check passed when required,
+     review PASS by an independent reviewer.
+   - Partially fixed / not verified: anything owed, BLOCKED, or a review
+     that was not independent.
+   - Not fixed.
+   A review of CHANGES REQUIRED or BLOCKED never yields "approved"; say
+   what remains unresolved.
+5. Commit only the files the review covered. If anything changed after the
+   review, return to `05b_review`. Stage by name:
+   ```
    git status
    git add -- <file1> <file2>
    git diff --cached --name-only
    (stop if the list shows runtime data, credentials or untracked
    personal files; unstage them with git restore --staged -- <file>)
    git commit -m "Fix [bug]: [one-line description]"
-   Never git add . or git add -A.
-4. Consider tagging if stable:
-   git tag stable-[feature]-v[N]
-   (only with user approval)
-```
+   ```
+   Never `git add .` or `git add -A`.
+6. Tag (`git tag stable-[feature]-v[N]`) only after live verification and
+   only when the owner asks. Pushing and merging need the owner's approval.
+
+Forbidden: claiming a fix that verification or review does not support;
+omitting risks; editing runtime files; starting the next bug.
+
+## Outputs
+
+`runs/<run>/final_report.md` from `output/final_report.md`.
+
+## Audit / advancement
+
+- PASS: report matches the verification and review records; commit made
+  (or "no commit" with the reason). Advance to `07_closure`.
+- FAIL: the report claims more than the evidence; correct it first.

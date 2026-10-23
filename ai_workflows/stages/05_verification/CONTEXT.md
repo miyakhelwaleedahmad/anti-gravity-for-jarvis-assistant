@@ -1,80 +1,56 @@
 # Stage 05 — Verification
 
-## Purpose
-Confirm the change worked — with tests AND live runtime if required.
+Confirm the change works: tests through the runner, and live checks on the
+owner's PC when the behaviour needs them.
 
-## What You Are Allowed to Do
-```
-✅ Run TypeScript compile check
-✅ Run all tests from _config/TEST_MATRIX.md through the runner (`pnpm test`)
-✅ Run live voice verification if the bug was voice-related
-✅ Capture and paste real log output into output/verification.md
-✅ Record honest pass/fail for every test
-✅ Report any remaining issues found during testing
-```
+## Inputs
 
-## What You Must NOT Do
-```
-❌ Do not change test assertions to make tests pass artificially
-❌ Do not skip any test from TEST_MATRIX.md
-❌ Do not report "PASS" without running the actual command
-❌ Do not claim a voice bug is fixed without live voice verification
-❌ Do not skip the live test just because all mock tests pass
-❌ Do not run a test file directly (`npx tsx tests/<name>.ts`): it writes to JARVIS's real data
-❌ Do not start live checks (apps, microphone, speakers, LLM) without the owner present
-```
+| Source | Load | Why |
+|---|---|---|
+| `runs/<run>/patch_plan.md` | Tests listed, live verification yes/no | What must be run |
+| `runs/<run>/reproduction.md` | Regression test and its earlier failure | Before/after evidence |
+| `runs/<run>/change_log.md` | Changed files | What is being verified |
+| `_config/TEST_MATRIX.md` | Commands, Windows note, Live Runtime Verification | How to run each check |
 
-## Required Test Run Order
+## Process
 
-See `_config/TEST_MATRIX.md` for the full list. Minimum (CMD or PowerShell;
-the runner gives each test its own empty data folder):
+1. Run, in order (CMD or PowerShell; each test gets its own empty data folder):
+   ```
+   pnpm run typecheck
+   pnpm test -- --only=<regression test>,<required group from TEST_MATRIX.md>
+   pnpm test -- --ci
+   ```
+   Voice changes: the group is `nodeBridgeSingletonTest, voiceRouteMockTest,
+   interruptGatingTest, openAppSmokeTest, latencySmokeTest,
+   deterministicCommandRouteTest`.
+2. The regression test from Stage 02b must now pass, for the right reason.
+3. Paste the real runner lines. Record every PASS, FAIL, TIMEOUT, BLOCKED
+   and SKIPPED with the machine it ran on.
+4. Live checks (voice, microphone, speaker, Windows control, real browser)
+   only with the owner present, as in `TEST_MATRIX.md`; for the YouTube
+   route: `pnpm run dev`, wait for READY wakeword/stt/tts, say "Jarvis open
+   YouTube for me", confirm the browser and the spoken reply, capture the log.
+5. A check that cannot run here is BLOCKED and listed as owed, never PASS.
+   No isolated test covers open_app "notepad"/"cmd" or "open YouTube for me".
 
-```powershell
-pnpm run typecheck
-pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTest,openAppSmokeTest,latencySmokeTest,deterministicCommandRouteTest
-pnpm test -- --ci
-```
+Forbidden: changing assertions or expected results; skipping a listed
+test; reporting PASS without running the command; running test files
+directly (`npx tsx tests/<name>.ts` writes JARVIS's real data); calling a
+voice bug fixed from mock tests; live checks without the owner.
 
-No isolated test covers open_app "notepad"/"cmd" or "open YouTube for me";
-the last is checked live (below), with the owner.
+## Outputs
 
-## Live Voice Verification (Required for Voice Bugs)
+`runs/<run>/verification.md` from `output/verification.md`: each command,
+machine, raw result, live-check log (or why it is owed), remaining issues.
 
-```
-1. pnpm run dev
-2. Wait for: [NodeBridge] ✅ READY client registered: wakeword/stt/tts
-3. Say: "Jarvis open YouTube for me"
-4. Confirm browser opens https://www.youtube.com/
-5. Confirm TTS speaks
-6. Paste all terminal output into output/verification.md
-```
+## Audit / advancement
 
-## Verification Report Format
-
-```markdown
-## Test Results
-
-| Test | Expected | Actual Result | Status |
-|---|---|---|---|
-| pnpm run typecheck | 0 errors | [paste] | ✅/❌ |
-| pnpm test -- --only=… (list above) | all PASS | [paste runner lines] | ✅/❌ |
-| pnpm test -- --ci | 0 FAIL | [paste summary line; list SKIPPED/BLOCKED] | ✅/❌ |
-...
-
-## Live Voice Test
-- Command spoken: "Jarvis open YouTube for me"
-- Browser opened: Yes/No
-- TTS spoke: Yes/No
-- Captured logs:
-  [paste full log output here]
-
-## Remaining Issues
-- [list any tests that still fail]
-- [list any risks not yet addressed]
-```
-
-## Advancement Condition
-You may advance to `06_final_report` only when:
-1. All tests pass
-2. Live voice test passes (if voice-related)
-3. `output/verification.md` is complete with real output
+- PASS: type check 0 errors, regression test and required tests pass,
+  no new FAIL in `--ci`, live check passed when required. Advance to
+  `05b_review`.
+- INCOMPLETE: tests pass but a required live check is owed or BLOCKED.
+  Advance to `05b_review`; Stage 06 cannot report the bug fixed.
+- FAIL: a required test fails. Return to `04_implementation` (or
+  `02_diagnosis` if the cause was wrong).
+- A failure that also fails on the base commit is recorded as pre-existing,
+  with the base-commit result.

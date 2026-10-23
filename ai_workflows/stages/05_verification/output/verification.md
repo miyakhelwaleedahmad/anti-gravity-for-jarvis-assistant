@@ -1,25 +1,29 @@
 # Verification Report — [Replace with Bug Name]
 
-> Stage: 05_verification
+> Stage: 05_verification · Template. Copy to `ai_workflows/runs/<run>/verification.md`
+> and fill in the copy; leave this file blank.
 > Status: [ ] Complete / [ ] In Progress
-> Date: [fill in]
+> Date: [fill in] · Machine: [owner's Windows PC / CI / other host] · Commit: [hash]
 
 ---
 
 ## Test Results
 
-| Test | Expected | Actual Result | Status |
+All tests through the runner (`tests/runAll.ts`); never `npx tsx tests/<name>.ts`.
+
+| Check | Command | Expected | Actual (runner lines) | Status |
+|---|---|---|---|---|
+| Type check | `pnpm run typecheck` | 0 errors | [paste] | ✅/❌ |
+| Regression test (from 02b) | `pnpm test -- --only=<name>` | PASS (failed before the fix) | [paste] | ✅/❌ |
+| Required group | `pnpm test -- --only=<names from TEST_MATRIX.md>` | all PASS | [paste] | ✅/❌ |
+| Voice core group (voice changes) | `pnpm test:voice-core` | all PASS | [paste] | ✅/❌/N/A |
+| Whole suite | `pnpm test -- --ci` | 0 FAIL | [paste summary line] | ✅/❌ |
+
+BLOCKED (never a pass) and SKIPPED, with the runner's reason:
+
+| Test | Verdict | Reason | Pre-existing on base commit? |
 |---|---|---|---|
-| `npx tsc --noEmit` | 0 errors | [paste count] | ✅/❌ |
-| `nodeBridgeSingletonTest.ts` | 9/9 PASS | [paste] | ✅/❌ |
-| `voiceRouteMockTest.ts` | 9/9 PASS | [paste] | ✅/❌ |
-| `interruptGatingTest.ts` | 3/3 PASS | [paste] | ✅/❌ |
-| `openAppSmokeTest.ts youtube` | PASS | [paste] | ✅/❌ |
-| `openAppSmokeTest.ts notepad` | PASS | [paste] | ✅/❌ |
-| `openAppSmokeTest.ts cmd` | PASS | [paste] | ✅/❌ |
-| `latencySmokeTest.ts` | <100ms | [paste ms] | ✅/❌ |
-| `deterministicCommandRouteTest.ts` | 39/39 | [paste] | ✅/❌ |
-| `pnpm test:voice-core` | all pass | [paste] | ✅/❌/N/A |
+| | | | |
 
 ---
 
@@ -36,12 +40,14 @@
 
 ---
 
-## Live Voice Test (Required for Voice Bugs)
+## Live Verification (voice, microphone, speaker, Windows control, real browser)
 
-- Command spoken: `"Jarvis open YouTube for me"`
-- Browser opened: [ ] Yes / [ ] No / [ ] N/A (non-voice bug)
-- TTS spoke confirmation: [ ] Yes / [ ] No / [ ] N/A
-- Total observed latency: [Xms or "not measured"]
+- Required: [ ] Yes / [ ] No — reason: [ ]
+- Done with the owner present: [ ] Yes / [ ] No — owed (record as INCOMPLETE)
+- Example, YouTube route: say `"Jarvis open YouTube for me"`
+  - Browser opened: [ ] Yes / [ ] No / [ ] N/A
+  - TTS spoke confirmation: [ ] Yes / [ ] No / [ ] N/A
+  - Observed latency: [Xms or "not measured"]
 
 **Captured Live Logs:**
 ```
@@ -52,13 +58,13 @@
 
 ## Remaining Issues
 
-[List any tests that still fail or any risks not fully resolved]
+[Tests that still fail, checks still owed, risks not resolved]
 
 ---
 
-## Ready to Advance to Final Report?
+## Ready to Advance to Review?
 
-- [ ] All tests pass
-- [ ] Live voice test pass (or confirmed N/A)
-- [ ] Real output pasted (not fabricated)
-- [ ] Remaining issues documented
+- [ ] Every command above was actually run; output pasted, not retyped or invented
+- [ ] Regression test now passes for the right reason
+- [ ] Live check passed, or listed as owed (INCOMPLETE)
+- [ ] BLOCKED / SKIPPED listed with reasons

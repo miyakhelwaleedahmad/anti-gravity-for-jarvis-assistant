@@ -1,6 +1,7 @@
 # Patch Plan — [Replace with Bug Name]
 
-> Stage: 03_patch_plan
+> Stage: 03_patch_plan · Template. Copy to `ai_workflows/runs/<run>/patch_plan.md`
+> and fill in the copy; leave this file blank.
 > Status: [ ] Awaiting Approval / [ ] Approved / [ ] Rejected
 > Date: [fill in]
 
@@ -48,11 +49,20 @@
 
 ---
 
+## Reproduction (from Stage 02b)
+
+- Label: [REPRODUCED / REPRODUCED-MANUAL / MOCK-ONLY / FLAKY / INFERRED / NOT REPRODUCED / BLOCKED]
+- Regression test: [`tests/<name>.ts`, failing before the fix — or none]
+- Exception (any label other than REPRODUCED / REPRODUCED-MANUAL):
+  why reproduction is unavailable [ ]; evidence that will verify the fix [ ]
+
+---
+
 ## Tests to Run After Implementation
 
 ```powershell
 pnpm run typecheck
-pnpm test -- --only=[relevantTestA],[relevantTestB]
+pnpm test -- --only=[regressionTest],[relevantTestA],[relevantTestB]
 # ... list all applicable tests (file names without .ts), then:
 pnpm test -- --ci
 ```
@@ -84,5 +94,8 @@ Live Voice Verification below.
 
 > This plan must NOT be implemented until the user explicitly approves.
 > Write "approved" or "proceed" in the conversation to unlock Stage 04.
+> Silence, a report, a test result or an automated agent is never approval.
 
 Human approval recorded: [ ] Yes — Date: [fill in]
+Owner's words: [quote]
+Reproduction exception accepted (if any): [ ] Yes / [ ] N/A

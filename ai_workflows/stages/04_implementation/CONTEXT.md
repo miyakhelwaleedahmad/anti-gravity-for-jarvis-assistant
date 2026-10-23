@@ -1,43 +1,40 @@
 # Stage 04 — Implementation
 
-## Purpose
-Apply ONLY the approved changes from the patch plan — nothing more.
+Apply only the approved changes from the patch plan, nothing more.
 
-## What You Are Allowed to Do
-```
-✅ Apply exactly the changes described in 03_patch_plan/output/patch_plan.md
-✅ Keep each change small and focused
-✅ Run npx tsc --noEmit immediately after each file change
-✅ Fix TypeScript compile errors caused by the approved change
-✅ Record every changed file in output/change_log.md
-```
+## Inputs
 
-## What You Must NOT Do
-```
-❌ Do not add "bonus" changes not in the patch plan
-❌ Do not refactor unrelated code ("while I'm here...")
-❌ Do not change multiple files simultaneously without tracking each one
-❌ Do not skip TypeScript compile check after each change
-❌ Do not advance to verification if TypeScript has errors
-❌ Do not edit _config/ or ai_workflows/ as part of implementation
-```
-
-## Change Log Format
-Record every file touched in output/change_log.md:
-
-```markdown
-## Changed Files
-
-| File | Change | Lines Affected |
+| Source | Load | Why |
 |---|---|---|
-| path/to/file.ts | Description of change | Line X–Y |
+| `runs/<run>/patch_plan.md` | Changes and the recorded approval | What may be changed |
+| `runs/<run>/reproduction.md` | Regression test name and command | The test the fix must turn green |
+| The files named in the plan | Only those | The code to change |
 
-## TypeScript Compile Status
-- After all changes: npx tsc --noEmit → [ ] 0 errors
-```
+## Process
 
-## Advancement Condition
-You may advance to `05_verification` only when:
-1. All approved changes are applied
-2. `npx tsc --noEmit` shows 0 errors
-3. `output/change_log.md` is complete
+1. Confirm the approval is recorded in the plan. No approval: stop.
+2. Apply exactly the planned changes, one file at a time, small diffs.
+3. Run `pnpm run typecheck` after each file; fix only errors the approved
+   change caused.
+4. Record every changed file and line range in the change log.
+5. Any change outside the plan: stop, record it under "Unplanned changes",
+   and return to `03_patch_plan` for re-approval.
+6. Do not commit here; Stage 06 commits the reviewed files by name.
+
+Forbidden: bonus changes or refactors ("while I'm here"); changing test
+assertions to make a test pass; editing `ai_workflows/` or `_config/` as
+part of the fix; touching runtime data (`data/`, `memory/`), `.env` or
+dependencies unless the plan says so; running tests directly
+(`npx tsx tests/<name>.ts`).
+
+## Outputs
+
+`runs/<run>/change_log.md` from `output/change_log.md`: changed files,
+diffs, type-check result, unplanned changes (expected: none).
+
+## Audit / advancement
+
+- PASS: all approved changes applied, type check 0 errors, change log
+  complete, no unplanned change. Advance to `05_verification`.
+- FAIL: type errors remain; fix within the plan or return to Stage 03.
+- STOP: an unplanned change is needed; get re-approval first.

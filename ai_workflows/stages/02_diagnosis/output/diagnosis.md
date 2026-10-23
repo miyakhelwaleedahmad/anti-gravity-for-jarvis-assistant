@@ -1,6 +1,7 @@
 # Diagnosis — [Replace with Bug Name]
 
-> Stage: 02_diagnosis
+> Stage: 02_diagnosis · Template. Copy to `ai_workflows/runs/<run>/diagnosis.md`
+> and fill in the copy; leave this file blank.
 > Status: [ ] Complete / [ ] In Progress
 > Date: [fill in]
 
@@ -49,15 +50,31 @@ Input: [what the user said/typed]
 
 ## Files That Would Need to Change
 
-| File | Why |
-|---|---|
-| [path] | [reason] |
+| File | Why | Protected? |
+|---|---|---|
+| [path] | [reason] | Yes/No |
 
 ---
 
-## Ready to Advance to Patch Plan?
+## Evidence Labels
 
-- [ ] Root cause identified
-- [ ] Evidence documented
+Mark each claim above: **observed** (log, issue record, code read) or
+**inferred** (reasoned, not seen).
+
+---
+
+## Proposed Reproduction (for Stage 02b)
+
+- Existing test: [`tests/<name>.ts`, or none]
+- New regression test needed: [yes/no — what it asserts]
+- Owner's PC needed: [yes/no — why: voice, microphone, speaker, Windows, real browser]
+
+---
+
+## Ready to Advance to Reproduction?
+
+- [ ] Root cause identified (or hypotheses ranked)
+- [ ] Evidence documented and labelled
 - [ ] Files to change listed
+- [ ] Reproduction method proposed
 - [ ] No code edits made during this stage
