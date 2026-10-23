@@ -43,6 +43,7 @@ import { selectPlanningToolNames, shouldUseHeavyContext } from './planningToolSe
 import {
   describeCommandResult, desktopReply, devStatusReply, parseJson, repairFailure, systemStatusReply, trendingReply,
 } from './replyText.js';
+import { isClarifyingQuestion } from './clarification.js';
 import { matchDeterministicCommand, brainPayload, type DeterministicRoute } from './deterministicRoutes.js';
 export { capabilitiesReply, describeCommandResult, desktopReply, devStatusReply, systemStatusReply, trendingReply } from './replyText.js';
 export { normalizeVoiceInput } from './voiceInput.js';
@@ -97,6 +98,8 @@ const SKILLS_WAIT_MS = 10_000;
 interface PlanState {
   outcome: 'graph' | 'answered' | 'failed' | 'interrupted';
   timings: Record<string, number>;
+  /** The direct answer, when outcome is 'answered'. */
+  answer?: string;
 }
 const requestContext = new AsyncLocalStorage<{ callId: string; signal: AbortSignal; plan?: PlanState }>();
 
@@ -372,7 +375,10 @@ export class JarvisOrchestrator {
       }
       if (goal) {
         if (approvals.length) goal.metadata = { ...goal.metadata, approvals };
-        if (loopOutcome === 'success') {
+        if (record.askedBack) {
+          // Not done and not failed: closed, so it is never retried or resumed.
+          await goalManager.cancelGoal(goal.id, 'asked the owner a question; the answer starts a new request').catch(() => {});
+        } else if (loopOutcome === 'success') {
           await goalManager.completeGoal(goal.id);
         } else {
           // 'failed' or 'blocked' — do NOT mark as completed
@@ -841,6 +847,14 @@ export class JarvisOrchestrator {
       const isActionRequest = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i.test(input);
       const isAborted = this.isInterrupted() || this.requestSignal()?.aborted;
       const noAnswer = this.planState().outcome !== 'answered';
+      // BUG-9: the model asked a question back. That ends the turn cleanly:
+      // not a failure, so no retry, and no goal waiting to run again.
+      if (!isAborted && !noAnswer && isClarifyingQuestion(this.planState().answer)) {
+        console.log(`[Orchestrator] ❓ Asked the owner a question; the answer comes as a new request.`);
+        record.askedBack = true;
+        agentStateMachine.transition(AgentState.IDLE);
+        return 'success';
+      }
 
       if (isAborted || isActionRequest || noAnswer) {
         console.warn(`[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "${input}". Goal marked FAILED.`);
@@ -1390,6 +1404,7 @@ export class JarvisOrchestrator {
           agentStateMachine.transition(AgentState.SPEAKING);
           this.speak(reply);
           this.planState().outcome = 'answered';
+          this.planState().answer = reply;
           return null;
         }
       }
@@ -2275,6 +2290,8 @@ interface LoopRecord {
   failReason?: string;
   /** A request to process once this one has finished (a confirmed "continue"). */
   followUp?: string;
+  /** The reply asked the owner a question (BUG-9): the goal is closed, not failed or completed. */
+  askedBack?: boolean;
 }
 
 /** The approval decisions made in `graph`, each added once. */
