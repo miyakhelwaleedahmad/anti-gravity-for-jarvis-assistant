@@ -13,6 +13,23 @@
 
 ---
 
+## `_config/` Safety (applies to every task)
+
+- Never load `_config/` as a folder (no `_config/*`, no "read every config
+  file"). Open a `_config/` file only when this file, `ai_workflows/CONTEXT.md`
+  or the current stage's `CONTEXT.md` names it.
+- Never open, print, copy, stage or commit a file whose name suggests a
+  secret: token, secret, password, credential, private key, `.env`. The
+  Git-ignored `_config/github my persnal tokens.txt` on the owner's PC is one:
+  do not open it; moving it out of the repository is the owner's decision.
+- Never write a credential value anywhere (reports, logs, commits). Say only
+  whether a key is set (SET / EMPTY).
+- `_config/add this to your fyp projct.txt` belongs to the owner's separate
+  university attendance (FYP) project, not JARVIS. Do not load it for JARVIS
+  work. Moving it is pending the owner's approval; do not move or copy it.
+
+---
+
 ## Voice Pipeline Bugs
 
 **Symptom examples:**
@@ -172,8 +189,8 @@ Do NOT load unrelated runtime files.
 
 **Load only:**
 ```
-ai_workflows/_config/*.md (as needed)
 ai_workflows/CONTEXT.md
+The specific _config/ files the task names (never the whole folder; see _config/ Safety)
 ```
 
 **Do NOT load or modify:**
