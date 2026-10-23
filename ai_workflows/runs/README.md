@@ -44,4 +44,4 @@ runs/
 
 | Date | Run folder | Finding / issue ID | Closure status |
 |---|---|---|---|
-| *(none yet)* | | | |
+| 2026-10-23 | `2026-10-23_voice-route-test-launches-browser/` | TEST-05 | COMPLETE WITH LIMITATIONS (Windows not observed; review by a separate agent session, not a human) |

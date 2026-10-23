@@ -122,3 +122,11 @@ The owner's full audit (write-ups, diagrams, probes) re-checked every finding ag
 | PC-15 | FIXED_AND_TESTED (simulated provider); live run BLOCKED here | `finalIntegrationSuiteTest` passed whenever `process()` returned (always); ran in plain `pnpm test` with real provider and desktop actions | Preflight → BLOCKED (exit 3) in seconds; expected tool checked; approvals auto-denied; live tests only with `pnpm test:live`; runner verdicts pass/fail/timeout/blocked/environment/skipped | simulated provider 12/12; wrong-tool mutation 4 FAIL; no key: BLOCKED 1.5 s | `31b9313` |
 | PC-16 | FIXED_AND_TESTED (pwsh 7.4.6 here) | Runner ran `windowsScriptsTest` though its own check found no pwsh; the test exited 1 | Test: BLOCKED with install steps; runner: skip with reason in every mode | real PowerShell 7.4.6: PASS (26 s) | `b517954` |
 
+## ICM maintenance runs
+
+Found and closed through the `ai_workflows/` stages; each row points to its run folder.
+
+| Finding ID | Status | Root cause | Change | Tests | Commit |
+|---|---|---|---|---|---|
+| TEST-05 | FIXED_AND_TESTED (Linux); Windows not yet observed | `voiceRouteMockTest` sent "open YouTube for me" through the real deterministic route twice per run; `open_app` had no `dryRun`, so every test run launched the browser opener (2 recorded calls; on Windows `cmd.exe /c start`) while passing | `open_app` runs as a dry run through a listed `registry:execute` stand-in; two new checks (ran once per request; was a dry run) | Red: dry-run check FAIL + 2 opener calls; green: PASS + 0; `test:voice-core` 12/12; `--ci` 200/0/1 blocked/9 skipped, 0 opener calls. Review PASS by a separate agent session (not a human). Run: `ai_workflows/runs/2026-10-23_voice-route-test-launches-browser/` | `64f1abc` |
+

@@ -55,7 +55,7 @@ the fix (uncommitted while tested).
 | Type check | `pnpm run typecheck` | 0 errors | `evidence/verification_raw.txt` |
 | Test area | `pnpm test -- --only=voiceRouteMockTest,boundaryDoublesTest,noGroqForLocalCommandsTest,simpleNoGoalTest,voiceYouTubeIntegrationTest,openAppSmokeTest,deterministicCommandRouteTest` | 7 passed · 0 failed | `evidence/verification_raw.txt` |
 | Voice core group | `pnpm test:voice-core` | 12 passed · 0 failed | `evidence/verification_raw.txt` |
-| Whole suite | `pnpm test -- --ci` (stand-in opener on PATH) | 200 passed · 0 failed · 1 blocked · 9 skipped (exit 1); 0 opener calls | `evidence/verification_raw.txt`, `evidence/verify_full.log` (line 219) |
+| Whole suite | `pnpm test -- --ci` (stand-in opener on PATH) | 200 passed · 0 failed · 1 blocked · 9 skipped (exit 1); 0 opener calls | `evidence/verification_raw.txt` (line 34). The full runner log `verify_full.log` is not in Git (`.gitignore` excludes `*.log`); a copy stays in the session scratchpad only |
 | Live verification | — | Not required (test-only); optional owner check owed | — |
 
 **The whole suite is not fully green.** `realTtsHandoffTest` is BLOCKED
