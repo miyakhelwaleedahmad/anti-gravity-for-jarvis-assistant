@@ -60,6 +60,7 @@ console.log('\n--- 2. GC pause threshold ---');
 ok('500 ms by default', gcWarnMs({}) === 500);
 ok('JARVIS_GC_WARN_MS sets it; nonsense keeps 500', gcWarnMs({ JARVIS_GC_WARN_MS: '800' }) === 800 && gcWarnMs({ JARVIS_GC_WARN_MS: 'x' }) === 500 && gcWarnMs({ JARVIS_GC_WARN_MS: '5' }) === 500);
 
-fs.rmSync(workspace, { recursive: true, force: true });
+process.chdir(os.tmpdir());   // Windows will not remove the current directory
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

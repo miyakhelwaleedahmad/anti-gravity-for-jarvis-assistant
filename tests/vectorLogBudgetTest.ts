@@ -86,6 +86,7 @@ for (let i = 0; i < 50 && embeds < 8; i++) await sleep(100);
 await sleep(100);
 ok('the rebuild sends one write at a time', embeds === 8 && maxInFlight === 1, `${embeds} writes, at most ${maxInFlight} at once`);
 
-fs.rmSync(workspace, { recursive: true, force: true });
+process.chdir(os.tmpdir());   // Windows will not remove the current directory
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

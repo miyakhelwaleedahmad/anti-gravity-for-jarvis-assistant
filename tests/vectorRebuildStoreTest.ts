@@ -92,6 +92,7 @@ ok('the store is saved to disk when the rebuild ends', persisted === 1, `persist
 ok('the summary says how many vectors the store holds', summary.includes(`embedded ${texts.length}/${texts.length}`) && summary.includes(`store holds ${texts.length} vectors`), summary);
 
 redis?.kill();
-fs.rmSync(workspace, { recursive: true, force: true });
+process.chdir(os.tmpdir());   // Windows will not remove the current directory
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);

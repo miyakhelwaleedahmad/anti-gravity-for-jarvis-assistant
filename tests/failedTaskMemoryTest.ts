@@ -60,6 +60,7 @@ ok('…and stay on disk (nothing of the owner\'s data is deleted)', memoryManage
 const orch = fs.readFileSync(path.join(repo, 'core', 'orchestrator.ts'), 'utf8');
 ok('an aborted request no longer stores a "Failed task" fact', !/rememberFact\([\s\S]{0,200}'agent_failure'/.test(orch) && !/Failed task: "\$\{input/.test(orch));
 
-fs.rmSync(workspace, { recursive: true, force: true });
+process.chdir(os.tmpdir());   // Windows will not remove the current directory
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);
