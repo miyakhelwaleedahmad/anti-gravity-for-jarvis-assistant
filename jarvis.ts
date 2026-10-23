@@ -337,8 +337,13 @@ async function startJarvis() {
     );
     timings['Vector Memory Supervisor'] = Date.now() - tVector;
 
-    console.log(`🔹 LLM: ${llmConfig.provider} at ${llmConfig.baseURL} — brain ${llmConfig.model}, fast ${llmConfig.fastModel}` +
-      (llmConfig.reasoningEffort ? `, reasoning_effort=${llmConfig.reasoningEffort}` : ''));
+    if (llmConfig.primary === 'anthropic' && llmConfig.anthropic) {
+      console.log(`🔹 LLM: Claude — brain ${llmConfig.anthropic.model}, fast ${llmConfig.anthropic.fastModel}` +
+        (llmConfig.apiKey ? `; fallback ${llmConfig.provider} (${llmConfig.model}, ${llmConfig.fastModel})` : '; no fallback'));
+    } else {
+      console.log(`🔹 LLM: ${llmConfig.provider} at ${llmConfig.baseURL} — brain ${llmConfig.model}, fast ${llmConfig.fastModel}` +
+        (llmConfig.reasoningEffort ? `, reasoning_effort=${llmConfig.reasoningEffort}` : ''));
+    }
     for (const note of llmConfig.providerNotes) console.log(`   ℹ ${note}`);
 
     // 2. WebSocket server & Brain loop

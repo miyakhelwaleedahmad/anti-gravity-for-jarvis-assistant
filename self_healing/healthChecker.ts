@@ -176,13 +176,19 @@ export class HealthChecker {
   private async _probeLLM(): Promise<ProbeResult> {
     const t0 = Date.now();
     const { llmConfig } = await import('../config/llmconfig.js');
-    const subsystem = `LLM API (${llmConfig.provider})`;
+    const subsystem = `LLM API (${llmConfig.primary})`;
     try {
-      const { groqProvider } = await import('../bridge/groqProvider.js');
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(new Error('LLM_TIMEOUT')), PROBE_TIMEOUT_MS);
       try {
-        await groqProvider.ping(ctrl.signal);
+        // The provider asked first: Claude looks its brain model up (no tokens spent).
+        if (llmConfig.primary === 'anthropic' && llmConfig.anthropic) {
+          const { anthropicProvider } = await import('../bridge/anthropicProvider.js');
+          await anthropicProvider.ping(llmConfig.anthropic.model, ctrl.signal);
+        } else {
+          const { groqProvider } = await import('../bridge/groqProvider.js');
+          await groqProvider.ping(ctrl.signal);
+        }
       } finally {
         clearTimeout(timer);
       }

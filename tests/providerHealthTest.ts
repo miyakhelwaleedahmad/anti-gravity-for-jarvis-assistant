@@ -115,7 +115,7 @@ console.log('--- 1. Provider selection ---');
   ok('explicit groq without a Groq key stays groq (no silent switch to Gemini)', explicitNoKey.provider === 'groq' && explicitNoKey.apiKey === '');
   ok('a placeholder key counts as missing', resolveProviderSettings({ JARVIS_LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'your_gemini_api_key_here' }).apiKey === '');
   const bogus = resolveProviderSettings({ JARVIS_LLM_PROVIDER: 'openai', GEMINI_API_KEY: G });
-  ok('an unsupported value is explained and the key decides', bogus.provider === 'gemini' && bogus.notes.some((x) => /not groq or gemini/.test(x)));
+  ok('an unsupported value is explained and the key decides', bogus.provider === 'gemini' && bogus.notes.some((x) => /not anthropic, groq or gemini/.test(x)));
 
   const saved = { ...process.env };
   process.env['JARVIS_LLM_PROVIDER'] = 'openai';

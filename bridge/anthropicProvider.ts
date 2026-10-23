@@ -1,13 +1,18 @@
 /**
  * bridge/anthropicProvider.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * An optional Claude provider (self-healing architecture, model-routing phase).
- *
- * Off unless ANTHROPIC_API_KEY is set AND a category names it, e.g.
- *   JARVIS_MODEL_CODING=anthropic                 (claude-opus-5-5)
- *   JARVIS_MODEL_REVIEW=anthropic:claude-sonnet-5-5
- * It is registered with modelRouter as a named provider only: it never joins
- * the failover order, so a key in .env does not move ordinary requests here.
+ * The Claude provider, through the official SDK. Two ways in:
+ *   - JARVIS_LLM_PROVIDER=anthropic with ANTHROPIC_API_KEY: Claude answers
+ *     every request (JARVIS_ANTHROPIC_BRAIN_MODEL, default claude-opus-5-5;
+ *     JARVIS_ANTHROPIC_FAST_MODEL, default claude-haiku-5-5), with Gemini or
+ *     Groq as the fallback when a call fails (bridge/modelRouter.ts).
+ *   - Otherwise only a category that names it, e.g.
+ *       JARVIS_MODEL_CODING=anthropic                 (claude-opus-5-5)
+ *       JARVIS_MODEL_REVIEW=anthropic:claude-sonnet-5-5
+ *     and then it never joins the failover order.
+ * ANTHROPIC_BASE_URL, when set, is the API address (a proxy or gateway).
+ * Replies stream (streamChat) for the voice; the token counts of each call are
+ * recorded (modelRouter's usage line).
  *
  * Before the first call with a model, the model is looked up in the provider's
  * model list (models.retrieve); an unknown or inaccessible model fails with
@@ -27,6 +32,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { ILLMMessage, ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall } from './llmTypes.js';
+import { llmStatus } from './llmStatus.js';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 type Effort = typeof EFFORTS[number];
@@ -118,6 +124,8 @@ function describe(err: unknown): Error {
 export class AnthropicProvider implements ILLMProvider {
   private client: Anthropic | null = null;
   private checked = new Map<string, Promise<void>>();
+  /** Token counts of the last finished stream (modelRouter records them). */
+  lastStreamUsage: ILLMResponse['usage'] | null = null;
 
   constructor(private readonly env: Record<string, string | undefined> = process.env, private readonly factory?: () => Anthropic) {}
 
@@ -127,7 +135,8 @@ export class AnthropicProvider implements ILLMProvider {
 
   private api(): Anthropic {
     if (!this.isConfigured()) throw new Error('The Anthropic provider is not configured: set ANTHROPIC_API_KEY to use it.');
-    this.client ??= this.factory ? this.factory() : new Anthropic({ apiKey: this.env['ANTHROPIC_API_KEY']!.trim(), maxRetries: 2 });
+    const baseURL = this.env['ANTHROPIC_BASE_URL']?.trim();
+    this.client ??= this.factory ? this.factory() : new Anthropic({ apiKey: this.env['ANTHROPIC_API_KEY']!.trim(), maxRetries: 2, ...(baseURL ? { baseURL } : {}) });
     return this.client;
   }
 
@@ -146,27 +155,83 @@ export class AnthropicProvider implements ILLMProvider {
     return p;
   }
 
-  async chat(request: ILLMRequest): Promise<ILLMResponse> {
+  /** The Messages API request for a JARVIS request (the same for chat and stream). */
+  private async params(request: ILLMRequest) {
     const model = request.model;
     if (!model) throw new Error('The Anthropic provider needs a model (JARVIS_MODEL_<CATEGORY>=anthropic:<model>).');
     await this.validateModel(model);
     const { system, messages } = toAnthropicMessages(request.messages, request.tool_choice === 'required');
     const tools = toAnthropicTools(request.tools);
     const fallbacks = (this.env['JARVIS_ANTHROPIC_FALLBACKS'] ?? '').trim().toLowerCase() !== 'off';
+    return {
+      model,
+      max_tokens: request.max_tokens ?? 16_000,
+      messages,
+      ...(system ? { system } : {}),
+      ...(tools ? { tools, tool_choice: { type: request.tool_choice === 'none' ? 'none' as const : 'auto' as const } } : {}),
+      output_config: { effort: effort(this.env) },
+      ...(fallbacks ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
+    };
+  }
+
+  async chat(request: ILLMRequest): Promise<ILLMResponse> {
+    const params = await this.params(request);
     try {
-      const msg = await this.api().beta.messages.create({
-        model,
-        max_tokens: request.max_tokens ?? 16_000,
-        messages,
-        ...(system ? { system } : {}),
-        ...(tools ? { tools, tool_choice: { type: request.tool_choice === 'none' ? 'none' : 'auto' } } : {}),
-        output_config: { effort: effort(this.env) },
-        ...(fallbacks ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
-      }, { ...(request.signal ? { signal: request.signal } : {}) });
-      return fromAnthropicMessage(msg);
+      const msg = await this.api().beta.messages.create(params, { ...(request.signal ? { signal: request.signal } : {}) });
+      const response = fromAnthropicMessage(msg);
+      llmStatus.recordSuccess('request', 'anthropic');
+      return response;
     } catch (err) {
       if (request.signal?.aborted) throw err;
-      throw describe(err);
+      const e = err instanceof Error && /^Anthropic declined/.test(err.message) ? err : describe(err);
+      llmStatus.recordFailure(e, 'request', 'anthropic');
+      throw e;
+    }
+  }
+
+  /**
+   * The reply's text as it is generated. A reply that is a tool call has no
+   * text; the planner uses chat() for those. A refusal before any text throws,
+   * so modelRouter can answer through the fallback.
+   */
+  async *streamChat(request: ILLMRequest): AsyncGenerator<string, void, unknown> {
+    const params = await this.params(request);
+    this.lastStreamUsage = null;
+    let yielded = false;
+    try {
+      const stream = this.api().beta.messages.stream(params, { ...(request.signal ? { signal: request.signal } : {}) });
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta' && event.delta.text) {
+          yielded = true;
+          yield event.delta.text;
+        }
+      }
+      const final = await stream.finalMessage();
+      if (final.stop_reason === 'refusal' && !yielded) fromAnthropicMessage(final);   // throws, with the category
+      const input = typeof final.usage?.input_tokens === 'number' ? final.usage.input_tokens : null;
+      const output = typeof final.usage?.output_tokens === 'number' ? final.usage.output_tokens : null;
+      this.lastStreamUsage = { promptTokens: input, completionTokens: output, totalTokens: input !== null && output !== null ? input + output : null };
+      llmStatus.recordSuccess('request', 'anthropic');
+    } catch (err) {
+      if (request.signal?.aborted) throw err;
+      const e = err instanceof Error && /^Anthropic declined/.test(err.message) ? err : describe(err);
+      llmStatus.recordFailure(e, 'request', 'anthropic');
+      throw e;
+    }
+  }
+
+  /**
+   * Reachability for the health check: looks the model up, nothing generated
+   * (no tokens spent). Rate limits and errors come back as the router's messages.
+   */
+  async ping(model: string, signal?: AbortSignal): Promise<void> {
+    try {
+      await this.api().models.retrieve(model, {}, { ...(signal ? { signal } : {}) });
+      llmStatus.recordSuccess('probe', 'anthropic');
+    } catch (err) {
+      const e = describe(err);
+      llmStatus.recordFailure(e, 'probe', 'anthropic');
+      throw e;
     }
   }
 }

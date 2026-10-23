@@ -36,7 +36,7 @@ export function canonicalPipeline(name: string): string {
  * A name a person can understand, for speech and alerts. The LLM path is
  * named after the provider actually configured.
  */
-export function pipelineLabel(name: string, provider: string = llmConfig.provider === "gemini" ? "Gemini" : "Groq"): string {
+export function pipelineLabel(name: string, provider: string = llmConfig.primary === "anthropic" ? "Claude" : llmConfig.provider === "gemini" ? "Gemini" : "Groq"): string {
   const p = canonicalPipeline(name);
   const labels: Record<string, string> = {
     wake_to_stt: "wake word",

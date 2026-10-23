@@ -11,6 +11,17 @@ dotenv.config({ quiet: true });
 // thinking control differ.
 
 export type LLMProviderName = "groq" | "gemini";
+/**
+ * The provider asked first. "anthropic" (Claude, bridge/anthropicProvider.ts)
+ * uses its own SDK; the OpenAI-compatible provider above is then its fallback.
+ */
+export type PrimaryProvider = LLMProviderName | "anthropic";
+
+/** Claude's models when it is the primary provider (JARVIS_LLM_PROVIDER=anthropic). */
+export interface AnthropicSettings {
+  model: string;
+  fastModel: string;
+}
 export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high";
 
 const GROQ_DEFAULT_URL = "https://api.groq.com/openai/v1";
@@ -27,6 +38,10 @@ export interface ProviderSettings {
   reasoningEffort?: ReasoningEffort;
   /** Adjustments made while resolving, worth showing at startup. */
   notes: string[];
+  /** Asked first; `provider` (above) is then the fallback when this is "anthropic". */
+  primary: PrimaryProvider;
+  /** Set when primary is "anthropic". */
+  anthropic?: AnthropicSettings;
 }
 
 /** A value left as in .env.example ("your_xai_api_key_here") is not a key. */
@@ -56,11 +71,12 @@ export function resolveProviderSettings(env: NodeJS.ProcessEnv = process.env): P
   const notes: string[] = [];
 
   const requested = (env.JARVIS_LLM_PROVIDER ?? "").trim().toLowerCase();
+  const anthropicKey = key("ANTHROPIC_API_KEY");
   let provider: LLMProviderName;
   if (requested === "groq" || requested === "gemini") {
     provider = requested;
   } else {
-    if (requested) notes.push(`JARVIS_LLM_PROVIDER="${requested}" is not groq or gemini; choosing from the keys instead.`);
+    if (requested && requested !== "anthropic") notes.push(`JARVIS_LLM_PROVIDER="${requested}" is not anthropic, groq or gemini; choosing from the keys instead.`);
     provider = geminiKey && !groqKey ? "gemini" : "groq";
     if (geminiKey && groqKey) {
       notes.push("GROQ_API_KEY and GEMINI_API_KEY are both set; using Groq. Set JARVIS_LLM_PROVIDER=gemini to use Gemini.");
@@ -89,7 +105,27 @@ export function resolveProviderSettings(env: NodeJS.ProcessEnv = process.env): P
     notes.push(`JARVIS_LLM_REASONING_EFFORT="${rawEffort}" is not one of ${REASONING_EFFORTS.join(", ")} or off; ignored.`);
   }
 
+  // Claude first, the provider above as its fallback. Without a key Claude
+  // cannot answer, so the fallback becomes the primary rather than failing
+  // every request.
+  let primary: PrimaryProvider = provider;
+  let anthropic: AnthropicSettings | undefined;
+  if (requested === "anthropic") {
+    if (anthropicKey) {
+      primary = "anthropic";
+      anthropic = {
+        model: env.JARVIS_ANTHROPIC_BRAIN_MODEL?.trim() || "claude-opus-5-5",
+        fastModel: env.JARVIS_ANTHROPIC_FAST_MODEL?.trim() || "claude-haiku-5-5",
+      };
+      if (!(isGemini ? geminiKey : groqKey)) notes.push(`No ${isGemini ? "GEMINI_API_KEY" : "GROQ_API_KEY"}: Claude has no fallback when a request fails.`);
+    } else {
+      notes.push(`JARVIS_LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is empty; using ${provider}.`);
+    }
+  }
+
   return {
+    primary,
+    ...(anthropic ? { anthropic } : {}),
     provider,
     apiKey: isGemini ? geminiKey : groqKey,
     baseURL,
@@ -101,6 +137,11 @@ export function resolveProviderSettings(env: NodeJS.ProcessEnv = process.env): P
 }
 
 export interface LLMConfig {
+  /** Asked first: "anthropic", or the same as `provider`. */
+  primary: PrimaryProvider;
+  /** Claude's brain and fast models when primary is "anthropic". */
+  anthropic?: AnthropicSettings;
+  /** The OpenAI-compatible provider (bridge/groqProvider.ts); Claude's fallback when primary is "anthropic". */
   provider: LLMProviderName;
   model: string;
   /** Model used for short replies and when the main model is rate-limited. */
@@ -118,6 +159,8 @@ export interface LLMConfig {
 const resolved = resolveProviderSettings();
 
 export const llmConfig: LLMConfig = {
+  primary: resolved.primary,
+  ...(resolved.anthropic ? { anthropic: resolved.anthropic } : {}),
   provider: resolved.provider,
   model: resolved.model,
   fastModel: resolved.fastModel,

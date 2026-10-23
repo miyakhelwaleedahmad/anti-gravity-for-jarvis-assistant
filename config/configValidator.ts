@@ -57,7 +57,15 @@ export class ConfigValidator {
     const llm = resolveProviderSettings(process.env);
     const isGemini = llm.provider === 'gemini';
     const keyVar = isGemini ? 'GEMINI_API_KEY' : 'GROQ_API_KEY';
-    if (!llm.apiKey) {
+    // With Claude first, the Gemini or Groq key is only its fallback (the
+    // missing one is a note from resolveProviderSettings, shown below).
+    const claudeFirst = llm.primary === 'anthropic';
+    for (const [field, value] of claudeFirst && llm.anthropic ? [['JARVIS_ANTHROPIC_BRAIN_MODEL', llm.anthropic.model], ['JARVIS_ANTHROPIC_FAST_MODEL', llm.anthropic.fastModel]] as const : []) {
+      if (!/^claude/i.test(value)) {
+        issues.push({ level: 'WARNING', field, message: `${field}="${value}" does not look like a Claude model.`, fix: `Set ${field}=claude-opus-5-5 (brain) or claude-haiku-5-5 (fast), or remove it.` });
+      }
+    }
+    if (!llm.apiKey && !claudeFirst) {
       const xaiNote = isPlaceholderKey(process.env.XAI_API_KEY) ? '' : ' XAI_API_KEY is set, but JARVIS does not use xAI.';
       issues.push({
         level: 'CRITICAL',
@@ -79,19 +87,20 @@ export class ConfigValidator {
     // A value JARVIS ignores (an unsupported provider or reasoning effort) is a
     // warning: the setting does not do what it says. Explanations stay INFO.
     for (const note of llm.notes) {
-      const ignored = /is not groq or gemini|is not one of/.test(note);
+      const ignored = /is not anthropic, groq or gemini|is not one of|ANTHROPIC_API_KEY is empty/.test(note);
       issues.push({
         level: ignored ? 'WARNING' : 'INFO',
         field: /REASONING/.test(note) ? 'JARVIS_LLM_REASONING_EFFORT' : 'JARVIS_LLM_PROVIDER',
         message: note,
         fix: !ignored ? 'No action needed unless this is not what you intended.'
           : /REASONING/.test(note) ? 'Use none, minimal, low, medium, high or off.'
-            : 'Use JARVIS_LLM_PROVIDER=gemini or groq (or leave it empty).',
+            : /ANTHROPIC_API_KEY/.test(note) ? 'Add ANTHROPIC_API_KEY=<your key from the Claude Console>, or remove JARVIS_LLM_PROVIDER=anthropic.'
+              : 'Use JARVIS_LLM_PROVIDER=anthropic, gemini or groq (or leave it empty).',
       });
     }
 
     // A model left over from the other provider fails on the first request.
-    for (const [field, value] of [['JARVIS_BRAIN_MODEL', llm.model], ['JARVIS_FAST_MODEL', llm.fastModel]] as const) {
+    for (const [field, value] of llm.apiKey ? [['JARVIS_BRAIN_MODEL', llm.model], ['JARVIS_FAST_MODEL', llm.fastModel]] as const : []) {
       const looksGemini = /^(models\/)?gemini/i.test(value);
       if (isGemini !== looksGemini) {
         issues.push({

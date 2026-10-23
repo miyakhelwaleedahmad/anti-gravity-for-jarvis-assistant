@@ -84,7 +84,7 @@ function hostOf(url: string): string {
   try { return new URL(url).host; } catch { return ''; }
 }
 
-const NAMES: Record<string, string> = { gemini: 'Gemini', groq: 'Groq', openai: 'fallback provider' };
+const NAMES: Record<string, string> = { anthropic: 'Claude', gemini: 'Gemini', groq: 'Groq', openai: 'fallback provider' };
 export const providerName = (p: string): string => NAMES[p] ?? p;
 
 function ago(ms: number): string {
@@ -97,7 +97,8 @@ export class LLMStatusTracker {
 
   /** A request or probe to the configured provider worked. */
   recordSuccess(via: 'request' | 'probe' = 'request', provider: string = llmConfig.provider): void {
-    if (provider !== llmConfig.provider) return;
+    // The provider asked first (Claude when JARVIS_LLM_PROVIDER=anthropic); its fallback's calls are not its health.
+    if (provider !== llmConfig.primary) return;
     this.state.lastOkAt = Date.now();
     this.state.lastOkVia = via;
     this.state.lastCheckAt = this.state.lastOkAt;
@@ -106,7 +107,7 @@ export class LLMStatusTracker {
   /** A request or probe to the configured provider failed. Aborts by the caller are not failures. */
   recordFailure(err: unknown, via: 'request' | 'probe' = 'request', provider: string = llmConfig.provider): ClassifiedLLMError {
     const c = classifyLLMError(err);
-    if (c.kind === 'aborted' || provider !== llmConfig.provider) return c;
+    if (c.kind === 'aborted' || provider !== llmConfig.primary) return c;
     this.state.lastError = { ...c, at: Date.now(), provider, via };
     this.state.lastCheckAt = this.state.lastError.at;
     return c;
@@ -118,12 +119,13 @@ export class LLMStatusTracker {
   }
 
   snapshot(): LLMStatusSnapshot {
+    const claude = llmConfig.primary === 'anthropic' ? llmConfig.anthropic : undefined;
     return {
-      provider: llmConfig.provider,
-      model: llmConfig.model,
-      fastModel: llmConfig.fastModel,
-      host: hostOf(llmConfig.baseURL),
-      hasKey: !!llmConfig.apiKey,
+      provider: llmConfig.primary,
+      model: claude?.model ?? llmConfig.model,
+      fastModel: claude?.fastModel ?? llmConfig.fastModel,
+      host: claude ? hostOf(process.env['ANTHROPIC_BASE_URL']?.trim() || 'https://api.anthropic.com') : hostOf(llmConfig.baseURL),
+      hasKey: claude ? true : !!llmConfig.apiKey,
       ...this.state,
     };
   }

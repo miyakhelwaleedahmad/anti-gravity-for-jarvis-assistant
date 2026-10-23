@@ -1,4 +1,4 @@
-import { llmConfig } from "../config/llmconfig.js";
+import { llmConfig, type LLMConfig } from "../config/llmconfig.js";
 import { groqProvider } from "./groqProvider.js";
 import { openaiProvider } from "./openaiProvider.js";
 import { anthropicProvider } from "./anthropicProvider.js";
@@ -31,6 +31,30 @@ export function redactRequest(request: ILLMRequest): ILLMRequest {
 }
 
 /**
+ * The model to send to `provider`. Callers ask for llmConfig.model (the
+ * brain) or llmConfig.fastModel; with Claude as the primary those become
+ * Claude's brain and fast models, and on failover to Gemini or Groq a Claude
+ * model goes back to that provider's own. Any other model is sent as asked.
+ */
+export function modelFor(provider: string, model: string | undefined, cfg: Pick<LLMConfig, "primary" | "anthropic" | "model" | "fastModel"> = llmConfig): string | undefined {
+  const claude = cfg.primary === "anthropic" ? cfg.anthropic : undefined;
+  if (!claude) return model;
+  const isClaude = !!model && /^claude/i.test(model);
+  if (provider === "anthropic") {
+    if (isClaude) return model;
+    return model === cfg.fastModel ? claude.fastModel : claude.model;
+  }
+  if (isClaude) return model === claude.fastModel ? cfg.fastModel : cfg.model;
+  return model;
+}
+
+function withModel(request: ILLMRequest, model: string | undefined): ILLMRequest {
+  if (model === request.model) return request;
+  const { model: _drop, ...rest } = request;
+  return model ? { ...rest, model } : rest;
+}
+
+/**
  * Routes LLM calls to a provider, with ordered failover.
  *
  * Only one provider was ever registered, so any Groq outage was a total
@@ -53,9 +77,16 @@ export class ModelRouter {
    *   provider ("groq" or "gemini"). Tests pass it explicitly so a key in the
    *   developer's .env cannot turn a unit test into a live API call.
    */
-  constructor(private readonly primary: string = llmConfig.provider) {
-    // One OpenAI-compatible client serves Groq or Gemini; see config/llmconfig.ts.
-    this.providers.set(primary, groqProvider);
+  constructor(private readonly primary: string = llmConfig.primary) {
+    if (primary === "anthropic") {
+      // Claude first (JARVIS_LLM_PROVIDER=anthropic); Gemini or Groq is its
+      // fallback, with that provider's own models (modelFor), when it has a key.
+      this.providers.set("anthropic", anthropicProvider);
+      if (llmConfig.apiKey) this.providers.set(llmConfig.provider, groqProvider);
+    } else {
+      // One OpenAI-compatible client serves Groq or Gemini; see config/llmconfig.ts.
+      this.providers.set(primary, groqProvider);
+    }
     this.providers.set("openai", openaiProvider);
     // Reached only through a category that names it (JARVIS_MODEL_<CATEGORY>=anthropic…).
     this.namedOnly.set("anthropic", anthropicProvider);
@@ -124,6 +155,10 @@ export class ModelRouter {
         completionTokens: response?.usage?.completionTokens ?? null,
         ...(err ? { error: redact(String((err as Error)?.message ?? err)).slice(0, 200) } : {}),
       });
+      // One line per call with its token counts ("?" when the provider gives none).
+      const tok = (n: number | null | undefined) => (typeof n === "number" ? String(n) : "?");
+      console.log(`[LLM usage] ${provider} ${request.model ?? "(default model)"} ${request.category ?? "unspecified"}: ` +
+        `${tok(response?.usage?.promptTokens)} in / ${tok(response?.usage?.completionTokens)} out tokens, ${Date.now() - started} ms${ok ? "" : ", failed"}${streamed ? ", streamed" : ""}`);
     } catch { /* the record is optional; the call is not */ }
   }
 
@@ -174,15 +209,16 @@ export class ModelRouter {
         lastError = new Error(`LLM Provider '${name}' is not registered or supported.`);
         continue;
       }
+      const sent = withModel(request, modelFor(name, request.model));
       try {
-        const response = await provider.chat(request);
+        const response = await provider.chat(sent);
         if (name !== order[0]) {
           // Visible on the dashboard too (bridge/llmStatus.ts), not only in the log.
           const reason = (lastError as Error)?.message ?? "failed";
           console.warn(`[ModelRouter] ${order[0]} failed (${reason.slice(0, 120)}); answered by the fallback "${name}".`);
           llmStatus.recordFallback(order[0]!, name, reason);
         }
-        this.noteUsage(request, name, started, true, name !== order[0], false, response);
+        this.noteUsage(sent, name, started, true, name !== order[0], false, response);
         return response;
       } catch (err) {
         lastError = err;
@@ -224,15 +260,17 @@ export class ModelRouter {
 
     let yielded = false;
     const started = Date.now();
+    const sent = withModel(request, modelFor(selectedProviderName, request.model));
     try {
-      for await (const chunk of stream.call(provider, request)) {
+      for await (const chunk of stream.call(provider, sent)) {
         yielded = true;
         yield chunk;
       }
-      // A stream reports no token counts here: null, not 0.
-      this.noteUsage(request, selectedProviderName, started, true, false, true);
+      // Token counts when the provider reports them for a stream (Claude does); else null, not 0.
+      const usage = (provider as { lastStreamUsage?: ILLMResponse["usage"] | null }).lastStreamUsage;
+      this.noteUsage(sent, selectedProviderName, started, true, false, true, usage ? { content: "", usage } : undefined);
     } catch (err) {
-      if (yielded || request.signal?.aborted) this.noteUsage(request, selectedProviderName, started, false, false, true, undefined, err);
+      if (yielded || request.signal?.aborted) this.noteUsage(sent, selectedProviderName, started, false, false, true, undefined, err);
       // Mid-reply failures and cancellations are not retried: the caller has
       // already spoken part of the answer, or asked for it to stop.
       if (yielded || request.signal?.aborted) throw err;
