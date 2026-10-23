@@ -17,6 +17,7 @@
 import { healthManager, HealthSnapshot, ServiceStatus } from './healthManager.js';
 import { adaptiveRamManager } from '../core/adaptiveRamManager.js';
 import { nodeBridge } from '../bridge/nodeBridge.js';
+import { cacheStats } from '../memory/redisCache.js';
 
 // ─── Render helpers ───────────────────────────────────────────────────────────
 
@@ -55,6 +56,22 @@ function bar(used: number, total: number, width = 20): string {
   const empty  = width - filled;
   const color  = pct > 0.85 ? RED : pct > 0.65 ? YELLOW : GREEN;
   return `${color}${'█'.repeat(filled)}${DIM}${'░'.repeat(empty)}${RESET}`;
+}
+
+/**
+ * Both caches, each named (BUG-22). "Hit Ratio" was the in-process LRU's,
+ * which memory lookups do not use, so it stayed at 0.0% while the log showed
+ * Redis cache hits. "-" when a cache has not been asked yet.
+ */
+export function cacheHitsLabel(
+  lru: { totalHits: number; totalMisses: number },
+  redis: Record<string, { hits: number; misses: number }>,
+): string {
+  const ratio = (hits: number, total: number) => (total === 0 ? '-' : `${((hits / total) * 100).toFixed(1)}% (${hits}/${total})`);
+  let hits = 0;
+  let total = 0;
+  for (const c of Object.values(redis)) { hits += c.hits; total += c.hits + c.misses; }
+  return `Cache hits: Redis ${ratio(hits, total)}  in-process ${ratio(lru.totalHits, lru.totalHits + lru.totalMisses)}`;
 }
 
 function pad(s: string, len: number): string {
@@ -166,9 +183,9 @@ class RuntimeDashboard {
     
     // Adaptive RAM Stats
     const ramStats = adaptiveRamManager.getStats();
-    const hitRatioPct = (ramStats.cacheHitRatio * 100).toFixed(1) + '%';
     const pressure = ramStats.pressureLevel;
-    lines.push(`${CYAN}│${RESET}    RSS: ${BLUE}${m.rssMB} MB${RESET}  Hit Ratio: ${GREEN}${hitRatioPct}${RESET}  Pressure: ${CYAN}${pressure}${RESET}${' '.repeat(15)}${CYAN}│${RESET}`);
+    lines.push(`${CYAN}│${RESET}    RSS: ${BLUE}${pad(`${m.rssMB} MB`, 10)}${RESET}  Pressure: ${CYAN}${pad(String(pressure), 29)}${RESET}${CYAN}│${RESET}`);
+    lines.push(`${CYAN}│${RESET}    ${GREEN}${pad(cacheHitsLabel(ramStats, cacheStats()), 56)}${RESET}${CYAN}│${RESET}`);
 
     lines.push(`${CYAN}├${'─'.repeat(60)}┤${RESET}`);
 
