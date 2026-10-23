@@ -11,6 +11,7 @@
  */
 
 import { agentStateMachine, AgentState, tryTransition } from './agentStateMachine.js';
+import { healthLedger, LEDGER_PIPELINES } from '../monitoring/healthLedger.js';
 
 export interface ListenSessionDeps {
   /** Who owns the microphone now ('STT', 'WAKE_WORD', 'NONE'). */
@@ -21,8 +22,15 @@ export interface ListenSessionDeps {
   log(event: string, reason: string): void;
 }
 
-/** Back to waiting for the wake word: mic freed, IDLE, wake word resumed. */
-export function endListening(reason: string, deps: ListenSessionDeps): void {
+/**
+ * Back to waiting for the wake word: mic freed, IDLE, wake word resumed.
+ * `stuck`: STT never answered (the LISTENING watchdog fired). That is a fault
+ * the health check must see (BUG-4: it read all green for the 15 minutes
+ * JARVIS was deaf), so it is recorded as a failed STT outcome; the dashboard
+ * then shows STT degraded. Silence from the owner (stt_no_speech) is not.
+ */
+export function endListening(reason: string, deps: ListenSessionDeps, stuck = false): void {
+  if (stuck) healthLedger.record(LEDGER_PIPELINES.stt, false, 'listening timed out: STT sent no transcript and no "no speech"');
   deps.setListening(false);
   if (deps.micOwner() === 'STT') deps.releaseSttMic(reason);
   deps.log('STT_NO_SPEECH', reason);

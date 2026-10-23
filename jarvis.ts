@@ -556,13 +556,13 @@ async function startJarvis() {
      * stayed LISTENING, STT kept the mic and the wake word stayed paused, so
      * JARVIS was deaf until something unrelated resumed it (BUG-1).
      */
-    const endListening = (reason: string): void => endListeningSession(reason, {
+    const endListening = (reason: string, stuck = false): void => endListeningSession(reason, {
       micOwner: () => _micOwner,
       releaseSttMic: (why) => releaseMic(MicOwner.STT, why),
       setListening: (on) => { isSttListening = on; },
       resumeWakeWord: () => nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } }),
       log: (event, why) => sttJsLog(event, '', why),
-    });
+    }, stuck);
 
     nodeBridge.on('stt_no_speech', (msg) => {
       const reason = String((msg.payload as any)?.reason ?? 'no_speech').slice(0, 60);
@@ -783,13 +783,16 @@ async function startJarvis() {
 
     agentStateMachine.on('watchdog_reset', (data) => {
       console.log(`[JARVIS] Watchdog reset from ${data.fromState} (${data.reason}) — resuming mic & draining queue.`);
-      if (data.fromState === AgentState.LISTENING) endListening('listening_watchdog');
+      if (data.fromState === AgentState.LISTENING) endListening('listening_watchdog', true);
       nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
       drainVoiceInputQueue();
     });
 
     agentStateMachine.on('state_changed', (state) => {
       if (state === AgentState.IDLE) {
+        // BUG-4: in IDLE nobody listens through STT; a mic STT still holds is stale
+        // (the owner's log: "WAKE_WORD tried to take mic but it is owned by STT").
+        if (_micOwner === MicOwner.STT && !isSttListening) releaseMic(MicOwner.STT, 'idle_guard');
         // Safety guard: ensure mic is resumed when system enters IDLE
         nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
         drainVoiceInputQueue();

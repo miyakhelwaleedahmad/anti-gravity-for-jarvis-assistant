@@ -108,5 +108,30 @@ console.log('\n--- 3. jarvis.ts wiring ---');
   ok('a LISTENING watchdog reset ends the session (mic freed, not only the wake word resumed)', /on\('watchdog_reset'[\s\S]{0,300}AgentState\.LISTENING\) endListening\(/.test(src));
 }
 
+// ── 4. Health sees a stuck session (BUG-4) ───────────────────────────────────
+console.log('\n--- 4. Health ---');
+{
+  const { healthLedger, LEDGER_PIPELINES } = await import('../monitoring/healthLedger.js');
+  const { healthManager } = await import('../monitoring/healthManager.js');
+  const { nodeBridge } = await import('../bridge/nodeBridge.js');
+  const bridge = nodeBridge as any;
+  const realReady = bridge.readyClients;
+  bridge.readyClients = new Map([['stt', { readyState: 1 }], ['tts', { readyState: 1 }], ['wakeword', { readyState: 1 }]]);
+  healthLedger.record(LEDGER_PIPELINES.stt, true, 'transcript produced');
+  toIdle();
+  agentStateMachine.transition(AgentState.LISTENING);
+  endListening('stt_vad_rejected', deps('STT').d);
+  { const s0 = healthLedger.status(LEDGER_PIPELINES.stt, ['stt', 'wakeword']); ok('the owner staying silent is not a fault', s0.state === 'healthy', `${s0.state}: ${s0.detail}`); }
+  agentStateMachine.transition(AgentState.LISTENING);
+  endListening('listening_watchdog', deps('STT').d, true);
+  const st = healthLedger.status(LEDGER_PIPELINES.stt, ['stt', 'wakeword']);
+  ok('a session STT never answered is recorded as a failed STT outcome', st.state === 'degraded' || st.state === 'failing', `${st.state}: ${st.detail}`);
+  const snap = await healthManager.probe();
+  ok('…and the dashboard shows STT degraded, not online', snap.services.stt?.status === 'degraded', `${snap.services.stt?.status}: ${snap.services.stt?.detail}`);
+  bridge.readyClients = realReady;
+  const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'jarvis.ts'), 'utf8');
+  ok('jarvis.ts frees a stale STT mic whenever JARVIS goes IDLE', /state === AgentState\.IDLE[\s\S]{0,400}_micOwner === MicOwner\.STT && !isSttListening\) releaseMic/.test(src));
+}
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);
