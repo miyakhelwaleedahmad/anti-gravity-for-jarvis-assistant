@@ -19,6 +19,7 @@
 import { nodeBridge } from '../bridge/nodeBridge.js';
 import { orchestrator } from '../core/orchestrator.js';
 import { agentStateMachine, AgentState } from '../core/agentStateMachine.js';
+import { toolRegistryV2 } from '../core/toolRegistryV2.js';
 
 let passed = 0;
 let failed = 0;
@@ -107,6 +108,18 @@ async function runTests() {
 
   assert(sent.stt.length > 0 || true, 'sendListenStart called (STT was ready)');
 
+  // open_app is a dry run: the route, risk engine and skill run for real, but
+  // the skill stops before launching the browser (this test used to open
+  // YouTube twice on every run).
+  const openAppResults: { target: unknown; success: boolean; output: string }[] = [];
+  const originalExecute = toolRegistryV2.execute.bind(toolRegistryV2);
+  (toolRegistryV2 as any).execute = async (name: string, args: Record<string, unknown>, signal?: AbortSignal) => {
+    if (name !== 'open_app') return originalExecute(name, args, signal);
+    const result = await originalExecute(name, { ...args, dryRun: true }, signal);
+    openAppResults.push({ target: args['target'], success: result.success, output: String(result.output) });
+    return result;
+  };
+
   // ── Test: stt_result → orchestrator.process() ─────────────────────────────
   origLog('\n--- Test: stt_result "open YouTube for me" ---');
 
@@ -157,6 +170,15 @@ async function runTests() {
   assert(
     logContains('open_app') || logContains('Executing'),
     'open_app tool was invoked'
+  );
+  (toolRegistryV2 as any).execute = originalExecute;
+  assert(
+    openAppResults.length === 2 && openAppResults.every((r) => r.target === 'youtube' && r.success),
+    'open_app ran for "youtube" once per request'
+  );
+  assert(
+    openAppResults.every((r) => /"dryRun":\s*true/.test(r.output)),
+    'open_app was a dry run (no browser launched)'
   );
 
   // ── Summary ───────────────────────────────────────────────────────────────

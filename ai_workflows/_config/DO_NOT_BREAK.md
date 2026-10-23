@@ -111,7 +111,7 @@ All of the following must remain green after any change:
 
 ```
 tests/nodeBridgeSingletonTest.ts    → 9/9 PASS
-tests/voiceRouteMockTest.ts         → 9/9 PASS
+tests/voiceRouteMockTest.ts         → 11/11 PASS
 tests/interruptGatingTest.ts        → 3/3 PASS
 tests/openAppSmokeTest.ts youtube   → PASS
 tests/openAppSmokeTest.ts notepad   → PASS
