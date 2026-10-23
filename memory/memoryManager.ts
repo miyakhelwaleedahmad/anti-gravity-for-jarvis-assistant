@@ -35,7 +35,6 @@ import {
   cacheRecentMessages,
   getCachedRecentMessages,
   cacheEmbedding,
-  getCachedEmbedding
 } from "./redisCache.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -356,11 +355,9 @@ export class MemoryManager {
    *   which silently dropped results after any normalisation drift (JARVIS-003).
    */
   async embed(text: string, factId?: string): Promise<number[]> {
-    const cached = await getCachedEmbedding(text);
-    if (cached) {
-      console.log(`[Memory] Redis cache hit for embedding: "${text.slice(0, 40)}"`);
-      return cached;
-    }
+    // Always sent to the service: the POST is what stores the vector. A Redis
+    // cache hit used to return here, so after the first run a rebuild said
+    // "embedded 45/45" while the store held 3 vectors (BUG-14).
     const res = await this.vectorRequest('embed', { text, ...(factId ? { fact_id: factId } : {}) });
     if (res?.embedding) {
       cacheEmbedding(text, res.embedding).catch(() => {});
@@ -460,7 +457,16 @@ export class MemoryManager {
       };
 
       await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, () => worker()));
-      console.log(`[Memory] Vector rebuild summary: embedded ${embedded}/${candidates.length} selected facts.`);
+      // Written to disk now, not after the next 10 writes (BUG-14: the next
+      // start found no_store_on_disk and rebuilt everything again).
+      let stored = '?';
+      try {
+        if (embedded > 0) await this.vectorRequest('persist', {});
+        stored = String((await this.vectorRequest('stats', {}))?.count ?? '?');
+      } catch (err) {
+        console.warn(`[Memory] Vector store not saved after the rebuild: ${err instanceof Error ? err.message : err}`);
+      }
+      console.log(`[Memory] Vector rebuild summary: embedded ${embedded}/${candidates.length} selected facts; the store holds ${stored} vectors (duplicates are kept once).`);
     }, 500).unref?.();
   }
 
