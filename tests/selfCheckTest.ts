@@ -73,6 +73,13 @@ const expect: [string, string | null][] = [
   ['are you stuck', 'investigate_stuck'],
   ['what are you waiting for', 'investigate_stuck'],
   ['why is this taking so long', 'investigate_stuck'],
+  // BUG-12: the owner's words in the 13:19 log, answered from the real state.
+  ['why you are not responding to my voice', 'investigate_stuck'],
+  ['why are you not responding', 'investigate_stuck'],
+  ['why dont you respond to me', 'investigate_stuck'],
+  ["why don't you listen to my commands", 'investigate_stuck'],
+  ['why is jarvis not listening anymore', 'investigate_stuck'],
+  ['why is the browser not responding', null],     // about another program
   // Negatives and near misses: not a self-check.
   ["don't check yourself", null],
   ['do not run a self check', null],

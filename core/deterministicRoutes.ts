@@ -93,6 +93,10 @@ const REPAIR_REPORT: readonly RegExp[] = [
 ];
 const STUCK_QUESTION: readonly RegExp[] = [
   /^why (?:are|r) (?:you|u) (?:stuck|frozen|hanging|hung|so slow|taking so long|not responding|not answering|waiting)$/,
+  // BUG-12: as spoken, "why you are not responding to my voice": answered from
+  // the real state (investigate_stuck), not with invented reasons.
+  /^why (?:are you|you are|r u|u r|are u|you r|is jarvis|jarvis is) (?:not |no longer )(?:responding|answering|listening|replying|hearing me)(?: to (?:me|my voice|my commands?|what i say))?(?: anymore| now)?$/,
+  /^why (?:dont|don't|do not|didnt|didn't|did not|wont|won't) (?:you|u) (?:respond|answer|listen|reply|hear me)(?: to (?:me|my voice|my commands?|what i say))?(?: anymore| now)?$/,
   // normalizeVoiceInput drops a trailing "for": "what are you waiting for" arrives as "… waiting".
   /^(?:what are you|what r u|are you) (?:stuck on|waiting for|waiting|stuck)$/,
   /^(?:are you|r u) (?:stuck|frozen|hanging|hung)$/,
