@@ -47,6 +47,28 @@ function recallable(f: { source?: string }): boolean {
   return f.source !== 'agent_failure';
 }
 
+/** JARVIS_VECTOR_SEARCH_BUDGET_MS (default 1500, 100–10000): how long a search waits for the vector service. */
+export function vectorSearchBudgetMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env['JARVIS_VECTOR_SEARCH_BUDGET_MS']);
+  return Number.isFinite(n) && n >= 100 && n <= 10_000 ? n : 1500;
+}
+
+/** The result, or [] when it takes longer than `ms` (the request is left to finish). */
+async function withinBudget<T>(p: Promise<T[]>, ms: number): Promise<T[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<T[]>((resolve) => {
+    timer = setTimeout(() => {
+      console.log(`[Memory] Vector search took over ${ms} ms; using keyword search.`);
+      resolve([]);
+    }, ms);
+  });
+  try {
+    return await Promise.race([p, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface MemoryEntry {
@@ -466,7 +488,9 @@ export class MemoryManager {
         }
       };
 
-      await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, () => worker()));
+      // One at a time: the service encodes one text at a time anyway, and three
+      // queued writes made a planning search wait behind them (BUG-16).
+      await worker();
       // Written to disk now, not after the next 10 writes (BUG-14: the next
       // start found no_store_on_disk and rebuilt everything again).
       let stored = '?';
@@ -897,9 +921,11 @@ export class MemoryManager {
 
     // ── Cache miss: run full vector + lexical search ──────────────────────
 
-    // 1. Vector Search
+    // 1. Vector Search, within a time budget: a busy or slow service (a
+    // rebuild, a slow CPU) falls back to keywords instead of holding up
+    // planning (BUG-16).
     try {
-      const vectorResults = await this.searchVector(query, topK);
+      const vectorResults = await withinBudget(this.searchVector(query, topK), vectorSearchBudgetMs());
       if (vectorResults && vectorResults.length > 0) {
         for (const vr of vectorResults) {
           // Prefer the stable id; fall back to exact text for vectors embedded

@@ -42,8 +42,21 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import numpy as np
 
-logging.basicConfig(level=logging.INFO, format="[VectorMemory] %(message)s")
+# The level is in each line so the supervisor can tell an error from an INFO
+# line that merely quotes a fact containing "failed" (BUG-16).
+logging.basicConfig(level=logging.INFO, format="[VectorMemory] %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
+
+
+class _NoProbeAccessLog(logging.Filter):
+    """Drop uvicorn's access line for /health and /liveness: the supervisor
+    polls them every 300 ms while the model loads (minutes on a slow PC)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not any(p in record.getMessage() for p in ('"GET /health ', '"GET /liveness '))
+
+
+logging.getLogger("uvicorn.access").addFilter(_NoProbeAccessLog())
 # huggingface_hub logs every HTTP request at INFO through httpx — dozens of
 # "HTTP Request: HEAD https://huggingface.co/..." lines on each startup.
 for _noisy in ("httpx", "httpcore", "huggingface_hub", "urllib3"):

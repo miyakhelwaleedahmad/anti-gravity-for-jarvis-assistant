@@ -142,6 +142,9 @@ jobs:
       - name: Vector service refuses callers without the token (SEC-18)
         run: python tests/python/test_vector_access.py
 
+      - name: Vector service log names levels, no health-poll access lines (BUG-16)
+        run: python tests/python/test_vector_logs.py
+
       - name: TTS synthesis retry tells JARVIS it needs more time
         run: python tests/python/test_tts_retry_delay.py
       - name: TTS audio device failure (VOICE-004)

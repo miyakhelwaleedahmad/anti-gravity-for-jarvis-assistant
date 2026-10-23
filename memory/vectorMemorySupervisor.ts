@@ -81,6 +81,9 @@ const RETRY_BATCH_SIZE      = 32;
  * are errors.
  */
 export function isVectorErrorLine(line: string): boolean {
+  // vectorMemory.py and uvicorn name the level: "Stored: 'Failed task …'" at
+  // INFO quotes a fact, it is not a failure (BUG-16).
+  if (/^\[VectorMemory\] (?:DEBUG|INFO|WARNING)\b|^(?:DEBUG|INFO|WARNING):\s/.test(line)) return false;
   // "Error\b" without a leading boundary also catches ModuleNotFoundError: etc.
   return /ERROR|CRITICAL|Traceback|Exception\b|Error\b|\b[Ff]ailed\b/.test(line);
 }
