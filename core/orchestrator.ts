@@ -361,7 +361,7 @@ export class JarvisOrchestrator {
         return null;
       })),
     } : null;
-    if (goals && ACTION_REQUEST.test(input)) {
+    if (goals && (ACTION_REQUEST.test(input) || TASK_REQUEST.test(input))) {
       goals.ensure();
     } else if (!goals) {
       console.log('[Orchestrator] Skipping GoalManager for simple/deterministic request.');
@@ -2239,6 +2239,14 @@ function stepLabel(node: { tool: string; args?: Record<string, unknown> }): stri
 /** What one request's agent loop reports back for its goal. */
 /** A request to do something (as opposed to conversation). */
 const ACTION_REQUEST = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i;
+
+/**
+ * Work the owner asks for in other words ("figure out why X fails and plan
+ * the next steps"): a goal from the start, as an action request gets, even
+ * when the answer is given in words (BUG-10 follow-up). Not used to decide
+ * whether a plan without tools failed; ACTION_REQUEST does that.
+ */
+const TASK_REQUEST = /\b(plan|figure out|fix|debug|investigate|diagnose|research|analy[sz]e|install|update|download|send|schedule|remind)\b/i;
 
 /** The request's goal, created on first need (BUG-10). */
 interface GoalHandle {

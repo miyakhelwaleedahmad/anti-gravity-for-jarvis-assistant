@@ -75,6 +75,13 @@ await settle();
 const f = goalFor('open the quarterly report') as any;
 ok('an action request still gets a goal, and its failure is recorded as before', !!f && (f.status === 'failed' || f.status === 'retry'), String(f?.status));
 
+next = { content: 'The press fails because the roller is worn, sir. Next: replace it, test, and log the result.' };
+const work = 'figure out why my printing press project keeps failing and plan the next three steps';
+await orchestrator.process(work, 'cli');
+await settle();
+const w = goalFor(work) as any;
+ok('work asked for in other words ("figure out … and plan") gets a goal, even answered in words', !!w && w.status === 'completed', String(w?.status));
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 try { await memoryManager.flush(); } catch { /* best effort */ }
 process.chdir(os.tmpdir());

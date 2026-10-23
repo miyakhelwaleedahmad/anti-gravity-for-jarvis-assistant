@@ -143,11 +143,14 @@ ok('the request reached the LLM', sent.length >= 1);
 ok('…without the token or password', leaks(userRequests).length === 0 && userRequests.includes('[REDACTED:'), leaks(userRequests).map((s) => s.slice(0, 6)).join(','));
 const history = memoryManager.getConversationHistory(20).map((m) => m.content).join('\n');
 ok('conversation memory has the message, without them', history.includes('my github token is') && leaks(history).length === 0);
+// Conversation creates no goal (BUG-10); a request to do something does.
+plans = [[]];
+await orchestrator.process(`set this in my notes: my github token is ${GITHUB} and the wifi password: ${PASSWORD}`, 'cli');
 const { goalManager } = await import('../core/goalManager.js');
 await goalManager.flush();
 const goalsFile = path.join(workspace, 'data', 'runtime', 'goals.json');
 const goalsText = fs.existsSync(goalsFile) ? fs.readFileSync(goalsFile, 'utf8') : '';
-ok('the goal file has the request, without them', goalsText.includes('my github token is') && leaks(goalsText).length === 0);
+ok('the goal file has the request, without them', goalsText.includes('set this in my notes: my github token is') && leaks(goalsText).length === 0);
 
 console.log('\n--- 3. Memory ---');
 const saved = await toolRegistryV2.execute('save_relation', { entity1: 'User', relation: 'HAS_TOKEN', entity2: GITHUB });
