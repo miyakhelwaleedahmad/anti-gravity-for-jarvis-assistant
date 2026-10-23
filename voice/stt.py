@@ -210,6 +210,21 @@ def _calibrate_energy() -> float:
         return _calibrated_energy
 
 
+def _startup_calibration(wait_s: float = 120.0) -> None:
+    """The room baseline (BUG-2), once the audio libraries are loaded; skipped
+    if a listen session already holds the mic (it calibrates itself)."""
+    if not _imports_ready_event.wait(timeout=wait_s) or sr is None:
+        return
+    if not stt_lock.acquire(blocking=False):
+        return
+    try:
+        _calibrate_energy()
+    except Exception as exc:
+        log.debug(f"[STT] Startup calibration skipped: {exc}")
+    finally:
+        stt_lock.release()
+
+
 VAD_FRAME_SAMPLES = 320     # 20 ms at 16 kHz
 VAD_MIN_VOICED_FRAMES = 5   # 100 ms of frames above the threshold
 
@@ -693,11 +708,10 @@ class STTEngine:
 
         # BUG-2: one ambient sample while nobody is talking to JARVIS, so the
         # first session's calibration (taken right after the wake word) has a
-        # room baseline to be checked against.
-        try:
-            await asyncio.to_thread(_calibrate_energy)
-        except Exception as exc:
-            log.debug(f"[STT] Startup calibration skipped: {exc}")
+        # room baseline to be checked against. In the background: it needs the
+        # audio libraries, which are still loading, and must not hold up the
+        # connection to NodeBridge.
+        self._startup_calibration_task = asyncio.create_task(asyncio.to_thread(_startup_calibration))
 
         while True:
             try:
