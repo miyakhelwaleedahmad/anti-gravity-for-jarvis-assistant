@@ -1,119 +1,75 @@
-# JARVIS_CURRENT_STATUS.md — Current System State
+# JARVIS_CURRENT_STATUS.md — Pointer to Current Status
 
-> Last updated: 2026-06-19
-> Do not treat this as a permanent record. Update after each verified session.
-
----
-
-## ⚠️ Active Known Issue
-
-```
-"Jarvis open YouTube for me" does not reliably open YouTube in the live voice runtime.
-```
-
-**Do not document this as fixed until live logs prove it.**
-
-This is not a test claim. It is not a smoke test claim.
-It requires real voice input → real browser opening → captured live runtime logs.
+> Updated: 2026-10-23, branch `claude/jarvis-repair`.
+> This file holds no live status of its own. It says where status lives
+> (`_config/SOURCES_OF_TRUTH.md`) and keeps dated snapshots below.
 
 ---
 
-## Intended Route
+## Where to look
 
-The correct behavior path for `"Jarvis open YouTube for me"` is:
-
-```
-Voice
-  → WakeWord (voice/wakeWords.py)
-    extracts inline command: "open YouTube for me"
-  → NodeBridge (bridge/nodeBridge.ts)
-    receives: stt_result { text: "open YouTube for me", role: "wakeword" }
-    forwards: orchestrator.process("open YouTube for me", "voice")
-  → Orchestrator (core/orchestrator.ts)
-    matchDeterministicCommand() → returns "youtube"
-    SKIPS LLM entirely
-  → ToolRegistryV2 (core/toolRegistryV2.ts)
-    executes: open_app { target: "youtube" }
-  → Automation Skill (skills/automation/skill.ts)
-    resolves: "youtube" → "https://www.youtube.com/"
-    runs: cmd.exe /c start "" "https://www.youtube.com/"
-  → Windows opens browser to YouTube
-  → NodeBridge → TTS
-    speaks: "Opening youtube for you, sir."
-```
+| Question | Source |
+|---|---|
+| What is failing at runtime now? | The issue store on the PC that runs JARVIS (`data/repairs/issues.json`), or ask JARVIS "show the repair report" |
+| Status of an audit finding (SEC-, REL-, ARCH-, …) | `docs/audit/JARVIS_REPAIR_CHECKLIST.md`; PC-nn and other IDs: `docs/remediation/REMEDIATION_TRACKER.md` |
+| What the 2026-10-23 log audit changed (BUG-1 to BUG-24) | `git log --grep=BUG-` on `claude/jarvis-repair` |
+| Latest test evidence | The run's `verification.md` (command, machine, output); see below for the last recorded run |
+| How tests are run | `_config/TEST_MATRIX.md` |
 
 ---
 
-## Target Behavior
+## Last recorded test evidence (2026-10-23)
 
-When the user says **"Jarvis open YouTube for me"**:
+Host: cloud Linux, Node 22, Redis running, at commit 27d74aa.
+**Not the owner's Windows PC.** A pass here is not a live voice,
+microphone, speaker or Windows check.
 
-1. Browser opens `https://www.youtube.com/`
-2. TTS speaks a confirmation
-3. Total time from wake word to browser: **under 100ms preferred**
-4. No LLM call is made (deterministic route)
-5. No illegal state machine transitions
+| Command | Result |
+|---|---|
+| `pnpm run typecheck` | 0 errors |
+| `pnpm test -- --ci` | 200 passed, 0 failed, 1 blocked, 9 skipped (exit code 1: blocked is not a pass) |
+| `pnpm test -- --only=docsHygieneTest,testScriptIsolationTest` | 2 passed |
 
----
-
-## Known Safe Rule
-
-> Do NOT use the LLM planner for `open youtube` commands.
-> It must always use the deterministic command routing path.
-
----
-
-## Do Not Claim 46ms Stable
-
-The 46ms figure was measured in a previous session.
-**Do not cite this figure as current** unless you have re-run the latency smoke test
-and live voice test in this exact runtime session.
-
-There is no isolated test for this timing: through the runner,
-latencySmokeTest sends "hello" only, and "open YouTube for me" through the
-orchestrator really opens YouTube. Do not run the test file directly
-(`npx tsx tests/latencySmokeTest.ts` is prohibited: it writes to JARVIS's real
-data). Re-verify live, with the owner:
-```
-Say: "Jarvis open YouTube for me"
-Confirm browser opens.
-Capture logs showing deterministic route fired.
-```
+Blocked: realTtsHandoffTest (needs a Python with pygame and websockets).
+Skipped: Windows-only, live-provider, `.venv`, bridge-token and
+PowerShell 7 tests; the runner prints each reason.
 
 ---
 
-## Git Safety Instructions
+## "Jarvis open YouTube for me" (voice route)
 
-Check current state before making any changes:
+Current status: **not established.** The 2026-06-19 snapshot below recorded
+it as not reliably working live; no live log since then confirms it fixed
+or still failing. Do not call it either until a live run says so.
 
-```powershell
-git status
-git log --oneline -5
-git branch --show-current
-```
+- Investigation: `_config/YOUTUBE_OPENAPP_INVESTIGATION.md` (marked OPEN).
+- Expected live log lines: `_config/VOICE_ROUTE_CONTRACT.md`.
+- Live procedure: `_config/TEST_MATRIX.md`, Live Runtime Verification.
 
-If a stable voice route has been verified and all tests pass, consider tagging it.
-**Do not create the tag automatically.** Ask the user first, then run:
-
-```powershell
-git tag stable-voice-openapp-v1
-```
-
-If no stable tag exists yet, that is acceptable. Stability must be earned through live verification, not assumed.
+Rules kept from that snapshot:
+- `open youtube` must use the deterministic route, never the LLM planner.
+- Do not cite the 46 ms / 47 ms timings: they are from a previous session.
+  There is no isolated test for this timing (through the runner,
+  latencySmokeTest sends "hello" only; "open YouTube for me" really opens
+  YouTube). Never run `npx tsx tests/latencySmokeTest.ts` directly. Re-verify
+  live, with the owner: say "Jarvis open YouTube for me", confirm the browser
+  opens, capture the logs showing the deterministic route.
+- Create a stable tag (e.g. `stable-voice-openapp-v1`) only after live
+  verification and only when the owner asks.
 
 ---
 
-## Last Known Test Results (Previous Session — NOT Current)
+## Snapshot: 2026-06-19 (history, not current)
 
-| Test | Result | Notes |
-|---|---|---|
-| `npx tsc --noEmit` | ✅ | 0 errors (previous session) |
-| `nodeBridgeSingletonTest.ts` | ✅ | 9/9 (previous session) |
-| `voiceRouteMockTest.ts` | ✅ | 9/9 (previous session) |
-| `interruptGatingTest.ts` | ✅ | 3/3 (previous session) |
-| `openAppSmokeTest.ts youtube` | ✅ | (previous session) |
-| `deterministicCommandRouteTest.ts` | ✅ | 39/39 after security fix (previous session) |
-| `latencySmokeTest.ts` | ✅ | 47ms (previous session) |
-| **Live voice test** | ⚠️ | **NOT confirmed in current session** |
+Known issue then: "Jarvis open YouTube for me" did not reliably open YouTube
+in the live voice runtime. Intended route: wake word (`voice/wakeWords.py`)
+→ NodeBridge `stt_result` → `orchestrator.process()` → deterministic route
+`open_app { target: "youtube" }` → `skills/automation/skill.ts` →
+`https://www.youtube.com/` in the browser → spoken confirmation, with no LLM
+call and no illegal state transition.
 
-> Previous session results are reference only. Re-run all tests before claiming stability.
+Test results recorded then (previous session, not re-run as written):
+type check 0 errors; nodeBridgeSingletonTest 9/9; voiceRouteMockTest 9/9;
+interruptGatingTest 3/3; openAppSmokeTest youtube passed;
+deterministicCommandRouteTest 39/39; latencySmokeTest 47 ms; live voice test
+not confirmed.
