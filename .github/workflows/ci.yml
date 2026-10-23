@@ -148,6 +148,8 @@ jobs:
         run: python tests/python/test_tts_audio_device.py
       - name: Offline TTS fallback when edge-tts fails (VOICE-003)
         run: python tests/python/test_tts_fallback.py
+      - name: edge-tts 403 skipped, offline voice kept warm (BUG-5, BUG-6)
+        run: python tests/python/test_tts_edge_skip.py
       - name: Every STT listen session ends with a message (BUG-1)
         run: python tests/python/test_stt_session_end.py
       - name: STT calibration capped by the room baseline (BUG-2)

@@ -37,7 +37,9 @@ import base64
 import json
 import logging
 import os
+import queue
 import subprocess
+import threading
 import time
 import tempfile
 import warnings
@@ -67,6 +69,9 @@ TTS_POLL_INTERVAL = float(os.environ.get("JARVIS_TTS_POLL_INTERVAL", "0.02"))
 TTS_MIXER_RETRY_S = float(os.environ.get("JARVIS_TTS_MIXER_RETRY_S", "10"))
 # The longest an offline voice may take to write one phrase (VOICE-003).
 TTS_FALLBACK_TIMEOUT = float(os.environ.get("JARVIS_TTS_FALLBACK_TIMEOUT", "20"))
+# BUG-5: after edge-tts is refused (HTTP 403) or fails twice running, it is
+# skipped for this long instead of costing ~4 s on every sentence.
+TTS_EDGE_SKIP_S = max(0.0, float(os.environ.get("JARVIS_TTS_EDGE_SKIP_S", "600")))
 
 # Phase 4: Base acoustic settling gap (ms). Actual gap = base + 15ms×words, capped at max.
 TTS_POST_PLAY_BASE_MS = float(os.environ.get("JARVIS_TTS_POST_PLAY_BASE_MS", "100"))
@@ -133,16 +138,77 @@ def _speak_windows_sapi(text: str, path: str) -> bool:
     return _has_audio(path)
 
 
+class _WarmPyttsx3:
+    """
+    One pyttsx3 engine, kept on its own thread (BUG-6). It was created for
+    every sentence (the first use also generated the comtypes wrappers), and
+    the mic waited 36-79 s per reply. SAPI's COM objects must stay on the
+    thread that made them, so every phrase goes through this one thread.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._thread: Optional[threading.Thread] = None
+        self._jobs: "queue.Queue" = queue.Queue()
+        self._ready = threading.Event()
+        self._failed = ""
+
+    def start(self) -> None:
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._ready.clear()
+            self._failed = ""
+            self._jobs = queue.Queue()
+            self._thread = threading.Thread(target=self._loop, args=(self._jobs,), name="pyttsx3-voice", daemon=True)
+            self._thread.start()
+
+    def _loop(self, jobs: "queue.Queue") -> None:
+        t0 = time.time()
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+        except Exception as exc:
+            self._failed = str(exc) or type(exc).__name__
+            log.error(f"pyttsx3 could not start: {self._failed}")
+            self._ready.set()
+            return
+        log.info(f"Offline voice pyttsx3 ready in {time.time() - t0:.1f}s (kept warm).")
+        self._ready.set()
+        while True:
+            job = jobs.get()
+            if job is None:
+                return
+            text, path, done, result = job
+            try:
+                engine.save_to_file(text, path)
+                engine.runAndWait()
+                result.append(_has_audio(path))
+            except Exception as exc:
+                log.error(f"pyttsx3 fallback failed: {exc}")
+                result.append(False)
+            done.set()
+
+    def speak(self, text: str, path: str, timeout: float) -> bool:
+        self.start()
+        if not self._ready.wait(timeout) or self._failed:
+            return False
+        done, result = threading.Event(), []
+        jobs = self._jobs
+        jobs.put((text, path, done, result))
+        if not done.wait(timeout):
+            log.error(f"pyttsx3 took longer than {timeout:.0f}s; a fresh engine is started for the next phrase.")
+            with self._lock:
+                self._thread = None   # the stuck thread is a daemon; it is left behind
+            return False
+        return bool(result and result[0])
+
+
+_warm_pyttsx3 = _WarmPyttsx3()
+
+
 def _speak_pyttsx3(text: str, path: str) -> bool:
-    try:
-        import pyttsx3
-        engine = pyttsx3.init()
-        engine.save_to_file(text, path)
-        engine.runAndWait()
-    except Exception as exc:
-        log.error(f"pyttsx3 fallback failed: {exc}")
-        return False
-    return _has_audio(path)
+    return _warm_pyttsx3.speak(text, path, TTS_FALLBACK_TIMEOUT)
 
 
 def _offline_voices() -> list:
@@ -153,14 +219,16 @@ def _offline_voices() -> list:
     if os.environ.get("JARVIS_TTS_FALLBACK", "auto").strip().lower() == "off":
         return []
     engines = []
-    if os.name == "nt":
-        engines.append(("windows-sapi", _speak_windows_sapi))
+    # BUG-6: the warm pyttsx3 engine first; the Windows voice through a new
+    # PowerShell per phrase (a 20 s cold start was seen) is the last resort.
     try:
         import importlib.util
         if importlib.util.find_spec("pyttsx3") is not None:
             engines.append(("pyttsx3", _speak_pyttsx3))
     except (ImportError, ValueError):
         pass
+    if os.name == "nt":
+        engines.append(("windows-sapi", _speak_windows_sapi))
     return engines
 
 
@@ -207,6 +275,10 @@ class TTSEngine:
         self._tmp_path: str = os.path.join(tempfile.gettempdir(), "jarvis_tts_audio.mp3")
         self._fallback_path: str = os.path.join(tempfile.gettempdir(), "jarvis_tts_fallback.wav")
         self._fallback_engines = _offline_voices()
+        # BUG-5: edge-tts refused or failing: skip it until this time (epoch s).
+        self._edge_failures = 0
+        self._edge_forbidden = False
+        self._edge_skip_until = 0.0
         if self._fallback_engines:
             log.info(f"Offline fallback voice(s): {', '.join(n for n, _ in self._fallback_engines)}")
         else:
@@ -390,6 +462,10 @@ class TTSEngine:
             except Exception as exc:
                 self._current_synth_task = None
                 log.error(f"Synthesis error on attempt {attempt}: {exc}")
+                if "403" in str(exc):
+                    # Refused, not slow: a retry gets the same answer (BUG-5).
+                    self._edge_forbidden = True
+                    return False
                 if attempt == 2:
                     return False
                 await self._send_lifecycle_event(
@@ -402,6 +478,23 @@ class TTSEngine:
                 return False
 
         return False
+
+    def _note_edge_result(self, ok: bool) -> None:
+        """Skip edge-tts for TTS_EDGE_SKIP_S after a 403 or two failures running (BUG-5)."""
+        if ok:
+            self._edge_failures = 0
+            self._edge_forbidden = False
+            return
+        if self._interrupt_flag:
+            return
+        self._edge_failures += 1
+        if (self._edge_forbidden or self._edge_failures >= 2) and TTS_EDGE_SKIP_S > 0:
+            self._edge_skip_until = time.time() + TTS_EDGE_SKIP_S
+            why = ("edge-tts was refused (HTTP 403): update it with  pip install -U edge-tts"
+                   if self._edge_forbidden else f"edge-tts failed {self._edge_failures} times running")
+            log.warning(f"{why}. Using the offline voice for the next {TTS_EDGE_SKIP_S / 60:.0f} min.")
+            self._edge_failures = 0
+            self._edge_forbidden = False
 
     async def _synthesize_fallback(self, text: str) -> str:
         """Try each offline voice; the name of the one that wrote audio, or ""."""
@@ -449,7 +542,11 @@ class TTSEngine:
             if self._interrupt_flag:
                 return
 
-            success = await self._synthesize_with_retry(text)
+            if time.time() < self._edge_skip_until:
+                success = False   # edge-tts is being skipped (BUG-5); straight to the offline voice
+            else:
+                success = await self._synthesize_with_retry(text)
+                self._note_edge_result(success)
             play_path, voice = self._tmp_path, ""
             if not success and not self._interrupt_flag:
                 voice = await self._synthesize_fallback(text)
@@ -527,6 +624,9 @@ class TTSEngine:
 
     async def run(self) -> None:
         self.running = True
+        # BUG-6: start the offline voice now, so the first fallback reply does not wait for it.
+        if any(name == "pyttsx3" for name, _ in self._fallback_engines):
+            _warm_pyttsx3.start()
         self._worker_task = asyncio.create_task(self._worker())
         _startup_deadline = time.time() + 30.0
 

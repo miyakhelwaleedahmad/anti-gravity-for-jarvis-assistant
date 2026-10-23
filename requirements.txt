@@ -3,7 +3,7 @@
 # Or inside venv: python -m pip install -r requirements.txt
 
 # ── Voice / Audio ─────────────────────────────────────────────────────────────
-edge-tts>=7.2.7,<8           # Microsoft neural TTS (tts.py); older versions get HTTP 403 (VOICE-003)
+edge-tts>=7.3.1,<8           # Microsoft neural TTS (tts.py); <=7.2.8 sends Sec-MS-GEC-Version=1-… and gets HTTP 403 (BUG-5)
 pygame>=2.6.0                # Audio playback for TTS output (tts.py)
 pyaudio>=0.2.14              # Microphone capture for STT and wake word
 SpeechRecognition>=3.10.0   # Wake word recognition + Google STT (wakeWords.py)

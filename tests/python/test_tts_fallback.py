@@ -213,6 +213,9 @@ async def scenarios():
     used.clear()
     EDGE["mode"] = "ok"
     e._fallback_engines = [("good", good)]
+    # The cases above failed edge-tts on purpose, so it is being skipped now
+    # (BUG-5, tests/python/test_tts_edge_skip.py); this case is about a working edge-tts.
+    e._edge_skip_until = 0.0
     ends = await turn(e, "Normal reply, sir.")
     ok("normal playback names edge-tts and does not touch the fallback", used == [] and ends and ends[0].get("engine") == "edge-tts", f"{used} {json.dumps(ends)}")
     EDGE["mode"] = "fail"
