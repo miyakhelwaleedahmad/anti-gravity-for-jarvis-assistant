@@ -69,12 +69,11 @@ The 46ms figure was measured in a previous session.
 **Do not cite this figure as current** unless you have re-run the latency smoke test
 and live voice test in this exact runtime session.
 
-To re-verify:
-```powershell
-npx tsx tests/latencySmokeTest.ts "open YouTube for me"
-```
-
-Then verify live:
+There is no isolated test for this timing: through the runner,
+latencySmokeTest sends "hello" only, and "open YouTube for me" through the
+orchestrator really opens YouTube. Do not run the test file directly
+(`npx tsx tests/latencySmokeTest.ts` is prohibited: it writes to JARVIS's real
+data). Re-verify live, with the owner:
 ```
 Say: "Jarvis open YouTube for me"
 Confirm browser opens.

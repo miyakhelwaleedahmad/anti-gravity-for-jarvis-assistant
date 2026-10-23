@@ -142,16 +142,18 @@ orchestrator.process()
 
 ## Test Requirements
 
-See `_config/TEST_MATRIX.md` for the full list. Minimum required before any patch:
+See `_config/TEST_MATRIX.md` for the full list. Minimum required before any patch
+(CMD or PowerShell; each test runs isolated, with its own empty data folder):
 
 ```powershell
-npx tsc --noEmit
-npx tsx tests/nodeBridgeSingletonTest.ts
-npx tsx tests/voiceRouteMockTest.ts
-npx tsx tests/interruptGatingTest.ts
-npx tsx tests/openAppSmokeTest.ts "youtube"
-npx tsx tests/deterministicCommandRouteTest.ts
+pnpm run typecheck
+pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTest,openAppSmokeTest,deterministicCommandRouteTest
 ```
+
+Never run a test file directly (`npx tsx tests/<name>.ts` is prohibited): it
+then writes to JARVIS's real memory, goals and logs. Live checks (apps,
+microphone, speakers, LLM) are separate and need the owner: see
+`_config/TEST_MATRIX.md`.
 
 ---
 

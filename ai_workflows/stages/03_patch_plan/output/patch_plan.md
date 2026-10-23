@@ -51,10 +51,15 @@
 ## Tests to Run After Implementation
 
 ```powershell
-npx tsc --noEmit
-npx tsx tests/[relevant-test].ts
-# ... list all applicable tests
+pnpm run typecheck
+pnpm test -- --only=[relevantTestA],[relevantTestB]
+# ... list all applicable tests (file names without .ts), then:
+pnpm test -- --ci
 ```
+
+Tests run through the runner only (each gets its own empty data folder);
+never `npx tsx tests/<name>.ts`. Live checks are listed separately, under
+Live Voice Verification below.
 
 ---
 

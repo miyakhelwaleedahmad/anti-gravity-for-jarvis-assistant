@@ -6,7 +6,7 @@ Confirm the change worked — with tests AND live runtime if required.
 ## What You Are Allowed to Do
 ```
 ✅ Run TypeScript compile check
-✅ Run all tests from _config/TEST_MATRIX.md
+✅ Run all tests from _config/TEST_MATRIX.md through the runner (`pnpm test`)
 ✅ Run live voice verification if the bug was voice-related
 ✅ Capture and paste real log output into output/verification.md
 ✅ Record honest pass/fail for every test
@@ -20,23 +20,24 @@ Confirm the change worked — with tests AND live runtime if required.
 ❌ Do not report "PASS" without running the actual command
 ❌ Do not claim a voice bug is fixed without live voice verification
 ❌ Do not skip the live test just because all mock tests pass
+❌ Do not run a test file directly (`npx tsx tests/<name>.ts`): it writes to JARVIS's real data
+❌ Do not start live checks (apps, microphone, speakers, LLM) without the owner present
 ```
 
 ## Required Test Run Order
 
-See `_config/TEST_MATRIX.md` for the full list. Minimum:
+See `_config/TEST_MATRIX.md` for the full list. Minimum (CMD or PowerShell;
+the runner gives each test its own empty data folder):
 
 ```powershell
-npx tsc --noEmit
-npx tsx tests/nodeBridgeSingletonTest.ts
-npx tsx tests/voiceRouteMockTest.ts
-npx tsx tests/interruptGatingTest.ts
-npx tsx tests/openAppSmokeTest.ts "youtube"
-npx tsx tests/openAppSmokeTest.ts "notepad"
-npx tsx tests/openAppSmokeTest.ts "cmd"
-npx tsx tests/latencySmokeTest.ts "open YouTube for me"
-npx tsx tests/deterministicCommandRouteTest.ts
+pnpm run typecheck
+pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTest,openAppSmokeTest,latencySmokeTest,deterministicCommandRouteTest
+pnpm test -- --ci
 ```
+
+The runner checks open_app for "youtube" in dry-run mode only. The "notepad"
+and "cmd" variants and the timing of "open YouTube for me" are not covered by
+an isolated test; "open YouTube for me" is checked live (below), with the owner.
 
 ## Live Voice Verification (Required for Voice Bugs)
 
@@ -56,8 +57,9 @@ npx tsx tests/deterministicCommandRouteTest.ts
 
 | Test | Expected | Actual Result | Status |
 |---|---|---|---|
-| npx tsc --noEmit | 0 errors | [paste] | ✅/❌ |
-| nodeBridgeSingletonTest.ts | 9/9 | [paste] | ✅/❌ |
+| pnpm run typecheck | 0 errors | [paste] | ✅/❌ |
+| pnpm test -- --only=… (list above) | all PASS | [paste runner lines] | ✅/❌ |
+| pnpm test -- --ci | 0 FAIL | [paste summary line; list SKIPPED/BLOCKED] | ✅/❌ |
 ...
 
 ## Live Voice Test

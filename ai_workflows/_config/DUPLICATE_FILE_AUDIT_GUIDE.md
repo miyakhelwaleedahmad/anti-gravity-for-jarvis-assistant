@@ -36,24 +36,30 @@ Select-String -Path ".\**\*.ts" -Pattern "\.py"    -ErrorAction SilentlyContinue
 
 ```powershell
 git status
-git add .
-git commit -m "checkpoint before duplicate file archive audit"
 ```
 
-After any approved archive action, run:
+Commit only the tracked changes you made, by name (`git add -- <file> ...`).
+Never `git add .` or `git add -A`: the owner keeps untracked personal files
+and runtime data in the working tree (notes, `data/brain/`), which must not be
+staged.
+
+After any approved archive action, run (each test isolated by the runner):
 
 ```powershell
-npx tsc --noEmit
-npx tsx tests/nodeBridgeSingletonTest.ts
-npx tsx tests/voiceRouteMockTest.ts
-npx tsx tests/openAppSmokeTest.ts "youtube"
-npx tsx tests/openAppSmokeTest.ts "notepad"
+pnpm run typecheck
+pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,openAppSmokeTest
 ```
 
-If any test fails → rollback immediately:
+Do not run test files directly (`npx tsx tests/<name>.ts` is prohibited: it
+writes to JARVIS's real data). The runner checks open_app for "youtube" in
+dry-run mode only; there is no isolated "notepad" case.
+
+If any test fails → put back only the files you moved:
 ```powershell
-git checkout -- .
+Move-Item "<archive path>" "<original path>"
 ```
+Never `git checkout -- .` or `git reset --hard`: they discard every
+uncommitted change in the working tree, not only yours.
 
 ---
 
@@ -308,9 +314,10 @@ Select-String found NO imports of these from any other file.
 ## Archive Procedure (When Approved)
 
 ```powershell
-# 1. Git checkpoint
-git add .
-git commit -m "checkpoint before duplicate file archive audit"
+# 1. Git checkpoint: only the tracked files you changed, by name
+git status
+# git add -- <file> ...    (never "git add ." or "git add -A")
+# git commit -m "checkpoint before duplicate file archive audit"
 
 # 2. Create archive folder
 New-Item -ItemType Directory -Path "_archive\manual_review\2026-06-19" -Force
@@ -318,13 +325,11 @@ New-Item -ItemType Directory -Path "_archive\manual_review\2026-06-19" -Force
 # 3. Move approved files (example — only run after human approval)
 # Move-Item "voice\wakeWord.py" "_archive\manual_review\2026-06-19\wakeWord.py"
 
-# 4. Run verification suite
-npx tsc --noEmit
-npx tsx tests/nodeBridgeSingletonTest.ts
-npx tsx tests/voiceRouteMockTest.ts
-npx tsx tests/openAppSmokeTest.ts "youtube"
-npx tsx tests/openAppSmokeTest.ts "notepad"
+# 4. Run verification suite (through the runner; never npx tsx tests/<name>.ts)
+pnpm run typecheck
+pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,openAppSmokeTest
 
-# 5. If tests fail → rollback
-git checkout -- .
+# 5. If tests fail → move back only the files you moved, e.g.
+# Move-Item "_archive\manual_review\2026-06-19\wakeWord.py" "voice\wakeWord.py"
+# (never "git checkout -- ." or "git reset --hard")
 ```

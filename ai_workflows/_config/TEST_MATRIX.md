@@ -2,128 +2,81 @@
 
 > Run these tests before and after every change to protected files.
 > Do not mark any bug fixed without passing the relevant tests AND live verification.
+> Commands below were checked against `package.json` and `tests/runAll.ts` on 2026-10-23.
+> Check them again before citing them; do not invent scripts.
 
 ---
 
-## Step 0 — Inspect package.json First
+## How tests must be run
 
-Before running tests, check what scripts are available:
+Always through the runner, `tests/runAll.ts` (`pnpm test`). It runs each test
+file as its own process with its own empty data folder (`JARVIS_DATA_ROOT` and
+the vector store), removed afterwards.
 
-```powershell
-cat package.json
-```
+**Prohibited:** running a test file directly (`npx tsx tests/<name>.ts`). Run
+that way, a test uses JARVIS's real data folder: `noThinkMemoryTest` wrote
+`memory/jarvis_memory.json`, `data/runtime/goals.json` and
+`data/episodes.jsonl` (see `tests/testScriptIsolationTest.ts`).
 
-Specifically look for:
-- `"test:voice-core"` — combined test runner
-- `"test:latency"` — latency smoke test alias
-- `"dev"` — main runtime starter
+| Purpose | Command (CMD or PowerShell) |
+|---|---|
+| Type check | `pnpm run typecheck` |
+| Named tests only | `pnpm test -- --only=nameA,nameB` (file names without `.ts`; an unknown name is an error) |
+| Tests whose name contains a word | `pnpm test -- --filter=word` |
+| Whole suite, skipping what this PC lacks | `pnpm test -- --ci` |
+| Voice core group | `pnpm test:voice-core` (type check, then 12 named tests) |
+| PC control group | `pnpm test:pc-control` (type check, then 17 named tests; see Windows note) |
+| Live provider tests | `pnpm test:live` (only when asked: needs an API key and the network, acts on this PC) |
 
-Do not invent scripts. Only use what actually exists in package.json.
-
----
-
-## Required Individual Tests
-
-Run in this order:
-
-### 1. TypeScript Compile Check
-```powershell
-npx tsc --noEmit
-```
-**Expected:** 0 errors, 0 warnings that indicate type unsafety  
-**Failure:** Any error output = stop, do not proceed
+The runner reports one line per file: PASS, FAIL, TIMEOUT, BLOCKED (its
+environment is missing; never a pass) or SKIPPED (a prerequisite this host
+lacks, or a live test not asked for). Report all of them, not only passes.
 
 ---
 
-### 2. NodeBridge Singleton Test
-```powershell
-npx tsx tests/nodeBridgeSingletonTest.ts
+## Required tests for voice-pipeline changes
+
+All run isolated through the runner; none opens an app or speaks:
+
 ```
-**Expected:** 9/9 PASS  
-**Tests:** Singleton identity, globalThis reference, idempotent start(), READY client registry, TTS queue, listen_start queue
+pnpm run typecheck
+pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTest,openAppSmokeTest,latencySmokeTest,deterministicCommandRouteTest
+```
+
+| Test | What it checks |
+|---|---|
+| `nodeBridgeSingletonTest` | one NodeBridge, idempotent start(), READY registry, TTS and listen_start queues |
+| `voiceRouteMockTest` | simulated wake word → STT → orchestrator → deterministic open_app |
+| `interruptGatingTest` | speech_detected accepted only while SPEAKING |
+| `openAppSmokeTest` | open_app resolves "youtube" in dry-run mode (nothing is opened) |
+| `latencySmokeTest` | one request ("hello", answered by the fixed greeting route) through the orchestrator |
+| `deterministicCommandRouteTest` | safe aliases match, unsafe input such as `launch cmd /c del *` does not |
+
+`pnpm test:voice-core` runs these plus six more voice tests.
+
+**Not covered by the runner:** `openAppSmokeTest` with "notepad" or "cmd",
+and `latencySmokeTest` with "open YouTube for me". These need command-line
+arguments, which the runner does not pass. The test files must not be
+run directly to get them. "open YouTube for me" through the orchestrator
+really opens YouTube, so it belongs to live verification below.
 
 ---
 
-### 3. Voice Route Mock Test
-```powershell
-npx tsx tests/voiceRouteMockTest.ts
-```
-**Expected:** 9/9 PASS  
-**Tests:** stt_result forwarding, orchestrator.process() called, deterministic pre-router fires, open_app invoked
+## Windows note (PC control group)
 
----
-
-### 4. Interrupt Gating Test
-```powershell
-npx tsx tests/interruptGatingTest.ts
-```
-**Expected:** 3/3 PASS  
-**Tests:** speech_detected ignored during PLANNING, ignored during EXECUTING, accepted only during SPEAKING
-
----
-
-### 5. Open App Smoke Tests
-```powershell
-npx tsx tests/openAppSmokeTest.ts "youtube"
-npx tsx tests/openAppSmokeTest.ts "notepad"
-npx tsx tests/openAppSmokeTest.ts "cmd"
-```
-**Expected:** Each resolves correctly and reports success  
-**Note:** This will actually open YouTube/Notepad/CMD on your machine
-
----
-
-### 6. Latency Smoke Test
-```powershell
-npx tsx tests/latencySmokeTest.ts "open YouTube for me"
-```
-**Expected:** Total request processing time under 100ms  
-**Target:** Under 60ms preferred (deterministic route bypasses LLM)
-
----
-
-### 7. Deterministic Command Route Test
-```powershell
-npx tsx tests/deterministicCommandRouteTest.ts
-```
-**Expected:** 39/39 PASS  
-**Tests:**
-- Section 1: 17 valid alias matches (youtube, google, notepad, cmd, etc.)
-- Section 2: 12 unsafe/unknown inputs correctly NOT matched
-- Section 3: open_app tool execution for safe targets
-- Section 4: Security boundary — 4 malicious inputs rejected
-
-⚠️ **CRITICAL:** Section 4 must always include `"launch cmd /c del *"` → null
-
----
-
-## Combined Test Script (if available in package.json)
-
-If `pnpm test:voice-core` exists in package.json, run:
-
-```powershell
-pnpm test:voice-core
-```
-
-If it does NOT exist in package.json, do not invent it.
-Report it as missing and run tests individually through the runner:
-`pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest`.
-Do not run `npx tsx tests/<name>.ts` directly: a test run that way uses
-JARVIS's real data folder (memory, goals, permission session); the runner
-gives each test its own empty one.
-
-**As of last verification, this script exists:**
-```json
-"test:voice-core": "tsc --noEmit && tsx tests/runAll.ts --only=nodeBridgeSingletonTest,voiceRouteMockTest,..."
-```
-Verify it still exists before citing it.
+On Windows, `pnpm test:pc-control` acts on the desktop: `appControlTest` starts
+and closes its own Notepad, and `processControlSafetyTest` asks to kill
+`notepad`, which the permission check is expected to refuse. Save any open
+Notepad work first. On other systems the Windows-only tests are BLOCKED or
+SKIPPED, which is not a pass.
 
 ---
 
 ## Live Runtime Verification
 
-For any voice pipeline bug, mock tests are NOT sufficient.
-You must verify with a real voice command:
+For any voice pipeline bug, mock tests are NOT sufficient. Live checks open
+apps, use the microphone and speakers, and may call the LLM: run them only
+when the owner is at the PC and agrees.
 
 ```
 1. Start JARVIS:
@@ -152,18 +105,13 @@ You must verify with a real voice command:
 
 ## Test Result Recording
 
-Record results in `stages/05_verification/output/verification.md`:
+Record results in `stages/05_verification/output/verification.md`, with the
+exact command, the machine (Windows PC or other), and the runner's output:
 
-| Test | Expected | Actual | Status | Notes |
-|---|---|---|---|---|
-| `npx tsc --noEmit` | 0 errors | ? | ? | |
-| `nodeBridgeSingletonTest.ts` | 9/9 | ? | ? | |
-| `voiceRouteMockTest.ts` | 9/9 | ? | ? | |
-| `interruptGatingTest.ts` | 3/3 | ? | ? | |
-| `openAppSmokeTest.ts youtube` | success | ? | ? | |
-| `openAppSmokeTest.ts notepad` | success | ? | ? | |
-| `openAppSmokeTest.ts cmd` | success | ? | ? | |
-| `latencySmokeTest.ts` | <100ms | ? | ? | |
-| `deterministicCommandRouteTest.ts` | 39/39 | ? | ? | |
-| `pnpm test:voice-core` | all pass | ? | ? | |
-| **Live voice test** | YouTube opens | ? | ? | |
+| Test | Command | Expected | Actual | Status | Notes |
+|---|---|---|---|---|---|
+| Type check | `pnpm run typecheck` | 0 errors | ? | ? | |
+| Voice tests | `pnpm test -- --only=…` (list above) | all PASS | ? | ? | |
+| Voice core group | `pnpm test:voice-core` | all PASS | ? | ? | |
+| Whole suite | `pnpm test -- --ci` | 0 FAIL; SKIPPED/BLOCKED listed | ? | ? | |
+| **Live voice test** | steps 1–6 above | YouTube opens | ? | ? | |
