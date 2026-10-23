@@ -153,6 +153,9 @@ jobs:
         run: python tests/python/test_tts_fallback.py
       - name: edge-tts 403 skipped, offline voice kept warm (BUG-5, BUG-6)
         run: python tests/python/test_tts_edge_skip.py
+
+      - name: TTS hides pygame's pkg_resources warning (BUG-23)
+        run: python tests/python/test_tts_pkg_resources_warning.py
       - name: Every STT listen session ends with a message (BUG-1)
         run: python tests/python/test_stt_session_end.py
 

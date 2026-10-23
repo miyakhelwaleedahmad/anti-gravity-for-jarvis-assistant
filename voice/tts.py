@@ -48,6 +48,9 @@ import re
 # Suppress pkg_resources deprecation warning from pygame
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", module="pkg_resources")
+# Newer setuptools warns with UserWarning, attributed to the importer
+# (pygame.pkgdata, stacklevel=2), so neither filter above matched it (BUG-23).
+warnings.filterwarnings("ignore", message=r"pkg_resources is deprecated as an API")
 
 import websockets
 
