@@ -16,6 +16,7 @@
 
 import { healthManager, HealthSnapshot, ServiceStatus } from './healthManager.js';
 import { adaptiveRamManager } from '../core/adaptiveRamManager.js';
+import { nodeBridge } from '../bridge/nodeBridge.js';
 
 // ─── Render helpers ───────────────────────────────────────────────────────────
 
@@ -58,6 +59,20 @@ function bar(used: number, total: number, width = 20): string {
 
 function pad(s: string, len: number): string {
   return s.length >= len ? s.substring(0, len) : s + ' '.repeat(len - s.length);
+}
+
+/**
+ * The engine actually in use (BUG-7): the labels said "STT (Whisper)" and
+ * "TTS (Kokoro)" while Google STT (wake-word process) heard the owner and
+ * edge-tts or the offline voice spoke. Unknown until the first use.
+ */
+export function voiceLabel(
+  key: 'stt' | 'tts',
+  bridge: { lastTranscriptEngine?: string | null; lastSpeechOutcome?: { engine?: string } | null },
+): string {
+  if (key === 'stt') return bridge.lastTranscriptEngine ? `STT (${bridge.lastTranscriptEngine})` : 'STT';
+  const engine = bridge.lastSpeechOutcome?.engine;
+  return (engine ? `TTS (${engine})` : 'TTS').slice(0, 18);
 }
 
 // ─── Dashboard renderer ───────────────────────────────────────────────────────
@@ -124,8 +139,8 @@ class RuntimeDashboard {
       vector_memory:  'Vector Memory     ',
       llm:            'LLM API           ',
       tool_registry:  'Tool Registry     ',
-      stt:            'STT (Whisper)     ',
-      tts:            'TTS (Kokoro)      ',
+      stt:            pad(voiceLabel('stt', nodeBridge), 18),
+      tts:            pad(voiceLabel('tts', nodeBridge), 18),
       wake_word:      'Wake Word         ',
     };
 

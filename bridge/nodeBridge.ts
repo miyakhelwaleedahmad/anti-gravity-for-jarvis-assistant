@@ -147,6 +147,11 @@ export class NodeBridge {
    */
   lastSpeechOutcome: { outcome: string; detail: string; at: number; engine?: string } | null = null;
   /**
+   * Which recogniser produced the last transcript (BUG-7): the wake-word
+   * process uses Google STT (inline commands, follow-ups); stt.py uses Whisper.
+   */
+  lastTranscriptEngine: 'Google STT' | 'Whisper' | null = null;
+  /**
    * Replies sent to tts.py and not ended yet, by request id (VOICE-005). Each
    * tts message carries its id and tts.py lists the ids a speaking_end covers,
    * so a late or repeated speaking_end cannot mark a newer reply as played or
@@ -402,6 +407,8 @@ export class NodeBridge {
             const text = msg.payload.text;
             healthLedger.record(LEDGER_PIPELINES.stt, true, "transcript produced");
             const role = this.clientRoles.get(ws) || "unknown";
+            if (role === "wakeword") this.lastTranscriptEngine = "Google STT";
+            else if (role === "stt") this.lastTranscriptEngine = "Whisper";
             if (DEBUG_LOGS) {
               console.log(`[NodeBridge] RX type=stt_result role=${role} text="${text}"`);
               console.log(`[NodeBridge] Forwarding STT result to orchestrator.process(...)`);
