@@ -11,8 +11,8 @@
 | Findings of the 2026-10 audit (54 IDs) | `docs/audit/JARVIS_REPAIR_CHECKLIST.md` | Re-checked every finding after the tracker; latest per-finding status. |
 | Other development findings (PC-nn from the owner's PC runs, and IDs not in the checklist) | `docs/remediation/REMEDIATION_TRACKER.md` | For an ID in both files, the checklist wins. |
 | 2026-10-23 log audit (BUG-1 to BUG-24) | Commit messages on `claude/jarvis-repair` (`git log --grep=BUG-`) | No tracker file holds these yet: owner decision pending. |
-| One maintenance run | `ai_workflows/runs/<YYYY-MM-DD>_<slug>/` | Copied from the stage `output/` folders when a run ends. |
-| Actual architecture | The source code | `_config/ARCHITECTURE_MAP.md` and docs are maintained summaries; code wins. |
+| One maintenance run | `ai_workflows/runs/<YYYY-MM-DD>_<slug>/` | Filled in during the run from the blank stage templates; closed at Stage 07 (`runs/README.md`). A record of the run, not a runtime issue store. |
+| Actual architecture | The source code | `_config/ARCHITECTURE_MAP.md`, its `ARCH_*.md` topic files and docs are maintained summaries; code wins. |
 | Project or phase status | The tracker for that category (rows above) | `_config/JARVIS_CURRENT_STATUS.md` only points here and keeps dated snapshots. |
 
 The data root is the JARVIS folder unless `JARVIS_DATA_ROOT` is set

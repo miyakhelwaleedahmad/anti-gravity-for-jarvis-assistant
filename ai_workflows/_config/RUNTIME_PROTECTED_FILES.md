@@ -138,11 +138,12 @@ and gate changes to JARVIS's own code. See `_config/SELF_HEALING_OWNERSHIP.md`.
 ## Specialist Agents
 
 ```
-core/agents/*                      ← Agent manager, the six specialist roles, permissions, spawn policy, A2A
+core/agents/*                      ← Agent manager, the seven specialist roles, permissions, spawn policy, A2A
 ```
 
-**Why protected:** The seven roles (JARVIS and six specialists), their tool
-permissions and spawn limits keep delegated work inside its bounds.
+**Why protected:** The roles (JARVIS and its seven specialists, listed in
+`core/agents/specialists.ts`), their tool permissions and spawn limits keep
+delegated work inside its bounds.
 
 ---
 

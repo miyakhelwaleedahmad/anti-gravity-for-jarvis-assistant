@@ -20,7 +20,7 @@ Always:
   not a live check. Voice, microphone, speaker and Windows behaviour count as
   fixed only after a live run on the owner's PC.
 - Protect: runtime data (`data/`, `memory/`), credentials, browser automation,
-  Windows control, voice, the seven agent roles (JARVIS and six specialists)
+  Windows control, voice, the agent roles (JARVIS and its seven specialists)
   with their permissions and spawn limits, the tool registry and risk levels,
   and the approval gates (code repair needs the owner's typed approval).
   See `ai_workflows/_config/RUNTIME_PROTECTED_FILES.md`.

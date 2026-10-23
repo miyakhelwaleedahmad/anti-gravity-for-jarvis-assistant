@@ -43,7 +43,8 @@ it as not reliably working live; no live log since then confirms it fixed
 or still failing. Do not call it either until a live run says so.
 
 - Investigation: `_config/YOUTUBE_OPENAPP_INVESTIGATION.md` (marked OPEN).
-- Expected live log lines: `_config/VOICE_ROUTE_CONTRACT.md`.
+- Expected live log lines: `_config/VOICE_ROUTE_CONTRACT.md`, checked against
+  the current code in `_config/ARCH_VOICE.md`.
 - Live procedure: `_config/TEST_MATRIX.md`, Live Runtime Verification.
 
 Rules kept from that snapshot:

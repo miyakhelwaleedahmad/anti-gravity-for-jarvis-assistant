@@ -120,6 +120,14 @@ tests/latencySmokeTest.ts           → under 100ms
 tests/deterministicCommandRouteTest.ts → 39/39 PASS (especially Section 4)
 ```
 
+These are the behaviours to keep, recorded in 2026-06. Check them through
+the runner only (`TEST_MATRIX.md`):
+`pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTest,openAppSmokeTest,latencySmokeTest,deterministicCommandRouteTest`.
+The runner checks open_app with "youtube" (dry run) and latency with
+"hello"; the "notepad", "cmd" and "open YouTube for me" cases have no
+isolated test and are checked live with the owner. Never run a test file
+directly (`npx tsx tests/<name>.ts`).
+
 If any test breaks: stop, revert, diagnose before proceeding.
 
 ---
