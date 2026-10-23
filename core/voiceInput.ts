@@ -37,11 +37,15 @@ export function normalizeVoiceInput(text: string): string {
     }
   }
 
-  // 4. Strip filler words/phrases
-  const fillers = ['for me', 'please', 'can you', 'could you', 'would you'];
-  for (const filler of fillers) {
-    const regex = new RegExp(`\\b${filler}\\b`, 'g');
-    result = result.replace(regex, '');
+  // 4. Strip politeness at the edges only. Anywhere in the sentence it changed
+  //    the meaning: "language task can you set" became "language task set"
+  //    and that is what the planner was asked (BUG-11).
+  const LEAD = /^(?:(?:can|could|would|will) you|please)\b\s*/;
+  const TRAIL = /\s*\b(?:for me|please)$/;
+  for (let changed = true; changed;) {
+    const before = result;
+    result = result.replace(LEAD, '').replace(TRAIL, '').trim();
+    changed = result !== before;
   }
   result = result.replace(/\bfor\b$/g, '');
 

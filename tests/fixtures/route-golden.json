@@ -212,12 +212,9 @@
   },
   "what can you do": {
     "route": "{\"type\":\"what_can_you_do\",\"reply\":\"I have 79 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \\\"list your tools\\\" for each tool and its risk.\"}",
-    "normalized": "what do",
+    "normalized": "what can you do",
     "tools": [
-      "open_app",
-      "web_search",
-      "get_system_info",
-      "run_command"
+      "list_capabilities"
     ],
     "heavy": true
   },
