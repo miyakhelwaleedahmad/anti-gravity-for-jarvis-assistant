@@ -150,5 +150,7 @@ jobs:
         run: python tests/python/test_tts_fallback.py
       - name: Every STT listen session ends with a message (BUG-1)
         run: python tests/python/test_stt_session_end.py
+      - name: STT calibration capped by the room baseline (BUG-2)
+        run: python tests/python/test_stt_calibration_cap.py
       - name: STT energy gate looks at frames, not the whole clip (VOICE-009)
         run: python tests/python/test_stt_vad_gate.py

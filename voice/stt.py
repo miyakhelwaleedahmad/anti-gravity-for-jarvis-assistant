@@ -148,6 +148,25 @@ STT_MIN_ENERGY_RATIO = float(os.environ.get("JARVIS_STT_MIN_ENERGY_RATIO", "1.5"
 # Phase 4: Shared calibrated energy threshold — updated per-session by calibrate_energy()
 _calibrated_energy: float = 300.0  # fallback if calibration hasn't run yet
 
+# BUG-2: calibration runs right after the wake word, so its 0.5 s sample can
+# hold the owner's own voice (580 measured, gate 870, the owner's loudest frame
+# 688: rejected). The room's baseline is the quietest calibration seen, allowed
+# to rise 10% a session; a session's level never exceeds it × this factor.
+STT_MAX_FLOOR_RISE = max(1.0, float(os.environ.get("JARVIS_STT_MAX_FLOOR_RISE", "2.0")))
+_ambient_baseline: float | None = None
+
+
+def _bounded_energy(measured: float) -> float:
+    """The level to use for a session: the measurement, capped by the room's baseline."""
+    global _ambient_baseline
+    if measured <= 0:
+        return _ambient_baseline or measured
+    _ambient_baseline = measured if _ambient_baseline is None else min(measured, _ambient_baseline * 1.1)
+    bounded = min(measured, _ambient_baseline * STT_MAX_FLOOR_RISE)
+    if bounded < measured:
+        log.info(f"[STT] Calibration heard {measured:.0f} (likely speech); using {bounded:.0f} (room baseline {_ambient_baseline:.0f} × {STT_MAX_FLOOR_RISE}).")
+    return bounded
+
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format="[STT] %(message)s")
 log = logging.getLogger(__name__)
@@ -178,7 +197,7 @@ def _calibrate_energy() -> float:
         _recognizer.dynamic_energy_threshold = True
         with sr.Microphone() as source:
             _recognizer.adjust_for_ambient_noise(source, duration=STT_CALIBRATION_DURATION)
-        _calibrated_energy = _recognizer.energy_threshold
+        _calibrated_energy = _bounded_energy(_recognizer.energy_threshold)
         log.info(f"[STT] Calibrated energy threshold: {_calibrated_energy:.0f}")
         return _calibrated_energy
     except Exception as e:
@@ -650,6 +669,14 @@ class STTEngine:
         burning 60-120s in exponential backoff sleep.
         """
         _startup_deadline = time.time() + 30.0  # fast-retry window
+
+        # BUG-2: one ambient sample while nobody is talking to JARVIS, so the
+        # first session's calibration (taken right after the wake word) has a
+        # room baseline to be checked against.
+        try:
+            await asyncio.to_thread(_calibrate_energy)
+        except Exception as exc:
+            log.debug(f"[STT] Startup calibration skipped: {exc}")
 
         while True:
             try:
