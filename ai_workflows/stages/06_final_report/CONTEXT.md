@@ -11,7 +11,7 @@ Produce a complete, honest summary of the work done.
 ✅ List unresolved risks or follow-up items
 ✅ Recommend the next step
 ✅ Write the final report in output/final_report.md
-✅ Update _config/JARVIS_CURRENT_STATUS.md with the new system state
+✅ Update the status tracker named in _config/SOURCES_OF_TRUTH.md
 ```
 
 ## What You Must NOT Do
@@ -57,11 +57,17 @@ Date: [date]
 After writing the final report:
 
 ```
-1. Update _config/JARVIS_CURRENT_STATUS.md
+1. Update the tracker named in _config/SOURCES_OF_TRUTH.md
+   (_config/JARVIS_CURRENT_STATUS.md only points to it)
 2. Update ai_workflows/CONTEXT.md if system status changed
-3. Commit changes with a descriptive message:
-   git add .
+3. Commit only the files changed for this fix, staged by name:
+   git status
+   git add -- <file1> <file2>
+   git diff --cached --name-only
+   (stop if the list shows runtime data, credentials or untracked
+   personal files; unstage them with git restore --staged -- <file>)
    git commit -m "Fix [bug]: [one-line description]"
+   Never git add . or git add -A.
 4. Consider tagging if stable:
    git tag stable-[feature]-v[N]
    (only with user approval)
