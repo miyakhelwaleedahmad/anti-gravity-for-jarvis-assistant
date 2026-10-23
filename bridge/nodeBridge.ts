@@ -409,7 +409,8 @@ export class NodeBridge {
             healthLedger.record(LEDGER_PIPELINES.stt, true, "transcript produced");
             const role = this.clientRoles.get(ws) || "unknown";
             if (role === "wakeword") this.lastTranscriptEngine = "Google STT";
-            else if (role === "stt") this.lastTranscriptEngine = "Whisper";
+            // stt.py says when Google STT stood in while Whisper loaded (BUG-17).
+            else if (role === "stt") this.lastTranscriptEngine = msg.payload?.engine === "Google STT" ? "Google STT" : "Whisper";
             if (DEBUG_LOGS) {
               console.log(`[NodeBridge] RX type=stt_result role=${role} text="${text}"`);
               console.log(`[NodeBridge] Forwarding STT result to orchestrator.process(...)`);

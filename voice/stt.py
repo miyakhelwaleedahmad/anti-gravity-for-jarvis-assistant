@@ -153,6 +153,11 @@ _calibrated_energy: float = 300.0  # fallback if calibration hasn't run yet
 # 688: rejected). The room's baseline is the quietest calibration seen, allowed
 # to rise 10% a session; a session's level never exceeds it × this factor.
 STT_MAX_FLOOR_RISE = max(1.0, float(os.environ.get("JARVIS_STT_MAX_FLOOR_RISE", "2.0")))
+
+# BUG-17: importing faster_whisper took 123 s on the owner's PC. A command
+# spoken meanwhile waited up to 60 s for Whisper and was lost. Now it waits
+# this long, then Google STT (what the wake word process uses) transcribes it.
+STT_MODEL_WAIT_S = max(0.0, float(os.environ.get("JARVIS_STT_MODEL_WAIT_S", "5")))
 _ambient_baseline: float | None = None
 
 
@@ -441,12 +446,13 @@ class STTEngine:
         OPT-STT-4: Accepts either a filename (str) or an AudioData object.
         If AudioData is provided, transcribes in-memory via numpy without
         writing to disk — eliminates one file write + read per command.
-        Waits up to 60s for Whisper model to finish loading, with late fallback.
+        While Whisper is still loading (BUG-17), waits STT_MODEL_WAIT_S and then
+        uses Google STT; self._last_engine names the engine that answered.
         """
         global model
-        # Block until the background loader has finished (max 60s)
-        if not _model_ready_event.wait(timeout=60):
-            log.warning("[STT] Whisper model did not load within 60s deadline — attempting direct load...")
+        self._last_engine = "Whisper"
+        if not _model_ready_event.wait(timeout=STT_MODEL_WAIT_S):
+            return self._transcribe_while_loading(audio_input)
 
         if model is None:
             try:
@@ -504,6 +510,21 @@ class STTEngine:
             log.error(f"Whisper transcription failed: {e}")
             return ""
 
+    def _transcribe_while_loading(self, audio_input) -> str:
+        """Google STT for a command spoken before Whisper is loaded; '' if it cannot."""
+        if sr is None or not hasattr(audio_input, "get_raw_data"):
+            log.warning("[STT] Whisper is still loading and Google STT is not available for this audio.")
+            return ""
+        log.info(f"[STT] Whisper is still loading after {STT_MODEL_WAIT_S:.0f}s; transcribing with Google STT.")
+        try:
+            text = (sr.Recognizer().recognize_google(audio_input) or "").strip()
+        except Exception as e:   # no network, nothing understood
+            log.warning(f"[STT] Google STT fallback failed: {e}")
+            return ""
+        if text:
+            self._last_engine = "Google STT"
+        return text
+
     async def _send_result(self, text: str) -> None:
         """
         Send normalized STT result to NodeBridge.
@@ -535,7 +556,7 @@ class STTEngine:
             # Send the NORMALIZED text to keep routing deterministic (Part C)
             msg = json.dumps({
                 "type": "stt_result",
-                "payload": {"text": normalized if normalized else text}
+                "payload": {"text": normalized if normalized else text, "engine": getattr(self, "_last_engine", "Whisper")}
             })
             try:
                 await self.websocket.send(msg)

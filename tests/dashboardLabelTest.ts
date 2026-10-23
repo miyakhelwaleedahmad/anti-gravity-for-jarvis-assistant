@@ -27,7 +27,7 @@ ok('nothing spoken yet: just "TTS"', voiceLabel('tts', { lastSpeechOutcome: null
 for (const e of ['edge-tts', 'pyttsx3', 'windows-sapi']) ok(`spoken by ${e}: TTS (${e})`, voiceLabel('tts', { lastSpeechOutcome: { engine: e } }) === `TTS (${e})`.slice(0, 18));
 
 const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bridge', 'nodeBridge.ts'), 'utf8');
-ok('the bridge records which process sent the transcript', /role === "wakeword"\) this\.lastTranscriptEngine = "Google STT"/.test(src) && /role === "stt"\) this\.lastTranscriptEngine = "Whisper"/.test(src));
+ok('the bridge records which process sent the transcript', /role === "wakeword"\) this\.lastTranscriptEngine = "Google STT"/.test(src) && /role === "stt"\) this\.lastTranscriptEngine = msg\.payload\?\.engine === "Google STT" \? "Google STT" : "Whisper"/.test(src));
 
 // The rendered dashboard: no fixed engine names.
 (nodeBridge as any).lastSpeechOutcome = { outcome: 'played', detail: '', at: Date.now(), engine: 'pyttsx3' };
