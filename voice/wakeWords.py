@@ -174,6 +174,13 @@ class WakeWordDetector:
         self._capture_thread: Optional[AudioCaptureThread] = None
         self._ws: Any = None
         self._running = False
+        # BUG-3: the follow-up window. NodeBridge sends context_active when the
+        # reply is handed over, often before TTS has even started; with a slow
+        # voice the window ran out while JARVIS was still talking, and what the
+        # owner said next was dropped without a word in the log.
+        self.active_until = 0.0
+        self._context_duration = 0.0
+        self._context_unused = False   # opened, and nothing said in it yet
 
     def _ws_open(self) -> bool:
         return self._ws is not None and getattr(self._ws, "open", True)
@@ -199,11 +206,23 @@ class WakeWordDetector:
 
     def _activate_context_capture(self, duration: int = COMMAND_CONTEXT_SECONDS) -> None:
         self.active_until = time.time() + duration
+        self._context_duration = float(duration)
+        self._context_unused = True
         self._speech_buffer = []
         self._last_speech_time = time.time()
         if self._capture_thread:
             self._capture_thread.is_listening = True
         log.info(f"Command continuation active for {duration} seconds.")
+
+    def _reopen_unused_context(self) -> None:
+        """
+        After the mic resumes (JARVIS finished speaking), a follow-up window
+        that nobody used yet starts again in full: it counts from the end of
+        the reply, not from when the reply was handed to TTS (BUG-3).
+        """
+        if self._context_unused and self._context_duration:
+            self.active_until = time.time() + self._context_duration
+            log.info(f"Follow-up window reopened for {self._context_duration:.0f}s (counted from the end of the reply).")
 
     async def _recognize(self, audio: sr.AudioData) -> None:
         """
@@ -256,7 +275,15 @@ class WakeWordDetector:
                 self._speech_buffer = []
             self._speech_buffer.append(text.strip())
             self._last_speech_time = time.time()
+            # Conversation mode: while the owner keeps talking, the window stays open.
+            self._context_unused = False
+            if self._context_duration:
+                self.active_until = max(self.active_until, time.time() + self._context_duration)
             return
+
+        if not matched and self._context_duration:
+            # Heard clearly, but no wake word and the follow-up window is closed.
+            log.info(f"Ignored (no wake word; follow-up window closed {time.time() - self.active_until:.0f}s ago): '{text}'")
 
         if matched:
             now = time.time()
@@ -267,6 +294,7 @@ class WakeWordDetector:
 
             log.info(f'🚀 Wake word matched: "{word}" in "{text}"')
             self._last_wake_time = now
+            self._context_unused = False   # a new command: the old follow-up window is used up
 
             # ── COMMAND-SEG-FIX: Extract the COMPLETE command after the wake word ──
             # Strategy: strip the wake word prefix from the full transcript.
@@ -367,6 +395,7 @@ class WakeWordDetector:
                         log.info("Received resume command — resuming capture.")
                         if self._capture_thread:
                             self._capture_thread.is_listening = True
+                        self._reopen_unused_context()
                     elif action == "clear" or action == "reset":
                         log.info("Received clear/reset command — clearing buffer and queue.")
                         self._speech_buffer = []

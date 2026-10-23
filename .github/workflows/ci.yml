@@ -152,5 +152,7 @@ jobs:
         run: python tests/python/test_stt_session_end.py
       - name: STT calibration capped by the room baseline (BUG-2)
         run: python tests/python/test_stt_calibration_cap.py
+      - name: Follow-ups after a reply are heard or logged (BUG-3)
+        run: python tests/python/test_wakeword_followup.py
       - name: STT energy gate looks at frames, not the whole clip (VOICE-009)
         run: python tests/python/test_stt_vad_gate.py
