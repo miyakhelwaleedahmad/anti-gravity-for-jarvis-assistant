@@ -10,6 +10,7 @@ import http from "http";
 import { createHash, timingSafeEqual } from "crypto";
 import { assertLoopbackBind } from "../security/remoteAccess.js";
 import { healthLedger, LEDGER_PIPELINES } from "../monitoring/healthLedger.js";
+import { stripMarkdown } from "../core/spokenText.js";
 
 const LOCALHOST_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const BRIDGE_DEV_MODE = process.env.JARVIS_BRIDGE_DEV_MODE === "true";
@@ -667,11 +668,9 @@ export class NodeBridge {
       return;
     }
 
-    // Strip thinking tags if any leaked here
-    let cleanText = text
-      .replace(/<think>[\s\S]*?<\/think>/g, '')
-      .replace(/<think>[\s\S]*/g, '')
-      .trim();
+    // Every sender's text, as the voice says it: no thinking tags, no list
+    // markers or **bold** (BUG-13: some senders do not use the orchestrator's cleanup).
+    const cleanText = stripMarkdown(text);
 
     if (!cleanText) return;
 

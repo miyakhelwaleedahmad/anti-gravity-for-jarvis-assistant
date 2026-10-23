@@ -62,6 +62,7 @@ import { plannerIntelligence } from './plannerIntelligence.js';
 import { taskGraphEngine as _tge } from './taskGraphEngine.js';
 import { LOW_RISK_TOOLS, SIMPLE_REPLY_TOOLS } from './toolNameLists.js';
 import { redact } from '../security/redactor.js';
+import { CONSOLE_NOTE, SPOKEN_MAX_SENTENCES, SpokenStream, stripMarkdown } from './spokenText.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1701,8 +1702,8 @@ export class JarvisOrchestrator {
    */
   private async streamSynthesis(request: any, originalInput: string): Promise<void> {
     let fullReply = '';
-    let speakBuffer = '';
-    let lastIndex = 0;
+    // BUG-13: markers removed, and the sentence cap is for the whole reply.
+    const spoken = new SpokenStream((text) => this.speak(text), (text) => process.stdout.write(text));
     const t0 = performance.now();
     let firstChunkTime: number | null = null;
 
@@ -1727,38 +1728,11 @@ export class JarvisOrchestrator {
           .replace(/[""]/g, '"');
 
         fullReply += chunk;
-
-        // Strip <think> blocks from what gets spoken and printed
-        const clean = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/, '').trimStart();
-        const newPart = clean.substring(lastIndex);
-
-        if (newPart) {
-          process.stdout.write(newPart);
-          speakBuffer += newPart;
-          lastIndex = clean.length;
-
-          // Send to TTS at sentence boundaries
-          if (/[.!?\n]\s/.test(speakBuffer)) {
-            const parts = speakBuffer.split(/(?<=[.!?\n])\s+/);
-            speakBuffer = parts.pop() ?? '';
-
-            let chunk2Send = '';
-            for (const part of parts) {
-              chunk2Send += part + ' ';
-              if (chunk2Send.length > 25 || parts.length === 1) {
-                this.speak(chunk2Send.trim());
-                chunk2Send = '';
-              }
-            }
-            if (chunk2Send.trim()) speakBuffer = chunk2Send + speakBuffer;
-          }
-        }
+        spoken.push(chunk);
       }
 
       // Send remaining buffer
-      if (speakBuffer.trim() && !this.isInterrupted()) {
-        this.speak(speakBuffer.trim());
-      }
+      if (!this.isInterrupted()) spoken.end();
 
       console.log('\n');
       console.log(`[Timing] Synthesis stream total: ${(performance.now() - t0).toFixed(2)}ms`);
@@ -1928,8 +1902,8 @@ export class JarvisOrchestrator {
 
     try {
       let fullReply = '';
-      let speakBuffer = '';
-      let lastIndex = 0;
+      // BUG-13: markers removed, and the sentence cap is for the whole reply.
+      const spoken = new SpokenStream((text) => this.speak(text), (text) => process.stdout.write(text));
 
       process.stdout.write('\n🤖 JARVIS (Direct Stream): ');
 
@@ -1950,35 +1924,10 @@ export class JarvisOrchestrator {
           .replace(/[""]/g, '"');
 
         fullReply += chunk;
-
-        const clean = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/, '').trimStart();
-        const newPart = clean.substring(lastIndex);
-
-        if (newPart) {
-          process.stdout.write(newPart);
-          speakBuffer += newPart;
-          lastIndex = clean.length;
-
-          if (/[.!?\n]\s/.test(speakBuffer)) {
-            const parts = speakBuffer.split(/(?<=[.!?\n])\s+/);
-            speakBuffer = parts.pop() ?? '';
-
-            let chunk2Send = '';
-            for (const part of parts) {
-              chunk2Send += part + ' ';
-              if (chunk2Send.length > 25 || parts.length === 1) {
-                this.speak(chunk2Send.trim());
-                chunk2Send = '';
-              }
-            }
-            if (chunk2Send.trim()) speakBuffer = chunk2Send + speakBuffer;
-          }
-        }
+        spoken.push(chunk);
       }
 
-      if (speakBuffer.trim() && !this.isInterrupted()) {
-        this.speak(speakBuffer.trim());
-      }
+      if (!this.isInterrupted()) spoken.end();
       console.log('\n');
       console.log(`[Timing] Direct conversational stream total: ${(performance.now() - t0).toFixed(2)}ms`);
 
@@ -2153,11 +2102,8 @@ export class JarvisOrchestrator {
       return '';
     }
 
-    // 1. Sanitize <think>...</think> and partial <think> blocks
-    let cleanText = text
-      .replace(/<think>[\s\S]*?<\/think>/g, '')
-      .replace(/<think>[\s\S]*/g, '')
-      .trim();
+    // 1. <think> blocks, list and heading markers, **bold** (BUG-13: a list is read as sentences)
+    let cleanText = stripMarkdown(text);
 
     // 2. Remove markdown formatting characters for clean spoken output
     cleanText = cleanText
@@ -2172,8 +2118,8 @@ export class JarvisOrchestrator {
 
     // 3. Apply concise personality rule: limit verbal response to max 3 sentences
     const sentences = cleanText.split(/(?<=[.!?])\s+/);
-    if (sentences.length > 3) {
-      cleanText = sentences.slice(0, 3).join(' ') + ' I have printed the full details to the console, sir.';
+    if (sentences.length > SPOKEN_MAX_SENTENCES) {
+      cleanText = `${sentences.slice(0, SPOKEN_MAX_SENTENCES).join(' ')} ${CONSOLE_NOTE}`;
     }
     return cleanText;
   }
