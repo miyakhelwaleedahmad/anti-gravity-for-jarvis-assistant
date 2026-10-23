@@ -48,8 +48,8 @@ export const youtubeSearchTool: AgentTool = {
   name: 'youtube_search',
   description:
     'Use when the user wants YouTube on screen: search YouTube, show results, or open/play a video they describe. Opens the results in a new tab in Chrome '
-    + '(the user\'s other tabs are left alone). Parameters: query (what to search for), open ("results" to show them; "first" or "best" to open that '
-    + 'video and play it). JARVIS checks the page afterwards. Not for background research: use news_search or youtube_trending for that.',
+    + '(the user\'s other tabs are left alone). Parameters: query (what to search for), open ("results" only shows the list; to PLAY a song or '
+    + 'video the user asks for, set open to "best" (or "first"): that opens the video and plays it). JARVIS checks the page afterwards. Not for background research: use news_search or youtube_trending for that.',
   riskLevel: 'medium',
   inputSchema: {
     query: { type: 'string', description: 'What to search for on YouTube', required: true },

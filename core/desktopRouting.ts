@@ -64,7 +64,11 @@ export function matchDesktopRoute(text: string): DesktopRoute | undefined {
     ?? /^(?:find|search for|look for) (.+?) on youtube and (?:play|open|watch) (?:the )?(first|best|top)(?: matching)?(?: result| video| one)?$/.exec(t)
     ?? /^(?:open|go to) youtube and (?:search|look) (?:for )?(.+?) and (?:play|open|watch) (?:the )?(first|best|top)(?: matching)?(?: result| video| one)?$/.exec(t);
   if (m) return { type: 'youtube_search', query: m[1]!.trim(), open: m[2] === 'best' ? 'best' : 'first' };
-  m = /^(?:play|watch) (?!this\b|the video\b|it\b)(.+?) on youtube$/.exec(t) ?? /^(?:open|go to) youtube and play (.+)$/.exec(t);
+  m = /^(?:play|watch) (?!this\b|the video\b|it\b)(.+?) on youtube$/.exec(t) ?? /^(?:open|go to) youtube and play (.+)$/.exec(t)
+    // BUG-8: "play song of Sanam", "play the song Sanam Re", "play Sanam Re song": YouTube is the player.
+    ?? /^play (?:a |the |some )?(?:song|songs|music|track|video)s? (?:of|by|from|called|named) (.+)$/.exec(t)
+    ?? /^play (?:the )?(?:song|track) (?!again$)(.+)$/.exec(t)
+    ?? /^play (?!the video$|this$|it$|music$)(.+?) (?:song|songs|music|track|video)$/.exec(t);
   if (m) return { type: 'youtube_search', query: m[1]!.trim(), open: 'best' };
   m = /^(?:open |go to )?youtube and (?:search|look) (?:for )?(.+)$/.exec(t)
     ?? /^search (?:on )?youtube for (.+)$/.exec(t)

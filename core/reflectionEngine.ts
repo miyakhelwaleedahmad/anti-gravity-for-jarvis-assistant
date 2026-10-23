@@ -226,6 +226,9 @@ Do not include any other text.`,
 
 // ─── Reflection Engine ────────────────────────────────────────────────────────
 
+/** A request to play something (a song, a video), not only to find it. */
+const PLAY_INTENT = /\b(?:play|watch|listen to|put on)\b/i;
+
 export class ReflectionEngine {
 
   // ── PHASE 1: PRE-EXECUTION CHECK ────────────────────────────────────────────
@@ -275,6 +278,20 @@ export class ReflectionEngine {
         console.warn(`[Reflection] ⚠️  PRE-CHECK: node "${node.id}" has empty args for tool "${node.tool}"`);
       }
 
+      // ── Check 2b: "play" means playback, not a results page (BUG-8) ──────
+      // "open YouTube and play song of Sanam" ran youtube_search with its
+      // default open=results: a results page, reported as done. The plan is
+      // made to match the request before it runs.
+      if (node.tool === 'youtube_search' && PLAY_INTENT.test(graph.goal)) {
+        const open = String(node.args?.['open'] ?? 'results');
+        if (open !== 'best' && open !== 'first') {
+          node.args = { ...(node.args ?? {}), open: 'best' };
+          patchedNodes.push(node.id);
+          issues.push(`Node "${node.id}" (youtube_search): the request asks to play, so open=best (was ${open}).`);
+          console.log(`[Reflection] 🔧 PRE-CHECK: "${graph.goal.slice(0, 60)}" asks to play; youtube_search open=${open} → best.`);
+        }
+      }
+
       // ── Check 3: Dependency nodes are not already blocked ────────────────
       const hasBlockedDep = node.dependencies.some(depId => blockedNodes.includes(depId));
       if (hasBlockedDep) {
@@ -302,10 +319,10 @@ export class ReflectionEngine {
       }
     }
 
-    const verdict: PreCheckVerdict = blockedNodes.length > 0 ? 'modified' : 'approved';
+    const verdict: PreCheckVerdict = blockedNodes.length > 0 || patchedNodes.length > 0 ? 'modified' : 'approved';
     const summary = verdict === 'approved'
       ? `PRE-CHECK APPROVED: ${graph.nodes.size} node(s) ready for execution.`
-      : `PRE-CHECK MODIFIED: ${blockedNodes.length} node(s) blocked, ${executableNodes.length} remaining.`;
+      : `PRE-CHECK MODIFIED: ${blockedNodes.length} node(s) blocked, ${patchedNodes.length} adjusted, ${executableNodes.length} remaining.`;
 
     console.log(`[Reflection] ✅ PRE-CHECK ${verdict.toUpperCase()}: ${summary}`);
     return { verdict, issues, patchedNodes, blockedNodes, summary };
