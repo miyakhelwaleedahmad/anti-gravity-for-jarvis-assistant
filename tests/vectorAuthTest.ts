@@ -63,7 +63,8 @@ ok('its own settings are passed', env['HF_HOME'] === 'C:\\hf' && env['EMBEDDING_
 ok('…and its one credential, the Hugging Face read token for the model download', env['HF_TOKEN'] === 'hf-test');
 ok('JARVIS\'s other keys are not (provider keys, bridge token)', !['OPENAI_API_KEY', 'GEMINI_API_KEY', 'JARVIS_BRIDGE_TOKEN'].some((k) => k in env));
 const supervisor = fs.readFileSync(path.join(repo, 'memory', 'vectorMemorySupervisor.ts'), 'utf8');
-ok('the spawn passes the token and that environment (and only that)', /env: childEnv\(\{ JARVIS_VECTOR_TOKEN: getVectorToken\(\), \.\.\.vectorServiceEnv\(\) \}\)/.test(supervisor));
+// PYTHON_UTF8 (BUG-21): PYTHONUTF8 and PYTHONIOENCODING, no credential.
+ok('the spawn passes the token and that environment (and only that)', /env: childEnv\(\{ \.\.\.PYTHON_UTF8, JARVIS_VECTOR_TOKEN: getVectorToken\(\), \.\.\.vectorServiceEnv\(\) \}\)/.test(supervisor));
 const unauthenticated = [...supervisor.matchAll(/fetch\([A-Z_]+_URL, \{([^}]*)/g)].filter((m) => !/headers:/.test(m[1]!));
 ok('every supervisor request carries the token', unauthenticated.length === 0, `${unauthenticated.length} without`);
 

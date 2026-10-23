@@ -35,7 +35,7 @@ import { failureAnalytics } from "./failureAnalytics.js";
 import { alertManager } from "./alertManager.js";
 import { healthScorer } from "./healthScorer.js";
 import { healthChecker } from "./healthChecker.js";
-import { childEnv, looksSecret } from "../system/childEnv.js";
+import { childEnv, looksSecret, PYTHON_UTF8 } from "../system/childEnv.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VOICE_DIR  = path.join(__dirname, "..", "voice");
@@ -144,7 +144,7 @@ export class SelfHealingManager extends EventEmitter {
       detached: false,
       // The bridge token and the services' own settings; no other key or
       // token from .env (SEC-101).
-      env: childEnv({ JARVIS_BRIDGE_TOKEN: process.env.JARVIS_BRIDGE_TOKEN, ...voiceServiceEnv() }),
+      env: childEnv({ ...PYTHON_UTF8, JARVIS_BRIDGE_TOKEN: process.env.JARVIS_BRIDGE_TOKEN, ...voiceServiceEnv() }),
     });
 
     entry.proc = proc;

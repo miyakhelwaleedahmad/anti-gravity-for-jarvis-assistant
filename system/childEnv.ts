@@ -55,6 +55,14 @@ export function passesToChild(name: string): boolean {
   return ALLOWED.has(lower) || ALLOWED_PREFIXES.some((p) => lower.startsWith(p));
 }
 
+/**
+ * For a child Python process: its output in UTF-8. On Windows Python writes
+ * to a pipe in the ANSI code page, and the log showed \u2714 and \U0001f3a4
+ * escapes and replacement characters (BUG-21). A PYTHON* setting the owner
+ * passes on (voiceServiceEnv, vectorServiceEnv) comes after and wins.
+ */
+export const PYTHON_UTF8: Readonly<Record<string, string>> = { PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' };
+
 /** The allowed part of `env` (default: this process's), plus `extra` set by the caller. */
 export function childEnv(
   extra: Record<string, string | undefined> = {},

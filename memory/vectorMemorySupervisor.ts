@@ -29,7 +29,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import { childEnv, looksSecret } from '../system/childEnv.js';
+import { childEnv, looksSecret, PYTHON_UTF8 } from '../system/childEnv.js';
 import { getVectorToken, vectorHeaders } from './vectorAuth.js';
 
 // ─── The service's environment ───────────────────────────────────────────────
@@ -331,7 +331,7 @@ class VectorMemorySupervisor {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
       // The service's token, and no other JARVIS secret (SEC-06, SEC-18).
-      env: childEnv({ JARVIS_VECTOR_TOKEN: getVectorToken(), ...vectorServiceEnv() }),
+      env: childEnv({ ...PYTHON_UTF8, JARVIS_VECTOR_TOKEN: getVectorToken(), ...vectorServiceEnv() }),
     });
 
     this.proc.stdout?.on('data', (d) => {
