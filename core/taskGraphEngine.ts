@@ -345,6 +345,9 @@ export class TaskGraphEngine extends EventEmitter {
     }
 
     graph.completedAt = Date.now();
+    // No longer the graph in flight: a later interrupt or "why are you stuck"
+    // must not find it (BUG-19).
+    if (this.currentGraph === graph) this.currentGraph = null;
 
     // Clear the replan guard once the goal settles successfully. Previously the
     // counter was only deleted inside the guard branch itself and
@@ -595,6 +598,9 @@ export class TaskGraphEngine extends EventEmitter {
    * Interrupt all running nodes immediately.
    */
   interrupt(graph: TaskGraph): void {
+    // A graph that already finished is left as it is (BUG-19: an interrupt
+    // marked a completed graph "interrupted").
+    if (graph.status === 'completed' || graph.status === 'failed') return;
     graph.status = 'interrupted';
 
     for (const [nodeId, ac] of this.abortControllers.entries()) {

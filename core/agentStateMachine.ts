@@ -202,8 +202,9 @@ export class AgentStateMachine extends EventEmitter {
     // ── Event emission ─────────────────────────────────────────────────────────
     this.emit('transition', { from: prev, to: newState });
     this.emit('state_changed', newState);
+    // 'interrupted' for INTERRUPTED. It was emitted a second time here, so
+    // every interrupt listener ran twice (BUG-19).
     this.emit(newState.toLowerCase());
-    if (newState === AgentState.INTERRUPTED) this.emit('interrupted');
 
     return true;
   }
