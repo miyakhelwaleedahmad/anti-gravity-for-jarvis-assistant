@@ -339,13 +339,18 @@ export class JarvisOrchestrator {
     // runs concurrently with the agent loop start. We only resolve the promise
     // when we need the goal object (after the loop completes).
     let goal: Goal | null = null;
-    let goalPromise: Promise<Goal | null> | null = null;
+    let goalPromise = null as Promise<Goal | null> | null;   // set by goals.ensure() (a closure)
     const shouldCreateGoal =
       !this.matchDeterministicCommand(input) &&
       !this.isSimpleConversationalInput(input);
 
-    if (shouldCreateGoal) {
-      goalPromise = goalManager.createGoal(input, source).then(g => {
+    // BUG-10: every chat line became a goal (100 in the owner's history). A
+    // goal is now created only for work: from the start for an action request
+    // (so a failure is recorded and retried as before), otherwise only when the
+    // plan actually runs tools. Plain conversation creates none.
+    const goals: GoalHandle | null = shouldCreateGoal ? {
+      existing: () => goalPromise,
+      ensure: () => (goalPromise ??= goalManager.createGoal(input, source).then(g => {
         goalManager.transition(g, 'in_progress', 'request started', { quiet: true });
         this.activeGoals.set(callId, g);
         goal = g;
@@ -353,8 +358,11 @@ export class JarvisOrchestrator {
       }).catch(err => {
         console.warn('[Orchestrator] GoalManager unavailable (non-fatal):', err);
         return null;
-      });
-    } else {
+      })),
+    } : null;
+    if (goals && ACTION_REQUEST.test(input)) {
+      goals.ensure();
+    } else if (!goals) {
       console.log('[Orchestrator] Skipping GoalManager for simple/deterministic request.');
     }
 
@@ -365,7 +373,7 @@ export class JarvisOrchestrator {
     const approvals = record.approvals;
     try {
       // Agent loop starts IMMEDIATELY — goal creation runs in background
-      loopOutcome = await requestContext.run({ callId, signal: controller.signal, plan: planState }, () => this.runAgentLoop(input, source, goalPromise, record));
+      loopOutcome = await requestContext.run({ callId, signal: controller.signal, plan: planState }, () => this.runAgentLoop(input, source, goals, record));
 
       // ── Phase 1: Resolve Goal based on actual outcome ──────────────────────
       // PIPELINE-OPT: Resolve the background goal promise now (it ran concurrently
@@ -593,7 +601,7 @@ export class JarvisOrchestrator {
   private async runAgentLoop(
     input: string,
     source: 'cli' | 'voice',
-    goalReady: Promise<Goal | null> | null = null,
+    goals: GoalHandle | null = null,
     record: LoopRecord = { approvals: [] },
   ): Promise<'success' | 'failed' | 'blocked'> {
     const approvals = record.approvals;
@@ -603,6 +611,8 @@ export class JarvisOrchestrator {
     // stored.) Completing or failing it is process()'s job: the loop records
     // why it failed in `record.failReason`.
     const noteGoal = (status: 'planning' | 'executing', extras: Parameters<typeof goalManager.updateGoalStatus>[2] = {}) => {
+      // Running tools is work: the goal exists from here at the latest (BUG-10).
+      const goalReady = status === 'executing' ? goals?.ensure() : goals?.existing();
       void goalReady?.then((g) => (g ? goalManager.updateGoalStatus(g.id, status, extras) : undefined)).catch(() => {});
     };
     this._loopExecuting = true;
@@ -844,7 +854,7 @@ export class JarvisOrchestrator {
     const planResult = await this.planPhase(input);
 
     if (!planResult) {
-      const isActionRequest = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i.test(input);
+      const isActionRequest = ACTION_REQUEST.test(input);
       const isAborted = this.isInterrupted() || this.requestSignal()?.aborted;
       const noAnswer = this.planState().outcome !== 'answered';
       // BUG-9: the model asked a question back. That ends the turn cleanly:
@@ -2284,6 +2294,15 @@ function stepLabel(node: { tool: string; args?: Record<string, unknown> }): stri
 }
 
 /** What one request's agent loop reports back for its goal. */
+/** A request to do something (as opposed to conversation). */
+const ACTION_REQUEST = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i;
+
+/** The request's goal, created on first need (BUG-10). */
+interface GoalHandle {
+  existing(): Promise<Goal | null> | null;
+  ensure(): Promise<Goal | null>;
+}
+
 interface LoopRecord {
   approvals: ApprovalDecision[];
   /** Why the loop failed, in its own words, for the goal. */
