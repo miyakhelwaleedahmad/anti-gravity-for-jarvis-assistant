@@ -1,0 +1,13 @@
+# Round 2: 10 repeated runs: pnpm test -- --only=voiceRouteMockTest (repository working tree, cloud Linux); fake xdg-open on PATH
+run 1:  PASS    voiceRouteMockTest                           1797ms
+run 2:  PASS    voiceRouteMockTest                           1640ms
+run 3:  PASS    voiceRouteMockTest                           1711ms
+run 4:  PASS    voiceRouteMockTest                           1502ms
+run 5:  PASS    voiceRouteMockTest                           1350ms
+run 6:  PASS    voiceRouteMockTest                           1434ms
+run 7:  PASS    voiceRouteMockTest                           1548ms
+run 8:  PASS    voiceRouteMockTest                           1710ms
+run 9:  PASS    voiceRouteMockTest                           1702ms
+run 10:  PASS    voiceRouteMockTest                           1482ms
+opener calls over the 10 runs: 0
+leftover test processes: 0

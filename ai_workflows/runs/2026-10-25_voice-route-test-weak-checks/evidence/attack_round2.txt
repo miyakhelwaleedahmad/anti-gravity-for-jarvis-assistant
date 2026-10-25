@@ -1,0 +1,49 @@
+# Round 2: mutate_harness on the fixed tests/voiceRouteMockTest.ts (scratchpad export of 76f4712 + the round-2 test), 2026-10-25T10:42:04Z
+none                       PASS     opener_calls=0 failing_checks=0
+M1_no_listen_send          FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: sendListenStart sent listen_start to the ready STT client
+M2_no_handler_dispatch     FAIL     opener_calls=0 failing_checks=7
+       ❌ FAIL: an empty stt_result reaches the handlers but is not counted as a transcript
+       ❌ FAIL: the bridge delivered "open YouTube for me" to the stt_result handlers
+       ❌ FAIL: …and took the engine from the sender (wakeword: Google STT, stt: Whisper)
+       ❌ FAIL: Deterministic pre-router chose open_app for "youtube"
+       ❌ FAIL: open_app ran once for "youtube" (https://www.youtube.com)
+       ❌ FAIL: open_app was a dry run (no browser launched)
+       ❌ FAIL: the route ran no tool but open_app (ran: none)
+M3_no_ready_register       FAIL     opener_calls=0 failing_checks=5
+       ❌ FAIL: wakeword registered
+       ❌ FAIL: tts registered
+       ❌ FAIL: stt registered
+       ❌ FAIL: sendListenStart sent listen_start to the ready STT client
+       ❌ FAIL: …and recorded a transcript
+M4_route_skips_tool        FAIL     opener_calls=0 failing_checks=3
+       ❌ FAIL: open_app ran once for "youtube" (https://www.youtube.com)
+       ❌ FAIL: open_app was a dry run (no browser launched)
+       ❌ FAIL: the route ran no tool but open_app (ran: none)
+M5a_extra_tool             FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: the route ran no tool but open_app (ran: browser_state, open_app)
+M5b_direct_spawn           FAIL     opener_calls=1 failing_checks=1
+       ❌ FAIL: no browser or opener process was started during the test (started: xdg-open https://www.youtube.com)
+M6_skill_ignores_dryrun    FAIL     opener_calls=1 failing_checks=2
+       ❌ FAIL: open_app was a dry run (no browser launched)
+       ❌ FAIL: no browser or opener process was started during the test (started: xdg-open https://www.youtube.com)
+M7_engine_not_set          FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: …and took the engine from the sender (wakeword: null, stt: Whisper)
+M8_empty_counts_as_transcript FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: an empty stt_result reaches the handlers but is not counted as a transcript
+X1_bridge_spawns_on_stt    FAIL     opener_calls=2 failing_checks=1
+       ❌ FAIL: no browser or opener process was started during the test (started: xdg-open https://www.youtube.com | xdg-open https://www.youtube.com)
+X2_tool_via_registry_get   FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: the route ran no tool but open_app (ran: browser_state, open_app)
+X3_sh_c_opener_other_url   FAIL     opener_calls=1 failing_checks=1
+       ❌ FAIL: no browser or opener process was started during the test (started: sh -c xdg-open https://www.google.com)
+X3b_bare_start_string      FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: no browser or opener process was started during the test (started: start "" "https://www.google.com" | start "" "https://www.google.com")
+X4_engine_any_role         FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: …and took the engine from the sender (wakeword: Google STT, stt: Google STT)
+X5_wrong_resolved_url      FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: open_app ran once for "youtube" (https://www.youtube.com)
+X6_timer_deferred_launch   FAIL     opener_calls=1 failing_checks=1
+       ❌ FAIL: no browser or opener process was started during the test (started: xdg-open https://www.youtube.com)
+X7_browser_exe_no_url      FAIL     opener_calls=0 failing_checks=1
+       ❌ FAIL: no browser or opener process was started during the test (started: firefox)

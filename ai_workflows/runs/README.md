@@ -45,3 +45,4 @@ runs/
 | Date | Run folder | Finding / issue ID | Closure status |
 |---|---|---|---|
 | 2026-10-23 | `2026-10-23_voice-route-test-launches-browser/` | TEST-05 | COMPLETE WITH LIMITATIONS (Windows not observed; review by a separate agent session, not a human) |
+| 2026-10-25 | `2026-10-25_voice-route-test-weak-checks/` | TEST-06 | COMPLETE WITH LIMITATIONS (Windows not observed; B2 open; review by a separate agent session, not a human) |

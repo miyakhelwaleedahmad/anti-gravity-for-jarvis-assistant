@@ -1,0 +1,15 @@
+none                       PASS     opener_calls=0 failing_checks=0
+M1_no_listen_send          PASS     opener_calls=0 failing_checks=0
+M2_no_handler_dispatch     PASS     opener_calls=0 failing_checks=0
+M3_no_ready_register       PASS     opener_calls=0 failing_checks=0
+M4_route_skips_tool        FAIL     opener_calls=0 failing_checks=2
+       ❌ FAIL: open_app ran for "youtube" once per request
+       ❌ FAIL: open_app ran for "youtube" once per request
+M5a_extra_tool             PASS     opener_calls=0 failing_checks=0
+M5b_direct_spawn           PASS     opener_calls=2 failing_checks=0
+M6_skill_ignores_dryrun    FAIL     opener_calls=2 failing_checks=2
+       ❌ FAIL: open_app was a dry run (no browser launched)
+       ❌ FAIL: open_app was a dry run (no browser launched)
+M7_engine_not_set          PASS     opener_calls=0 failing_checks=0
+# M8 on the OLD test (HEAD 76f4712 version), added after the first old-test run
+M8_empty_counts_as_transcript PASS     opener_calls=0 failing_checks=0

@@ -1,0 +1,11 @@
+# probe on unchanged runtime code (76f4712), two process('open YouTube for me','voice') calls; fake xdg-open on PATH
+## dryRun forced on open_app: yes
+SPAWNED_AT_IMPORT ["spawn powershell [\"-NoProfile\",\"-NonInteractive\",\"-ExecutionPolicy\",\"Bypass\",\"-Command\",\"-\"]"]
+TOOLS ["open_app","open_app"]
+SPAWNED_DURING_ROUTE []
+opener calls: 0
+## dryRun forced on open_app: no (control: shows the wrapper sees a real launch)
+SPAWNED_AT_IMPORT ["spawn powershell [\"-NoProfile\",\"-NonInteractive\",\"-ExecutionPolicy\",\"Bypass\",\"-Command\",\"-\"]"]
+TOOLS ["open_app","open_app"]
+SPAWNED_DURING_ROUTE ["spawn xdg-open [\"https://www.youtube.com\"]","spawn xdg-open [\"https://www.youtube.com\"]"]
+opener calls: 2
