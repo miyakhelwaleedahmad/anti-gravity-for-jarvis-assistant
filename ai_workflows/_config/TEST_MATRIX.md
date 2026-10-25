@@ -46,7 +46,7 @@ pnpm test -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTe
 | Test | What it checks |
 |---|---|
 | `nodeBridgeSingletonTest` | one NodeBridge, idempotent start(), READY registry, TTS and listen_start queues |
-| `voiceRouteMockTest` | simulated wake word → STT → orchestrator → deterministic open_app |
+| `voiceRouteMockTest` | stand-in clients on the real bridge: client_ready, listen_start, stt_result delivered → orchestrator → deterministic open_app (dry run). Fails if the route runs any other registered tool, or if a browser or URL opener is started through the main thread's `child_process` functions during the test. Not seen: a worker thread, the `ChildProcess` class used directly, a native addon, a tool's `execute` saved before the test wraps it. Not `jarvis.ts`'s handler |
 | `interruptGatingTest` | speech_detected accepted only while SPEAKING |
 | `openAppSmokeTest` | open_app resolves "youtube" in dry-run mode (nothing is opened) |
 | `latencySmokeTest` | one request ("hello", answered by the fixed greeting route) through the orchestrator |

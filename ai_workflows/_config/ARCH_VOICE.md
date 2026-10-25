@@ -54,9 +54,10 @@ wording differs from what the code prints now:
 | `[open_app] target="youtube" resolved="https://www.youtube.com/"` | `[open_app] target="…" resolved="…"` | `skills/automation/skill.ts` |
 | `[NodeBridge] → [tts] speak` | same | `bridge/nodeBridge.ts` |
 
-`tests/voiceRouteMockTest.ts` prints some contract lines itself (mocked), so
-a passing mock test does not show that the runtime prints them. Match live
-logs against the right-hand column.
+`tests/voiceRouteMockTest.ts` runs the real bridge with stand-in Python
+clients, but not `jarvis.ts`'s `stt_result` handler, and it prints no
+imitation lines since TEST-06. A passing test still does not show what the
+live runtime prints. Match live logs against the right-hand column.
 
 ## Contracts and tests
 

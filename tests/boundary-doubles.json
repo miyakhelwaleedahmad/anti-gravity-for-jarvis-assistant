@@ -190,7 +190,7 @@
       "replaces": [
         "registry:execute"
       ],
-      "reason": "wraps execute only to make open_app a dry run, so the test opens no browser on the test machine; the deterministic route, risk engine and open_app skill still run. The real launch is checked live (TEST_MATRIX.md, Live Runtime Verification)"
+      "reason": "wraps execute to make open_app a dry run, so the test opens no browser on the test machine (the tools themselves and child_process are only recorded, not replaced); the deterministic route, risk engine and open_app skill still run. The real launch is checked live (TEST_MATRIX.md, Live Runtime Verification)"
     },
     "tests/worldStateTest.ts": {
       "replaces": [
