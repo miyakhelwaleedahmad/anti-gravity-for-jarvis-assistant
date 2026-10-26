@@ -308,7 +308,7 @@ console.log('\n--- 3. win_automate.ps1 window actions, called as JARVIS calls th
   const SAMPLES: Record<string, string> = { hwnd: HWND, 'match.hwnd': HWND, 'String(x)': '10', 'String(y)': '20', 'String(width)': '800', 'String(height)': '600' };
   const calls: Array<{ from: string; args: string[] }> = [];
   for (const file of ['control/windowController.ts', 'control/appController.ts']) {
-    for (const m of fs.readFileSync(path.join(repo, file), 'utf8').matchAll(/runAutomateScript\(\[([\s\S]*?)\]\)/g)) {
+    for (const m of fs.readFileSync(path.join(repo, file), 'utf8').matchAll(/(?:runAutomateScript|this\.deps\.automate)\(\[([\s\S]*?)\]\)/g)) {
       const tokens = m[1]!.split(',').map((t) => t.trim()).filter(Boolean);
       const args = tokens.map((t) => /^'[^']*'$/.test(t) ? t.slice(1, -1) : (SAMPLES[t] ?? `?${t}`));
       if (args.includes('control-window')) calls.push({ from: file, args });
