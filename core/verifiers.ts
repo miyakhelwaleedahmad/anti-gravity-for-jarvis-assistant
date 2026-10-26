@@ -11,6 +11,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { appWindowMatcher, appWindowsLeft } from '../control/appMatch.js';
+
+// How an app's window is recognised by title or program (control/appMatch.ts).
+export { appWindowMatcher };
 
 export type VerificationStatus = 'verified' | 'failed' | 'unverifiable';
 
@@ -274,24 +278,6 @@ const verifyControlWindow: Verifier = async (args, output) => {
   return unverifiable('its new position or size is not read back');
 };
 
-/**
- * How an app's window is recognised, by its title or program. calc.exe
- * exits once Calculator is up (its window belongs to ApplicationFrameHost),
- * and VS Code's program is "Code": the name asked for is not always the
- * program's.
- */
-const APP_WINDOWS: Readonly<Record<string, RegExp>> = {
-  calculator: /calculator/i, calc: /calculator/i,
-  vscode: /visual studio code|^code$/i, 'vs code': /visual studio code|^code$/i, code: /visual studio code|^code$/i,
-  cmd: /command prompt|^cmd$|windowsterminal/i, 'command prompt': /command prompt|^cmd$|windowsterminal/i,
-  settings: /^settings$/i, 'ms-settings': /^settings$/i,
-};
-
-export function appWindowMatcher(target: string): RegExp {
-  const key = target.toLowerCase().trim();
-  return APP_WINDOWS[key] ?? new RegExp(key.replace(/\.exe$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-}
-
 /** A visible window of the app, or (for `open`) its process, asked again for up to `ms`. */
 async function appState(target: string, wanted: boolean, ms: number): Promise<boolean> {
   const { probeWindows } = await import('../perception/windowsProbe.js');
@@ -299,7 +285,11 @@ async function appState(target: string, wanted: boolean, ms: number): Promise<bo
   const matcher = appWindowMatcher(target);
   return keepLooking(async () => {
     const windows = await probeWindows('windows') as Array<{ title: string; process: string }>;
-    const visible = windows.some((w) => matcher.test(w.title) || matcher.test(w.process));
+    // A close is checked by the controller's own rule: the windows it would
+    // close (no browser window, not Notepad++ for "notepad" when Notepad was there).
+    const visible = wanted
+      ? windows.some((w) => matcher.test(w.title) || matcher.test(w.process))
+      : appWindowsLeft(target, windows.map((w) => ({ name: w.process, pid: 0, windowTitle: w.title }))).length > 0;
     // Closing closes windows: a process left in the background counts as closed.
     const open = visible || (wanted && (await appController.isAppOpen(target)));
     return open === wanted;
@@ -310,8 +300,8 @@ async function appState(target: string, wanted: boolean, ms: number): Promise<bo
 const APP_OPEN_WAIT_MS = 15_000;
 
 /** control_app (P14), on the desktop: an opened or restarted app runs, a closed one has no window left, a focused one is in front. */
-const verifyControlApp: Verifier = async (args) => {
-  if (process.platform !== 'win32') return unverifiable(ON_WINDOWS);
+const verifyControlApp: Verifier = async (args, output) => {
+  if (!windowChecks.onWindows()) return unverifiable(ON_WINDOWS);
   const action = text(args, 'action').toLowerCase();
   const target = text(args, 'target');
   if (!target) return unverifiable('no app was named');
@@ -319,6 +309,23 @@ const verifyControlApp: Verifier = async (args) => {
     return (await appState(target, true, APP_OPEN_WAIT_MS)) ? verified(`${target} is running`) : failed(`${target} is not running`);
   }
   if (action === 'close') {
+    // The windows the close named: exactly those must be gone (another
+    // program's window with a similar name is not "still open").
+    // At the end of the reply: the target, quoted earlier, may contain anything.
+    const closed = /\(windows ([^)]*)\)\.?\s*$/.exec(messageOf(output))?.[1]?.match(/0x[0-9a-f]+/gi) ?? [];
+    if (closed.length > 0) {
+      try {
+        const gone = await keepLooking(async () => {
+          for (const hwnd of closed) if ((await windowChecks.windowState(hwnd)).exists) return false;
+          return true;
+        }, 3_000);
+        return gone
+          ? verified(closed.length === 1 ? 'the window is gone' : `the ${closed.length} windows are gone`)
+          : failed(`a window of ${target} is still open; it may be asking whether to save`);
+      } catch (err) {
+        return failed(`whether the windows closed could not be read: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     return (await appState(target, false, 3_000)) ? verified(`no window of ${target} is open`) : failed(`a window of ${target} is still open`);
   }
   if (action === 'focus') {

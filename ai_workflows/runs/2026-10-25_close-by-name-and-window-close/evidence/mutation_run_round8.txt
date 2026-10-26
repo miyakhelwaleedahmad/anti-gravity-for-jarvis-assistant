@@ -1,0 +1,5 @@
+# Round 8 mutation run (review round 7: R7-1, R7-2)
+none                               === 2 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+R7_1_unknown_owner_closes          === 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R7_1b_no_full_list_for_front       === 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R7_2_long_title_kept               === 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest

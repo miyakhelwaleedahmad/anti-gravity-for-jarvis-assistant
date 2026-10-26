@@ -14,6 +14,7 @@
 | `permissionSession.ts`, `permissionDenial.ts` | Permission levels (enforced at dispatch and controller layers); how a refusal is explained |
 | `actionQueue.ts`, `actionAuditLog.ts`, `rollbackManager.ts` | Serialized actions with timeouts; `logs/jarvis-actions.jsonl`; undo where possible |
 | `appController.ts`, `windowController.ts`, `processController.ts`, `systemController.ts`, `adminController.ts`, `fileController.ts` | Apps, windows, processes, system settings, admin functions, files |
+| `appMatch.ts` | Which windows belong to a named app (Windows names have no `.exe`); browser windows are never closed or killed by app, window or process tools (owner decision D3, `docs/audit/TOOL_REPAIR_PHASES.md`) |
 | `inputController.ts`, `keyboardController.ts`, `mouseController.ts` | Serialized keyboard and mouse input |
 | `uiAutomation.ts`, `uiRefs.ts`, `uia.ps1`, `win_automate.ps1`, `helper.ts` | Windows UI Automation: elements of a window and actions on them |
 | `desktopControl.ts`, `desktop.ps1` | Screenshots and the clipboard |

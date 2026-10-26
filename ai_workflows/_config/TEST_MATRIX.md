@@ -25,7 +25,7 @@ that way, a test uses JARVIS's real data folder: `noThinkMemoryTest` wrote
 | Tests whose name contains a word | `pnpm test -- --filter=word` |
 | Whole suite, skipping what this PC lacks | `pnpm test -- --ci` |
 | Voice core group | `pnpm test:voice-core` (type check, then 12 named tests) |
-| PC control group | `pnpm test:pc-control` (type check, then 17 named tests; see Windows note) |
+| PC control group | `pnpm test:pc-control` (type check, then 18 named tests; see Windows note) |
 | Live provider tests | `pnpm test:live` (only when asked: needs an API key and the network, acts on this PC) |
 
 The runner reports one line per file: PASS, FAIL, TIMEOUT, BLOCKED (its

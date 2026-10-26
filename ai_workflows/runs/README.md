@@ -46,3 +46,4 @@ runs/
 |---|---|---|---|
 | 2026-10-23 | `2026-10-23_voice-route-test-launches-browser/` | TEST-05 | COMPLETE WITH LIMITATIONS (Windows not observed; review by a separate agent session, not a human) |
 | 2026-10-25 | `2026-10-25_voice-route-test-weak-checks/` | TEST-06 | COMPLETE WITH LIMITATIONS (Windows not observed; B2 open; review by a separate agent session, not a human) |
+| 2026-10-25 | `2026-10-25_close-by-name-and-window-close/` | TRA-04, TRA-18, TRA-06 (phase A1) | COMPLETE WITH LIMITATIONS (Windows and the owner's PC not observed; review by a separate agent session, not a human) |

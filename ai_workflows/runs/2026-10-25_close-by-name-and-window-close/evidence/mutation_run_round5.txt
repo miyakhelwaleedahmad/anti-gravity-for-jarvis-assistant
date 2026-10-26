@@ -1,0 +1,8 @@
+# Round 5 mutation run (after review round 4): one fault per round-4 fix, 4 tests
+none                               === 4 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+R4_1a_cmd_matches_terminal         === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R4_1b_terminal_title_dropped       === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R4_1c_protected_in_scope           === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R4_2_frame_host_any_title          === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R4_3_host_stage_dropped            === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R4_4_no_active_fallback            === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest

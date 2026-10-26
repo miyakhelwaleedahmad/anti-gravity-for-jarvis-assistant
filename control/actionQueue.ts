@@ -10,7 +10,8 @@
  * retrying it asked the user the same question again.
  */
 // A command stopped for taking too long may have done part of its work: never run it again (REL-01, REL-06).
-const FINAL_FAILURE = /safety policy|blocked|ABORTED|TIMEOUT|was stopped|User did not confirm|cancelled by user|denied|not approved|Permission Level \d required/i;
+// The browser refusals and kill outcomes (control/appMatch.ts, processController) are final too: a retry asked again.
+const FINAL_FAILURE = /safety policy|blocked|ABORTED|TIMEOUT|was stopped|User did not confirm|cancelled by user|denied|not approved|Permission Level \d required|through app, window or process control|is a page open in|still running after Stop-Process|Could not terminate|could not confirm it ended|could not start it again|was not closed: /i;
 
 export class ActionQueue {
   private queue: Promise<any> = Promise.resolve();

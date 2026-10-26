@@ -124,7 +124,15 @@ export function selectPlanningToolNames(input: string): string[] {
   // Close / minimize requests need the tools that can do them, first so the
   // 8-tool cap below never drops them. "close chrome" used to offer only
   // read-only state tools, so the model had no way to close anything.
-  if (isKillOrClose) {
+  // A tab is closed with the tab tools: given "youtube", the app and window
+  // tools matched the title "YouTube - Google Chrome" and closed the whole
+  // window (TRA-18), so a request about tabs is not offered them.
+  // "maximize the window with the youtube tab" still gets control_window: the
+  // window branch below does not depend on this one.
+  const isTabRequest = isKillOrClose && /\btabs?\b/.test(clean);
+  if (isTabRequest) {
+    addIfRegistered('control_browser', 'browser_tab');
+  } else if (isKillOrClose) {
     addIfRegistered('control_app', 'control_window');
   }
 

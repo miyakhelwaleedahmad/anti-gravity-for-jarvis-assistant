@@ -1,0 +1,38 @@
+# Round 2 mutation run (after review round 1), 26 faults, 9 tests
+none                               === 9 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+M1_exe_not_stripped                === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M2_no_exact_preference             === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M3_no_browser_page_rule            === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M4_no_browser_program_rule         === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M5_no_several_question             === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M6_handle_filter_dropped           === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M7_window_browser_guard_dropped    === 9 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+M8_kill_exit_code_ignored          === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M9_kill_still_running_ignored      === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M10_kill_browser_allowed           === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M11_kill_first_match               === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M12_planner_tab_rule_dropped       === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R1_window_handle_from_any_match    === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R2_question_inside_scope           === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R3_restart_first_match             === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R4_tab_rule_any_verb               === 9 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+R5_no_answer_is_gone               === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R6_empty_guard_dropped             === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R7_check_ignores_handles           === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R8_arc_not_browser                 === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R9_browser_handle_allowed          === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R10_partial_any_count              === 9 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+R11_matched_protection_dropped     === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R12_zero_handles_success           === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R13_find_keeps_exe                 === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R14_refusals_retried               === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+
+
+# Round 2b: the three undetected faults after the tests were tightened, plus R10b
+none                               === 9 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+M7_window_browser_guard_dropped    === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R4_tab_rule_any_verb               === 9 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+R10_partial_any_count              === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R10b_title_stage_matches_programs  === 8 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+
+# R4_tab_rule_any_verb: no longer applicable. The verb restriction it mutated was removed (core/planningToolSelection.ts); control_window for 'window' phrases comes from the window branch, which M12/closeByNameTest cover.

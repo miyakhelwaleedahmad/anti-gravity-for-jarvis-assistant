@@ -1,0 +1,70 @@
+
+> antigravityforjarvisassistant@1.0.0 test <scratchpad>/a1old
+> tsx tests/runAll.ts -- --only=closeByNameTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    closeByNameTest                              6398ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - closeByNameTest: === Close by name: 17 passed, 64 failed ===
+        FAIL: "close notepad" closes the Notepad window (No open application matches "notepad".; closed [])
+        FAIL: "close Notepad.exe" closes the same window (No open application matches "Notepad.exe".)
+        FAIL: "close calculator" closes the Calculator window (ApplicationFrameHost), with no extra question (No open application matches "calculator".; asked nothing)
+        FAIL: "close calculator" with a Chrome tab about calculators: Calculator closes, Chrome stays (both tools) (app: No open application matches "calculator".; window: ok)
+        FAIL: "close calculator" with only "calculator.py - Notepad" open: asks first; on no, nothing closed (No open application matches "calculator".)
+        FAIL: "close calculator" with only "calculator.png - Photos" (ApplicationFrameHost): asked first; on no, nothing closed (No open application matches "calculator".)
+        FAIL: "close calculator" in CalculatorApp (Windows 11): closed, no extra question (No open application matches "calculator".; asked nothing)
+        FAIL: "focus notepad" brings the Notepad window to the front (No running window found for app "notepad".)
+        FAIL: "restart notepad" closes the running Notepad before opening it once (closed [], opened 1)
+        FAIL: "close notepad" closes Notepad, not Notepad++, and asks nothing (No open application matches "notepad".; closed [])
+        FAIL: a Notepad entry without a window handle is skipped: one window closed, no question (No open application matches "notepad".)
+        FAIL: no matching window has a handle: a failure, not "Closed 0 window(s)" (No open application matches "notepad".)
+        FAIL: "close notepad" with only Notepad++ open: asks, and the owner says no: nothing closed (No open application matches "notepad".)
+        FAIL: approved "close cmd", the owner says no: asked outside the approval, naming the window; nothing closed (Close Protected App: Close app: cmd; closed [])
+        FAIL: approved "close cmd", the owner says yes: asked outside the approval, naming the window; only Command Prompt closed (Close Protected App: Close app: cmd; closed [])
+        FAIL: "close vs code" with only a Chrome tab about it: the tab refusal, no question first (No open application matches "vs code".; asked Close Protected App: Close app: vs code)
+        FAIL: "note" (part of three programs' names): asked about all 3 windows; the owner says no: nothing closed (; )
+        FAIL: "host" (inside two programs' names, no title): no app chosen, nothing asked or closed
+        FAIL: "close windows terminal" finds Windows Terminal (protected): asked, nothing closed on no (No open application matches "windows terminal".)
+        FAIL: approved control_window "close jarvis": the protected question is asked outside the approval, naming the program (Close Protected Window: Close: jarvis - pnpm dev; closed [])
+        FAIL: "close terminal" reaches a protected app (WindowsTerminal): asked, nothing closed on no
+        FAIL: an empty app name closes nothing and asks nothing (closed ["0x1A","0x3D","0x4E"])
+        FAIL: control_app close "youtube": no window closed, the reply points to the tab (closed ["0x2B"])
+        FAIL: control_app close "gmail": no window closed, the reply points to the tab (closed ["0x2C"])
+        FAIL: Arc is a browser too: "youtube" closes no Arc window (closed ["0x2E"])
+        FAIL: control_app close "youtube" with Chrome listed first: only the Explorer window, never Chrome (Closed 2 window(s) matching "youtube".; closed ["0x2B","0x5A"])
+        FAIL: control_window close "youtube" with Chrome listed first: only the Explorer window, never Chrome (ok; closed ["0x2B"])
+        FAIL: control_app close "chrome": the browser is not closed through app control (No open application matches "chrome".)
+        FAIL: control_app close "google chrome": the browser is not closed through app control (closed ["0x2B","0x2C"])
+        FAIL: control_app close "Chrome.exe": the browser is not closed through app control (No open application matches "Chrome.exe".)
+        FAIL: control_app close "edge": the browser is not closed through app control (closed ["0x2F"])
+        FAIL: control_window close "youtube": no Chrome window closed, and the reply says why (closed ["0x2B"])
+        FAIL: control_window close "chrome": no Chrome window closed, and the reply says why (closed ["0x2B"])
+        FAIL: control_window close by a Chrome window's handle (from a window list): refused (closed ["0x2B"])
+        FAIL: control_window close by a Chrome handle missing from the app list: refused (closed ["0x2C"])
+        FAIL: control_window close by a handle no visible window has: refused, nothing closed (closed ["0x77"])
+        FAIL: a protected window known only from the full list: asked; on no, not closed
+        FAIL: "close current window" on a protected window missing from the app list: asked; on no, not closed
+        FAIL: two Notepad windows, the owner says no: nothing closed (No open application matches "notepad".)
+        FAIL: the question names both windows (not asked)
+        …
+        FAIL: the action queue does not retry: "notepad (PID: 101) is still running afte…" (ran 2 time(s))
+      [ActionQueue] Action "closeByNameTest" failed (attempt 1/2). Retrying... Error: Ended notepad, but could not start it again: spawn notepad ENOENT
+        FAIL: the action queue does not retry: "Ended notepad, but could not start it ag…" (ran 2 time(s))
+      [ActionQueue] Action "closeByNameTest" failed (attempt 1/2). Retrying... Error: Window 0x2C was not closed: no visible window has that handle.
+        FAIL: the action queue does not retry: "Window 0x2C was not closed: no visible w…" (ran 2 time(s))
+      --- 6. kernel results for app, window and process ---
+      [windowsState] Poll failed (non-fatal): no current window list for an action: PowerShell exited with code null/undefined; a fresh one failed too: This needs Windows: JARVIS reads it through Windows PowerShell.
+      [ActionQueue] Action "closeApp" failed (attempt 1/2). Retrying... Error: No open application matches "jarvis_test_not_open_xyz".
+        PASS: control_app close of something not open: success false, with the reason (false No open application matches "jarvis_test_not_open_xyz".)
+      [ActionQueue] Action "closeWindow" failed (attempt 1/2). Retrying... Error: Window matching "jarvis_test_not_open_xyz" not found.
+        PASS: control_window close of something not open: success false, with the reason (false Window matching "jarvis_test_not_open_xyz" not found.)
+      [ActionQueue] Action "killProcess" failed (attempt 1/2). Retrying... Error: No process found matching "jarvis_test_not_open_xyz".
+        PASS: control_process kill of something not open: success false, with the reason (false No process found matching "jarvis_test_not_open_xyz".)
+      [PermissionSession] 🛡️ Full Control disabled. Reason: close by name test. Session: ps_mvpfyrhi_9ea8a
+      === Close by name: 17 passed, 64 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

@@ -1,0 +1,13 @@
+none                               === 7 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+M1_exe_not_stripped                === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M2_no_exact_preference             === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M3_no_browser_page_rule            === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M4_no_browser_program_rule         === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M5_no_several_question             === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M6_handle_filter_dropped           === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M7_window_browser_guard_dropped    === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M8_kill_exit_code_ignored          === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M9_kill_still_running_ignored      === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M10_kill_browser_allowed           === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M11_kill_first_match               === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+M12_planner_tab_rule_dropped       === 6 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
