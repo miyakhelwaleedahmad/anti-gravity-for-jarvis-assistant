@@ -22,10 +22,27 @@ console.log('\n=== App Control Test ===\n');
 
 let testNotepad: ChildProcessWithoutNullStreams | null = null;
 
+/**
+ * On Windows 11, System32\notepad.exe only starts the Store Notepad, whose own
+ * process can appear seconds later on a slow PC: a fixed 1 s wait failed there.
+ * Waits until Notepad is found, at most NOTEPAD_WAIT_MS; if it never is, the
+ * isAppOpen check below fails as before.
+ */
+const NOTEPAD_WAIT_MS = 15_000;
+
 async function launchTestNotepad(): Promise<void> {
   if (process.platform !== 'win32') return;
   testNotepad = spawn('notepad.exe');
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  const started = Date.now();
+  let found = false;
+  while (!found && Date.now() - started < NOTEPAD_WAIT_MS) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    found = await appController.isAppOpen('notepad').catch(() => false);
+  }
+  const seconds = ((Date.now() - started) / 1000).toFixed(1);
+  console.log(found
+    ? `  ℹ️  Notepad found ${seconds} s after it was started`
+    : `  ℹ️  Notepad not found within ${NOTEPAD_WAIT_MS / 1000} s of being started`);
 }
 
 function cleanupTestNotepad(): void {
