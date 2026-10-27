@@ -149,7 +149,15 @@ try {
     JSON.stringify({ action: out.request?.action, why: out.request?.why, risk: out.request?.risk }));
   ok('cancelled: nothing stopped, and JARVIS says what it needed', alive(hungPid ?? 0) && /not approved/i.test(out.reply), out.reply);
   out = await say('3 application not working', "Why isn't my application working?", { answer: () => { approvalGate.offerVoiceAnswer('approve'); } });
-  ok('approved: the old process is gone, a new one answers', !alive(hungPid ?? 0) && await answers(world.api.port) && /started it again/i.test(out.reply) && noFailurePhrase(out.reply), out.reply);
+  // The old process is gone by stop_server's own check, made before the new
+  // start: later, Windows may give its PID to a new process, so alive() on it
+  // can be true then (CI #85). Each part is shown if the check fails.
+  const stoppedOld = out.calls.some((c) => c.tool === 'dev' && (c.args as any).action === 'stop_server' && (c.args as any).pid === hungPid && c.success);
+  const newPid = await serverPid(world.api.port);
+  const answersNow = await until(() => answers(world.api.port), 5000);
+  ok('approved: the old process is gone, a new one answers', stoppedOld && typeof newPid === 'number' && newPid !== hungPid && answersNow
+    && /started it again/i.test(out.reply) && noFailurePhrase(out.reply),
+    `stop_server ${hungPid}: ${stoppedOld}; old pid alive now: ${alive(hungPid ?? 0)}; new pid: ${newPid}; answers: ${answersNow} | ${out.reply}`);
 
   console.log('\n--- 4. "Continue what I was doing." ---');
   const stopWeb = [[{ name: 'dev', args: { action: 'stop_server', project: world.web.dir } }]];
