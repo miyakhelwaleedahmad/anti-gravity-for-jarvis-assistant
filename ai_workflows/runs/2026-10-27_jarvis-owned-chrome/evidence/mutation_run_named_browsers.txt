@@ -1,4 +1,11 @@
-M21 open_app sends Edge and Firefox to JARVIS's Chrome: CAUGHT | FAIL: "open edge": route open_app edge, which starts msedge.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":true,"target":"edge","resolvedT
-M22 control_app open sends Firefox to JARVIS's Chrome: CAUGHT | FAIL: control_app open "firefox" uses the program's own opener, not JARVIS's Chrome (Opened "firefox" in JARVIS's Chrome (port 40335, tab A5495F788B8542EE). )
+M22 control_app open sends Firefox to JARVIS's Chrome: CAUGHT | FAIL: control_app open "firefox" starts firefox.exe (the name Windows knows), not JARVIS's Chrome (Opened "firefox" in JARVIS's Chrome (port 35157, tab 8B340DC34CD24E4F). )
+M23 no route for 'microsoft edge': CAUGHT | FAIL: "open microsoft edge": route open_app edge, which starts msedge.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+M24 no route for 'mozilla firefox': CAUGHT | FAIL: "open mozilla firefox": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+M25 'mozilla firefox' not on the open_app allow-list: CAUGHT | FAIL: open_app "mozilla firefox" (as the planner may call it) starts firefox.exe ({"success":false,"target":"mozilla firefox","resolvedTarget":"mozilla firefox","dryRun":false,"error":"Target is not i
+M26 control_app opens 'microsoft edge' by that name: CAUGHT | FAIL: control_app open "microsoft edge" starts msedge.exe (the name Windows knows), not JARVIS's Chrome (Opened "microsoft edge" successfully. xdg-open microsoft edge)
+M27 control_app opens 'firefox' by that name: CAUGHT | FAIL: control_app open "firefox" starts firefox.exe (the name Windows knows), not JARVIS's Chrome (Opened "firefox" successfully. xdg-open firefox)
+M28 'microsoft edge' routed to JARVIS's Chrome: CAUGHT | FAIL: "open microsoft edge": route open_app edge, which starts msedge.exe, not JARVIS's Chrome ({"type":"open_app","target":"chrome","reply":"Opening chrome, sir."} {"success":true,"target":"chrome","
 
-2/2 caught
+7/7 caught
+M21 open_app sends Edge and Firefox to JARVIS's Chrome: CAUGHT | FAIL: "open edge": route open_app edge, which starts msedge.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":true,"target":"edge","resolvedT
+1/1 caught

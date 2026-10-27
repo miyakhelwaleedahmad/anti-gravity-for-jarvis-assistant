@@ -46,3 +46,14 @@ The reviewer ran `tsc --noEmit` (0 errors) and 8 targeted test files through the
 
 - R3-1: the "question inside the tool's time budget" limit (an answer after about 15–20 s is refused, or comes after JARVIS reported a timeout; also A1's questions) gets its own line under B4 in the tracker; the owner's PC check says to answer "close the browser" within about 15 s. **Done at closure.**
 - R3-2: verification, final report and closure records, and the complete full-suite output, are written after the suite finishes. **Done in stages 05–07.**
+
+## Round 4 (named-browser fix, owner request) — PASS
+
+The reviewer ran `tsc --noEmit` (0 errors) and 11 targeted test files (all pass), and traced every path (voice routes, open_app, control_app, isAppOpen, restartApp, closeApp, the planner): nothing named Edge or Firefox reaches JARVIS's Chrome; no security or DO_NOT_BREAK regression.
+
+| ID | Sev. | Finding | Outcome |
+|---|---|---|---|
+| R4-1 | low | The new aliases had positive tests only; ai_workflows/CLAUDE.md asks for security-boundary tests when aliases are broadened | **Fixed**: "launch microsoft edge /c del *", "open google chrome & calc", "open mozilla firefox; del *" and similar give no browser route |
+| R4-2 | low (records) | `evidence/typecheck.txt` read while being rewritten; change_log/review silent on this change | typecheck.txt says `TC=0` after the run; records **added** (change_log, this section) |
+| R4-3 | info | A page asked for "in Edge" still opens in JARVIS's Chrome (D1) | **Documented** in BROWSER_CONTROL.md |
+

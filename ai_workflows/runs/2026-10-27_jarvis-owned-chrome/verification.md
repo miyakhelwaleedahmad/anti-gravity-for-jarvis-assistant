@@ -33,9 +33,11 @@ Earlier full-suite runs during the work: 200 passed / 2 failed (plannerDecisionA
 
 Mutants M21 (open_app sends Edge/Firefox to JARVIS's Chrome) and M22 (control_app sends Firefox there): 2/2 caught (`evidence/mutation_run_named_browsers.txt`).
 
-Gaps found (not changed; reported to the owner):
-- "open Microsoft Edge" and "open Mozilla Firefox" have no deterministic route: the planner (LLM) chooses the tool, so the result is not guaranteed. `open_app "mozilla firefox"` is refused (not on the allow-list).
-- `control_app open "edge"` hands Windows the name `edge`, which Windows may not find (it knows `msedge`); not observed on Windows. It never opens JARVIS's Chrome.
+Gaps found then, **fixed on the owner's request** (same day, `change_log.md` last section):
+- "open Microsoft Edge" / "open Mozilla Firefox" had no deterministic route, and `open_app "mozilla firefox"` was refused → now routes and allow-list entries.
+- `control_app open "edge"` handed Windows the name `edge` → now `msedge.exe` (and `firefox.exe`).
+
+Fix verification: before the fix 108 passed, 12 failed (`evidence/named_browsers_before_fix.txt`); after it, with the security-boundary checks of review R4-1, **129 passed, 0 failed** (`evidence/new_code_run.txt`). Mutants M21–M28: 8/8 caught. Typecheck 0 errors; full suite on the fix **202 passed, 0 failed**, 1 blocked (pygame), 9 skipped (`evidence/full_suite.txt`; the boundary checks were added to the test file after that run and the test was re-run: 129/129). Review round 4: PASS.
 
 ## Not verified here
 

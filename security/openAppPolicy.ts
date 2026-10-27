@@ -46,6 +46,8 @@ const APP_ALLOWLIST: Record<string, string> = {
   // without entries here every "open spotify / firefox / edge" was refused.
   'spotify': 'spotify:',
   'firefox': 'firefox.exe',
+  'mozilla firefox': 'firefox.exe',
+  'google chrome': 'chrome.exe',
   'edge': 'msedge.exe',
   'microsoft edge': 'msedge.exe',
 };

@@ -417,6 +417,40 @@ const { execute: openApp } = await import('../skills/automation/skill.js');
         route?.type === 'open_app' && route.target === target && r.success === true && r.resolvedTarget === program && r.method !== 'jarvis-chrome'
           && openers.length === 1 && openers[0]!.includes(program), `${JSON.stringify(route)} ${JSON.stringify(r)} ${openers.join(' | ')}`);
     }
+    // Owner request (2026-10-27): the full names are routes of their own, and every
+    // tool resolves them to the browser named.
+    for (const [phrase, target, program] of [['open microsoft edge', 'edge', 'msedge.exe'], ['Open Microsoft Edge', 'edge', 'msedge.exe'],
+      ['launch microsoft edge for me', 'edge', 'msedge.exe'], ['open mozilla firefox', 'firefox', 'firefox.exe'],
+      ['Open Mozilla Firefox', 'firefox', 'firefox.exe'], ['start mozilla firefox please', 'firefox', 'firefox.exe']] as const) {
+      openers.length = 0;
+      const route = matchDeterministicCommand(phrase);
+      const r = JSON.parse(await openApp({ target: route?.target ?? '' }));
+      ok(`"${phrase}": route open_app ${target}, which starts ${program}, not JARVIS's Chrome`,
+        route?.type === 'open_app' && route.target === target && r.success === true && r.resolvedTarget === program && r.method !== 'jarvis-chrome'
+          && openers.length === 1 && openers[0]!.includes(program), `${JSON.stringify(route)} ${JSON.stringify(r)} ${openers.join(' | ')}`);
+    }
+    // Security boundary for the new aliases (ai_workflows/CLAUDE.md, review R4-1):
+    // anything after the browser name that is not a filler word gives no browser route.
+    for (const phrase of ['launch microsoft edge /c del *', 'open microsoft edge && calc', 'open google chrome & calc',
+      'open mozilla firefox; del *', 'start mozilla firefox | shutdown', 'open microsoft edge and delete my files']) {
+      const route = matchDeterministicCommand(phrase);
+      ok(`"${phrase}": no browser route`, !(route?.type === 'open_app' && ['edge', 'firefox', 'chrome'].includes(route.target ?? '')), JSON.stringify(route));
+    }
+    for (const target of ['microsoft edge & calc', 'mozilla firefox; del *', 'google chrome | calc']) {
+      openers.length = 0;
+      const r = JSON.parse(await openApp({ target }));
+      ok(`open_app "${target}": refused, nothing started`, r.success === false && openers.length === 0, `${JSON.stringify(r)} ${openers.join(' | ')}`);
+    }
+    openers.length = 0;
+    const mf = JSON.parse(await openApp({ target: 'mozilla firefox' }));
+    ok('open_app "mozilla firefox" (as the planner may call it) starts firefox.exe',
+      mf.success === true && mf.resolvedTarget === 'firefox.exe' && openers.length === 1 && openers[0]!.includes('firefox.exe'), `${JSON.stringify(mf)} ${openers.join(' | ')}`);
+    for (const [target, program] of [['edge', 'msedge.exe'], ['microsoft edge', 'msedge.exe'], ['firefox', 'firefox.exe'], ['mozilla firefox', 'firefox.exe']] as const) {
+      openers.length = 0;
+      const reply = await appController.openApp(target).catch((e: Error) => `threw: ${e.message}`);
+      ok(`control_app open "${target}" starts ${program} (the name Windows knows), not JARVIS's Chrome`,
+        !/JARVIS's Chrome/.test(reply) && openers.length === 1 && openers[0]!.includes(program), `${reply} ${openers.join(' | ')}`);
+    }
     openers.length = 0;
     const me = JSON.parse(await openApp({ target: 'microsoft edge' }));
     ok('open_app "microsoft edge" (as the planner may call it) starts msedge.exe, not JARVIS\'s Chrome',
@@ -430,7 +464,7 @@ const { execute: openApp } = await import('../skills/automation/skill.js');
     }
     ok('…none of these opened or brought forward a tab in JARVIS\'s Chrome', own3.pages.length === tabsBefore && own3.activated.length === activatedBefore,
       `${own3.pages.length - tabsBefore} new tab(s), ${own3.activated.length - activatedBefore} activation(s)`);
-    for (const phrase of ['open browser', 'open the browser', 'open chrome']) {
+    for (const phrase of ['open browser', 'open the browser', 'open chrome', 'open google chrome']) {
       const route = matchDeterministicCommand(phrase);
       openers.length = 0;
       const r = JSON.parse(await openApp({ target: route?.target ?? '' }));

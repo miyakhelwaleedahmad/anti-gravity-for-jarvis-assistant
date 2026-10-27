@@ -1,0 +1,217 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=jarvisChromeTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    jarvisChromeTest                             18094ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - jarvisChromeTest: === Results: 108 passed, 12 failed ===
+        FAIL: "open microsoft edge": route open_app edge, which starts msedge.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "Open Microsoft Edge": route open_app edge, which starts msedge.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "launch microsoft edge for me": route open_app edge, which starts msedge.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "open mozilla firefox": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "Open Mozilla Firefox": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "start mozilla firefox please": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: open_app "mozilla firefox" (as the planner may call it) starts firefox.exe ({"success":false,"target":"mozilla firefox","resolvedTarget":"mozilla firefox","dryRun":false,"error":"Target is not in the open_app allowlist."} )
+        FAIL: control_app open "edge" starts msedge.exe (the name Windows knows), not JARVIS's Chrome (Opened "edge" successfully. xdg-open edge)
+        FAIL: control_app open "microsoft edge" starts msedge.exe (the name Windows knows), not JARVIS's Chrome (Opened "microsoft edge" successfully. xdg-open microsoft edge)
+        FAIL: control_app open "firefox" starts firefox.exe (the name Windows knows), not JARVIS's Chrome (Opened "firefox" successfully. xdg-open firefox)
+        FAIL: control_app open "mozilla firefox" starts firefox.exe (the name Windows knows), not JARVIS's Chrome (Opened "mozilla firefox" successfully. xdg-open mozilla firefox)
+        FAIL: "open google chrome" (generic, or Chrome itself): JARVIS's Chrome (owner answer Q1) (null {"success":false,"error":"Error: target is required to open an application or URL."})
+        … last lines:
+      --- 1. start instructions per platform (TRA-16) ---
+        PASS: Windows: names chrome.exe and JARVIS_CHROME_PATH (JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install Google Chrome, or set JARVIS_CHROME_PATH in .env to the full path of chrome.exe (usually C:\Program Files\Google\Chrome\A
+        PASS: Linux: names chromium or google-chrome, not chrome.exe (JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).)
+        PASS: macOS: names Google Chrome.app, not chrome.exe (JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install Google Chrome in Applications, or set JARVIS_CHROME_PATH in .env to /Applications/Google Chrome.app/Contents/MacOS/Google C
+        PASS: "Chrome not reachable" on this platform (linux) gives this platform's instructions (Chrome is not reachable for JARVIS on 127.0.0.1:9: JARVIS's own Chrome is not running (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chr
+        PASS: the tab tools' instruction is the same text (JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).)
+        PASS: the Chrome state reader gives this platform's instructions too (Chrome DevTools endpoint unavailable on port 9. JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .en
+      --- 2. the profile and the port ---
+        PASS: JARVIS_CHROME_PROFILE wins
+        PASS: Windows: the folder the old instructions named (%USERPROFILE%\jarvis-chrome-profile) (C:\Users\owner\jarvis-chrome-profile)
+        PASS: elsewhere: ~/.jarvis-chrome-profile (/home/owner/.jarvis-chrome-profile)
+        PASS: JARVIS_CDP_PORT first
+        PASS: then the port in JARVIS's profile (45678)
+        PASS: then 9222
+        PASS: a damaged profile file is ignored
+      --- 3. starting JARVIS's Chrome ---
+        PASS: JARVIS_CDP_PORT set and answering: used, nothing started
+        PASS: JARVIS_CDP_PORT set but nothing answers: says so, names the fix, starts nothing (Nothing answers on Chrome's debugging port 39721. JARVIS_CDP_PORT is set, so JARVIS uses only the Chrome you start on that port: start it, or remove JARVIS_CDP_PORT from .env so that JARVIS starts its own Chrome
+        PASS: its own Chrome already running: used, nothing started
+        PASS: …and reported as running
+        PASS: a stale profile file (nothing answers): not running
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-stale).
+      [JarvisChrome] JARVIS's Chrome answers on 127.0.0.1:32971.
+        PASS: …so it starts Chrome once, with port 0 and its own profile (["--remote-debugging-port=0","--user-data-dir=/tmp/jarvis-own-chrome-SyeNft/p-stale","--no-first-run","--no-default-browser-check","about:blank"])
+        PASS: …and uses the port the new Chrome wrote (32971)
+        PASS: …without the default-browser opener
+        PASS: a file naming a different browser on that port: not JARVIS's
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-other).
+      [JarvisChrome] JARVIS's Chrome answers on 127.0.0.1:45775.
+        PASS: …so JARVIS starts its own
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-two).
+      [JarvisChrome] JARVIS's Chrome answers on 127.0.0.1:43395.
+        PASS: two requests at once start one Chrome (1 start(s); 43395, 43395)
+        PASS: Chrome not installed: says so with this platform's fix, starts nothing (Chrome was not found on this PC. JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to it
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-silent).
+        PASS: Chrome started but never opened its port: says so (Chrome did not open its debugging port within 1 s. Close any Chrome window that uses JARVIS's profile (/tmp/jarvis-own-chrome-SyeNft/p-silent) and ask again.)
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-inuse).
+        PASS: Chrome handed the start to a window already using the profile: says to close it (Chrome closed again without opening its debugging port. Usually a Chrome window is already open with JARVIS's profile (/tmp/jarvis-own-chrome-SyeNft/p-inuse) but without that port: close that window and ask agai
+        PASS: automatic start switched off: says so, starts nothing (JARVIS's Chrome is not running, and JARVIS_CHROME_AUTOSTART is off, so JARVIS does not start it. Remove that line from .env, or start Chrome yourself with --remote-debugging-port=0 --user-data-dir="/tmp/jarvis-own-chrome-SyeNft/p-off".)
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-throw).
+        PASS: Chrome that cannot be run (spawn throws): says so and names JARVIS_CHROME_PATH (Chrome could not be run (/fake/chrome): spawn EINVAL. Check JARVIS_CHROME_PATH.)
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-enoent).
+        PASS: …the same when it fails to start (ENOENT) (Chrome could not be run (/fake/chrome). Check JARVIS_CHROME_PATH.)
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-crash).
+        PASS: …and a Chrome that exits with an error code is reported with that code (Chrome exited with code 21 without opening its debugging port (profile /tmp/jarvis-own-chrome-SyeNft/p-crash).)
+        PASS: a failure carries a short spoken form that names the fix (Chrome was not found on this PC: install Google Chrome, or set JARVIS_CHROME_PATH to its program.)
+      [JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-own-chrome-SyeNft/p-blank).
+      [JarvisChrome] JARVIS's Chrome answers on 127.0.0.1:38443.
+        PASS: opening a page in a Chrome JARVIS just started leaves no blank tab (["https://www.youtube.com"])
+        PASS: JARVIS_CHROME_PATH is used when it exists
+        PASS: …and a JARVIS_CHROME_PATH that does not exist finds nothing (not some other Chrome)
+        PASS: Windows: a per-user install is found (C:\Users\o\AppData\Local\Google\Chrome\Application\chrome.exe)
+      --- 4. opening pages (TRA-03, Q1, Q2) ---
+      [open_app] target="youtube" shown in JARVIS's Chrome (port 46847, tab 70370E7FCCCC41E5)
+        PASS: "open youtube": a new tab in JARVIS's Chrome, brought forward ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","method":"jarvis-chrome","port":46847,"tabId":"70370E7FCCCC41E5"})
+        PASS: …and no default-browser opener ran
+      [open_app] target="chrome" shown in JARVIS's Chrome (port 46847, tab 70370E7FCCCC41E5)
+        PASS: "open chrome": JARVIS's Chrome is brought forward, no new tab, no opener (Q1) ({"success":true,"target":"chrome","resolvedTarget":"chrome.exe","method":"jarvis-chrome","port":46847,"tabId":"70370E7FCCCC41E5"})
+        PASS: a dry run still opens nothing (DO_NOT_BREAK smoke test) ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","dryRun":true})
+        PASS: JARVIS's Chrome cannot be reached: "open youtube" fails, says why, opens nothing elsewhere (Q2) ({"success":false,"target":"youtube","resolvedTarget":"https://www.youtube.com","method":"jarvis-chrome","error":"Nothing answers on Chrome's debugging port 42207. JARVIS_CDP_PORT is set, so JARVI
+        PASS: …with a short spoken reason that names the fix (Nothing answers on Chrome's debugging port 42207: start your Chrome on that port, or remove JARVIS_CDP_PORT from the settings.)
+        PASS: …and with automatic start off, the reply names the switch ({"success":false,"target":"youtube","resolvedTarget":"https://www.youtube.com","method":"jarvis-chrome","error":"JARVIS's Chrome is not running, and JARVIS_CHROME_AUTOSTART is off, so JARVIS does not start it. Remove that line from .
+        PASS: control_browser open_url without Chrome: an error that names the fix, no default browser (Nothing answers on Chrome's debugging port 1. JARVIS_CDP_PORT is set, so JARVIS uses only the Chrome you start on that port: start it, or remove JARVIS_CDP_PORT from .env so that JARVIS starts its own C
+      [windowsState] OPT-PS-1: Persistent PowerShell session started.
+      [windowsState] PS spawn error: spawn powershell ENOENT
+        PASS: control_app open "https://github.com": a tab in JARVIS's Chrome, no opener (Opened "https://github.com" in JARVIS's Chrome (port 39743, tab B607781657C34AD3). )
+        PASS: control_app open "chrome": JARVIS's Chrome brought forward, no opener (Opened "chrome" in JARVIS's Chrome (port 39743, tab B607781657C34AD3). )
+        PASS: control_app open with the full path to chrome.exe: JARVIS's Chrome, no opener (Opened "C:\Program Files\Google\Chrome\Application\chrome.exe" in JARVIS's Chrome (port 39743, tab B607781657C34AD3). )
+        PASS: …and without JARVIS's Chrome it fails and opens nothing elsewhere (threw: Nothing answers on Chrome's debugging port 1. JARVIS_CDP_PORT is set, so JARVIS uses only the Chrome you start on that port: start it, or remove JARVIS_CDP_PORT from .env so that JARVIS starts its own Chrome. )
+      [open_app] target="edge" resolved="msedge.exe"
+      [open_app] platform=linux command=xdg-open args=msedge.exe
+        PASS: "open edge": route open_app edge, which starts msedge.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":true,"target":"edge","resolvedTarget":"msedge.exe","platform":"linux","method":"xdg-open"} xdg-open msedge.exe)
+      [open_app] target="edge" resolved="msedge.exe"
+      [open_app] platform=linux command=xdg-open args=msedge.exe
+        PASS: "launch edge": route open_app edge, which starts msedge.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":true,"target":"edge","resolvedTarget":"msedge.exe","platform":"linux","method":"xdg-open"} xdg-open msedge.exe)
+      [open_app] target="firefox" resolved="firefox.exe"
+      [open_app] platform=linux command=xdg-open args=firefox.exe
+        PASS: "open firefox": route open_app firefox, which starts firefox.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"firefox","reply":"Opening firefox, sir."} {"success":true,"target":"firefox","resolvedTarget":"firefox.exe","platform":"linux","method":"xdg-open"} xdg-open firefox.exe)
+      [open_app] target="firefox" resolved="firefox.exe"
+      [open_app] platform=linux command=xdg-open args=firefox.exe
+        PASS: "open firefox for me": route open_app firefox, which starts firefox.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"firefox","reply":"Opening firefox, sir."} {"success":true,"target":"firefox","resolvedTarget":"firefox.exe","platform":"linux","method":"xdg-open"} xdg-open firef
+        FAIL: "open microsoft edge": route open_app edge, which starts msedge.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "Open Microsoft Edge": route open_app edge, which starts msedge.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "launch microsoft edge for me": route open_app edge, which starts msedge.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "open mozilla firefox": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "Open Mozilla Firefox": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: "start mozilla firefox please": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome (null {"success":false,"error":"Error: target is required to open an application or URL."} )
+        FAIL: open_app "mozilla firefox" (as the planner may call it) starts firefox.exe ({"success":false,"target":"mozilla firefox","resolvedTarget":"mozilla firefox","dryRun":false,"error":"Target is not in the open_app allowlist."} )
+      [AppController] Opening target: "edge" (resolved: "edge")
+      [RollbackManager] Registered rollback point: rb_1793115754643_48sft (Close opened app: edge)
+        FAIL: control_app open "edge" starts msedge.exe (the name Windows knows), not JARVIS's Chrome (Opened "edge" successfully. xdg-open edge)
+      [AppController] Opening target: "microsoft edge" (resolved: "microsoft edge")
+      [RollbackManager] Registered rollback point: rb_1793115754644_hvevj (Close opened app: microsoft edge)
+        FAIL: control_app open "microsoft edge" starts msedge.exe (the name Windows knows), not JARVIS's Chrome (Opened "microsoft edge" successfully. xdg-open microsoft edge)
+      [AppController] Opening target: "firefox" (resolved: "firefox")
+      [RollbackManager] Registered rollback point: rb_1793115754645_lsdkq (Close opened app: firefox)
+        FAIL: control_app open "firefox" starts firefox.exe (the name Windows knows), not JARVIS's Chrome (Opened "firefox" successfully. xdg-open firefox)
+      [AppController] Opening target: "mozilla firefox" (resolved: "mozilla firefox")
+      [RollbackManager] Registered rollback point: rb_1793115754647_z0hqi (Close opened app: mozilla firefox)
+        FAIL: control_app open "mozilla firefox" starts firefox.exe (the name Windows knows), not JARVIS's Chrome (Opened "mozilla firefox" successfully. xdg-open mozilla firefox)
+      [open_app] target="microsoft edge" resolved="msedge.exe"
+      [open_app] platform=linux command=xdg-open args=msedge.exe
+        PASS: open_app "microsoft edge" (as the planner may call it) starts msedge.exe, not JARVIS's Chrome ({"success":true,"target":"microsoft edge","resolvedTarget":"msedge.exe","platform":"linux","method":"xdg-open"} xdg-open msedge.exe)
+      [AppController] Opening target: "firefox" (resolved: "firefox")
+      [RollbackManager] Registered rollback point: rb_1793115754700_eoynl (Close opened app: firefox)
+        PASS: control_app open "firefox" uses the program's own opener, not JARVIS's Chrome (Opened "firefox" successfully. xdg-open firefox)
+      [AppController] Opening target: "edge" (resolved: "edge")
+      [RollbackManager] Registered rollback point: rb_1793115754702_04ffd (Close opened app: edge)
+        PASS: control_app open "edge" uses the program's own opener, not JARVIS's Chrome (Opened "edge" successfully. xdg-open edge)
+      [AppController] Opening target: "msedge" (resolved: "msedge")
+      [RollbackManager] Registered rollback point: rb_1793115754703_o2nrk (Close opened app: msedge)
+        PASS: control_app open "msedge" uses the program's own opener, not JARVIS's Chrome (Opened "msedge" successfully. xdg-open msedge)
+        PASS: …none of these opened or brought forward a tab in JARVIS's Chrome (0 new tab(s), 0 activation(s))
+      [open_app] target="chrome" shown in JARVIS's Chrome (port 36545, tab AEFE46543B3746E0)
+        PASS: "open browser" (generic, or Chrome itself): JARVIS's Chrome (owner answer Q1) ({"type":"open_app","target":"chrome","reply":"Opening chrome, sir."} {"success":true,"target":"chrome","resolvedTarget":"chrome.exe","method":"jarvis-chrome","port":36545,"tabId":"AEFE46543B3746E0"})
+      [open_app] target="chrome" shown in JARVIS's Chrome (port 36545, tab AEFE46543B3746E0)
+        PASS: "open the browser" (generic, or Chrome itself): JARVIS's Chrome (owner answer Q1) ({"type":"open_app","target":"chrome","reply":"Opening chrome, sir."} {"success":true,"target":"chrome","resolvedTarget":"chrome.exe","method":"jarvis-chrome","port":36545,"tabId":"AEFE46543B3746E0"})
+      [open_app] target="chrome" shown in JARVIS's Chrome (port 36545, tab AEFE46543B3746E0)
+        PASS: "open chrome" (generic, or Chrome itself): JARVIS's Chrome (owner answer Q1) ({"type":"open_app","target":"chrome","reply":"Opening chrome, sir."} {"success":true,"target":"chrome","resolvedTarget":"chrome.exe","method":"jarvis-chrome","port":36545,"tabId":"AEFE46543B3746E0"})
+        FAIL: "open google chrome" (generic, or Chrome itself): JARVIS's Chrome (owner answer Q1) (null {"success":false,"error":"Error: target is required to open an application or URL."})
+        PASS: YouTube search without Chrome: fails and says so, no default browser ({"success":false,"action":"search","query":"lofi","url":"https://www.youtube.com/results?search_query=lofi","error":"JARVIS's Chrome is not running, and JARVIS_CHROME_AUTOSTART is off, so JARVIS does  )
+        PASS: site search without Chrome: fails and says so, no default browser ({"success":false,"action":"search","query":"weather","url":"https://www.google.com/search?q=weather","error":"JARVIS's Chrome is not running, and JARVIS_CHROME_AUTOSTART is off, so JARVIS does not sta )
+      --- 5. close the browser (TRA-17, D3) ---
+      [PermissionSession] ❌ "Close JARVIS's Chrome" rejected. Required: L2, Current: L1
+        PASS: without full control mode: refused like closing a tab, nothing asked or closed (Permission Level 2 required to close JARVIS's Chrome.)
+      [PermissionSession] 🚀 Full Control active. Session: ps_mvqutn9e_gt8x2 | Duration: 5 min | Expires: 3:47:34 PM | Source: cli
+        PASS: JARVIS's Chrome not running: says so, asks nothing, closes nothing (JARVIS's Chrome is not open; JARVIS never closes your own Chrome.)
+        PASS: owner says no: asked once, outside the earlier approval, naming JARVIS's Chrome, its tabs and that the owner's own Chrome stays open (Close JARVIS's Chrome: Close JARVIS's Chrome (4 tabs: "YouTube", "Gmail", "Docs", …)? Your own Chrome stays open.)
+        PASS: …nothing closed, and the reply says it was not approved (JARVIS's Chrome was not closed: not approved.)
+        PASS: owner says yes: asked once, outside the earlier approval, naming JARVIS's Chrome, its tabs and that the owner's own Chrome stays open (Close JARVIS's Chrome: Close JARVIS's Chrome (4 tabs: "YouTube", "Gmail", "Docs", …)? Your own Chrome stays open.)
+        PASS: …closed: Browser.close sent, the port no longer answers, the reply says so (Closed JARVIS's Chrome (4 tabs: "YouTube", "Gmail", "Docs", …) (port 45047 no longer answers).)
+        PASS: a "yes" that comes after the request timed out closes nothing, and says so (JARVIS's Chrome was not closed: the request had already ended when the answer came.)
+        PASS: the kernel hands closeBrowser the tool's own signal (not one the queue's 10 s timeout aborts) ([object AbortSignal])
+        PASS: a different browser now on that port is not closed (JARVIS's Chrome is not open: port 37751 now answers for another browser, which was not closed.)
+      [PermissionSession] ⚠️  Full Control session expires in ~5 minute(s). Session: ps_mvqutn9e_gt8x2
+        PASS: Chrome still answers after the close: a failure, and the queue does not retry it (asked once) (JARVIS's Chrome is still open: port 37723 still answers after the close request.; asked 1)
+        PASS: the owner's JARVIS_CDP_PORT Chrome counts as JARVIS's: closed after the question (Closed JARVIS's Chrome (1 tab: "New Tab") (port 45665 no longer answers).)
+        PASS: "not open" is not retried by the action queue either (JARVIS's Chrome is not open; JARVIS never closes your own Chrome.)
+        PASS: control_browser knows close_browser (through the kernel) ({"success":false,"action":"closeBrowser","target":"JARVIS Chrome","permissionLevel":2,"durationMs":0,"message":"","error":"JARVIS's Chrome is not open; JARVIS never closes your own Chrome."})
+      [PermissionSession] 🛡️ Full Control disabled. Reason: JARVIS Chrome test. Session: ps_mvqutn9e_gt8x2
+      --- 6. checks, routes, planner, catalog ---
+        PASS: close_browser check: verified when the port is gone ({"status":"verified","evidence":"nothing answers on JARVIS's Chrome's port 38891 any more"})
+        PASS: …and failed when it still answers ({"status":"failed","evidence":"JARVIS's Chrome still answers on port 41087"})
+        PASS: …the port is read from the end of the reply, not from a tab title ({"status":"verified","evidence":"nothing answers on JARVIS's Chrome's port 38891 any more"})
+        PASS: open_app in JARVIS's Chrome: verified when its tab is there (not "unverifiable") ({"status":"verified","evidence":"JARVIS's Chrome has the tab https://www.youtube.com/"})
+        PASS: …failed when the tab is not ({"status":"failed","evidence":"the tab is not open in JARVIS's Chrome"})
+        PASS: control_app open in JARVIS's Chrome: checked by its tab on any platform ({"status":"verified","evidence":"JARVIS's Chrome has the tab https://www.youtube.com/"})
+        PASS: "close the browser" → close_browser ({"type":"close_browser","reply":"Closed JARVIS's Chrome, sir. Your own Chrome was not touched."})
+        PASS: "close browser" → close_browser ({"type":"close_browser","reply":"Closed JARVIS's Chrome, sir. Your own Chrome was not touched."})
+        PASS: "close chrome" → close_browser ({"type":"close_browser","reply":"Closed JARVIS's Chrome, sir. Your own Chrome was not touched."})
+        PASS: "close google chrome" → close_browser ({"type":"close_browser","reply":"Closed JARVIS's Chrome, sir. Your own Chrome was not touched."})
+        PASS: "close the chrome" → close_browser ({"type":"close_browser","reply":"Closed JARVIS's Chrome, sir. Your own Chrome was not touched."})
+        PASS: "Close Chrome." → close_browser ({"type":"close_browser","reply":"Closed JARVIS's Chrome, sir. Your own Chrome was not touched."})
+        PASS: "close the youtube tab" unchanged → no close_browser (null)
+        PASS: "close youtube" unchanged → close_browser_tab ({"type":"close_browser_tab","target":"youtube","reply":"Closing YouTube, sir."})
+        PASS: "close notepad" unchanged → close_app ({"type":"close_app","target":"notepad","reply":"Closing Notepad, sir."})
+        PASS: "open youtube for me" unchanged → open_app ({"type":"open_app","target":"youtube","reply":"Opening youtube, sir."})
+        PASS: "launch youtube" unchanged → open_app ({"type":"open_app","target":"youtube","reply":"Opening youtube, sir."})
+        PASS: "open browser" unchanged → open_app ({"type":"open_app","target":"chrome","reply":"Opening chrome, sir."})
+        PASS: "open chrome" unchanged → open_app ({"type":"open_app","target":"chrome","reply":"Opening chrome, sir."})
+        PASS: "launch cmd /c del *" still matches nothing
+      [GraphMemory] Neo4j disabled.
+      [ToolRegistry] ✅ Registered 53 tool(s) into registry.
+      [ToolRegistry] 53 built-in tools registered; skills load next.
+      [ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, b
+      [SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+      [Orchestrator] 🎯 26 skill(s) loaded into ToolRegistry: 79 tools in total.
+      [UnifiedContext] Building context heavy=false depth=fast budget=2400tok [PARALLEL]
+        PASS: "close the browser": control_browser offered, control_app and control_window not (control_browser, browser_tab, browser_state, browser_read_page, browser_page_structure, get_system_info, get_system_state, get_pc_state)
+        PASS: "please close chrome": control_browser offered, control_app and control_window not (control_browser, browser_tab, browser_state, browser_read_page, browser_page_structure, get_system_info, get_system_state, get_pc_state)
+        PASS: "close google chrome now": control_browser offered, control_app and control_window not (control_browser, browser_tab, browser_state, browser_read_page, browser_page_structure, web_search, deep_search, get_system_info)
+        PASS: "close notepad" still gets control_app (control_app, control_window)
+        PASS: catalog: close_browser is risk 2, like closing a tab ({"risk":2,"reversible":"partial","effect":"Closes JARVIS's own Chrome with all its tabs, after asking; never the owner's everyday Chrome."})
+        PASS: the skill lists close_browser for the planner (Manages browser tabs in JARVIS's own Chrome (list, focus, close, close_current, open_url, refresh), and close_browser: closes JARVIS's own Chrome after asking the owner (never the owner's everyday Chrome).)
+        PASS: A1's browser refusal tells the owner how to close JARVIS's Chrome (I don't close the Chrome browser through app, window or process control: that would close your own Chrome windows too. I can close a tab, or say "close the browser" to close JARVIS's own Chrome.)
+      --- 7. a real headless Chromium ---
+      [GoalManager] ✅ Initialized. 0 historical goal(s) found.
+      [Orchestrator] 🎯 GoalManager initialized.
+      [Memory] Initialized. Short-term: 0 Long-term: 0
+      [Redis] Initial connection failed — running without cache.
+      [JarvisChrome] Starting Chrome (/opt/pw-browsers/chromium) with JARVIS's own profile (/tmp/jarvis-own-chrome-real-hNpyJ6).
+      [Redis] Cannot connect after 3 retries — running without cache.
+      [JarvisChrome] JARVIS's Chrome answers on 127.0.0.1:40169.
+        PASS: started: the port is the one in the profile file (40169 / 40169)
+        PASS: cdpPort() finds it through the profile
+        PASS: a second request reuses it (1 start(s))
+        PASS: a page opens in it
+        PASS: close: the port no longer answers and Chrome exited (closed=true exit=0)
+        PASS: …and after that it is not running
+      === Results: 108 passed, 12 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

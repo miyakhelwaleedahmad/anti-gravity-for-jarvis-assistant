@@ -344,9 +344,12 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
     'calc':             'calculator',
     'spotify':          'spotify',
     'chrome':           'chrome',
+    'google chrome':    'chrome',
     'firefox':          'firefox',
+    'mozilla firefox':  'firefox',
     'edge':             'edge',
-    'browser':          'chrome',
+    'microsoft edge':   'edge',      // a browser named opens that browser (owner, 2026-10-27)
+    'browser':          'chrome',    // the generic word: JARVIS's own Chrome (owner, Q1)
     'settings':         'settings',
     'ms-settings':      'settings',
     'downloads':        'downloads',

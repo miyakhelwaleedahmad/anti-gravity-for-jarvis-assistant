@@ -33,6 +33,14 @@ searches, `browser_tab new`):
   a file left by a closed Chrome never counts. `cdpPort()`, which the read and
   tab tools use, takes the port from the file without that check (see Limits).
 
+A browser named explicitly opens that browser (owner, 2026-10-27): "open
+Microsoft Edge" / "open Edge" start `msedge.exe`, "open Mozilla Firefox" /
+"open Firefox" start `firefox.exe` (voice routes, `open_app` and `control_app`
+alike). Only the generic "open browser", and Chrome itself ("open chrome",
+"open google chrome", owner answer Q1), use JARVIS's Chrome. A page asked for
+inside Edge or Firefox ("open Edge and go to …", "search … in Firefox") still
+opens in JARVIS's Chrome: JARVIS controls pages only there (D1).
+
 Pages never open in the default browser any more (owner answer Q2): when
 JARVIS's Chrome cannot start, the reply says why and what to do, for the
 platform JARVIS runs on (TRA-16). "Close the browser" / "close chrome"

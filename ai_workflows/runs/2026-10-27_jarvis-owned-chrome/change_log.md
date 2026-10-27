@@ -49,3 +49,18 @@ See `review.md`. In short: `JarvisChrome.running()` (port and browser path) and 
 
 - `closeActiveTab` / `refreshTab` still press Ctrl+W / Ctrl+R in a browser window in front when DevTools does not answer (TRA-03 note). That window can be the everyday Chrome. This belongs to phase A4/A5 (target resolution and honest capability).
 - `closeTab` returns "Permission level … required" as text, not as an error (TRA-10, phase A5).
+
+## Owner request after review (2026-10-27): a named browser opens that browser
+
+Approved by the owner ("Fix 'Open Microsoft Edge' and 'Open Mozilla Firefox' now instead of leaving them for A3"), including the protected file.
+
+| File | Change |
+|---|---|
+| `core/deterministicRoutes.ts` (protected) | Voice aliases "microsoft edge" → edge, "mozilla firefox" → firefox, "google chrome" → chrome |
+| `security/openAppPolicy.ts` | Allow-list: "mozilla firefox" → `firefox.exe`, "google chrome" → `chrome.exe` |
+| `control/appController.ts` | `control_app open`: edge / "microsoft edge" → `msedge.exe`, firefox / "mozilla firefox" → `firefox.exe` (the names Windows knows; `start "" edge` could not work), "google chrome" → `chrome.exe` (JARVIS's Chrome). Also makes `isAppOpen("edge")` look for `msedge.exe` |
+| `tests/jarvisChromeTest.ts` | Positive checks for every wording and tool; security-boundary checks for the new aliases (review R4-1) |
+| `docs/upgrade/BROWSER_CONTROL.md` | Which wording opens which browser; pages asked for "in Edge" still open in JARVIS's Chrome (review R4-3) |
+
+Before the fix: 108 passed, 12 failed (`evidence/named_browsers_before_fix.txt`). Mutants M21–M28: 8/8 caught (`evidence/mutation_run_named_browsers.txt`).
+

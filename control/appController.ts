@@ -22,6 +22,13 @@ const APP_ALIASES: Record<string, string> = {
   'notepad': 'notepad.exe',
   'calculator': 'calc.exe',
   'chrome': 'chrome.exe',
+  'google chrome': 'chrome.exe',
+  // A browser named opens that browser, by the program name Windows knows
+  // (owner, 2026-10-27); only Chrome goes to JARVIS's own Chrome.
+  'edge': 'msedge.exe',
+  'microsoft edge': 'msedge.exe',
+  'firefox': 'firefox.exe',
+  'mozilla firefox': 'firefox.exe',
   'powershell': 'powershell.exe',
 };
 

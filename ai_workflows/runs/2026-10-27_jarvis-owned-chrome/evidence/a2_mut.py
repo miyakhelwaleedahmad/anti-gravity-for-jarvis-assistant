@@ -78,7 +78,20 @@ MUTANTS = [
      "if (/^https?:\\/\\//i.test(resolved.resolvedTarget) || /^(chrome|msedge|firefox)\\.exe$/.test(resolved.resolvedTarget)) {"),
     ("M22 control_app open sends Firefox to JARVIS's Chrome", "control/appController.ts",
      "if (isUrl || program === 'chrome.exe' || program === 'chrome') {",
-     "if (isUrl || program === 'chrome.exe' || program === 'chrome' || program === 'firefox') {"),
+     "if (isUrl || program === 'chrome.exe' || program === 'chrome' || program === 'firefox' || program === 'firefox.exe') {"),
+    # Owner request: "Open Microsoft Edge" / "Open Mozilla Firefox".
+    ("M23 no route for 'microsoft edge'", "core/deterministicRoutes.ts",
+     "    'microsoft edge':   'edge',", ""),
+    ("M24 no route for 'mozilla firefox'", "core/deterministicRoutes.ts",
+     "    'mozilla firefox':  'firefox',", ""),
+    ("M25 'mozilla firefox' not on the open_app allow-list", "security/openAppPolicy.ts",
+     "  'mozilla firefox': 'firefox.exe',", ""),
+    ("M26 control_app opens 'microsoft edge' by that name", "control/appController.ts",
+     "  'microsoft edge': 'msedge.exe',", ""),
+    ("M27 control_app opens 'firefox' by that name", "control/appController.ts",
+     "  'firefox': 'firefox.exe',\n  'mozilla firefox'", "  'mozilla firefox'"),
+    ("M28 'microsoft edge' routed to JARVIS's Chrome", "core/deterministicRoutes.ts",
+     "    'microsoft edge':   'edge',", "    'microsoft edge':   'chrome',"),
 ]
 
 def run_test() -> tuple[bool, str]:
