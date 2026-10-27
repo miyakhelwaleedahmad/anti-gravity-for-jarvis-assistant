@@ -244,6 +244,16 @@ export class PcControlKernel {
     return this.executeAction('openBrowserUrl', url, false, () => browserController.openUrl(url));
   }
 
+  /**
+   * JARVIS's own Chrome only, after the owner confirms (D3). Only the tool's
+   * own signal (its time budget) is passed on: the queue's 10 s timeout must
+   * not refuse an answer the owner gives while the question is still open
+   * (review R2-1).
+   */
+  public async closeBrowser(signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('closeBrowser', 'JARVIS Chrome', false, () => browserController.closeBrowser(signal));
+  }
+
   public async refreshBrowserTab(query: string): Promise<KernelResult> {
     return this.executeAction('refreshBrowserTab', query, false, () => browserController.refreshTab(query));
   }

@@ -133,10 +133,31 @@ r = await withTool('control_app', { level: 0, output: JSON.stringify({ success: 
   () => say('close notepad'));
 ok('"close notepad" with nothing open says so instead of "Closing Notepad"', !/Closing Notepad/.test(r.reply) && r.reply.includes('No open application matches'), r.reply);
 
+console.log('\n--- 1b. JARVIS\'s own Chrome through the routes (phase A2, review R4) ---');
+{
+  const seen = toolRegistryV2.getHistory(500).length;
+  r = await withTool('control_browser', { level: 0, output: JSON.stringify({ success: true, action: 'closeBrowser', target: 'JARVIS Chrome', permissionLevel: 2, durationMs: 1, message: 'Closed JARVIS\'s Chrome (1 tab: "Inbox") (port 1 no longer answers).', error: null }) },
+    () => say('close the browser'));
+  const call = toolRegistryV2.getHistory(500).slice(seen).find((h: any) => h.tool === 'control_browser');
+  ok('"close the browser" runs control_browser close_browser and says it closed JARVIS\'s Chrome',
+    (call as any)?.args?.action === 'close_browser' && /Closed JARVIS's Chrome/.test(r.reply), `${JSON.stringify((call as any)?.args)} | ${r.reply}`);
+  r = await withTool('control_browser', { level: 0, output: JSON.stringify({ success: false, action: 'closeBrowser', target: 'JARVIS Chrome', error: 'JARVIS\'s Chrome is not open; JARVIS never closes your own Chrome.' }) },
+    () => say('close chrome'));
+  ok('…and when it is not open, says so instead of "Closed"', !/Closed JARVIS's Chrome/.test(r.reply) && /not open/.test(r.reply), r.reply);
+  r = await withTool('open_app', { output: JSON.stringify({ success: false, target: 'youtube', method: 'jarvis-chrome', error: 'Chrome was not found on this PC. JARVIS opens pages in a Chrome of its own (…). If it cannot start it, install Google Chrome, or set JARVIS_CHROME_PATH (…).', spoken: 'Chrome was not found on this PC: install Google Chrome, or set JARVIS_CHROME_PATH to its program.' }) },
+    () => say('open youtube'));
+  ok('"open youtube" without JARVIS\'s Chrome says why and what to do (owner, Q2)', /couldn't open youtube/.test(r.reply) && /JARVIS[ _]CHROME[ _]PATH/.test(r.reply), r.reply);
+}
+
 console.log('\n--- 2. Close requests offer tools that can close ---');
-for (const input of ['close chrome', 'close whatsapp', 'minimize spotify']) {
+for (const input of ['close whatsapp', 'minimize spotify']) {
   const tools: string[] = (orchestrator as any).selectPlanningToolNames(input);
   ok(`"${input}" offers control_app and control_window`, tools.includes('control_app') && tools.includes('control_window'), tools.join(','));
+}
+// Closing Chrome is control_browser close_browser: JARVIS's own Chrome only (D3, phase A2).
+{
+  const tools: string[] = (orchestrator as any).selectPlanningToolNames('close chrome');
+  ok('"close chrome" offers control_browser, which can close JARVIS\'s Chrome', tools.includes('control_browser'), tools.join(','));
 }
 
 console.log('\n--- 3. Every app the voice router opens is on the open_app allow-list ---');

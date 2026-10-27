@@ -206,7 +206,12 @@ function runOne(file: string, name: string): Promise<Result> {
     const dataRoot = makeDataRoot();
     const child = spawn(process.execPath, [TSX_CLI, file], {
       cwd: getWorkspaceRoot(),
-      env: { ...process.env, JARVIS_DATA_ROOT: dataRoot, JARVIS_VECTOR_STORE_DIR: path.join(dataRoot, 'data', 'vector') },
+      // No test starts a real Chrome for JARVIS or reads the owner's JARVIS Chrome
+      // profile: browser tests point JARVIS_CDP_PORT at their own headless one.
+      env: {
+        ...process.env, JARVIS_DATA_ROOT: dataRoot, JARVIS_VECTOR_STORE_DIR: path.join(dataRoot, 'data', 'vector'),
+        JARVIS_CHROME_AUTOSTART: 'off', JARVIS_CHROME_PROFILE: path.join(dataRoot, 'chrome-profile'),
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

@@ -183,7 +183,7 @@ export function isBrowserWindow(w: Pick<AppWindow, 'name'>): boolean {
 
 /** The refusal for a browser named as an app (D3). */
 export function browserCloseRefusal(browser: string): string {
-  return `I don't close the ${browser} browser through app, window or process control: that would close your own ${browser} windows too. I can close a tab.`;
+  return `I don't close the ${browser} browser through app, window or process control: that would close your own ${browser} windows too. I can close a tab, or say "close the browser" to close JARVIS's own Chrome.`;
 }
 
 /** The refusal for a site or tab name given to an app or window tool. */

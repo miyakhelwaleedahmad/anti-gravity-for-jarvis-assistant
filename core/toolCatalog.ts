@@ -56,7 +56,7 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     { format: 'text', description: '"true" or "false"' }, 'BROWSER'),
   control_browser: withActions(
     { category: 'BROWSER', reversible: 'partial', external: 'query',
-      effect: 'Lists, focuses, opens, refreshes or closes browser tabs.',
+      effect: 'Lists, focuses, opens, refreshes or closes tabs in JARVIS\'s own Chrome, or closes that Chrome.',
       output: { format: 'json', description: JSON_RESULT } },
     {
       list: { risk: 0, reversible: 'yes', effect: 'Lists open tabs.' },
@@ -65,6 +65,7 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
       refresh: { risk: 1, reversible: 'partial', effect: 'Reloads a tab; unsent form input is lost.' },
       close: { risk: 2, reversible: 'partial', effect: 'Closes a tab; it can be reopened, unsaved input is lost.' },
       close_current: { risk: 2, reversible: 'partial', effect: 'Closes the active tab; unsaved input is lost.' },
+      close_browser: { risk: 2, reversible: 'partial', effect: 'Closes JARVIS\'s own Chrome with all its tabs, after asking; never the owner\'s everyday Chrome.' },
     },
   ),
 

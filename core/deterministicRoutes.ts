@@ -33,6 +33,11 @@ const BROWSER_TABS_PHRASES = new Set([
   'what tabs do i have open', 'which tabs do i have open',
 ]);
 
+/** "Close the browser": JARVIS's own Chrome only, after the owner confirms (D3). Wider phrasing is phase A3. */
+const CLOSE_BROWSER_PHRASES = new Set([
+  'close the browser', 'close browser', 'close chrome', 'close the chrome', 'close google chrome',
+]);
+
 /** "What's running?": open apps and local servers. */
 const RUNNING_PHRASES = new Set([
   'whats running', 'what is running', 'whats running on my pc', 'what is running on my pc',
@@ -205,6 +210,9 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   }
   if (clean === 'close notepad') {
     return { type: 'close_app', target: 'notepad', reply: 'Closing Notepad, sir.' };
+  }
+  if (CLOSE_BROWSER_PHRASES.has(clean)) {
+    return { type: 'close_browser', reply: 'Closed JARVIS\'s Chrome, sir. Your own Chrome was not touched.' };
   }
   if (clean === 'close current window') {
     return { type: 'close_current_window', reply: 'Closing current window, sir.' };

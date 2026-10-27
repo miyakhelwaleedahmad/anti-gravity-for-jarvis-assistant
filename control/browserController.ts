@@ -10,7 +10,10 @@ import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { keyboardController } from './keyboardController.js';
 import { rollbackManager } from './rollbackManager.js';
-import { activateTab, cdpPort, closeTabById, openTab } from '../perception/cdpClient.js';
+import { activateTab, cdpPort, closeTabById, listPages, openTab } from '../perception/cdpClient.js';
+import { chromeStartHint } from '../perception/chromeProfile.js';
+import { withoutApproval } from '../security/approvalScope.js';
+import { jarvisChrome, type JarvisChrome } from './jarvisChrome.js';
 
 /** JARVIS_CDP_PORT (default 9222), read at each call. */
 const baseUrl = () => `http://127.0.0.1:${cdpPort()}`;
@@ -36,9 +39,21 @@ export interface CDPTab {
   type: string;
 }
 
+export interface BrowserControllerDeps {
+  chrome: JarvisChrome;
+  approve: (title: string, command: string) => Promise<boolean>;
+}
+
+const DEFAULT_DEPS: BrowserControllerDeps = {
+  chrome: jarvisChrome,
+  approve: (title, command) => approvalGate.requestApproval(title, command),
+};
+
 export class BrowserController {
+  constructor(private readonly deps: BrowserControllerDeps = DEFAULT_DEPS) {}
+
   private getInstruction(): string {
-    return `Please start Chrome with remote debugging enabled:\nstart chrome.exe --remote-debugging-port=${cdpPort()} --user-data-dir="%USERPROFILE%\\jarvis-chrome-profile"`;
+    return chromeStartHint();
   }
 
   private async fetchCDPTabs(): Promise<CDPTab[]> {
@@ -171,21 +186,46 @@ export class BrowserController {
       finalUrl = `https://${url}`;
     }
 
-    try {
-      // Direct CDP new tab (PUT: current Chrome answers 405 to the GET used before)
-      const newTab = await openTab(finalUrl, cdpPort());
+    // In JARVIS's own Chrome, started if needed; never the default browser
+    // (the everyday Chrome, which JARVIS cannot see: D1, TRA-03).
+    const port = await this.deps.chrome.ensure();
+    const newTab = await openTab(finalUrl, port);
+    await activateTab(newTab.id, port);
 
-      rollbackManager.register('open_url', `Close opened tab: ${finalUrl}`, async () => {
-        await closeTabById(newTab.id, cdpPort());
-        return true;
-      });
+    rollbackManager.register('open_url', `Close opened tab: ${finalUrl}`, async () => {
+      await closeTabById(newTab.id, cdpPort());
+      return true;
+    });
 
-      return `Opened URL: ${finalUrl} (tab ${newTab.id})`;
-    } catch {
-      // Fallback: spawn default browser
-      const { appController } = await import('./appController.js');
-      return appController.openApp(finalUrl);
+    return `Opened URL: ${finalUrl} (tab ${newTab.id})`;
+  }
+
+  /**
+   * Closes JARVIS's own Chrome, after asking every time (D3). The owner's
+   * everyday Chrome is never reached: only the Chrome JARVIS started (or the
+   * owner's JARVIS_CDP_PORT one) is closed, through DevTools.
+   */
+  public async closeBrowser(signal?: AbortSignal): Promise<string> {
+    if (!permissionSession.checkPermission(2, 'Close JARVIS\'s Chrome')) {
+      throw new Error('Permission Level 2 required to close JARVIS\'s Chrome.');
     }
+    const chrome = await this.deps.chrome.running();
+    if (!chrome) throw new Error('JARVIS\'s Chrome is not open; JARVIS never closes your own Chrome.');
+    const { port } = chrome;
+    const pages = await listPages(port).catch(() => []);
+    const titles = pages.slice(0, 3).map((p) => `"${(p.title || p.url).slice(0, 40)}"`).join(', ');
+    const tabs = `${pages.length} tab${pages.length === 1 ? '' : 's'}${titles ? `: ${titles}${pages.length > 3 ? ', …' : ''}` : ''}`;
+    // Asked outside any approval already given: that one did not show the tabs.
+    const approved = await withoutApproval(() => this.deps.approve('Close JARVIS\'s Chrome',
+      `Close JARVIS's Chrome (${tabs})? Your own Chrome stays open.`));
+    if (!approved) throw new Error('JARVIS\'s Chrome was not closed: not approved.');
+    // An answer that came after the request ended (its time ran out, or it was
+    // cancelled) closes nothing: JARVIS has already said it was not done.
+    if (signal?.aborted) throw new Error('JARVIS\'s Chrome was not closed: the request had already ended when the answer came.');
+    if (!(await this.deps.chrome.close(chrome))) {
+      throw new Error(`JARVIS's Chrome is still open: port ${port} still answers after the close request.`);
+    }
+    return `Closed JARVIS's Chrome (${tabs}) (port ${port} no longer answers).`;
   }
 
   public async refreshTab(query: string): Promise<string> {

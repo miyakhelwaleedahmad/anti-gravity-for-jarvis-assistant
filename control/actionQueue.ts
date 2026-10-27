@@ -11,7 +11,8 @@
  */
 // A command stopped for taking too long may have done part of its work: never run it again (REL-01, REL-06).
 // The browser refusals and kill outcomes (control/appMatch.ts, processController) are final too: a retry asked again.
-const FINAL_FAILURE = /safety policy|blocked|ABORTED|TIMEOUT|was stopped|User did not confirm|cancelled by user|denied|not approved|Permission Level \d required|through app, window or process control|is a page open in|still running after Stop-Process|Could not terminate|could not confirm it ended|could not start it again|was not closed: /i;
+// So are JARVIS's Chrome outcomes (control/jarvisChrome.ts): a retry asked again, or waited for Chrome again.
+const FINAL_FAILURE = /safety policy|blocked|ABORTED|TIMEOUT|was stopped|User did not confirm|cancelled by user|denied|not approved|Permission Level \d required|through app, window or process control|is a page open in|still running after Stop-Process|Could not terminate|could not confirm it ended|could not start it again|was not closed: |JARVIS's Chrome is (?:not|still) open|Chrome was not found|its debugging port|JARVIS_CHROME_AUTOSTART is off|JARVIS_CDP_PORT is set/i;
 
 export class ActionQueue {
   private queue: Promise<any> = Promise.resolve();

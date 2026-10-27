@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { execa } from 'execa';
 import { cdpPort } from './cdpClient.js';
+import { chromeStartHint } from './chromeProfile.js';
 import { childEnv } from '../system/childEnv.js';
 
 export interface ChromeTab {
@@ -68,7 +69,7 @@ export async function getChromeState(): Promise<ChromeState> {
       running,
       debugPort,
       tabs: [],
-      error: `Chrome DevTools endpoint unavailable. Suggest starting Chrome with: start chrome.exe --remote-debugging-port=${debugPort} --user-data-dir="%USERPROFILE%\\jarvis-chrome-profile"`
+      error: `Chrome DevTools endpoint unavailable on port ${debugPort}. ${chromeStartHint()}`
     };
   }
 }

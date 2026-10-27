@@ -5,18 +5,26 @@
  * (docs/upgrade/BROWSER_CONTROL.md).
  *
  * 127.0.0.1 only. Since Chrome 136 the debugging port works only with a
- * profile of its own (`--user-data-dir`); JARVIS's start instructions use one.
- * Callers send fixed commands: nothing here takes JavaScript from the model.
+ * profile of its own (`--user-data-dir`); JARVIS's own Chrome has one
+ * (control/jarvisChrome.ts). Callers send fixed commands: nothing here takes
+ * JavaScript from the model.
  */
 
 import WebSocket from 'ws';
+import { chromeProfileDir, chromeStartHint, readActivePort } from './chromeProfile.js';
 
 export const CDP_HOST = '127.0.0.1';
 
-/** JARVIS_CDP_PORT or 9222. */
+/**
+ * JARVIS_CDP_PORT (a Chrome the owner starts), else the port JARVIS's own
+ * Chrome wrote into its profile, else 9222. Read at each call. A port from a
+ * profile file left by a closed Chrome just does not answer; opening a page
+ * starts JARVIS's Chrome again (control/jarvisChrome.ts).
+ */
 export function cdpPort(env: Record<string, string | undefined> = process.env): number {
   const port = Number(env['JARVIS_CDP_PORT']);
-  return Number.isInteger(port) && port > 0 && port < 65536 ? port : 9222;
+  if (Number.isInteger(port) && port > 0 && port < 65536) return port;
+  return readActivePort(chromeProfileDir(env))?.port ?? 9222;
 }
 
 export interface CdpTarget {
@@ -34,11 +42,11 @@ export interface CdpVersion {
 
 export class CdpUnavailableError extends Error {
   constructor(port: number) {
-    super(
-      `Chrome is not reachable for JARVIS on ${CDP_HOST}:${port}. Start it with ` +
-      `chrome.exe --remote-debugging-port=${port} --user-data-dir=<a separate profile folder> ` +
-      '(Chrome 136 and later ignore the port for the everyday profile).',
-    );
+    // With JARVIS_CDP_PORT the owner starts that Chrome; otherwise it is JARVIS's own (TRA-16).
+    super(Number(process.env['JARVIS_CDP_PORT']) === port
+      ? `Chrome is not reachable for JARVIS on ${CDP_HOST}:${port}. JARVIS_CDP_PORT is set, so start your Chrome with `
+        + `--remote-debugging-port=${port} --user-data-dir=<a separate profile folder>, or remove JARVIS_CDP_PORT from .env so that JARVIS starts its own Chrome.`
+      : `Chrome is not reachable for JARVIS on ${CDP_HOST}:${port}: JARVIS's own Chrome is not running (it starts when JARVIS opens a page). ${chromeStartHint()}`);
     this.name = 'CdpUnavailableError';
   }
 }

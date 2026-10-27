@@ -30,6 +30,7 @@ import {
 } from '../perception/cdpScripts.js';
 import { describeElement, forgetTab, lookupRef, type ElementKind, type ObservedElement } from '../perception/browserRefs.js';
 import { findTab } from '../perception/browserState.js';
+import { jarvisChrome } from './jarvisChrome.js';
 import { NOT_OBSERVED, NO_CREDENTIALS, isPrivateAddress, normalizeUrl, realUploadPath, uploadPathProblem, urlProblem } from '../security/browserPolicy.js';
 import { redact } from '../security/redactor.js';
 import { dataRoot, getWorkspaceRoot } from '../core/workspaceRoot.js';
@@ -444,6 +445,8 @@ export async function tab(args: { action?: unknown; url?: unknown; tab?: unknown
       const url = normalizeUrl(typeof args.url === 'string' ? args.url : '') || 'about:blank';
       const problem = urlProblem(url, true);
       if (problem) throw new NotDone(problem);
+      // In JARVIS's own Chrome, started when needed (D1).
+      await jarvisChrome.ensure();
       const created = await openTab(url, cdpPort());
       const loaded = url === 'about:blank'
         ? { done: !!(await tabById(created.id)), state: undefined }

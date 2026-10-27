@@ -133,7 +133,8 @@ if (process.platform === 'win32') {
   }
   process.env['PATH'] = `${bin}${path.delimiter}${process.env['PATH']}`;
   const { appController } = await import('../control/appController.js');
-  try { await appController.openApp('https://example.com'); } catch (e) { console.log(`  (openApp: ${(e as Error).message})`); }
+  // An app, not a web page: pages open in JARVIS's own Chrome (phase A2), not through the opener.
+  try { await appController.openApp('notepad'); } catch (e) { console.log(`  (openApp: ${(e as Error).message})`); }
   const until = Date.now() + 10_000;
   while (!fs.existsSync(dump) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
   keys = fs.existsSync(dump) ? fs.readFileSync(dump, 'utf8').split('\n').filter(Boolean) : [];

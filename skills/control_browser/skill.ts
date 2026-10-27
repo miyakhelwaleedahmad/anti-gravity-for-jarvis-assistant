@@ -1,6 +1,6 @@
 import { pcControlKernel } from '../../control/pcControlKernel.js';
 
-export async function execute(args: Record<string, unknown>): Promise<string> {
+export async function execute(args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
   const action = String(args['action'] ?? '').toLowerCase();
   const target = String(args['target'] ?? '');
 
@@ -17,6 +17,8 @@ export async function execute(args: Record<string, unknown>): Promise<string> {
     res = await pcControlKernel.openBrowserUrl(target);
   } else if (action === 'refresh') {
     res = await pcControlKernel.refreshBrowserTab(target);
+  } else if (action === 'close_browser') {
+    res = await pcControlKernel.closeBrowser(signal);
   } else {
     throw new Error(`Unknown browser action: "${action}"`);
   }

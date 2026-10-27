@@ -51,7 +51,8 @@ async function runPlannerDecisionAudit() {
     { raw: 'Open Settings',     intent: 'Launch System Settings',       expected: 'open_app' },
     { raw: 'Read Clipboard',    intent: 'Inspect System Clipboard',     expected: 'control_system' },
     { raw: 'Open Downloads',    intent: 'Launch Downloads Folder',      expected: 'open_app' },
-    { raw: 'Close Chrome',      intent: 'Close Running Application',    expected: 'control_process' },
+    // Closing the browser is JARVIS's own Chrome only, after asking (owner decision D3, phase A2).
+    { raw: 'Close Chrome',      intent: 'Close JARVIS\'s Chrome',        expected: 'control_browser' },
   ];
 
   const auditLog: CommandAuditResult[] = [];
@@ -70,6 +71,7 @@ async function runPlannerDecisionAudit() {
       routeType = route.type;
       if (route.type === 'open_app') actualTool = 'open_app';
       if (route.type === 'close_app' || route.type === 'close_browser_tab') actualTool = 'control_process';
+      if (route.type === 'close_browser') actualTool = 'control_browser';
     } else if (cleanInput.includes('remember')) {
       actualTool = 'save_relation';
     } else if (cleanInput.includes('recall') || cleanInput.includes('memory')) {

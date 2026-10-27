@@ -1,15 +1,15 @@
 {
   "id": "control_browser",
   "name": "Control Browser",
-  "description": "Manages browser tabs (list, focus, close, close_current, open_url, refresh).",
+  "description": "Manages browser tabs in JARVIS's own Chrome (list, focus, close, close_current, open_url, refresh), and close_browser: closes JARVIS's own Chrome after asking the owner (never the owner's everyday Chrome).",
   "riskLevel": "high",
   "requiredLevel": 0,
   "parameters": {
     "action": {
       "type": "string",
-      "description": "Browser command: 'list', 'focus', 'close', 'close_current', 'open_url', 'refresh'",
+      "description": "Browser command: 'list', 'focus', 'close', 'close_current', 'open_url', 'refresh', 'close_browser' (the whole of JARVIS's Chrome; no target)",
       "required": true,
-      "enum": ["list", "focus", "close", "close_current", "open_url", "refresh"]
+      "enum": ["list", "focus", "close", "close_current", "open_url", "refresh", "close_browser"]
     },
     "target": { "type": "string", "description": "Tab title, URL pattern, or target tab search query", "required": false }
   }

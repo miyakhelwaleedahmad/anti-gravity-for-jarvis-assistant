@@ -659,8 +659,14 @@ export class JarvisOrchestrator {
       try {
         if (route.type === 'open_app' && route.target) {
           const result = await runRoutedTool('open_app', { target: route.target, source });
+          // JARVIS's own Chrome could not be used: say why and what to do, in
+          // short (owner, Q2); the whole message is in the console.
+          const opened = parseJson(result?.output ?? '');
+          const chromeReason = !result?.success && opened?.['method'] === 'jarvis-chrome'
+            ? String(opened?.['spoken'] ?? (result?.error ?? '').split(/(?<=\.)\s/)[0] ?? '') : '';
           const reply = result?.success
             ? route.reply
+            : chromeReason ? `I couldn't open ${route.target}, sir. ${chromeReason}`
             : failureReply(result, `I tried to open ${route.target} but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_browser_tab' && route.target) {
@@ -680,6 +686,12 @@ export class JarvisOrchestrator {
           const reply = result?.success
             ? route.reply
             : failureReply(result, `I tried to close the application "${route.target}" but encountered an issue, sir.`);
+          this.speak(reply);
+        } else if (route.type === 'close_browser') {
+          const result = await runRoutedTool('control_browser', { action: 'close_browser' });
+          const reply = result?.success
+            ? route.reply
+            : failureReply(result, `I did not close JARVIS's Chrome, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_current_window') {
           const result = await runRoutedTool('control_window', { action: 'close_current' });

@@ -129,8 +129,11 @@ export function selectPlanningToolNames(input: string): string[] {
   // window (TRA-18), so a request about tabs is not offered them.
   // "maximize the window with the youtube tab" still gets control_window: the
   // window branch below does not depend on this one.
+  // Closing the browser is control_browser close_browser: JARVIS's own Chrome,
+  // after asking (D3); the app and window tools refuse browsers anyway.
   const isTabRequest = isKillOrClose && /\btabs?\b/.test(clean);
-  if (isTabRequest) {
+  const isBrowserClose = /\b(close|kill|exit|quit)\b/i.test(clean) && /\b(browser|chrome)\b/i.test(clean);
+  if (isTabRequest || isBrowserClose) {
     addIfRegistered('control_browser', 'browser_tab');
   } else if (isKillOrClose) {
     addIfRegistered('control_app', 'control_window');

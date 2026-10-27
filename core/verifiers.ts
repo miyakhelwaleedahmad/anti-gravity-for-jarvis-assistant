@@ -162,6 +162,16 @@ const verifyControlBrowser: Verifier = async (args, output) => {
   if (action === 'list') return unverifiable('listing tabs changes nothing');
   let message = output;
   try { message = String(JSON.parse(output)?.message ?? ''); } catch { /* plain text */ }
+  if (action === 'close_browser') {
+    // JARVIS's own Chrome: closed when its debugging port no longer answers.
+    // At the end of the reply: tab titles (set by the pages) come earlier in it.
+    const port = Number(/\(port (\d+) no longer answers\)\.?\s*$/.exec(message)?.[1]);
+    if (!port) return failed('the result named no closed Chrome');
+    const { cdpVersion } = await import('../perception/cdpClient.js');
+    return (await cdpVersion(port).then(() => true, () => false))
+      ? failed(`JARVIS's Chrome still answers on port ${port}`)
+      : verified(`nothing answers on JARVIS's Chrome's port ${port} any more`);
+  }
   if (action === 'refresh') {
     if (/\(checked: /.test(message)) return verified(/\(checked: (.*)\)$/.exec(message)?.[1] ?? 'the page loaded again');
     const found = /but the check found that (.*)$/.exec(message)?.[1];
@@ -300,9 +310,20 @@ async function appState(target: string, wanted: boolean, ms: number): Promise<bo
 const APP_OPEN_WAIT_MS = 15_000;
 
 /** control_app (P14), on the desktop: an opened or restarted app runs, a closed one has no window left, a focused one is in front. */
+/** A page or Chrome itself shown in JARVIS's own Chrome: the tab is there (whether its window came forward is not read). */
+async function jarvisChromeHasTab(port: number, tabId: string): Promise<Verification> {
+  const { listPages } = await import('../perception/cdpClient.js');
+  let pages;
+  try { pages = await listPages(port); } catch { return failed(`JARVIS's Chrome does not answer on port ${port}`); }
+  const tab = pages.find((p) => p.id === tabId);
+  return tab ? verified(`JARVIS's Chrome has the tab ${tab.url.slice(0, 80)}`) : failed('the tab is not open in JARVIS\'s Chrome');
+}
+
 const verifyControlApp: Verifier = async (args, output) => {
-  if (!windowChecks.onWindows()) return unverifiable(ON_WINDOWS);
   const action = text(args, 'action').toLowerCase();
+  const shown = /in JARVIS's Chrome \(port (\d+), tab ([A-Za-z0-9]+)\)\.?\s*$/.exec(messageOf(output));
+  if (action === 'open' && shown) return jarvisChromeHasTab(Number(shown[1]), shown[2]!);
+  if (!windowChecks.onWindows()) return unverifiable(ON_WINDOWS);
   const target = text(args, 'target');
   if (!target) return unverifiable('no app was named');
   if (action === 'open' || action === 'restart') {
@@ -340,6 +361,10 @@ const verifyControlApp: Verifier = async (args, output) => {
 
 /** open_app (P14): an app runs afterwards; a web page opens in the default browser, which is not checked. */
 const verifyOpenApp: Verifier = async (args, output) => {
+  // A page or Chrome itself, shown in JARVIS's own Chrome: its tab is there (any platform).
+  let shown: { method?: string; port?: number; tabId?: string } = {};
+  try { shown = JSON.parse(output) ?? {}; } catch { /* plain text */ }
+  if (shown.method === 'jarvis-chrome' && shown.port && shown.tabId) return jarvisChromeHasTab(shown.port, shown.tabId);
   if (process.platform !== 'win32') return unverifiable(ON_WINDOWS);
   if (args['dryRun']) return unverifiable('a dry run opens nothing');
   let resolved = '';

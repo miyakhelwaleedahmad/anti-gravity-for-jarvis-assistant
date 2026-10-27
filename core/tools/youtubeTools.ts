@@ -10,9 +10,10 @@
  *   site_search     a site's own search results in a new tab (Google, Bing,
  *                   DuckDuckGo, Wikipedia, GitHub, Amazon, Reddit, Stack Overflow)
  *
- * New tabs, never the tab the user is on; nothing is closed. When Chrome's
- * debugging port is not reachable, the page is opened in the default browser
- * instead and the reply says it could not be read or checked.
+ * New tabs, never the tab the user is on; nothing is closed. The tabs open in
+ * JARVIS's own Chrome, started when needed (control/jarvisChrome.ts). When it
+ * cannot be, the reply says why; nothing opens in the default browser, which
+ * JARVIS could not read or check (owner decision D1, answer Q2).
  */
 
 import type { AgentTool } from '../toolRegistryV2.js';
@@ -28,21 +29,6 @@ const ownCheck: Verifier = async (_args, output) => {
   } catch { /* not a report */ }
   return { status: 'unverifiable', evidence: 'the action reported no check' };
 };
-
-/** Without the debugging port: open the address in the default browser, and say what could not be done. */
-async function openElsewhere(url: string, why: string): Promise<YouTubeReport> {
-  try {
-    const { browserController } = await import('../../control/browserController.js');
-    await browserController.openUrl(url);
-    return {
-      success: true, action: 'open in browser', url,
-      did: `opened ${url} in the default browser`,
-      check: { status: 'unverifiable', evidence: `${why} The page was opened, but JARVIS could not read or check it.` },
-    };
-  } catch (err) {
-    return { success: false, action: 'open in browser', url, error: `${why} Opening it in the default browser failed too: ${(err as Error).message.slice(0, 160)}` };
-  }
-}
 
 export const youtubeSearchTool: AgentTool = {
   name: 'youtube_search',
@@ -60,11 +46,7 @@ export const youtubeSearchTool: AgentTool = {
   async execute(args) {
     const query = String(args['query'] ?? '').trim();
     const open = (['results', 'first', 'best'].includes(String(args['open'])) ? args['open'] : 'results') as 'results' | 'first' | 'best';
-    let report = await searchYouTube(query, open);
-    if (!report.success && report.url && /debugging port/.test(report.error ?? '')) {
-      report = { ...(await openElsewhere(youtubeSearchUrl(query), report.error ?? '')), query };
-    }
-    return JSON.stringify(report);
+    return JSON.stringify(await searchYouTube(query, open));
   },
 };
 
@@ -121,7 +103,6 @@ export const siteSearchTool: AgentTool = {
     const url = siteSearchUrl(site, query);
     if (!url) return JSON.stringify({ success: false, action: 'search', error: `JARVIS has no search address for "${site}". Known sites: ${Object.keys(SITES).join(', ')}.` });
     const r = await agent.tab({ action: 'new', url });
-    if (!r.success && /ECONNREFUSED|debugging|connect/i.test(r.error ?? '')) return JSON.stringify(await openElsewhere(url, `Chrome's debugging port is not reachable (${(r.error ?? '').slice(0, 100)}).`));
     const report: YouTubeReport = {
       success: r.success, action: 'search', query, url,
       ...(r.did ? { did: `${r.did} (${site} search)` } : {}),

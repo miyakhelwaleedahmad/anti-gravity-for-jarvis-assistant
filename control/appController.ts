@@ -75,6 +75,15 @@ export class AppController {
     const isUrl = /^https?:\/\//i.test(resolved) || /^www\./i.test(resolved);
     const finalTarget = isUrl && !resolved.startsWith('http') ? `https://${resolved}` : resolved;
 
+    // Web pages and Chrome itself: JARVIS's own Chrome, never the default
+    // browser (owner decision D1, answers Q1 and Q2; phase A2 review R1).
+    const program = finalTarget.split(/[\\/]/).pop()!.toLowerCase();
+    if (isUrl || program === 'chrome.exe' || program === 'chrome') {
+      const { showInJarvisChrome } = await import('./jarvisChrome.js');
+      const shown = await showInJarvisChrome(isUrl ? finalTarget : undefined);
+      return `Opened "${target}" in JARVIS's Chrome (port ${shown.port}, tab ${shown.tabId}).`;
+    }
+
     console.log(`[AppController] Opening target: "${target}" (resolved: "${finalTarget}")`);
 
     return new Promise((resolve, reject) => {
