@@ -399,6 +399,46 @@ const { execute: openApp } = await import('../skills/automation/skill.js');
     const a3 = await appController.openApp('https://github.com').catch((e: Error) => `threw: ${e.message}`);
     ok('…and without JARVIS\'s Chrome it fails and opens nothing elsewhere', /^threw: .*debugging port/.test(a3) && openers.length === 0, `${a3} ${openers.join(' | ')}`);
   }
+  // Owner requirement (2026-10-27): a browser named explicitly opens that browser;
+  // only Chrome and the generic "browser" go to JARVIS's Chrome.
+  {
+    const { appController } = await import('../control/appController.js');
+    const { matchDeterministicCommand } = await import('../core/deterministicRoutes.js');
+    const own3 = await fakeChrome(0, ['Inbox']); cleanup.push(own3);
+    process.env['JARVIS_CDP_PORT'] = String(own3.port);
+    const tabsBefore = own3.pages.length;
+    const activatedBefore = own3.activated.length;
+    for (const [phrase, target, program] of [['open edge', 'edge', 'msedge.exe'], ['launch edge', 'edge', 'msedge.exe'],
+      ['open firefox', 'firefox', 'firefox.exe'], ['open firefox for me', 'firefox', 'firefox.exe']] as const) {
+      openers.length = 0;
+      const route = matchDeterministicCommand(phrase);
+      const r = JSON.parse(await openApp({ target: route?.target ?? '' }));
+      ok(`"${phrase}": route open_app ${target}, which starts ${program} itself, not JARVIS's Chrome`,
+        route?.type === 'open_app' && route.target === target && r.success === true && r.resolvedTarget === program && r.method !== 'jarvis-chrome'
+          && openers.length === 1 && openers[0]!.includes(program), `${JSON.stringify(route)} ${JSON.stringify(r)} ${openers.join(' | ')}`);
+    }
+    openers.length = 0;
+    const me = JSON.parse(await openApp({ target: 'microsoft edge' }));
+    ok('open_app "microsoft edge" (as the planner may call it) starts msedge.exe, not JARVIS\'s Chrome',
+      me.success === true && me.resolvedTarget === 'msedge.exe' && me.method !== 'jarvis-chrome' && openers.length === 1 && openers[0]!.includes('msedge.exe'),
+      `${JSON.stringify(me)} ${openers.join(' | ')}`);
+    for (const target of ['firefox', 'edge', 'msedge']) {
+      openers.length = 0;
+      const reply = await appController.openApp(target).catch((e: Error) => `threw: ${e.message}`);
+      ok(`control_app open "${target}" uses the program's own opener, not JARVIS's Chrome`,
+        !/JARVIS's Chrome/.test(reply) && openers.length === 1 && openers[0]!.includes(target), `${reply} ${openers.join(' | ')}`);
+    }
+    ok('…none of these opened or brought forward a tab in JARVIS\'s Chrome', own3.pages.length === tabsBefore && own3.activated.length === activatedBefore,
+      `${own3.pages.length - tabsBefore} new tab(s), ${own3.activated.length - activatedBefore} activation(s)`);
+    for (const phrase of ['open browser', 'open the browser', 'open chrome']) {
+      const route = matchDeterministicCommand(phrase);
+      openers.length = 0;
+      const r = JSON.parse(await openApp({ target: route?.target ?? '' }));
+      ok(`"${phrase}" (generic, or Chrome itself): JARVIS's Chrome (owner answer Q1)`,
+        route?.type === 'open_app' && route.target === 'chrome' && r.method === 'jarvis-chrome' && r.success === true && openers.length === 0, `${JSON.stringify(route)} ${JSON.stringify(r)}`);
+    }
+    delete process.env['JARVIS_CDP_PORT'];
+  }
   const { youtubeSearchTool, siteSearchTool } = await import('../core/tools/youtubeTools.js');
   const ys = JSON.parse(await youtubeSearchTool.execute({ query: 'lofi', open: 'results' }));
   ok('YouTube search without Chrome: fails and says so, no default browser', ys.success === false && openers.length === 0, `${JSON.stringify(ys).slice(0, 200)} ${openers.join(' | ')}`);

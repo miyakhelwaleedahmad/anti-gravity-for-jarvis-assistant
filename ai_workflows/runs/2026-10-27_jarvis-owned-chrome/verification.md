@@ -19,6 +19,24 @@ Cloud machine: Linux, Node 22, Chromium 141 (`/opt/pw-browsers/chromium`), no Po
 
 Earlier full-suite runs during the work: 200 passed / 2 failed (plannerDecisionAuditTest and taskFailureHonestyTest expected "close chrome" to reach the app/process tools; updated to D3), then 202 passed / 0 failed before review; a run started on the round-1 code was stopped when round-2 fixes began, and its output was replaced.
 
+## Owner requirement after review: a named browser opens that browser (2026-10-27)
+
+"Open Microsoft Edge" / "open Firefox" must open that browser; only generic "open browser" (and "open chrome", owner answer Q1) use JARVIS's Chrome. Checks added to `tests/jarvisChromeTest.ts` (now **108 passed, 0 failed**, `evidence/new_code_run.txt`):
+
+| Request | Path | Result |
+|---|---|---|
+| "open edge", "launch edge" | route `open_app edge` → `msedge.exe` → platform opener | PASS: msedge.exe started, no JARVIS Chrome tab |
+| "open firefox", "open firefox for me" | route `open_app firefox` → `firefox.exe` | PASS |
+| `open_app "microsoft edge"` (how the planner may call it) | allow-list → `msedge.exe` | PASS |
+| `control_app open` "firefox", "edge", "msedge" | platform opener with that name | PASS (no JARVIS Chrome) |
+| "open browser", "open the browser", "open chrome" | route `open_app chrome` → JARVIS's Chrome | PASS |
+
+Mutants M21 (open_app sends Edge/Firefox to JARVIS's Chrome) and M22 (control_app sends Firefox there): 2/2 caught (`evidence/mutation_run_named_browsers.txt`).
+
+Gaps found (not changed; reported to the owner):
+- "open Microsoft Edge" and "open Mozilla Firefox" have no deterministic route: the planner (LLM) chooses the tool, so the result is not guaranteed. `open_app "mozilla firefox"` is refused (not on the allow-list).
+- `control_app open "edge"` hands Windows the name `edge`, which Windows may not find (it knows `msedge`); not observed on Windows. It never opens JARVIS's Chrome.
+
 ## Not verified here
 
 - Windows: chrome.exe locations, `%USERPROFILE%` profile, detached start, `DevToolsActivePort` with Windows Chrome, whether `/json/activate` brings the window forward (review R11).

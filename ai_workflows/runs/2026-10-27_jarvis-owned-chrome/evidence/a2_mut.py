@@ -72,6 +72,13 @@ MUTANTS = [
     ("M20 (R2-4) chrome.exe by its full path goes to the opener", "control/appController.ts",
      "if (isUrl || program === 'chrome.exe' || program === 'chrome') {",
      "if (isUrl || finalTarget.toLowerCase() === 'chrome.exe') {"),
+    # Owner requirement after review: a browser named explicitly opens that browser.
+    ("M21 open_app sends Edge and Firefox to JARVIS's Chrome", "skills/automation/skill.ts",
+     "if (/^https?:\\/\\//i.test(resolved.resolvedTarget) || resolved.resolvedTarget === 'chrome.exe') {",
+     "if (/^https?:\\/\\//i.test(resolved.resolvedTarget) || /^(chrome|msedge|firefox)\\.exe$/.test(resolved.resolvedTarget)) {"),
+    ("M22 control_app open sends Firefox to JARVIS's Chrome", "control/appController.ts",
+     "if (isUrl || program === 'chrome.exe' || program === 'chrome') {",
+     "if (isUrl || program === 'chrome.exe' || program === 'chrome' || program === 'firefox') {"),
 ]
 
 def run_test() -> tuple[bool, str]:
