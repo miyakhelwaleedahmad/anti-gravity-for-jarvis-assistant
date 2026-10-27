@@ -41,29 +41,35 @@ Run: `ai_workflows/runs/2026-10-25_close-by-name-and-window-close/`
 - [x] Typecheck 0 errors; related tests; full runner suite (`pnpm test -- --ci`) — see the run's `verification.md`
 - [x] Agent review PASS (a separate agent session, not a human): eight rounds, PASS in rounds 5–8
 - [x] Records, tracker row, commits by name
-- [owner] Windows CI green after push; on the PC: open Notepad → "close notepad" closes it; "close calculator" on Windows 11; "close the YouTube tab" leaves the Chrome window open; "close command prompt" with JARVIS's terminal open closes nothing
+- [owner] Windows CI green after push (CI #86 on `84b9c03`: green); on the PC: open Notepad → "close notepad" closes it (**passed on the owner's PC, 2026-10-27**, typed, in full control mode); "close calculator"; "close the YouTube tab" leaves the Chrome window open; "close command prompt" with JARVIS's terminal open closes nothing
 
 Phase A1: **complete in the cloud, partially verified**: the owner items above (Windows PC, voice) stay open, and the status stays partially verified until they pass.
 
 ### A2. Browser session (D1 + D3) — TRA-03, TRA-16, TRA-17
 
-Starts after A1. Run: `ai_workflows/runs/2026-10-25_jarvis-owned-chrome/`
+Started 2026-10-27 at the owner's request ("move to the further phases"), with A1's PC checks partly open. Run: `ai_workflows/runs/2026-10-27_jarvis-owned-chrome/` (Gate 1 approved with Q1: "open chrome" = JARVIS's Chrome; Q2: no default-browser fallback, fail and say why).
 
-- [ ] JARVIS can start its own Chrome: separate profile folder, loopback debug port, found or started on demand
-- [ ] `open_app` web targets (YouTube, URLs) open in JARVIS's Chrome through CDP; if it can't start, the reply says so and names the fix
-- [ ] "Close the browser" / "close Chrome": closes JARVIS's Chrome only, after confirmation; never the everyday Chrome
-- [ ] Chrome start instructions per platform (TRA-16)
-- [ ] Tests (fake CDP + fake Chrome launcher) fail first, then pass; the existing open_app/YouTube route tests stay green (`DO_NOT_BREAK`)
-- [ ] Typecheck, related tests, full suite, agent review PASS, records, commits by name
-- [owner] On the PC: "open YouTube" → "close the YouTube tab" → "close the browser"
+- [x] JARVIS can start its own Chrome: separate profile folder, loopback debug port (`--remote-debugging-port=0`, port and browser path from `DevToolsActivePort`), found or started on demand
+- [x] `open_app` web targets (YouTube, URLs) and "open chrome" open in JARVIS's Chrome through CDP (also `control_app open`, `control_browser open_url`, YouTube/site search); if it can't start, the reply says so and names the fix
+- [x] "Close the browser" / "close Chrome": closes JARVIS's Chrome only, after a question asked every time (risk 2); never the everyday Chrome
+- [x] Chrome start instructions per platform (TRA-16)
+- [x] Tests (fake CDP + fake Chrome launcher + a real headless Chromium) fail first (14/58 on the old code), then pass (96/96); the existing open_app/YouTube route tests stay green (`DO_NOT_BREAK`)
+- [x] Typecheck, related tests, full suite (202 passed, 0 failed), mutation check, agent review PASS (round 3), records, commits by name
+- [owner] Owner approves the three deviations in the run's `final_report.md` (protected `orchestrator.ts` spoken reason, protected `pcControlKernel.ts`, `appController.ts`)
+- [owner] Windows CI green after push; on the PC: "open YouTube" → "close the YouTube tab" → "close the browser" (answer within about 15 s)
+
+Phase A2: **complete in the cloud, partially verified** (the owner items above stay open).
 
 ### A3. Routing — TRA-05, TRA-14
 - [ ] Deterministic patterns for common close/tab phrasings, with security boundary tests (`"launch cmd /c del *"` still doesn't match)
+- [ ] Spoken phrases close to "enable full control mode" (a typo or mishearing, e.g. "enable full controll mode") are recognised, or JARVIS asks; seen on the owner's PC 2026-10-27
+- [ ] (from A2 review R14) mixed requests such as "close notepad and chrome" get both the app and the browser tools
 - [ ] Domain-like words keep their dot ("open github.com")
 - [owner] Live voice phrases on the PC
 
 ### A4. Safe targeting — TRA-01, TRA-02, TRA-11
 - [ ] One tab resolver for both tab tools; no target → the visible tab or a question; several matches → a question
+- [ ] (from A2 review R2) the read and tab tools use only JARVIS's checked Chrome (no stale profile port, no 9222 fallback), and "close current tab" / refresh no longer press Ctrl+W / Ctrl+R in whatever browser window is in front
 - [ ] The tab-close check compares with the intended tab
 - [ ] Mutations MB, MD, ME are detected
 
@@ -102,6 +108,7 @@ Phase B1: done with A1, except the item moved to A5.
 ### B4. Diagnostics (Stage 9)
 - [ ] Action log fields (with A6)
 - [ ] An action that ends after the registry timeout is reported as "may have happened", not "failed"
+- [ ] (from A2 review R3-1) a question a tool asks (close JARVIS's Chrome, A1's app and window questions) is not inside the tool's 15–20 s time budget, or the budget pauses while it waits
 
 ### B5. NOT RUN in the audit (needs real hardware)
 - [owner] Real browser crash mid-call, several windows/profiles, pinned tabs
