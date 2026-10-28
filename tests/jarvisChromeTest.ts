@@ -683,7 +683,18 @@ if (!chromeMod) {
     ok('a page opens in it', (await listPages(port)).some((p) => p.id === tab.id));
     const runningNow = await chrome.running();
     const closed = runningNow ? await chrome.close(runningNow) : false;
-    await new Promise((r) => setTimeout(r, 500));
+    // Chrome stops answering before its process has finished shutting down: on
+    // the owner's PC it had not exited 0.5 s later (2026-10-27). Wait for the
+    // exit, at most 15 s; a Chrome that never exits still fails the check.
+    const exitStarted = Date.now();
+    const child = children[0];
+    if (child && child.exitCode === null) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 15_000);
+        child.once('exit', () => { clearTimeout(timer); resolve(); });
+      });
+    }
+    console.log(`  (Chrome's process ${child?.exitCode !== null ? `exited ${((Date.now() - exitStarted) / 1000).toFixed(1)} s` : 'had not exited 15 s'} after its port closed)`);
     ok('close: the port no longer answers and Chrome exited', closed && !(await answers(port)) && children[0]?.exitCode !== null,
       `closed=${closed} exit=${children[0]?.exitCode}`);
     ok('…and after that it is not running', await chrome.runningPort() === undefined);

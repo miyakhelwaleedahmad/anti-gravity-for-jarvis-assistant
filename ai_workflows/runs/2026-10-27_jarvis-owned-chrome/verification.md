@@ -39,6 +39,10 @@ Gaps found then, **fixed on the owner's request** (same day, `change_log.md` las
 
 Fix verification: before the fix 108 passed, 12 failed (`evidence/named_browsers_before_fix.txt`); after it, with the security-boundary checks of review R4-1, **129 passed, 0 failed** (`evidence/new_code_run.txt`). Mutants M21–M28: 8/8 caught. Typecheck 0 errors; full suite on the fix **202 passed, 0 failed**, 1 blocked (pygame), 9 skipped (`evidence/full_suite.txt`; the boundary checks were added to the test file after that run and the test was re-run: 129/129). Review round 4: PASS.
 
+## On the owner's PC (Windows 10 19045), 2026-10-27
+
+Step 1, `pnpm test -- --only=jarvisChromeTest,taskFailureHonestyTest,closeByNameTest` on `8bb1161`: closeByNameTest and taskFailureHonestyTest PASS; jarvisChromeTest **128 passed, 1 failed**: `close: the port no longer answers and Chrome exited (closed=true exit=null)`. The real Chrome started from `C:\Program Files\Google\Chrome\Application\chrome.exe` with the port from its profile file, was reused, opened a page, and closed (port gone; "after that it is not running" passed). The test then waited a fixed 0.5 s for the process to exit and it had not yet. A test timing assumption, not a JARVIS fault (same kind as appControlTest's 1 s Notepad wait in phase A1): the test now waits for the exit event, at most 15 s, and prints how long it took. Cloud: 129/129 (exit after 0.0 s). Owner's `.env`: `findstr /n /c:"JARVIS_CDP_PORT" .env` printed nothing — not set, no change needed.
+
 ## Not verified here
 
 - Windows: chrome.exe locations, `%USERPROFILE%` profile, detached start, `DevToolsActivePort` with Windows Chrome, whether `/json/activate` brings the window forward (review R11).
