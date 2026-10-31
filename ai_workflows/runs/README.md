@@ -48,3 +48,4 @@ runs/
 | 2026-10-25 | `2026-10-25_voice-route-test-weak-checks/` | TEST-06 | COMPLETE WITH LIMITATIONS (Windows not observed; B2 open; review by a separate agent session, not a human) |
 | 2026-10-25 | `2026-10-25_close-by-name-and-window-close/` | TRA-04, TRA-18, TRA-06 (phase A1) | COMPLETE WITH LIMITATIONS (Windows and the owner's PC not observed; review by a separate agent session, not a human) |
 | 2026-10-27 | `2026-10-27_jarvis-owned-chrome/` | TRA-03, TRA-16, TRA-17 (phase A2; D1, D3) | COMPLETE WITH LIMITATIONS (Windows and the owner's PC not observed; three deviations await the owner; review by a separate agent session, not a human) |
+| 2026-10-28 | `2026-10-28_browser-tool-load-and-honest-replies/` | A2 follow-up: F1, F4–F6 (fixes A, B, C) | COMPLETE WITH LIMITATIONS (A and B passed on the owner's PC; C's live case not observed, its test passed on the PC; review by a separate agent session, not a human) |

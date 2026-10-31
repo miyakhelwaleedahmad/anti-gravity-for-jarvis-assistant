@@ -1,6 +1,6 @@
 # Final Report — browser tool load, honest replies, spoken refusals (A2 follow-up)
 
-Status: **implemented and tested in the cloud; not verified on the owner's PC.** Not committed (waiting for the owner's approval).
+Status: **committed and pushed** (`1a5cbee`, CI #89 green). **On the owner's PC (2026-10-31): fix A passed, fix B passed; fix C passed its test on the PC, its live case did not occur** (`verification.md`).
 
 ## What was wrong (owner's PC, 2026-10-28)
 

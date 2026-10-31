@@ -60,11 +60,19 @@ Started 2026-10-27 at the owner's request ("move to the further phases"), with A
 
 Phase A2: **complete in the cloud, partially verified** (the owner items above stay open).
 
+A2 follow-up (run `ai_workflows/runs/2026-10-28_browser-tool-load-and-honest-replies/`, commit `1a5cbee`, CI #89 green), from the owner's PC test of "close the YouTube tab":
+- [x] A: a slow first load of a skill no longer disables it for the session
+- [x] B: no claim of an action that no tool did; JARVIS's internal tool-output wrapper is never printed or spoken
+- [x] C: phase A1's browser refusals are spoken as refusals
+- [owner] On the PC 2026-10-31: A **passed**, B **passed**; C's live case did not occur (its test passed on the PC). "Close the browser" still to be tried on the PC.
+
 ### A3. Routing — TRA-05, TRA-14
 - [ ] Deterministic patterns for common close/tab phrasings, with security boundary tests (`"launch cmd /c del *"` still doesn't match)
 - [ ] Spoken phrases close to "enable full control mode" (a typo or mishearing, e.g. "enable full controll mode") are recognised, or JARVIS asks; seen on the owner's PC 2026-10-27
 - [ ] (from A2 review R14) mixed requests such as "close notepad and chrome" get both the app and the browser tools
 - [ ] Domain-like words keep their dot ("open github.com")
+- [ ] (from the PC, N-PC3) `enable full control mode` by the fast route asks for approval once, not twice
+- [ ] (from the A2 follow-up, F3) "close the youtube tab" and similar wordings reach a close tool without the planner
 - [owner] Live voice phrases on the PC
 
 ### A4. Safe targeting — TRA-01, TRA-02, TRA-11
@@ -72,6 +80,9 @@ Phase A2: **complete in the cloud, partially verified** (the owner items above s
 - [ ] (from A2 review R2) the read and tab tools use only JARVIS's checked Chrome (no stale profile port, no 9222 fallback), and "close current tab" / refresh no longer press Ctrl+W / Ctrl+R in whatever browser window is in front
 - [ ] The tab-close check compares with the intended tab
 - [ ] Mutations MB, MD, ME are detected
+- [ ] (from the PC, N-PC4) the tab-close check waits briefly for Chrome to finish closing before it reads the tab list
+- [ ] (from the PC, N-PC5) "open youtube" reuses an open YouTube tab in JARVIS's Chrome instead of adding another
+- [ ] (from the PC, N-PC6) `control_browser close` and `browser_tab close` use the same permission rule
 
 ### A5. Honest capability — TRA-07, 08, 09, 10, 12, 19
 - [ ] D2 answered
@@ -108,7 +119,11 @@ Phase B1: done with A1, except the item moved to A5.
 ### B4. Diagnostics (Stage 9)
 - [ ] Action log fields (with A6)
 - [ ] An action that ends after the registry timeout is reported as "may have happened", not "failed"
+- [ ] (from the PC, N-PC2) typed input while JARVIS is listening or reflecting does not crash with an illegal state change ("unexpected error")
 - [ ] (from A2 review R3-1) a question a tool asks (close JARVIS's Chrome, A1's app and window questions) is not inside the tool's 15–20 s time budget, or the budget pauses while it waits
+
+### Voice (from the PC logs; not in either report)
+- [ ] (A2 follow-up F8, PC N-PC1) JARVIS's own reply is not taken as a command (echo seen four times on 2026-10-31)
 
 ### B5. NOT RUN in the audit (needs real hardware)
 - [owner] Real browser crash mid-call, several windows/profiles, pinned tabs
