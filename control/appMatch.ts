@@ -190,3 +190,9 @@ export function browserCloseRefusal(browser: string): string {
 export function browserPageRefusal(target: string, browser: string): string {
   return `"${target}" is a page open in ${browser}, not an app. Ask me to close the ${target} tab instead.`;
 }
+
+/** One of the two refusals above (core/reflectionEngine.ts speaks them as written). */
+export function isBrowserRefusal(text: string): boolean {
+  return /^I don't close the [\w ]+ browser through app, window or process control:/.test(text)
+    || /^".*" is a page open in [\w ]+, not an app\. Ask me to close the .* tab instead\.$/.test(text);
+}

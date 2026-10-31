@@ -1,0 +1,7 @@
+  PASS: control_window: the refusal is spoken in full (I couldn't do that, sir. "YouTube" is a page open in Chrome, not an app. Ask me to close the YouTube tab instead.)
+  PASS: …without "unexpected error" (I couldn't do that, sir. "YouTube" is a page open in Chrome, not an app. Ask me to close the YouTube tab instead.)
+  PASS: control_app: the refusal is spoken in full, without "unexpected error" (I couldn't do that, sir. "youtube" is a page open in Chrome, not an app. Ask me to close the youtube tab instead.)
+  PASS: control_app: the browser refusal is spoken in full (I couldn't do that, sir. I don't close the Firefox browser through app, window or process control: that would close your own Firefox windows too. I can close a tab, or say "close the browser" to close JARVIS's own Chrome.)
+  PASS: …without "unexpected error" (I couldn't do that, sir. I don't close the Firefox browser through app, window or process control: that would close your own Firefox windows too. I can close a tab, or say "close the browser" to close JARVIS's own Chrome.)
+  PASS: a failure that is not a refusal is not spoken as "I couldn't do that" (I encountered an unexpected error and have been unable to complete the task, sir.)
+6 passed, 0 failed

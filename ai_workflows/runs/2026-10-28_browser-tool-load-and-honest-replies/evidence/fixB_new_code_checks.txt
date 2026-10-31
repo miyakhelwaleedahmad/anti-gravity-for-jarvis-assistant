@@ -1,0 +1,23 @@
+  PASS: stripInternalMarkup exists
+  PASS: stripInternalMarkup removes the block (
+  PASS: …and an unclosed one to the end (Sure, sir. )
+  PASS: …and a stray closing tag
+  PASS: stripMarkdown (run on everything spoken) removes it too (I have closed the YouTube tab for you, sir.)
+  PASS: ordinary text with "<" is kept
+  PASS: streamed in 1-character chunks: nothing internal printed or spoken (said: I have closed the YouTube tab for you, sir. / printed: "I have closed the YouTube tab fo
+  PASS: streamed in 3-character chunks: nothing internal printed or spoken (said: I have closed the YouTube tab for you, sir. / printed: "I have closed the YouTube tab fo
+  PASS: streamed in 7-character chunks: nothing internal printed or spoken (said: I have closed the YouTube tab for you, sir. / printed: "I have closed the YouTube tab fo
+  PASS: streamed in 16-character chunks: nothing internal printed or spoken (said: I have closed the YouTube tab for you, sir. / printed: "I have closed the YouTube tab f
+  PASS: a streamed reply with "<" in it is spoken whole (The page says a < b and a > c, sir. | Done.)
+  PASS: streamed: "close youtube tab" + browser_state + the PC's reply: no "closed" claim (I didn't close anything, sir. I only checked what is there. Please ask me again
+  PASS: streamed: …nothing internal spoken (I didn't close anything, sir. I only checked what is there. Please ask me again.)
+  PASS: streamed: a plain false claim is not spoken either (I didn't close anything, sir. I only checked what is there. Please ask me again.)
+  PASS: streamed: "could you please delete …" + get_system_info: "didn't delete" (I didn't delete anything, sir. I only checked what is there. Please ask me again.)
+  PASS: not streamed: "close youtube tab" + browser_state + the PC's reply: no "closed" claim (I didn't close anything, sir. I only checked what is there. Please ask me a
+  PASS: not streamed: …nothing internal spoken (I didn't close anything, sir. I only checked what is there. Please ask me again.)
+  PASS: not streamed: a plain false claim is not spoken either (I didn't close anything, sir. I only checked what is there. Please ask me again.)
+  PASS: not streamed: "could you please delete …" + get_system_info: "didn't delete" (I didn't delete anything, sir. I only checked what is there. Please ask me again.)
+  PASS: "refresh the youtube tab" + control_browser refresh: the reply model is used (I refreshed the YouTube tab, sir.)
+  PASS: "tell me the title …" + browser_state: the reply model is used (The page is YouTube, sir.)
+  PASS: "do i still have youtube open …" (a question with "open"): the reply model is used (Yes, YouTube is still open, sir.)
+22 passed, 0 failed

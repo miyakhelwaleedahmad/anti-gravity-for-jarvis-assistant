@@ -42,6 +42,12 @@
       ],
       "reason": "sendToRole records the stop command sent to tts.py on barge-in; restored afterwards"
     },
+    "tests/browserRefusalSpokenTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
     "tests/errorRecoveryTest.ts": {
       "replaces": [
         "installFakeTts"
@@ -55,6 +61,12 @@
         "speakToClients"
       ],
       "reason": "the shared stand-in for tts.py itself (speakToClients reports speaking_start/end; sendToRole accepts commands)"
+    },
+    "tests/honestActionReplyTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
     },
     "tests/jarvisAgentIntegrationTest.ts": {
       "replaces": [

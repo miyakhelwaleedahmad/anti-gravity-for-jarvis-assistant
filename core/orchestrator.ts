@@ -62,7 +62,8 @@ import { plannerIntelligence } from './plannerIntelligence.js';
 import { taskGraphEngine as _tge } from './taskGraphEngine.js';
 import { LOW_RISK_TOOLS, SIMPLE_REPLY_TOOLS } from './toolNameLists.js';
 import { redact } from '../security/redactor.js';
-import { CONSOLE_NOTE, SPOKEN_MAX_SENTENCES, SpokenStream, stripMarkdown } from './spokenText.js';
+import { CONSOLE_NOTE, SPOKEN_MAX_SENTENCES, SpokenStream, stripInternalMarkup, stripMarkdown } from './spokenText.js';
+import { NO_ACTION_NOTE, claimsAction, noActionReply, onlyLooks, requestedAction } from './actionHonesty.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1416,7 +1417,13 @@ export class JarvisOrchestrator {
           console.log(`[Orchestrator] 🔧 Extracted ${extracted.length} tool call(s) from LLM text response.`);
           response.tool_calls = extracted;
         } else {
-          // Direct answer text
+          // Direct answer text. No tool ran: it may not say an action was done.
+          reply = stripInternalMarkup(reply).trim();
+          const asked = requestedAction(input);
+          if (asked && !isClarifyingQuestion(reply) && claimsAction(reply, asked)) {
+            console.log(`[Orchestrator] The answer said it was done, but no tool ran: "${reply}"`);
+            reply = noActionReply(asked, false);
+          }
           console.log(`\n🤖 JARVIS: ${reply}\n`);
           await agentMemory.addConversationMessage('assistant', reply);
           agentMemory.pushEpisode('task_complete', `Direct answer: ${reply.substring(0, 100)}`, {}, 3);
@@ -1578,12 +1585,19 @@ export class JarvisOrchestrator {
     const nodes = [...graph.nodes.values()];
     const toolsUsed = nodes.map(n => n.tool);
 
+    // An action was asked for and only read-only tools ran: nothing was done.
+    // The reply model says what was found, and a reply that still claims the
+    // action is replaced (core/actionHonesty.ts).
+    const verb = requestedAction(originalInput);
+    const noAction = !!verb && !nodes.some(n => n.status === 'done' && !onlyLooks(toolRegistryV2.getMeta(n.tool), toolRegistryV2.riskOf(n.tool, n.args ?? {})));
+    if (noAction) console.log(`[Orchestrator] Only read-only tools ran (${toolsUsed.join(', ') || 'none'}) for "${originalInput}": the reply may not say "${verb}" was done.`);
+
     // OPT-SYNTH-1: Expanded bypass list — all single-action tools that produce
     // self-contained output don't need a second LLM call to "explain" the result.
     const simpleTools = SIMPLE_REPLY_TOOLS;
     const onlySimpleTools = toolsUsed.every(t => simpleTools.includes(t));
 
-    if (onlySimpleTools) {
+    if (onlySimpleTools && !noAction) {
       console.log('[Orchestrator] Simple tool(s) succeeded. Bypassing LLM synthesis.');
       const firstNode = nodes[0];
       let reply = 'Task completed, sir.';
@@ -1631,7 +1645,7 @@ export class JarvisOrchestrator {
     // it directly and skip the second LLM round-trip entirely.
     // Saves 500–3000ms on the majority of single-tool non-complex requests.
     const completedNodes = nodes.filter(n => n.status === 'done' && n.result);
-    if (completedNodes.length === 1) {
+    if (completedNodes.length === 1 && !noAction) {
       const singleResult = completedNodes[0].result!;
       const looksNatural = (
         singleResult.length <= 280 &&
@@ -1662,7 +1676,7 @@ export class JarvisOrchestrator {
     const synthesisMessages: ILLMMessage[] = [
       {
         role: 'system',
-        content: `You are JARVIS. Convert the tool results into a single concise natural-language response. Address the user as "sir". Be brief and direct. ${UNTRUSTED_RULE}`,
+        content: `You are JARVIS. Convert the tool results into a single concise natural-language response. Address the user as "sir". Be brief and direct. Say only what the tool results show was done; never write tool results, tags or tool names yourself.${noAction ? ` ${NO_ACTION_NOTE}` : ''} ${UNTRUSTED_RULE}`,
       },
       { role: 'user', content: originalInput },
       {
@@ -1685,11 +1699,16 @@ export class JarvisOrchestrator {
         max_tokens: 200,  // OPT-SYNTH-4: cap synthesis at 200 tokens — just a sentence or two
       };
 
-      if (this.config.streamingEnabled) {
+      // Not streamed when nothing acted: the reply is checked before it is said.
+      if (this.config.streamingEnabled && !noAction) {
         await this.streamSynthesis(synthesisRequest, originalInput);
       } else {
         const resp = await modelRouter.chat({ ...synthesisRequest, category: 'conversation' });
-        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        let reply = stripInternalMarkup((resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '')).trim();
+        if (noAction && verb && claimsAction(reply, verb)) {
+          console.log(`[Orchestrator] The reply said it was done, but nothing acted: "${reply}"`);
+          reply = noActionReply(verb);
+        }
         console.log(`\n🤖 JARVIS: ${reply}\n`);
         await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
         // speak() calls safeTransitionToSpeaking() internally — do NOT also
@@ -1700,6 +1719,11 @@ export class JarvisOrchestrator {
     } catch (err) {
       console.error('[Orchestrator] Synthesis error:', err);
       // Fall back to raw tool output
+      // Nothing acted: the fallback below would claim it was done.
+      if (noAction && verb) {
+        this.speak(noActionReply(verb));
+        return;
+      }
       const raw = toolOutputs.substring(0, 500);
       this.speak(`I completed the task. Here are the results: ${raw}`);
     }
@@ -1747,7 +1771,7 @@ export class JarvisOrchestrator {
       console.log(`[Timing] Synthesis stream total: ${(performance.now() - t0).toFixed(2)}ms`);
 
       if (!this.isInterrupted()) {
-        const cleanReply = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        const cleanReply = stripInternalMarkup(fullReply.replace(/<think>[\s\S]*?<\/think>/g, '')).trim();
         await agentMemory.addConversationMessage('assistant', cleanReply, FROM_TOOLS);
         agentMemory.pushEpisode('task_complete', `Synthesized: ${cleanReply.substring(0, 100)}`, {}, 3);
       }
@@ -1756,7 +1780,7 @@ export class JarvisOrchestrator {
       console.error('[Orchestrator] Synthesis stream failed, fallback to direct synthesis:', err);
       try {
         const resp = await modelRouter.chat({ ...request, category: 'conversation' });
-        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        const reply = stripInternalMarkup((resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '')).trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
         await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
         this.speak(reply);
@@ -1941,7 +1965,7 @@ export class JarvisOrchestrator {
       console.log(`[Timing] Direct conversational stream total: ${(performance.now() - t0).toFixed(2)}ms`);
 
       if (!this.isInterrupted()) {
-        const cleanReply = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '').trim();
+        const cleanReply = stripInternalMarkup(fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '')).trim();
         await agentMemory.addConversationMessage('assistant', cleanReply);
         agentMemory.pushEpisode('task_complete', `Direct chat response: ${cleanReply.substring(0, 100)}`, {}, 4);
       }
@@ -1951,7 +1975,7 @@ export class JarvisOrchestrator {
       console.error('[DirectStream] Streaming failed, falling back to blocking chat:', err);
       try {
         const resp = await modelRouter.chat({ ...request, category: 'conversation' });
-        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '').trim();
+        const reply = stripInternalMarkup((resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '')).trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
         await agentMemory.addConversationMessage('assistant', reply);
         this.speak(reply);

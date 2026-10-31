@@ -1,0 +1,47 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=honestActionReplyTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    honestActionReplyTest                        2606ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - honestActionReplyTest: 5 passed, 17 failed
+        FAIL: stripInternalMarkup exists
+        FAIL: stripInternalMarkup removes the block (<untrusted_context source="toolresults">
+        FAIL: …and an unclosed one to the end (Sure, sir. <untrusted_context source="x">
+        FAIL: …and a stray closing tag
+        FAIL: stripMarkdown (run on everything spoken) removes it too (<untrusted_context source="toolresults">. [browser_action]: {. "success": true, "closedTabId": "8CEED9E106F03BF248D24D6DCD473BD6". }. </untrusted_context>. I have closed the YouTube tab for you, sir.)
+        FAIL: streamed in 1-character chunks: nothing internal printed or spoken (said: <untrusted_context source="toolresults">. | [browser_action]:
+        FAIL: streamed in 3-character chunks: nothing internal printed or spoken (said: <untrusted_context source="toolresults">. | [browser_action]:
+        FAIL: streamed in 7-character chunks: nothing internal printed or spoken (said: <untrusted_context source="toolresults">. | [browser_action]:
+        FAIL: streamed in 16-character chunks: nothing internal printed or spoken (said: <untrusted_context source="toolresults">. | [browser_action]:
+        FAIL: streamed: "close youtube tab" + browser_state + the PC's reply: no "closed" claim (<untrusted context source="toolresults">. | [browser action]: {. | "success": true, | I have printed the full details to the console, sir.)
+        FAIL: streamed: …nothing internal spoken (<untrusted context source="toolresults">. | [browser action]: {. | "success": true, | I have printed the full details to the console, sir.)
+        FAIL: streamed: a plain false claim is not spoken either (I have closed the YouTube tab for you, sir.)
+        FAIL: streamed: "could you please delete …" + get_system_info: "didn't delete" (OS: Windows 10)
+        FAIL: not streamed: "close youtube tab" + browser_state + the PC's reply: no "closed" claim (<untrusted context source="toolresults">. [browser action]: {. "success": true, "closedTabId": "8CEED9E106F03BF248D24D6DCD473BD6". I have printed the full details to the console, sir.)
+        FAIL: not streamed: …nothing internal spoken (<untrusted context source="toolresults">. [browser action]: {. "success": true, "closedTabId": "8CEED9E106F03BF248D24D6DCD473BD6". I have printed the full details to the console, sir.)
+        FAIL: not streamed: a plain false claim is not spoken either (I have closed the YouTube tab for you, sir.)
+        FAIL: not streamed: "could you please delete …" + get_system_info: "didn't delete" (OS: Windows 10)
+        …
+      ┌────────────────────────────────────────────┐
+      │  ⏱  JARVIS Timing Breakdown                 │
+      ├────────────────────────────────────────────┤
+      │  ContextBuild..............     1ms  │
+      │  LLM Network...............     0ms  │
+      │  TokensEstimated.......    2001 tok  │
+      ├────────────────────────────────────────────┤
+      │  TOTAL........................   248ms  │
+      └────────────────────────────────────────────┘
+      [NodeBridge] RX type=speaking_start role=tts
+      [ConvBus] 🔊 Speaking started.
+      [NodeBridge] RX type=speaking_end role=tts
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: "do i still have youtube open …" (a question with "open"): the reply model is used (Yes, YouTube is still open, sir.)
+      5 passed, 17 failed
+ ELIFECYCLE  Test failed. See above for more details.

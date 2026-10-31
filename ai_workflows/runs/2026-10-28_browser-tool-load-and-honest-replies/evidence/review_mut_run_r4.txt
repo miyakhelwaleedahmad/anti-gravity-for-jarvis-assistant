@@ -1,0 +1,4 @@
+R4 direct answer not checked: CAUGHT | FAIL: "close the youtube tab", no tool, "I have closed …": not spoken (I have closed the YouTube tab for you, sir.)
+
+1/1 caught
+TREE_RESTORED

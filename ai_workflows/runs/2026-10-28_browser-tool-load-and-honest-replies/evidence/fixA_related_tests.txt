@@ -1,0 +1,21 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=executionDispatchAuditTest,voiceYouTubeIntegrationTest,plannerDesktopToolSelectionTest,toolDiscoverabilityAuditTest,plannerDecisionAuditTest,deterministicCommandRouteTest,closeAppRouteTest,approvalGateStructuredTest,riskEngineTest,jarvisChromeTest
+
+
+=== JARVIS test suite — 10 file(s) ===
+
+  PASS    approvalGateStructuredTest                   11618ms
+  PASS    closeAppRouteTest                            1208ms
+  PASS    deterministicCommandRouteTest                1257ms
+  PASS    executionDispatchAuditTest                   3230ms
+  PASS    jarvisChromeTest                             23202ms
+  PASS    plannerDecisionAuditTest                     1246ms
+  PASS    plannerDesktopToolSelectionTest              1272ms
+  PASS    riskEngineTest                               1508ms
+  PASS    toolDiscoverabilityAuditTest                 1145ms
+  PASS    voiceYouTubeIntegrationTest                  1264ms
+
+=== 10 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

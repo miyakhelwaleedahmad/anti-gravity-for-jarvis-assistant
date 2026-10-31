@@ -138,19 +138,47 @@ console.log('\n--- 2. Interrupted while its step runs, then a new request (the m
   plans.clear();
   plans.set('maximize the notification', { tool: 'get_system_info', args: { ms: 400, answer: 'The old request answered.' } });
   plans.set('maximize the notepad', { tool: 'get_system_info', args: { ms: 900, answer: 'The new request answered.' } });
+  // Here the stand-in plays the maximize step, which acts (risk 1): after only
+  // a read-only step JARVIS says it did not maximize anything (core/actionHonesty.ts).
+  const readOnlyMeta = tool.meta;
+  tool.meta = { ...tool.meta, risk: 1 };
+  let all = '';
+  try {
+    const first = orchestrator.process('maximize the notification', 'voice');
+    for (let i = 0; i < 40 && agentStateMachine.currentState !== AgentState.EXECUTING; i++) await sleep(25);
+    ok('the first request is running its step', agentStateMachine.currentState === AgentState.EXECUTING, agentStateMachine.currentState);
 
+    // What the wake word did: interrupt, hand over, and start the new request.
+    agentStateMachine.interrupt();
+    agentStateMachine.transition(AgentState.PROCESSING_STT);
+    const second = orchestrator.process('maximize the notepad', 'voice');
+    await Promise.all([first, second]);
+
+    all = spoken.join(' | ');
+  } finally {
+    tool.meta = readOnlyMeta;
+  }
+  ok('the interrupted request stays silent', !all.includes('The old request answered.'), all);
+  ok('the new request gives its own answer', all.includes('The new request answered.'), all);
+  ok('no illegal state change or unexpected error', illegal.length === 0 && !/unexpected error/i.test(all), illegal.join(' / '));
+}
+
+console.log('\n--- 2b. Interrupted action request whose only step reads: its "I didn\'t" stays silent too ---');
+{
+  await sleep(50);
+  agentStateMachine.reset();
+  spoken = []; illegal.length = 0;
+  plans.clear();
+  plans.set('maximize the notification', { tool: 'get_system_info', args: { ms: 400, answer: 'The old request answered.' } });
+  plans.set('tell me the system status now', { tool: 'get_system_info', args: { ms: 300, answer: 'The new request answered.' } });
   const first = orchestrator.process('maximize the notification', 'voice');
   for (let i = 0; i < 40 && agentStateMachine.currentState !== AgentState.EXECUTING; i++) await sleep(25);
-  ok('the first request is running its step', agentStateMachine.currentState === AgentState.EXECUTING, agentStateMachine.currentState);
-
-  // What the wake word did: interrupt, hand over, and start the new request.
   agentStateMachine.interrupt();
   agentStateMachine.transition(AgentState.PROCESSING_STT);
-  const second = orchestrator.process('maximize the notepad', 'voice');
+  const second = orchestrator.process('tell me the system status now', 'voice');
   await Promise.all([first, second]);
-
   const all = spoken.join(' | ');
-  ok('the interrupted request stays silent', !all.includes('The old request answered.'), all);
+  ok('the interrupted request says nothing (no "I didn\'t maximize")', !/maximize/i.test(all) && !all.includes('The old request answered.'), all);
   ok('the new request gives its own answer', all.includes('The new request answered.'), all);
   ok('no illegal state change or unexpected error', illegal.length === 0 && !/unexpected error/i.test(all), illegal.join(' / '));
 }

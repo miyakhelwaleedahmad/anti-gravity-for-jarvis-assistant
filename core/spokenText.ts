@@ -11,6 +11,9 @@
  *   speakableStream  the same for a reply that is still arriving: only what
  *                    can no longer change is returned.
  *   SentenceBudget   the cap for one whole reply, across streamed chunks.
+ *   stripInternalMarkup  JARVIS's wrapper for tool output and outside text
+ *                    (<untrusted_context>), when a reply model writes it out:
+ *                    never printed or spoken (owner's PC, 2026-10-28).
  */
 
 export const SPOKEN_MAX_SENTENCES = 3;
@@ -23,6 +26,28 @@ function stripThink(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '');
 }
 
+const INTERNAL_TAG = '<untrusted_context';
+
+/**
+ * The text without <untrusted_context …>…</untrusted_context> blocks (the
+ * wrapper security/untrustedText.ts puts round tool output), one still open
+ * (to the end), or a stray closing tag. A reply model copied the wrapper and
+ * made up a tool result inside it, which was spoken. `streaming`: the text is
+ * still arriving, so a tag that may still be arriving ("<", "<untru",
+ * "</untru") at the end is held back too; what this returns for a longer text then always
+ * starts with what it returned before.
+ */
+export function stripInternalMarkup(text: string, streaming = false): string {
+  const out = text
+    .replace(/<untrusted[_ ]context\b[^>]*>[\s\S]*?<\/untrusted[_ ]context\s*>/gi, '')
+    .replace(/<untrusted[_ ]context\b[\s\S]*$/i, '')
+    .replace(/<\/untrusted[_ ]context\s*>/gi, '');
+  if (!streaming) return out;
+  const tail = /<\/?[a-z_ ]*$/i.exec(out);
+  const partial = tail?.[0].toLowerCase().replace(/ /g, '_').replace('</', '<') ?? '';
+  return tail && INTERNAL_TAG.startsWith(partial) ? out.slice(0, tail.index) : out;
+}
+
 function plainLine(line: string): string {
   return line
     .replace(LINE_MARKER, '')
@@ -33,7 +58,7 @@ function plainLine(line: string): string {
 
 /** The text without markdown; a list is read as one sentence per item. */
 export function stripMarkdown(text: string): string {
-  const lines = stripThink(text).split(/\r?\n/).map(plainLine).filter(Boolean);
+  const lines = stripInternalMarkup(stripThink(text)).split(/\r?\n/).map(plainLine).filter(Boolean);
   return lines
     .map((line, i) => (i < lines.length - 1 && !/[.!?:;,]$/.test(line) ? `${line}.` : line))
     .join(' ')
@@ -97,7 +122,7 @@ export class SpokenStream {
 
   push(chunk: string): void {
     this.full += chunk;
-    const shown = stripThink(this.full).trimStart();
+    const shown = stripInternalMarkup(stripThink(this.full), true).trimStart();
     if (shown.length > this.printed) {
       this.print(shown.substring(this.printed));
       this.printed = shown.length;
