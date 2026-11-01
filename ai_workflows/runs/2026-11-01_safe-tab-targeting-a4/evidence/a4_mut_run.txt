@@ -1,0 +1,16 @@
+MB the finder ignores the tab on screen (several matches): CAUGHT | FAIL: two YouTube tabs, one on screen: the one on screen closes (mutation MB) ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionLevel": 1,
+MD the close check always says verified: CAUGHT | FAIL: the tab never closes: not "verified", JARVIS says it is still open (mutation MD) ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionL
+ME browser_tab close does nothing: CAUGHT | FAIL: two YouTube tabs, one on screen: that one closes (MB) (VERIFICATION_FAILED browser_tab reported success, but the check found that the tab is still open. the tab is 
+M4 no name: the first listed tab, not the one on screen: CAUGHT | FAIL: no name (full control on): the tab on screen closes, not the first listed ( { "success": true, "action": "closeBrowserTab", "target": "", "permissionLevel": 2, "dur
+M5 several matches, none on screen: the first, no question: CAUGHT | FAIL: two YouTube tabs, neither on screen: nothing closes (Q1) ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionLevel": 1, "durationMs": 
+M6 the close check does not wait (N-PC4): CAUGHT | FAIL: Chrome takes 0.6 s to close the tab: still checked as closed (N-PC4) (VERIFICATION_FAILED control_browser reported success, but the check found that the tab is stil
+M7 the last tab closes Chrome (N-PC8): CAUGHT | FAIL: the last tab: it closes (Q4)… (Chrome is not reachable for JARVIS on 127.0.0.1:41755. JARVIS_CDP_PORT is set, so start your Chrome with --remote-debugging-port=4175
+M8 any port: profile file or 9222, unchecked: CAUGHT | FAIL: a stale profile file pointing at another browser: control_browser closes nothing there ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permi
+M9 an empty target is level 1 again: CAUGHT | FAIL: control_browser close "": level 2 (level 1, allow)
+M10 browser_tab keeps its own rule (N-PC6): CAUGHT | FAIL: browser_tab close "youtube": level 1 (level 2, deny)
+M11 'open youtube' always adds a tab (N-PC5): CAUGHT | FAIL: the open YouTube tab comes to the front; no new tab (Q3) (opened=https://www.youtube.com/ shown=https://www.youtube.com/)
+M12 no route for 'close this tab': CAUGHT | FAIL: "close this tab" → close_current_tab (none)
+M13 a tab question is retried: CAUGHT | FAIL: …and the question is not retried by the action queue (2 call(s))
+M14 control_browser keeps the old 'blank' rule for an empty name: MISSED | 
+
+13/14 caught

@@ -1,0 +1,3 @@
+M6 the close check does not wait (N-PC4): CAUGHT | FAIL: …the close check waits for a tab Chrome is still closing (0.6 s) ({"status":"failed","evidence":"the tab is still open"})
+
+1/1 caught

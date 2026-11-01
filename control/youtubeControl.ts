@@ -171,18 +171,26 @@ export async function searchYouTube(query: string, open: 'results' | 'first' | '
   };
 }
 
-/** Plays or pauses the video in the YouTube tab (the one on screen if it is YouTube, else the latest). */
+/** Plays or pauses the video in the YouTube tab (the one on screen if it is YouTube, else the most recently used). */
 export async function playback(action: 'play' | 'pause', tabQuery?: string): Promise<YouTubeReport> {
   let pages: CdpTarget[];
-  try { pages = await listPages(cdpPort()); } catch (err) {
+  let port: number;
+  try {
+    // Only JARVIS's checked Chrome (phase A4, review R3).
+    const { checkedChromePort } = await import('./jarvisChrome.js');
+    port = await checkedChromePort();
+    pages = await listPages(port);
+  } catch (err) {
     return { success: false, action, error: `Chrome's debugging port is not reachable (${clean((err as Error).message, 120)}).` };
   }
   let target: CdpTarget | undefined;
   if (tabQuery) target = pages.find((p) => p.id === tabQuery || p.title.toLowerCase().includes(tabQuery.toLowerCase()) || p.url.includes(tabQuery));
   if (!target) {
-    const visible = await readBrowserState(cdpPort()).then((s) => s.visibleTab?.id).catch(() => undefined);
+    const visible = await readBrowserState(port).then((s) => s.visibleTab?.id).catch(() => undefined);
+    // Else the most recently used video tab: /json/list lists it first
+    // (review R12; it took the oldest once no tab counted as "on screen").
     target = pages.find((p) => p.id === visible && isWatchPage(p.url))
-      ?? [...pages].reverse().find((p) => isWatchPage(p.url));
+      ?? pages.find((p) => isWatchPage(p.url));
   }
   if (!target) return { success: false, action, error: 'No YouTube video is open in Chrome.' };
   if (action === 'pause') {

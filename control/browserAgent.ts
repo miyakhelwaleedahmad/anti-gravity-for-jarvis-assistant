@@ -21,7 +21,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-  CdpSession, activateTab, callFixed, cdpPort, closeTabById, evaluateFixed, inTurn, isolatedWorld, listPages,
+  CdpSession, activateTab, callFixed, cdpPort, evaluateFixed, inTurn, isolatedWorld, listPages,
   openTab, releaseHandle, type CdpTarget,
 } from '../perception/cdpClient.js';
 import {
@@ -30,7 +30,8 @@ import {
 } from '../perception/cdpScripts.js';
 import { describeElement, forgetTab, lookupRef, type ElementKind, type ObservedElement } from '../perception/browserRefs.js';
 import { findTab } from '../perception/browserState.js';
-import { jarvisChrome } from './jarvisChrome.js';
+import { checkedChromePort, closeTabKeepingChrome, jarvisChrome } from './jarvisChrome.js';
+import { checkTabClose } from './tabClose.js';
 import { NOT_OBSERVED, NO_CREDENTIALS, isPrivateAddress, normalizeUrl, realUploadPath, uploadPathProblem, urlProblem } from '../security/browserPolicy.js';
 import { redact } from '../security/redactor.js';
 import { dataRoot, getWorkspaceRoot } from '../core/workspaceRoot.js';
@@ -90,8 +91,14 @@ async function tabById(id: string): Promise<CdpTarget | undefined> {
   return (await listPages(cdpPort())).find((p) => p.id === id);
 }
 
-async function chooseTab(query?: string): Promise<CdpTarget> {
-  const target = await findTab(query, cdpPort());
+/**
+ * The tab meant (perception/tabResolver.ts): a question when it is not clear
+ * which. Only in JARVIS's checked Chrome (phase A4, review R3): the tools that
+ * act on a page (navigate, click, type, choose, scroll, screenshot) never
+ * reach a browser on a stale profile port or 9222.
+ */
+async function chooseTab(query?: string, port?: number): Promise<CdpTarget> {
+  const target = await findTab(query, port ?? await checkedChromePort());
   if (!target) throw new NotDone(query ? `No open tab matches "${clean(query, 60)}".` : 'No tab is open.');
   return target;
 }
@@ -144,6 +151,7 @@ function observed(ref: unknown, kinds: ElementKind[], verb: string): ObservedEle
 }
 
 async function elementTab(element: ObservedElement): Promise<CdpTarget> {
+  await checkedChromePort();
   const target = await tabById(element.tabId);
   if (!target) throw new NotDone('The tab JARVIS looked at is closed.');
   return target;
@@ -446,8 +454,7 @@ export async function tab(args: { action?: unknown; url?: unknown; tab?: unknown
       const problem = urlProblem(url, true);
       if (problem) throw new NotDone(problem);
       // In JARVIS's own Chrome, started when needed (D1).
-      await jarvisChrome.ensure();
-      const created = await openTab(url, cdpPort());
+      const created = await openTab(url, await jarvisChrome.ensure());
       const loaded = url === 'about:blank'
         ? { done: !!(await tabById(created.id)), state: undefined }
         : await waitForPage(created.id, (p) => p.readyState !== 'loading' && p.url !== 'about:blank');
@@ -461,11 +468,13 @@ export async function tab(args: { action?: unknown; url?: unknown; tab?: unknown
       };
     }
     if (action !== 'switch' && action !== 'close') throw new NotDone(`Unknown browser_tab action "${clean(action, 20)}".`);
-    const target = await chooseTab(query);
+    // Only JARVIS's checked Chrome (phase A4): not a stale profile port, not 9222.
+    const port = await checkedChromePort();
+    const target = await chooseTab(query, port);
     const title = clean(target.title, 80);
     return inTurn(target.id, async () => {
       if (action === 'switch') {
-        await activateTab(target.id, cdpPort());
+        await activateTab(target.id, port);
         await sleep(150);
         const visibility = await withSession(target, (s) => evaluateFixed<string>(s, VISIBILITY_SCRIPT, 2_000));
         return {
@@ -474,12 +483,16 @@ export async function tab(args: { action?: unknown; url?: unknown; tab?: unknown
           check: visibility === 'visible' ? verified('the tab is on screen') : failed('the tab is not on screen (is Chrome minimized?)'),
         };
       }
-      await closeTabById(target.id, cdpPort());
+      // The same rule as control_browser close (review R1/R2): the level of
+      // the tab found (YouTube or blank 1, else 2), a question for GitHub.
+      await checkTabClose(target);
+      // The last tab: a blank one first, so JARVIS's Chrome stays open (owner, Q4).
+      await closeTabKeepingChrome(target.id, port);
       forgetTab(target.id);
       const deadline = Date.now() + 2_000;
       let gone = false;
       while (!gone && Date.now() < deadline) {
-        gone = !(await tabById(target.id));
+        gone = !(await listPages(port)).some((p) => p.id === target.id);
         if (!gone) await sleep(100);
       }
       return { target: title, did: `closed the tab "${title}"`, check: gone ? verified('the tab is gone') : failed('the tab is still open') };
@@ -546,7 +559,7 @@ export async function download(ref: unknown): Promise<ActionReport> {
     const dir = downloadDir();
     fs.mkdirSync(dir, { recursive: true });
     return inTurn(target.id, async () => {
-      const browser = await CdpSession.connectBrowser(cdpPort());
+      const browser = await CdpSession.connectBrowser(await checkedChromePort());
       const started = new Map<string, string>();
       const finished = new Map<string, { state: string; totalBytes?: number }>();
       browser.on('Browser.downloadWillBegin', (p: { guid: string; suggestedFilename?: string }) => started.set(p.guid, p.suggestedFilename ?? ''));

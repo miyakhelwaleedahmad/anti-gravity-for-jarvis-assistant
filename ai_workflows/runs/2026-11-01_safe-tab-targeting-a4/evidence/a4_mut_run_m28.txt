@@ -1,0 +1,4 @@
+M27 'Chrome is not running' not said: CAUGHT | FAIL: "close youtube tab": JARVIS says its Chrome is not running and no tab was changed (I tried to close the tab "youtube" but encountered an issue, sir.)
+M28 the Chrome phrase matched anywhere (R18): CAUGHT | FAIL: a refusal that quotes a page titled with the phrase is not taken for "Chrome is not running"
+
+2/2 caught

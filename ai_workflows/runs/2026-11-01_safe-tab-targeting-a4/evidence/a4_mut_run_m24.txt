@@ -1,0 +1,3 @@
+M24 pause goes to the oldest video tab (R12): CAUGHT | FAIL: R12 Chrome minimised, two video tabs: "pause" goes to the most recently used one (Old video - YouTube)
+
+1/1 caught

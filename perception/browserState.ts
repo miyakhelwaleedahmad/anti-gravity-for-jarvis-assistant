@@ -73,22 +73,21 @@ export async function readBrowserState(port = cdpPort()): Promise<BrowserStateRe
     protocol: version['Protocol-Version'],
     windows: [...windows].map(([windowId, ids]) => ({ ...(windowId !== undefined ? { windowId } : {}), tabs: ids })),
     tabs,
-    // /json/list lists the most recently active page first.
-    visibleTab: tabs.find((t) => t.visible) ?? tabs[0],
+    // Only a tab that is on screen; with Chrome minimised there is none (not
+    // "the first listed": phase A4, review R6).
+    visibleTab: tabs.find((t) => t.visible),
   };
 }
 
 /** The tab a request means: by id, by words in its title or URL, or the one on screen. */
+/**
+ * The tab a request means, by the one finder (perception/tabResolver.ts,
+ * phase A4): a TabQuestion when several match and none is on screen, or none
+ * is on screen; undefined when no tab matches.
+ */
 export async function findTab(query: string | undefined, port = cdpPort()): Promise<CdpTarget | undefined> {
-  const pages = await listPages(port);
-  const q = (query ?? '').trim().toLowerCase();
-  if (!q) {
-    const state = await readBrowserState(port);
-    return pages.find((p) => p.id === state.visibleTab?.id) ?? pages[0];
-  }
-  return pages.find((p) => p.id === query)
-    ?? pages.find((p) => p.title.toLowerCase().includes(q))
-    ?? pages.find((p) => p.url.toLowerCase().includes(q));
+  const { resolveTabOrAsk } = await import('./tabResolver.js');
+  return resolveTabOrAsk(query, port);
 }
 
 export interface PageText { title: string; url: string; text: string; truncated: boolean }

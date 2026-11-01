@@ -56,6 +56,16 @@ const NOT_A_TAB_NAME = new RegExp('(?<![a-z0-9.])(?:all|every|other|others|this|
   // A piece of nearly every URL (review round 2, N1).
   + '|www|http|https|com|org|net)(?![a-z0-9.])');
 
+/**
+ * The tab on screen in JARVIS's Chrome (phase A4): with none on screen JARVIS
+ * asks which; it never presses Ctrl+W into another browser window. "close
+ * that tab" (a tab named earlier) is not one of them.
+ */
+const CLOSE_CURRENT_TAB_PHRASES = new Set([
+  'close tab', 'close this tab', 'close the tab', 'close current tab', 'close the current tab',
+  'close my tab', 'close active tab', 'close the active tab',
+]);
+
 /** "What's running?": open apps and local servers. */
 const RUNNING_PHRASES = new Set([
   'whats running', 'what is running', 'whats running on my pc', 'what is running on my pc',
@@ -227,7 +237,7 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   if (namedTab && !NOT_A_TAB_NAME.test(namedTab[1]!)) {
     return { type: 'close_browser_tab', target: namedTab[1]!, reply: `Closing the ${namedTab[1]} tab, sir.` };
   }
-  if (clean === 'close current tab') {
+  if (CLOSE_CURRENT_TAB_PHRASES.has(clean)) {
     return { type: 'close_current_tab', reply: 'Closing current tab, sir.' };
   }
   if (clean === 'close notepad') {

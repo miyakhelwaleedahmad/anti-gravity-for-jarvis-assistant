@@ -1,0 +1,3 @@
+M14 control_browser keeps the old 'blank' rule for an empty name: CAUGHT | FAIL: …and the browser controller itself asks for level 2 for an empty name (Closed tab: "YouTube" (tab 9C39D2A0AB2F449A))
+
+1/1 caught

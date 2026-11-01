@@ -1,0 +1,30 @@
+MB the finder ignores the tab on screen (several matches): CAUGHT | FAIL: two YouTube tabs, neither on screen: JARVIS asks which, naming both (Closing the youtube tab, sir.)
+MD the close check always says verified: CAUGHT | FAIL: the tab never closes: not "verified", JARVIS says it is still open (mutation MD) ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionL
+ME browser_tab close does nothing: CAUGHT | FAIL: two YouTube tabs, one on screen: that one closes (MB) (VERIFICATION_FAILED browser_tab reported success, but the check found that the tab is still open. the tab is 
+M4 no name: the first listed tab, not the one on screen: CAUGHT | FAIL: "close this tab" with no tab on screen: JARVIS says so and asks which (Closing current tab, sir.)
+M5 several matches, none on screen: the first, no question: CAUGHT | FAIL: two YouTube tabs, neither on screen: JARVIS asks which, naming both (Closing the youtube tab, sir.)
+M6 the close check does not wait (N-PC4): CAUGHT | FAIL: …the close check waits for a tab Chrome is still closing (0.6 s) ({"status":"failed","evidence":"the tab is still open"})
+M7 the last tab closes Chrome (N-PC8): CAUGHT | FAIL: the last tab: it closes (Q4)… (Chrome is not reachable for JARVIS on 127.0.0.1:43753. JARVIS_CDP_PORT is set, so start your Chrome with --remote-debugging-port=4375
+M8 any port: profile file or 9222, unchecked: CAUGHT | FAIL: "close youtube tab": JARVIS says its Chrome is not running and no tab was changed (I tried to close the tab "youtube" but encountered an issue, sir.)
+M9 an empty target is level 1 again: CAUGHT | FAIL: control_browser close "": level 2 (level 1, allow)
+M10 browser_tab keeps its own rule (N-PC6): CAUGHT | FAIL: browser_tab close "youtube": level 1 (level 2, deny)
+M11 'open youtube' always adds a tab (N-PC5): CAUGHT | FAIL: the open YouTube tab comes to the front; no new tab (Q3) (opened=https://www.youtube.com/ shown=https://www.youtube.com/)
+M12 no route for 'close this tab': CAUGHT | FAIL: "close this tab" with no tab on screen: JARVIS says so and asks which
+M13 a tab question is retried: CAUGHT | FAIL: …and the question is not retried by the action queue (2 call(s))
+M14 control_browser keeps the old 'blank' rule for an empty name: CAUGHT | FAIL: …and the browser controller itself asks for level 2 for an empty name (Closed tab: "YouTube" (tab 48C8F97FB824487E))
+M15 browser_tab close skips the tab's own rule (R1): CAUGHT | FAIL: R2 browser_tab: "youtube" matches a Google sign-in page: not closed without full control ( { "success": true, "action": "close", "target": "Sign in - Google Account
+M16 level 1 for any address that mentions YouTube (R2): CAUGHT | FAIL: R2 control_browser: "youtube" matches a Google sign-in page: not closed without full control ( { "success": true, "action": "closeBrowserTab", "target": "youtube", 
+M17 page tools on any port again (R3): CAUGHT | FAIL: R3 a stale profile file: browser_navigate reload and go send nothing to that other browser (Page.reload,Page.navigate | VERIFICATION_FAILED browser_navigate reporte
+M18 the tab id read from anywhere in the result (R4): CAUGHT | FAIL: R4 a title with "(tab DEADBEEF)" in it: a close that did not happen is not "verified" ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permis
+M19 two tabs on screen: the first, no question (R5): CAUGHT | FAIL: R5 two YouTube tabs on screen (two windows): nothing closes, JARVIS asks which ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionLev
+M20 browser_state's tab on screen falls back to the first listed (R6): CAUGHT | FAIL: R6 no tab on screen: browser_state names no visible tab (not the first listed) ({"id":"1457696627AE4BB9","title":"The Daily News","url":"https://news.example.com/",
+M21 a site is its host name only (R7): CAUGHT | FAIL: R7 localhost:3000 is not the open localhost:5173 tab: a new tab opens
+M22 closes not one at a time (R8): CAUGHT | FAIL: R8 the last two tabs closed at the same time: Chrome stays open on a blank tab (up=false )
+M23 titles in the question not redacted (R10): CAUGHT | FAIL: R10 …the finder's own question is redacted (not only later on the way to the reply) (Which tab, sir? 2 match "youtube": "YouTube sk-proj-A1b2C3d4A1b2C3d4A1b2C3d…", 
+M24 pause goes to the oldest video tab (R12): CAUGHT | FAIL: R12 Chrome minimised, two video tabs: "pause" goes to the most recently used one (Old video - YouTube)
+M25 the named-tab route says the old fallback first: CAUGHT | FAIL: two YouTube tabs, neither on screen: JARVIS asks which, naming both (I tried to close the tab "youtube" but encountered an issue, sir. Which tab, sir? 2 match "yout
+M26 the current-tab route says the old fallback first: CAUGHT | FAIL: "close this tab" with no tab on screen: JARVIS says so and asks which (I tried to close the current tab but encountered an issue, sir. No tab is on screen (is Chrom
+M27 'Chrome is not running' not said: CAUGHT | FAIL: "close youtube tab": JARVIS says its Chrome is not running and no tab was changed (I tried to close the tab "youtube" but encountered an issue, sir.)
+
+27/27 caught
+TREE_RESTORED

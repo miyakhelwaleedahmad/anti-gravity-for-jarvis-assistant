@@ -224,7 +224,10 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
       break;
     }
     case 'control_browser': {
-      if (action === 'close' && /^(about:blank)?$|youtube/i.test(text(args, 'target'))) {
+      // One rule with browser_tab (owner, Q2 of 2026-11-01): a YouTube or
+      // blank tab at level 1. An empty target is the tab on screen, which can
+      // be any tab: no longer level 1 (phase A4, TRA-01).
+      if (action === 'close' && /^about:blank$|youtube/i.test(text(args, 'target'))) {
         set(1, 'closing a YouTube or blank tab');
       }
       if (action === 'open_url') {
@@ -269,6 +272,10 @@ export function assessRisk(call: { tool: string; args: Record<string, unknown>; 
         if (nav.level) raise(nav.level, nav.why ?? 'where it points');
       } else {
         target = text(args, 'tab') || 'the tab on screen';
+        // The same rule as control_browser close (owner, Q2; N-PC6).
+        if (action === 'close' && /^about:blank$|youtube/i.test(text(args, 'tab'))) {
+          set(1, 'closing a YouTube or blank tab');
+        }
       }
       break;
     case 'browser_scroll':

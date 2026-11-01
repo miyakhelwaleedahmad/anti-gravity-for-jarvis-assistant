@@ -265,10 +265,73 @@ export interface ShownTab {
 export async function showInJarvisChrome(url: string | undefined, chrome: JarvisChrome = jarvisChrome): Promise<ShownTab> {
   const port = await chrome.ensure();
   const before = await listPages(port);
-  let tab = url ? await openTab(url, port) : before[0];
+  // A site's front page that is already open comes to the front instead of
+  // another tab (owner, Q3 of 2026-11-01: "open youtube" twice). A search or
+  // any other address opens a new tab.
+  const site = url ? frontPageSite(url) : undefined;
+  const open = site ? before.find((p) => siteOf(p.url) === site) : undefined;
+  let tab = open ?? (url ? await openTab(url, port) : before[0]);
   tab ??= await openTab('about:blank', port);
   await activateTab(tab.id, port);
   // A Chrome that just started shows one blank tab; it is not left behind.
-  if (url && before.length === 1 && before[0]!.url === 'about:blank') await closeTabById(before[0]!.id, port).catch(() => undefined);
-  return { port, tabId: tab.id, url: url ?? tab.url };
+  if (url && !open && before.length === 1 && before[0]!.url === 'about:blank') await closeTabById(before[0]!.id, port).catch(() => undefined);
+  return { port, tabId: tab.id, url: open ? tab.url : url ?? tab.url };
 }
+
+/**
+ * The site of an http(s) address: scheme, host and port, without "www."
+ * (review R7: localhost:3000 is not localhost:5173, http is not https).
+ */
+function siteOf(address: string): string | undefined {
+  try {
+    const u = new URL(address);
+    return /^https?:$/.test(u.protocol) ? `${u.protocol}//${u.host.toLowerCase().replace(/^www\./, '')}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The site, when the address is its front page (no path, query or fragment). */
+function frontPageSite(address: string): string | undefined {
+  try {
+    const u = new URL(address);
+    return u.pathname === '/' && !u.search && !u.hash ? siteOf(address) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The port of JARVIS's Chrome, checked: the owner's JARVIS_CDP_PORT Chrome, or
+ * the Chrome whose browser id matches JARVIS's profile file. Never a port left
+ * in a stale profile file, never a guessed 9222 (phase A4, A2 review R2). The
+ * tab tools change nothing anywhere else.
+ */
+export async function checkedChromePort(chrome: JarvisChrome = jarvisChrome): Promise<number> {
+  const running = await chrome.running();
+  if (running) return running.port;
+  throw new ChromeNotAvailableError(
+    `JARVIS's own Chrome is not running, so no tab was changed (it starts when JARVIS opens a page). ${chromeStartHint()}`,
+    'My Chrome is not running, so I did not change any tab.',
+  );
+}
+
+/**
+ * Closes a tab of JARVIS's Chrome. When it is the last tab, a blank tab is
+ * opened first: Chrome exits when its last tab closes, and the next request
+ * would find no Chrome (owner, Q4; owner's PC, N-PC8).
+ */
+export function closeTabKeepingChrome(id: string, port: number): Promise<void> {
+  // One close at a time: two closes of the last two tabs at once would each
+  // see two tabs, open no blank one, and Chrome would exit (review R8).
+  const run = closing.then(async () => {
+    const pages = await listPages(port);
+    if (pages.length === 1 && pages[0]!.id === id) await openTab('about:blank', port);
+    await closeTabById(id, port);
+    // Chrome lists a closed tab for a moment: the next close waits until it is gone.
+    for (let i = 0; i < 20 && (await listPages(port).catch(() => [])).some((p) => p.id === id); i++) await sleep(100);
+  });
+  closing = run.catch(() => undefined);
+  return run;
+}
+let closing: Promise<unknown> = Promise.resolve();

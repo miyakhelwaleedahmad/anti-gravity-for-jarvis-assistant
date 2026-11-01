@@ -177,7 +177,8 @@ const verifyControlBrowser: Verifier = async (args, output) => {
     const found = /but the check found that (.*)$/.exec(message)?.[1];
     return found ? failed(found) : unverifiable('the refresh was a key press, which cannot be checked');
   }
-  const id = /\(tab ([A-Za-z0-9]+)\)/.exec(message)?.[1];
+  // At the end of the result: a page title earlier in it could hold "(tab …)" (review R4).
+  const id = /\(tab ([A-Za-z0-9]+)\)\.?\s*$/.exec(message)?.[1];
   if (!id) {
     if (action === 'open_url') return unverifiable('it was opened outside the Chrome JARVIS reads');
     if (/Ctrl\+W/.test(message)) return unverifiable('the tab was closed with a key press, which cannot be checked');
@@ -186,11 +187,20 @@ const verifyControlBrowser: Verifier = async (args, output) => {
   const { listPages, withPage, evaluateFixed, cdpPort } = await import('../perception/cdpClient.js');
   let pages;
   try { pages = await listPages(cdpPort()); } catch { return unverifiable('Chrome is not reachable for JARVIS, so the tabs could not be checked'); }
-  const page = pages.find((p) => p.id === id);
+  let page = pages.find((p) => p.id === id);
   switch (action) {
     case 'close':
-    case 'close_current':
+    case 'close_current': {
+      // /json/close only starts the close: on a busy PC the tab is still
+      // listed for a moment (owner's PC, N-PC4). Wait up to 2 s, as
+      // browser_tab does, for that tab (by its id) to go.
+      const deadline = Date.now() + 2_000;
+      while (page && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 100));
+        try { page = (await listPages(cdpPort())).find((p) => p.id === id); } catch { page = undefined; }
+      }
       return page ? failed('the tab is still open') : verified('the tab is gone');
+    }
     case 'focus': {
       if (!page) return failed('the tab is not open');
       const { VISIBILITY_SCRIPT } = await import('../perception/cdpScripts.js');

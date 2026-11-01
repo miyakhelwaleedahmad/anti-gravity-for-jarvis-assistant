@@ -1,0 +1,104 @@
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[GraphMemory] Neo4j disabled.
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+
+=== Safe tab targeting (phase A4) ===
+
+--- 1. control_browser close (the fast route's tool) ---
+[RollbackManager] Registered rollback point: rb_1793528249457_hyvaq (Reopen closed tab: https://www.youtube.com/results?search_query=lofi)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+  FAIL: two YouTube tabs, one on screen: the one on screen closes (mutation MB) ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionLevel": 1, "durationMs": 46, "message": "Closed tab: \"lofi beats - YouTube\" (tab 7C8DF244238C4465)", "error": null } the tab is gone closed=other)
+  FAIL: …the other YouTube tab and Gmail stay (YouTube, Inbox - Gmail)
+[RollbackManager] Registered rollback point: rb_1793528249487_9j8ml (Reopen closed tab: https://www.youtube.com/results?search_query=lofi)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+  FAIL: two YouTube tabs, neither on screen: nothing closes (Q1) ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionLevel": 1, "durationMs": 6, "message": "Closed tab: \"lofi beats - YouTube\" (tab 15691F65C8144479)", "error": null } the tab is gone)
+  FAIL: …and JARVIS asks which, naming both ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionLevel": 1, "durationMs": 6, "message": "Closed tab: \"lofi beats - YouTube\" (tab 15691F65C8144479)", "error": null } the tab is gone)
+[RollbackManager] Registered rollback point: rb_1793528249496_fzphz (Reopen closed tab: https://www.youtube.com/)
+[ToolRegistry] ✗ control_browser reported success, but the tab is still open.
+  FAIL: Chrome takes 0.6 s to close the tab: still checked as closed (N-PC4) (VERIFICATION_FAILED control_browser reported success, but the check found that the tab is still open. the tab is still open)
+[RollbackManager] Registered rollback point: rb_1793528250211_f4x1l (Reopen closed tab: https://www.youtube.com/)
+[ToolRegistry] ✗ control_browser reported success, but the tab is still open.
+  PASS: the tab never closes: not "verified", JARVIS says it is still open (mutation MD) (VERIFICATION_FAILED control_browser reported success, but the check found that the tab is still open. the tab is still open)
+[RollbackManager] Registered rollback point: rb_1793528250226_yk5mt (Reopen closed tab: https://www.youtube.com/)
+  FAIL: the last tab: it closes (Q4)… (Chrome is not reachable for JARVIS on 127.0.0.1:40427. JARVIS_CDP_PORT is set, so start your Chrome with --remote-debugging-port=40427 --user-data-dir=<a separate profile folder>, or remove JARVIS_CDP_PORT from .env so that JARVIS starts its own Chrome. { "success": false, "action": "closeBrowserTab)
+  FAIL: …and JARVIS's Chrome stays open, on a blank tab (N-PC8) (up=false )
+[PermissionSession] 🚀 Full Control active. Session: ps_mvxoeuxj_770zy | Duration: 5 min | Expires: 10:22:30 AM | Source: cli
+[RollbackManager] Registered rollback point: rb_1793528250443_q6q4w (Reopen closed tab: https://news.example.com/)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+  FAIL: no name (full control on): the tab on screen closes, not the first listed ( { "success": true, "action": "closeBrowserTab", "target": "", "permissionLevel": 2, "durationMs": 5, "message": "Closed tab: \"The Daily News\" (tab 5CF510E2DF854010)", "error": null } the tab is gone left=Inbox - Gmail, lofi beats - YouTube)
+  FAIL: …"The Daily News" (listed first) stays (Inbox - Gmail, lofi beats - YouTube)
+[RollbackManager] Registered rollback point: rb_1793528250451_piseg (Reopen closed tab: https://news.example.com/)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+  FAIL: no name and no tab on screen (Chrome minimised): nothing closes, JARVIS asks (TRA-02) ( { "success": true, "action": "closeBrowserTab", "target": "", "permissionLevel": 2, "durationMs": 3, "message": "Closed tab: \"The Daily News\" (tab 06A2E0E7FC87447B)", "error": null } the tab is gone)
+[PermissionSession] 🛡️ Full Control disabled. Reason: test. Session: ps_mvxoeuxj_770zy
+[RollbackManager] Registered rollback point: rb_1793528250463_8tg0u (Reopen closed tab: https://news.example.com/)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+  FAIL: no name without full control: refused, nothing closes (an empty name is not a "blank tab") ( { "success": true, "action": "closeBrowserTab", "target": "", "permissionLevel": 1, "durationMs": 8, "message": "Closed tab: \"The Daily News\" (tab 805A21CEC523460A)", "error": null } the tab is gone)
+--- 2. close_current and refresh ---
+[PermissionSession] 🚀 Full Control active. Session: ps_mvxoeuzo_xrss2 | Duration: 5 min | Expires: 10:22:30 AM | Source: cli
+[RollbackManager] Registered rollback point: rb_1793528250494_1ixhn (Reopen closed tab: https://mail.google.com/mail/u/0/)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+  PASS: close_current: the tab on screen (Gmail) closes, checked ( { "success": true, "action": "closeCurrentBrowserTab", "target": "active", "permissionLevel": 2, "durationMs": 25, "message": "Closed tab: \"Inbox - Gmail\" (tab 4BA46B5933034F62)", "error": null } the tab is gone)
+[RollbackManager] Registered rollback point: rb_1793528250509_p0jbe (Reopen closed tab: https://news.example.com/)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+  FAIL: close_current with no tab on screen: nothing closes, JARVIS asks ( { "success": true, "action": "closeCurrentBrowserTab", "target": "active", "permissionLevel": 2, "durationMs": 11, "message": "Closed tab: \"The Daily News\" (tab 14DA3B8EA41D4534)", "error": null } the tab is gone)
+  FAIL: Chrome does not answer, a browser window is in front: no Ctrl+W pressed ( { "success": true, "action": "closeCurrentBrowserTab", "target": "active", "permissionLevel": 2, "durationMs": 3, "message": "Closed active tab via Ctrl+W shortcut.", "error": null } the tab was closed with a key press, which cannot be checked pressed=ctrl+w)
+  FAIL: …and no Ctrl+R for refresh ( { "success": true, "action": "refreshBrowserTab", "target": "", "permissionLevel": 2, "durationMs": 2, "message": "Refreshed the browser window in front (Ctrl+R; not checked).", "error": null } the refresh was a key press, which cannot be checked pressed=ctrl+r)
+  FAIL: …JARVIS says its Chrome is not reachable ( { "success": true, "action": "closeCurrentBrowserTab", "target": "active", "permissionLevel": 2, "durationMs": 3, "message": "Closed active tab via Ctrl+W shortcut.", "error": null } the tab was closed with a key press, which cannot be checked |  { "success": true, "action": "refreshBrowserTab", "target": "", "permissionLevel": 2, "durationMs": 2, "message": "Refreshed the browser window in front (Ctrl+R; not checked).", "error": null } the refresh was a key press, which cannot be checked)
+--- 3. browser_tab close ---
+[ToolRegistry] ✓ browser_tab: checked — the tab is gone.
+  FAIL: two YouTube tabs, one on screen: that one closes (MB) ( { "success": true, "action": "close", "target": "lofi beats - YouTube", "did": "closed the tab \"lofi beats - YouTube\"", "check": { "status": "verified", "evidence": "the tab is gone" } } the tab is gone)
+  FAIL: …the tab is really gone from Chrome (mutation ME) (YouTube, Inbox - Gmail)
+[ToolRegistry] ✓ browser_tab: checked — the tab is gone.
+  FAIL: neither on screen: nothing closes, JARVIS asks which (Q1) ( { "success": true, "action": "close", "target": "lofi beats - YouTube", "did": "closed the tab \"lofi beats - YouTube\"", "check": { "status": "verified", "evidence": "the tab is gone" } } the tab is gone)
+  FAIL: the last tab: closes, Chrome stays on a blank tab (Q4) (Chrome is not reachable for JARVIS on 127.0.0.1:42817. JARVIS_CDP_PORT is set, so start your Chrome with --remote-debugging-port=42817 --user-data-dir=a separate profile folder, or remove JARVIS_CDP_PORT from .env so that JARVIS starts its own Chrome. { "success": false, "action": "close", "target": up=false)
+[ToolRegistry] ✓ browser_tab: checked — the tab is gone.
+  FAIL: no tab named and none on screen: nothing closes, JARVIS asks (TRA-02) ( { "success": true, "action": "close", "target": "The Daily News", "did": "closed the tab \"The Daily News\"", "check": { "status": "verified", "evidence": "the tab is gone" } } the tab is gone)
+[PermissionSession] 🛡️ Full Control disabled. Reason: test. Session: ps_mvxoeuzo_xrss2
+--- 4. one permission rule for both tools ---
+  PASS: control_browser close "youtube": level 1 (level 1, allow)
+  FAIL: browser_tab close "youtube": level 1 (level 2, deny)
+  PASS: control_browser close "about:blank": level 1 (level 1, allow)
+  FAIL: browser_tab close "about:blank": level 1 (level 2, deny)
+  PASS: control_browser close "gmail": level 2 (level 2, deny)
+  PASS: browser_tab close "gmail": level 2 (level 2, deny)
+  FAIL: control_browser close "": level 2 (level 1, allow)
+  PASS: browser_tab close "(tab on screen)": level 2 (level 2, deny)
+[ToolRegistry] ⛔ browser_tab close needs full control mode (risk level 2).
+  FAIL: the planner's browser_tab closes YouTube without full control, like the fast route (PERMISSION_DENIED browser_tab close needs full control mode (risk level 2). )
+--- 5. only JARVIS's checked Chrome ---
+[RollbackManager] Registered rollback point: rb_1793528250701_m2ffg (Reopen closed tab: https://www.youtube.com/)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+[ToolRegistry] ⛔ browser_tab close needs full control mode (risk level 2).
+  FAIL: a stale profile file pointing at another browser: control_browser closes nothing there ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionLevel": 1, "durationMs": 4, "message": "Closed tab: \"YouTube\" (tab A5C698AE1BE44AFF)", "error": null } the tab is gone)
+  FAIL: …browser_tab closes nothing there either (PERMISSION_DENIED browser_tab close needs full control mode (risk level 2). )
+[RollbackManager] Registered rollback point: rb_1793528250707_fyh7s (Reopen closed tab: https://www.youtube.com/)
+[ToolRegistry] ✓ control_browser: checked — the tab is gone.
+[ToolRegistry] ⛔ browser_tab close needs full control mode (risk level 2).
+  FAIL: no JARVIS Chrome, another Chrome on 9222: nothing closes there (no 9222 guess) ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionLevel": 1, "durationMs": 3, "message": "Closed tab: \"YouTube\" (tab E36978A1D98144C1)", "error": null } the tab is gone | PERMISSION_DENIED browser_tab close needs full control mode (risk level 2). )
+--- 6. "open youtube" when YouTube is already open ---
+  FAIL: the open YouTube tab comes to the front; no new tab (Q3) (opened=https://www.youtube.com/ shown=https://www.youtube.com/)
+  FAIL: a YouTube search still opens a new tab (https://www.youtube.com/,https://www.youtube.com/results?search_query=lofi)
+  FAIL: a site that is not open opens in a new tab (https://www.youtube.com/,https://www.youtube.com/results?search_query=lofi,https://github.com/)
+--- 7. routes ---
+  FAIL: "close this tab" → close_current_tab (none)
+  FAIL: "close the tab" → close_current_tab (none)
+  FAIL: "close the current tab" → close_current_tab (none)
+  PASS: "close current tab" → close_current_tab (close_current_tab )
+  FAIL: "close tab" → close_current_tab (none)
+  FAIL: "Jarvis, close this tab" → close_current_tab (none)
+  FAIL: "close my tab" → close_current_tab (none)
+  FAIL: "close the active tab" → close_current_tab (none)
+  PASS: "close that tab" is not close_current_tab (none)
+  PASS: "close all tabs" is not close_current_tab (none)
+  PASS: "close this tab and notepad" is not close_current_tab (none)
+  PASS: "close the other tabs" is not close_current_tab (none)
+  PASS: "close this" is not close_current_tab (none)
+  PASS: "should i close this tab" is not close_current_tab (none)
+  PASS: "close the youtube tab" keeps its named-tab route (A3) (close_browser_tab youtube)
+
+15 passed, 37 failed

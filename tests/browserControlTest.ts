@@ -63,16 +63,20 @@ ok('isTabOpen() returns a boolean', typeof isOpen === 'boolean');
 ok('isTabOpen() returns false when Chrome not reachable', isOpen === false);
 
 // ── Test 4: closeTab() with no DevTools gives useful error ─────────────────
+// Phase A4: it fails with the reason (JARVIS's own Chrome is not running, so
+// no tab was changed). It used to return "Tab matching … is not open.", which
+// the kernel counted as a success although Chrome was not reachable.
 console.log('\n--- Test 4: closeTab() fallback message ---');
 let closeResult: string = '';
+let closeThrew = false;
 try {
   closeResult = await browserController.closeTab('youtube');
-  ok('closeTab() resolves without throwing', true);
 } catch (err: any) {
+  closeThrew = true;
   closeResult = err.message ?? '';
-  ok('closeTab() resolves without throwing', false);
 }
-ok('closeTab() result mentions DevTools or returns message', closeResult.length > 0);
+ok('closeTab() fails (it does not report a result) when Chrome is not reachable', closeThrew);
+ok('closeTab() says JARVIS\'s Chrome is not running and nothing was changed', /not running/i.test(closeResult) && /no tab was changed/i.test(closeResult));
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 if (failed > 0) process.exit(1);

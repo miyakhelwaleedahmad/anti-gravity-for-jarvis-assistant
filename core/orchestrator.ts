@@ -674,13 +674,13 @@ export class JarvisOrchestrator {
           const result = await runRoutedTool('control_browser', { action: 'close', target: route.target });
           const reply = result?.success
             ? route.reply
-            : failureReply(result, `I tried to close the tab "${route.target}" but encountered an issue, sir.`);
+            : (await import('../control/tabClose.js')).tabRouteReply(result) ?? failureReply(result, `I tried to close the tab "${route.target}" but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_current_tab') {
           const result = await runRoutedTool('control_browser', { action: 'close_current' });
           const reply = result?.success
             ? route.reply
-            : failureReply(result, `I tried to close the current tab but encountered an issue, sir.`);
+            : (await import('../control/tabClose.js')).tabRouteReply(result) ?? failureReply(result, `I tried to close the current tab but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_app' && route.target) {
           const result = await runRoutedTool('control_app', { action: 'close', target: route.target });

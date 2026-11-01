@@ -5,32 +5,20 @@
  * Supports opening, closing, focusing, and listing tabs, and integrates safety approvals.
  */
 
-import axios from 'axios';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
-import { keyboardController } from './keyboardController.js';
 import { rollbackManager } from './rollbackManager.js';
-import { activateTab, cdpPort, closeTabById, listPages, openTab } from '../perception/cdpClient.js';
+import { activateTab, closeTabById, listPages, openTab } from '../perception/cdpClient.js';
 import { chromeStartHint } from '../perception/chromeProfile.js';
+import { resolveTab, resolveTabOrAsk } from '../perception/tabResolver.js';
 import { withoutApproval } from '../security/approvalScope.js';
-import { jarvisChrome, type JarvisChrome } from './jarvisChrome.js';
+import { checkTabClose } from './tabClose.js';
+import { checkedChromePort, closeTabKeepingChrome, jarvisChrome, type JarvisChrome } from './jarvisChrome.js';
 
-/** JARVIS_CDP_PORT (default 9222), read at each call. */
-const baseUrl = () => `http://127.0.0.1:${cdpPort()}`;
-
-/**
- * A browser window has the keyboard. Known on Windows only; elsewhere false,
- * so that a shortcut is never pressed into some other application.
- */
-async function browserInFront(): Promise<boolean> {
-  try {
-    const { getWindowsState } = await import('../perception/windowsState.js');
-    const state = await getWindowsState({ allowStale: false });
-    return /^(chrome|msedge|brave|firefox|opera|vivaldi)$/i.test(state.activeWindow.processName.replace(/\.exe$/i, ''));
-  } catch {
-    return false;
-  }
-}
+// Phase A4: every tab action goes to JARVIS's checked Chrome (no stale
+// profile port, no 9222 guess), finds its tab with the one finder in
+// perception/tabResolver.ts, and never presses Ctrl+W / Ctrl+R into whatever
+// browser window is in front when that Chrome does not answer.
 
 export interface CDPTab {
   id: string;
@@ -56,10 +44,15 @@ export class BrowserController {
     return chromeStartHint();
   }
 
+  /** JARVIS's checked Chrome; it says why when there is none. */
+  private port(): Promise<number> {
+    return checkedChromePort(this.deps.chrome);
+  }
+
   private async fetchCDPTabs(): Promise<CDPTab[]> {
+    const port = await this.port();
     try {
-      const response = await axios.get(`${baseUrl()}/json/list`, { timeout: 1500 });
-      return Array.isArray(response.data) ? response.data : [];
+      return await listPages(port);
     } catch {
       throw new Error(`Chrome DevTools endpoint unavailable.\n${this.getInstruction()}`);
     }
@@ -78,38 +71,23 @@ export class BrowserController {
     }
   }
 
+  /** The one tab a name means; null when none does, or when it is not clear which (several, none on screen). */
   public async findTab(query: string): Promise<CDPTab | null> {
-    let tabs: CDPTab[] = [];
     try {
-      tabs = await this.fetchCDPTabs();
-    } catch {
-      return null;
-    }
-    const lower = query.toLowerCase().trim();
-    // A tab's own id first: closeActiveTab and refreshTab pass one, and an id
-    // is in no title or URL, so those calls used to find nothing.
-    const match = tabs.find(t => t.type === 'page' && t.id === query.trim()) ?? tabs.find(t =>
-      t.type === 'page' &&
-      (t.title.toLowerCase().includes(lower) || t.url.toLowerCase().includes(lower))
-    );
-    return match || null;
-  }
-
-  /** The tab on screen, or null when Chrome is not reachable. */
-  private async visibleTab(): Promise<CDPTab | null> {
-    try {
-      const { readBrowserState } = await import('../perception/browserState.js');
-      const tab = (await readBrowserState(cdpPort())).visibleTab;
-      return tab ? { id: tab.id, title: tab.title, url: tab.url, type: 'page' } : null;
+      const choice = await resolveTab(query, await this.port());
+      return choice.kind === 'one' ? choice.tab : null;
     } catch {
       return null;
     }
   }
 
+  /** Some tab's title or address contains the name; an empty name is no tab. */
   public async isTabOpen(query: string): Promise<boolean> {
+    const lower = query.toLowerCase().trim();
+    if (!lower) return false;
     try {
-      const tab = await this.findTab(query);
-      return tab !== null;
+      const tabs = await this.fetchCDPTabs();
+      return tabs.some((t) => t.id === query.trim() || t.title.toLowerCase().includes(lower) || t.url.toLowerCase().includes(lower));
     } catch {
       return false;
     }
@@ -120,60 +98,57 @@ export class BrowserController {
       throw new Error('Permission denied.');
     }
 
-    const tab = await this.findTab(query);
+    const port = await this.port();
+    const tab = await resolveTabOrAsk(query, port);
     if (!tab) {
       throw new Error(`Browser tab matching "${query}" not found.`);
     }
 
-    await activateTab(tab.id, cdpPort());
+    await activateTab(tab.id, port);
     return `Focused tab: "${tab.title}" (tab ${tab.id})`;
   }
 
   public async closeTab(query: string): Promise<string> {
-    // Level 1 allows closing YouTube or empty tabs, Level 2 for normal tabs, protected tabs always confirm
-    const isYouTube = query.toLowerCase().includes('youtube');
-    const requiredLevel = (isYouTube || query === 'about:blank' || query === '') ? 1 : 2;
+    // A first check from the words, before Chrome is read: "youtube" or
+    // "about:blank" may be level 1, anything else (an empty name, the tab on
+    // screen, included) needs level 2. The tab that is found decides again
+    // (control/tabClose.ts): "youtube" can match a Google sign-in page.
+    const youTubeOrBlank = /youtube/i.test(query) || query.trim().toLowerCase() === 'about:blank';
+    const requiredLevel = youTubeOrBlank ? 1 : 2;
 
     if (!permissionSession.checkPermission(requiredLevel, `Close tab: ${query}`)) {
-      return `Permission level ${requiredLevel} required to close tab.`;
+      throw new Error(`Permission level ${requiredLevel} required to close tab.`);
     }
 
-    const tab = await this.findTab(query);
+    const port = await this.port();
+    // Several matches and none on screen, or no tab on screen: a question (owner, Q1).
+    const tab = await resolveTabOrAsk(query, port);
     if (!tab) {
       return `Tab matching "${query}" is not open.`;
     }
 
-    // High risk checks: if we are closing a tab that looks like code editors or active tasks
-    if (tab.title.toLowerCase().includes('antigravity') || tab.title.toLowerCase().includes('github')) {
-      const approved = await approvalGate.requestApproval('Close browser tab', `Close sensitive tab: "${tab.title}"`);
-      if (!approved) {
-        throw new Error('Action cancelled by user.');
-      }
-    }
+    // The same rule as browser_tab: the level of the tab found, and a question
+    // for a sensitive tab (GitHub, Antigravity).
+    await checkTabClose(tab);
 
-    // Register rollback to reopen the tab
+    // The last tab: a blank one is opened first, so JARVIS's Chrome stays open (owner, Q4).
+    await closeTabKeepingChrome(tab.id, port);
+
+    // A way to reopen it, once it is closed (not before: a failed close left a reopen of an open tab).
     const urlToReopen = tab.url;
     rollbackManager.register('close_tab', `Reopen closed tab: ${urlToReopen}`, async () => {
       await this.openUrl(urlToReopen);
       return true;
     });
-
-    await closeTabById(tab.id, cdpPort());
     return `Closed tab: "${tab.title}" (tab ${tab.id})`;
   }
 
   public async closeActiveTab(): Promise<string> {
-    // The tab on screen (not the first in the list), closed by its id.
-    const tab = await this.visibleTab();
-    if (tab) return this.closeTab(tab.id);
-
-    // Chrome cannot be reached: Ctrl+W only when a browser window is in front,
-    // never into whatever other application has the keyboard.
-    if (await browserInFront()) {
-      await keyboardController.pressHotkey(['ctrl', 'w']);
-      return 'Closed active tab via Ctrl+W shortcut.';
-    }
-    throw new Error(`No browser tab could be closed: Chrome is not reachable for JARVIS and no browser window is in front.\n${this.getInstruction()}`);
+    // The tab on screen (not the first in the list), closed by its id; with
+    // none on screen, a question. Chrome not answering: said, nothing pressed.
+    const tab = await resolveTabOrAsk('', await this.port());
+    if (!tab) throw new Error('No tab is open in JARVIS\'s Chrome.');
+    return this.closeTab(tab.id);
   }
 
   public async openUrl(url: string): Promise<string> {
@@ -193,7 +168,7 @@ export class BrowserController {
     await activateTab(newTab.id, port);
 
     rollbackManager.register('open_url', `Close opened tab: ${finalUrl}`, async () => {
-      await closeTabById(newTab.id, cdpPort());
+      await closeTabById(newTab.id, port);
       return true;
     });
 
@@ -233,7 +208,7 @@ export class BrowserController {
       throw new Error('Permission denied.');
     }
     
-    const tab = query.trim() ? await this.findTab(query) : await this.visibleTab();
+    const tab = await resolveTabOrAsk(query.trim(), await this.port());
     if (tab) {
       // Reload through DevTools, and check the page loaded again.
       const { navigate } = await import('./browserAgent.js');
@@ -244,14 +219,7 @@ export class BrowserController {
         : `Reloaded tab "${tab.title}" (tab ${tab.id}), but the check found that ${report.check?.evidence ?? 'nothing could be checked'}`;
     }
 
-    // Chrome cannot be reached: Ctrl+R only when a browser window is in front.
-    if (await browserInFront()) {
-      await keyboardController.pressHotkey(['ctrl', 'r']);
-      return 'Refreshed the browser window in front (Ctrl+R; not checked).';
-    }
-    throw new Error(query.trim()
-      ? `No browser tab matches "${query}".`
-      : `No browser tab could be refreshed: Chrome is not reachable for JARVIS and no browser window is in front.\n${this.getInstruction()}`);
+    throw new Error(query.trim() ? `No browser tab matches "${query}".` : 'No tab is open in JARVIS\'s Chrome.');
   }
 }
 

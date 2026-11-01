@@ -1,0 +1,45 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=tabTargetingA4Test,jarvisChromeTest,browserControlTest,browserControlAgentTest,browserObservationTest,chromeStateSmokeTest,closeByNameTest,routingA3Test,routeGoldenTest,deterministicCommandRouteTest,riskEngineTest,verifyAfterActTest,honestActionReplyTest,browserRefusalSpokenTest,navigationPolicyTest,scenarioIntegrationTest,taskFailureHonestyTest,toolDiscoverabilityAuditTest,executionDispatchAuditTest,systemStateRouteTest,closeAppRouteTest,voiceYouTubeIntegrationTest,youtubePlayIntentTest,errorRecoveryTest,registryRepairHonestyTest,dispatchAuthzTest,nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTest,openAppSmokeTest,latencySmokeTest,boundaryDoublesTest,selfCheckTest,windowsToolsTest
+
+
+=== JARVIS test suite — 34 file(s) ===
+
+  PASS    boundaryDoublesTest                          384ms
+  PASS    browserControlAgentTest                      8877ms
+  PASS    browserControlTest                           484ms
+  PASS    browserObservationTest                       8008ms
+  PASS    browserRefusalSpokenTest                     1574ms
+  PASS    chromeStateSmokeTest                         686ms
+  PASS    closeAppRouteTest                            1171ms
+  PASS    closeByNameTest                              12610ms
+  PASS    deterministicCommandRouteTest                1406ms
+  PASS    dispatchAuthzTest                            1275ms
+  PASS    errorRecoveryTest                            11891ms
+  PASS    executionDispatchAuditTest                   3294ms
+  PASS    honestActionReplyTest                        3449ms
+  PASS    interruptGatingTest                          426ms
+  PASS    jarvisChromeTest                             13821ms
+  PASS    latencySmokeTest                             1238ms
+  PASS    navigationPolicyTest                         1601ms
+  PASS    nodeBridgeSingletonTest                      480ms
+  PASS    openAppSmokeTest                             462ms
+  PASS    registryRepairHonestyTest                    1517ms
+  PASS    riskEngineTest                               1566ms
+  PASS    routeGoldenTest                              1437ms
+  PASS    routingA3Test                                1442ms
+  PASS    scenarioIntegrationTest                      44571ms
+  PASS    selfCheckTest                                1500ms
+  PASS    systemStateRouteTest                         1190ms
+  PASS    tabTargetingA4Test                           11654ms
+  PASS    taskFailureHonestyTest                       1382ms
+  PASS    toolDiscoverabilityAuditTest                 1333ms
+  PASS    verifyAfterActTest                           6443ms
+  PASS    voiceRouteMockTest                           1332ms
+  PASS    voiceYouTubeIntegrationTest                  1256ms
+  PASS    windowsToolsTest                             4923ms
+  PASS    youtubePlayIntentTest                        1309ms
+
+=== 34 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.
