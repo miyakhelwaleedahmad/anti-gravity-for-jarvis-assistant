@@ -1,0 +1,85 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=routingA3Test,closeAppRouteTest,deterministicCommandRouteTest,fullControlLimitTest,permissionSessionTest,replyGoldenTest,routeGoldenTest,systemStateRouteTest,voiceNormalizerTest,voiceRouteMockTest,voiceYouTubeIntegrationTest,plannerDecisionAuditTest,plannerDesktopToolSelectionTest,taskFailureHonestyTest,approvalGateStructuredTest,closeByNameTest,supersededRequestTest,boundaryDoublesTest,nodeBridgeSingletonTest,interruptGatingTest,openAppSmokeTest,latencySmokeTest,jarvisChromeTest,voiceApprovalTest,honestActionReplyTest,securityBypassTest,toolDiscoverabilityAuditTest
+
+
+=== JARVIS test suite — 27 file(s) ===
+
+  PASS    approvalGateStructuredTest                   11561ms
+  PASS    boundaryDoublesTest                          385ms
+  PASS    closeAppRouteTest                            1205ms
+  PASS    closeByNameTest                              12522ms
+  PASS    deterministicCommandRouteTest                1340ms
+  PASS    fullControlLimitTest                         477ms
+  FAIL    honestActionReplyTest                        1967ms
+  PASS    interruptGatingTest                          394ms
+  PASS    jarvisChromeTest                             14992ms
+  PASS    latencySmokeTest                             1170ms
+  PASS    nodeBridgeSingletonTest                      485ms
+  PASS    openAppSmokeTest                             432ms
+  PASS    permissionSessionTest                        368ms
+  PASS    plannerDecisionAuditTest                     1187ms
+  PASS    plannerDesktopToolSelectionTest              1255ms
+  PASS    replyGoldenTest                              1132ms
+  FAIL    routeGoldenTest                              1185ms
+  PASS    routingA3Test                                1426ms
+  PASS    securityBypassTest                           1832ms
+  PASS    supersededRequestTest                        4333ms
+  PASS    systemStateRouteTest                         1262ms
+  PASS    taskFailureHonestyTest                       1507ms
+  PASS    toolDiscoverabilityAuditTest                 1393ms
+  PASS    voiceApprovalTest                            38706ms
+  PASS    voiceNormalizerTest                          370ms
+  PASS    voiceRouteMockTest                           1327ms
+  PASS    voiceYouTubeIntegrationTest                  1232ms
+
+=== 25 passed · 2 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - honestActionReplyTest: 44 passed, 10 failed
+        FAIL: streamed: "close youtube tab" + browser_state + the PC's reply: no "closed" claim (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: streamed: a plain false claim is not spoken either (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: streamed: "close the youtube tab" with none open: the reply model's correct answer is kept (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: streamed: "close the youtube tab" + web_search: no "closed" claim (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: not streamed: "close youtube tab" + browser_state + the PC's reply: no "closed" claim (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: not streamed: a plain false claim is not spoken either (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: not streamed: "close the youtube tab" with none open: the reply model's correct answer is kept (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: not streamed: "close the youtube tab" + web_search: no "closed" claim (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: "close the youtube tab", no tool, "I have closed …": not spoken (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        FAIL: "close the youtube tab" + browser_state + the reply model down: no "I completed the task" (I tried, sir, but I could not confirm it worked: no open tab matched.)
+        …
+      ┌────────────────────────────────────────────┐
+      │  ⏱  JARVIS Timing Breakdown                 │
+      ├────────────────────────────────────────────┤
+      │  ContextBuild..............     1ms  │
+      │  LLM Network...............     0ms  │
+      │  TokensEstimated.......    1995 tok  │
+      ├────────────────────────────────────────────┤
+      │  TOTAL........................   246ms  │
+      └────────────────────────────────────────────┘
+      [NodeBridge] RX type=speaking_start role=tts
+      [ConvBus] 🔊 Speaking started.
+      [NodeBridge] RX type=speaking_end role=tts
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: "do i still have youtube open …" (a question with "open"): the reply model is used (Yes, YouTube is still open, sir.)
+      44 passed, 10 failed
+  - routeGoldenTest: === Results: 438 passed, 3 failed ===
+        FAIL: normalised "read the file notes.txt in my project" (was read the file notestxt in my project, now read the file notes.txt in my project)
+        FAIL: normalised "write a summary to report.md" (was write a summary to reportmd, now write a summary to report.md)
+        FAIL: normalised "go to example.com and find the pricing" (was go to examplecom and find the pricing, now go to example.com and find the pricing)
+        …
+      [GraphMemory] Neo4j disabled.
+      [windowsState] OPT-PS-1: Persistent PowerShell session started.
+      [ToolRegistry] ✅ Registered 53 tool(s) into registry.
+      [ToolRegistry] 53 built-in tools registered; skills load next.
+      [ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, b
+      [SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+      [Orchestrator] 🎯 26 skill(s) loaded into ToolRegistry: 79 tools in total.
+      [UnifiedContext] Building context heavy=false depth=fast budget=2400tok [PARALLEL]
+      === Route golden test (ARCH-01) ===
+        FAIL: normalised "read the file notes.txt in my project" (was read the file notestxt in my project, now read the file notes.txt in my project)
+        FAIL: normalised "write a summary to report.md" (was write a summary to reportmd, now write a summary to report.md)
+        FAIL: normalised "go to example.com and find the pricing" (was go to examplecom and find the pricing, now go to example.com and find the pricing)
+        438 checks passed
+      === Results: 438 passed, 3 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

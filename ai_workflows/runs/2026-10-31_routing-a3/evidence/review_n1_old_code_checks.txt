@@ -1,0 +1,244 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[Orchestrator] 🎯 26 skill(s) loaded into ToolRegistry: 79 tools in total.
+[UnifiedContext] Building context heavy=false depth=fast budget=2400tok [PARALLEL]
+[GoalManager] ✅ Initialized. 0 historical goal(s) found.
+[Orchestrator] 🎯 GoalManager initialized.
+[Memory] Initialized. Short-term: 0 Long-term: 0
+[Redis] Initial connection failed — running without cache.
+
+=== Routing (phase A3) ===
+
+--- 1. "close [the] <name> tab" ---
+  PASS: "close youtube tab" → close_browser_tab youtube (close_browser_tab youtube)
+  PASS: "close the youtube tab" → close_browser_tab youtube (close_browser_tab youtube)
+  PASS: "Jarvis close the YouTube tab" → close_browser_tab youtube (close_browser_tab youtube)
+  PASS: "close the YouTube tab for me" → close_browser_tab youtube (close_browser_tab youtube)
+  PASS: "please close the gmail tab" → close_browser_tab gmail (close_browser_tab gmail)
+  PASS: "close the stack overflow tab" → close_browser_tab stack overflow (close_browser_tab stack overflow)
+  PASS: "close youtube" → close_browser_tab youtube (close_browser_tab youtube)
+  PASS: "close the github.com tab" → close_browser_tab github.com (close_browser_tab github.com)
+  PASS: "close the GitHub.com tab" → close_browser_tab github.com (close_browser_tab github.com)
+  PASS: "close all tabs" is not a named-tab route (none)
+  PASS: "close every tab" is not a named-tab route (none)
+  PASS: "close the other tabs" is not a named-tab route (none)
+  PASS: "close this tab" is not a named-tab route (none)
+  PASS: "close the current tab" is not a named-tab route (none)
+  PASS: "close tab" is not a named-tab route (none)
+  PASS: "close that tab" is not a named-tab route (none)
+  PASS: "close the youtube tab; del *" is not a named-tab route (none)
+  PASS: "close the cmd /c del * tab" is not a named-tab route (none)
+  PASS: "close the a b c d tab" is not a named-tab route (none)
+  PASS: "close the youtube tab and notepad" is not a named-tab route (none)
+  PASS: "close the new tab" is not a named-tab route (none)
+  PASS: "close the browser tab" is not a named-tab route (none)
+  PASS: "close the tab" is not a named-tab route (none)
+  PASS: "close my tab" is not a named-tab route (none)
+  PASS: "close your tab" is not a named-tab route (none)
+  PASS: "close it tab" is not a named-tab route (none)
+  PASS: "close one tab" is not a named-tab route (none)
+  PASS: "close the first tab" is not a named-tab route (none)
+  PASS: "close the second tab" is not a named-tab route (none)
+  PASS: "close the next tab" is not a named-tab route (none)
+  PASS: "close the previous tab" is not a named-tab route (none)
+  PASS: "close the left tab" is not a named-tab route (none)
+  PASS: "close the old tab" is not a named-tab route (none)
+  PASS: "close the youtube.tab" is not a named-tab route (none)
+  FAIL: "close the www tab" is not a named-tab route (close_browser_tab www)
+  FAIL: "close the http tab" is not a named-tab route (close_browser_tab http)
+  FAIL: "close the https tab" is not a named-tab route (close_browser_tab https)
+  FAIL: "close the .com tab" is not a named-tab route (close_browser_tab com)
+  FAIL: "close the com tab" is not a named-tab route (close_browser_tab com)
+  FAIL: "close the org tab" is not a named-tab route (close_browser_tab org)
+  FAIL: "close the net tab" is not a named-tab route (close_browser_tab net)
+  PASS: "close the github.com tab" is not looked up as "githubcom" (review R2) (close_browser_tab github.com)
+  PASS: "close current tab" keeps its own route (close_current_tab)
+--- 2. Near-misses of "enable full control mode" ---
+  PASS: "enable full control mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "enable full controll mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "enable fool control mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "enable full control" → enable_full_control_session (enable_full_control_session)
+  PASS: "enable full contol mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "turn on full control mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "activate full control mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "switch on full control" → enable_full_control_session (enable_full_control_session)
+  PASS: "please enable full control mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "unable full control mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "Jarvis enable full controll mode" → enable_full_control_session (enable_full_control_session)
+  PASS: "disable full control mode" does not enable full control (none)
+  PASS: "turn off full control mode" does not enable full control (none)
+  PASS: "stop full control mode" does not enable full control (none)
+  PASS: "enable full screen mode" does not enable full control (none)
+  PASS: "is full control mode on" does not enable full control (none)
+  PASS: "what is full control mode" does not enable full control (none)
+  PASS: "enable control mode" does not enable full control (none)
+  PASS: "enable full control mode and delete my files" does not enable full control (none)
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 79 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain, open_app, cancel_current_action, explain_code, control_app, control_browser, control_file, control_keyboard, control_mouse, control_process, control_system, control_window, disable_full_control_session, enable_full_control_session, get_active_window, get_browser_tabs, get_jarvis_service_status, get_open_apps, get_pc_state, get_permission_status, get_system_state, ingest_documents, is_app_open, is_tab_open, deep_search, search_documents, get_weather
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+--- 3. The planner is offered the full-control tools ---
+  PASS: "enable full controll mode" offers enable_full_control_session (enable_full_control_session,disable_full_control_session,get_permission_status)
+  PASS: "enable fool control mode" offers enable_full_control_session (enable_full_control_session,disable_full_control_session,get_permission_status)
+  PASS: "please turn on full contol mode now" offers enable_full_control_session (enable_full_control_session,disable_full_control_session,get_permission_status)
+--- 4. Enabling asks once; a refusal says why ---
+[Orchestrator] Processing input [cli]: "enable full control mode"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="enable_full_control_session"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mvwpzffm_yne0)
+-----------------------------------------------------------------
+  ACTION:           Turn on full control mode
+  WHY:              You asked: "enable full control mode"
+  TARGET:           {"source":"cli"}
+  EXPECTED EFFECT:  Turns on full control mode for a limited time after your approval.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Yes
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+[PermissionSession] 🚀 Full Control active. Session: ps_mvwpzfg1_d4rk8 | Duration: 10 min | Expires: 6:23:43 PM | Source: cli
+[ToolRegistry] ✓ enable_full_control_session: checked — full control mode is on.
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 38ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: "enable full control mode" asks for approval once (1 question(s))
+  PASS: …and turns full control on (Full control mode enabled, sir.)
+[PermissionSession] 🛡️ Full Control disabled. Reason: test. Session: ps_mvwpzfg1_d4rk8
+[Orchestrator] Processing input [cli]: "enable full control mode"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="enable_full_control_session"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mvwpzfgt_lyby)
+-----------------------------------------------------------------
+  ACTION:           Turn on full control mode
+  WHY:              You asked: "enable full control mode"
+  TARGET:           {"source":"cli"}
+  EXPECTED EFFECT:  Turns on full control mode for a limited time after your approval.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Yes
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Denied by user input.
+
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 11ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: not approved: full control stays off
+  PASS: …and the reply says it was not approved, not just "Failed" (Cancelled, sir. You did not approve it, so nothing was done.)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mvwpzfhf_1tkj)
+-----------------------------------------------------------------
+  ACTION:           Enable Full Control Session
+  WHY:              Full control permits keyboard, mouse, file, and app control. It is denied by default.
+  TARGET:           enable_full_control_session for 15 minute(s)
+  EXPECTED EFFECT:  Full control permits keyboard, mouse, file, and app control. It is denied by default.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Denied by user input.
+
+  PASS: skill called directly (no approval in scope) asks
+[ApprovalGate] "Enable Full Control Session" was asked inside the approved control_app call but is not what was approved — asking.
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mvwpzfi0_9czw)
+-----------------------------------------------------------------
+  ACTION:           Enable Full Control Session
+  WHY:              Full control permits keyboard, mouse, file, and app control. It is denied by default.
+  TARGET:           enable_full_control_session for 15 minute(s)
+  EXPECTED EFFECT:  Full control permits keyboard, mouse, file, and app control. It is denied by default.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Denied by user input.
+
+  PASS: inside an approval of another tool, the skill still asks
+[ApprovalGate] "Enable Full Control Session" was asked inside the approved enable_full_control_session call but is not what was approved — asking.
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mvwpzfil_4sdp)
+-----------------------------------------------------------------
+  ACTION:           Enable Full Control Session
+  WHY:              Full control permits keyboard, mouse, file, and app control. It is denied by default.
+  TARGET:           enable_full_control_session for 15 minute(s)
+  EXPECTED EFFECT:  Full control permits keyboard, mouse, file, and app control. It is denied by default.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Denied by user input.
+
+  PASS: inside an approval of this tool with other arguments, the skill still asks
+  PASS: …and full control stays off
+--- 5. Mixed close requests ---
+  PASS: "close notepad and chrome" offers control_app and control_browser (control_browser,browser_tab,control_app,control_window,browser_state,browser_read_page,browser_page_structure,get_system_info)
+  PASS: "close chrome and notepad" offers control_app and control_browser (control_browser,browser_tab,control_app,control_window,browser_state,browser_read_page,browser_page_structure,get_system_info)
+  PASS: "close notepad and the browser" offers control_app and control_browser (control_browser,browser_tab,control_app,control_window,browser_state,browser_read_page,browser_page_structure,get_system_info)
+  PASS: "close chrome" alone still offers no app tool (phase A2, D3) (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+--- 6. Domain names keep their dot ---
+  PASS: normaliser: "open github.com" → "open github.com" ("open github.com")
+  PASS: normaliser: "open www.google.com" → "open www.google.com" ("open www.google.com")
+  PASS: normaliser: "Open GitHub.com, please." → "open github.com" ("open github.com")
+  PASS: normaliser: "open youtube." → "open youtube" ("open youtube")
+  PASS: normaliser: "jarvis... open notepad" → "open notepad" ("open notepad")
+  PASS: normaliser: "version 2.5 is out" → "version 2.5 is out" ("version 2.5 is out")
+  PASS: "open github.com" has no route (it goes to the planner, with its dot) (none)
+  PASS: "open github" still routes to github (open_app github)
+
+78 passed, 7 failed

@@ -166,31 +166,32 @@ async function say(input: string, calls: typeof script, reply: string, answer = 
 
 const TABS = '<untrusted_context source="web-page">\n{"tabs":[{"id":"8CEED9E106F03BF248D24D6DCD473BD6","title":"YouTube","url":"https://www.youtube.com/"}]}\n</untrusted_context>';
 
+// "close the youtube tab" has its own route since phase A3; "page" still goes to the planner.
 console.log('--- 2. An action asked for, only read-only tools ran ---');
 for (const streaming of [true, false]) {
   (orchestrator as any).config.streamingEnabled = streaming;
   const how = streaming ? 'streamed' : 'not streamed';
-  let r = await withTool('browser_state', TABS, () => say('close youtube tab', [{ name: 'browser_state', args: {} }], LEAKED));
-  ok(`${how}: "close youtube tab" + browser_state + the PC's reply: no "closed" claim`, !/\bclosed\b/i.test(r) && /didn't close/i.test(r), r);
+  let r = await withTool('browser_state', TABS, () => say('close the youtube page', [{ name: 'browser_state', args: {} }], LEAKED));
+  ok(`${how}: "close the youtube page" + browser_state + the PC's reply: no "closed" claim`, !/\bclosed\b/i.test(r) && /didn't close/i.test(r), r);
   ok(`${how}: …nothing internal spoken`, !INTERNAL.test(r), r);
-  r = await withTool('browser_state', TABS, () => say('close the youtube tab', [{ name: 'browser_state', args: {} }], 'I have closed the YouTube tab for you, sir.'));
+  r = await withTool('browser_state', TABS, () => say('close the youtube page', [{ name: 'browser_state', args: {} }], 'I have closed the YouTube tab for you, sir.'));
   ok(`${how}: a plain false claim is not spoken either`, !/\bclosed\b/i.test(r) && /didn't close/i.test(r), r);
   r = await withTool('get_system_info', 'OS: Windows 10', () => say('could you please delete the old report draft', [{ name: 'get_system_info', args: {} }], 'I have deleted the old report draft, sir.'));
   ok(`${how}: "could you please delete …" + get_system_info: "didn't delete"`, !/have deleted/i.test(r) && /didn't delete/i.test(r), r);
   // Review R1: a correct answer from what was read is kept.
   r = await withTool('browser_state', '<untrusted_context source="web-page">\n{"tabs":[]}\n</untrusted_context>',
-    () => say('close the youtube tab', [{ name: 'browser_state', args: {} }], 'No YouTube tab is open, sir, so there was nothing to close.'));
-  ok(`${how}: "close the youtube tab" with none open: the reply model's correct answer is kept`, /No YouTube tab is open/.test(r) && !/didn't close/.test(r), r);
+    () => say('close the youtube page', [{ name: 'browser_state', args: {} }], 'No YouTube tab is open, sir, so there was nothing to close.'));
+  ok(`${how}: "close the youtube page" with none open: the reply model's correct answer is kept`, /No YouTube tab is open/.test(r) && !/didn't close/.test(r), r);
   // Review R2: a web lookup changes nothing either.
-  r = await withTool('web_search', 'Results: 1. YouTube - Wikipedia', () => say('close the youtube tab', [{ name: 'web_search', args: { query: 'youtube' } }], 'I have closed the YouTube tab for you, sir.'));
-  ok(`${how}: "close the youtube tab" + web_search: no "closed" claim`, !/have closed/i.test(r) && /didn't close/i.test(r), r);
+  r = await withTool('web_search', 'Results: 1. YouTube - Wikipedia', () => say('close the youtube page', [{ name: 'web_search', args: { query: 'youtube' } }], 'I have closed the YouTube tab for you, sir.'));
+  ok(`${how}: "close the youtube page" + web_search: no "closed" claim`, !/have closed/i.test(r) && /didn't close/i.test(r), r);
 }
 (orchestrator as any).config.streamingEnabled = true;
 
 console.log('--- 2b. The planner answers without any tool (review R4) ---');
 {
-  const r = await say('close the youtube tab', [], 'unused', 'I have closed the YouTube tab for you, sir.');
-  ok('"close the youtube tab", no tool, "I have closed …": not spoken', !/have closed/i.test(r) && /didn't close/i.test(r), r);
+  const r = await say('close the youtube page', [], 'unused', 'I have closed the YouTube tab for you, sir.');
+  ok('"close the youtube page", no tool, "I have closed …": not spoken', !/have closed/i.test(r) && /didn't close/i.test(r), r);
   ok('…and does not say it "checked" (no tool ran)', !/checked/.test(r), r);
   const q = await say('type of cpu do i have', [], 'unused', 'You have an Intel i5 processor, sir.');
   ok('"type of cpu do i have", no tool: the answer is kept', /Intel i5/.test(q), q);
@@ -207,8 +208,8 @@ console.log('--- 2c. The reply model fails when nothing acted (review round 2, N
     return chat(req);
   }) as typeof modelRouter.chat;
   try {
-    const r = await withTool('browser_state', TABS, () => say('close the youtube tab', [{ name: 'browser_state', args: {} }], 'unused'));
-    ok('"close the youtube tab" + browser_state + the reply model down: no "I completed the task"', !/completed the task/i.test(r) && /didn't close/i.test(r), r);
+    const r = await withTool('browser_state', TABS, () => say('close the youtube page', [{ name: 'browser_state', args: {} }], 'unused'));
+    ok('"close the youtube page" + browser_state + the reply model down: no "I completed the task"', !/completed the task/i.test(r) && /didn't close/i.test(r), r);
   } finally {
     modelRouter.chat = chat;
   }

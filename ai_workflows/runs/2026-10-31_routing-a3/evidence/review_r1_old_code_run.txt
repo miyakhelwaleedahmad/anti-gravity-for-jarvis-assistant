@@ -1,0 +1,46 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=routingA3Test
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    routingA3Test                                1347ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - routingA3Test: 62 passed, 16 failed
+        FAIL: "close the github.com tab" → close_browser_tab github.com (close_browser_tab githubcom)
+        FAIL: "close the GitHub.com tab" → close_browser_tab github.com (close_browser_tab githubcom)
+        FAIL: "close the tab" is not a named-tab route (close_browser_tab the)
+        FAIL: "close my tab" is not a named-tab route (close_browser_tab my)
+        FAIL: "close your tab" is not a named-tab route (close_browser_tab your)
+        FAIL: "close it tab" is not a named-tab route (close_browser_tab it)
+        FAIL: "close one tab" is not a named-tab route (close_browser_tab one)
+        FAIL: "close the first tab" is not a named-tab route (close_browser_tab first)
+        FAIL: "close the second tab" is not a named-tab route (close_browser_tab second)
+        FAIL: "close the next tab" is not a named-tab route (close_browser_tab next)
+        FAIL: "close the previous tab" is not a named-tab route (close_browser_tab previous)
+        FAIL: "close the left tab" is not a named-tab route (close_browser_tab left)
+        FAIL: "close the old tab" is not a named-tab route (close_browser_tab old)
+        FAIL: "close the github.com tab" is not looked up as "githubcom" (review R2) (close_browser_tab githubcom)
+        FAIL: inside an approval of this tool with other arguments, the skill still asks
+        FAIL: …and full control stays off
+        …
+        PASS: "close notepad and chrome" offers control_app and control_browser (control_browser,browser_tab,control_app,control_window,browser_state,browser_read_page,browser_page_structure,get_system_info)
+        PASS: "close chrome and notepad" offers control_app and control_browser (control_browser,browser_tab,control_app,control_window,browser_state,browser_read_page,browser_page_structure,get_system_info)
+        PASS: "close notepad and the browser" offers control_app and control_browser (control_browser,browser_tab,control_app,control_window,browser_state,browser_read_page,browser_page_structure,get_system_info)
+        PASS: "close chrome" alone still offers no app tool (phase A2, D3) (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+      --- 6. Domain names keep their dot ---
+        PASS: normaliser: "open github.com" → "open github.com" ("open github.com")
+        PASS: normaliser: "open www.google.com" → "open www.google.com" ("open www.google.com")
+        PASS: normaliser: "Open GitHub.com, please." → "open github.com" ("open github.com")
+        PASS: normaliser: "open youtube." → "open youtube" ("open youtube")
+        PASS: normaliser: "jarvis... open notepad" → "open notepad" ("open notepad")
+        PASS: normaliser: "version 2.5 is out" → "version 2.5 is out" ("version 2.5 is out")
+        PASS: "open github.com" has no route (it goes to the planner, with its dot) (none)
+        PASS: "open github" still routes to github (open_app github)
+      [PermissionSession] 🛡️ Full Control disabled. Reason: test. Session: ps_mvwpffom_hl0vv
+      62 passed, 16 failed
+ ELIFECYCLE  Test failed. See above for more details.

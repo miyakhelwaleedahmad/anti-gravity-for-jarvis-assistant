@@ -12,6 +12,7 @@
  */
 
 import { toolRegistryV2 } from './toolRegistryV2.js';
+import { isEnableFullControlPhrase } from './fullControlPhrase.js';
 import { delegationFit, goalIntent } from './delegationRouting.js';
 import { normalizeVoiceInput } from './voiceInput.js';
 
@@ -135,6 +136,9 @@ export function selectPlanningToolNames(input: string): string[] {
   const isBrowserClose = /\b(close|kill|exit|quit)\b/i.test(clean) && /\b(browser|chrome)\b/i.test(clean);
   if (isTabRequest || isBrowserClose) {
     addIfRegistered('control_browser', 'browser_tab');
+    // "close notepad and chrome": the other thing named is an app (phase A2
+    // review R14); the app and window tools still refuse browsers (phase A1).
+    if (isBrowserClose && /\band\b/.test(clean)) addIfRegistered('control_app', 'control_window');
   } else if (isKillOrClose) {
     addIfRegistered('control_app', 'control_window');
   }
@@ -222,7 +226,7 @@ export function selectPlanningToolNames(input: string): string[] {
     addIfRegistered('cancel_current_action');
   }
 
-  if (/\b(full control|admin|permission|level 2|session)\b/.test(clean)) {
+  if (/\b(full control|admin|permission|level 2|session)\b/.test(clean) || isEnableFullControlPhrase(clean.replace(/[^a-z0-9\s]/g, ''))) {
     addIfRegistered('enable_full_control_session', 'disable_full_control_session', 'get_permission_status');
   }
 

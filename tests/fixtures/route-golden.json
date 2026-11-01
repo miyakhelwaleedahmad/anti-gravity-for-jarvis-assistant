@@ -781,7 +781,7 @@
   },
   "read the file notes.txt in my project": {
     "route": "null",
-    "normalized": "read the file notestxt in my project",
+    "normalized": "read the file notes.txt in my project",
     "tools": [
       "files",
       "read_file",
@@ -792,7 +792,7 @@
   },
   "write a summary to report.md": {
     "route": "null",
-    "normalized": "write a summary to reportmd",
+    "normalized": "write a summary to report.md",
     "tools": [
       "delegate_task",
       "read_file",
@@ -962,7 +962,7 @@
   },
   "go to example.com and find the pricing": {
     "route": "null",
-    "normalized": "go to examplecom and find the pricing",
+    "normalized": "go to example.com and find the pricing",
     "tools": [
       "web_search",
       "deep_search"

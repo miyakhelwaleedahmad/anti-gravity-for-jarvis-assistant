@@ -18,6 +18,7 @@ import { normalizeVoiceInput } from './voiceInput.js';
 import { matchDesktopRoute } from './desktopRouting.js';
 import { matchAgentRoute } from './agentRouting.js';
 import { capabilitiesReply, capabilityListReply } from './replyText.js';
+import { isEnableFullControlPhrase } from './fullControlPhrase.js';
 
 export interface DeterministicRoute { type: string; target?: string; reply: string; specialist?: string; value?: string }
 
@@ -37,6 +38,23 @@ const BROWSER_TABS_PHRASES = new Set([
 const CLOSE_BROWSER_PHRASES = new Set([
   'close the browser', 'close browser', 'close chrome', 'close the chrome', 'close google chrome',
 ]);
+
+/**
+ * "close [the] <name> tab": a tab in JARVIS's own Chrome, by its name (phase
+ * A3). 1–3 words of 2+ letters or digits ("github.com" keeps its dot); not
+ * "all", "this", "current" and the like ("close current tab" has its own
+ * route; "this tab" waits for phase A4, which removes the Ctrl+W fallback),
+ * and not a filler word: the tab is found by a part of its title, so "close
+ * the tab" must not close a tab whose title contains "the" (review R1).
+ * Each word is at most 64 characters.
+ */
+const TAB_NAME_WORD = '[a-z0-9]+(?:\\.[a-z0-9]+)*';
+const CLOSE_NAMED_TAB = new RegExp(`^close (?:the )?((?=[a-z0-9.]{2,64} )${TAB_NAME_WORD}(?: (?=[a-z0-9.]{2,64} )${TAB_NAME_WORD}){0,2}) tab$`);
+// Whole words only: "com" in "github.com" is part of a name.
+const NOT_A_TAB_NAME = new RegExp('(?<![a-z0-9.])(?:all|every|other|others|this|that|these|those|current|active|new|last|browser|chrome|and'
+  + '|the|a|an|my|your|his|her|our|their|it|its|one|first|second|third|next|previous|prev|left|right|old|tab|tabs'
+  // A piece of nearly every URL (review round 2, N1).
+  + '|www|http|https|com|org|net)(?![a-z0-9.])');
 
 /** "What's running?": open apps and local servers. */
 const RUNNING_PHRASES = new Set([
@@ -205,6 +223,10 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   if (clean === 'close youtube') {
     return { type: 'close_browser_tab', target: 'youtube', reply: 'Closing YouTube, sir.' };
   }
+  const namedTab = CLOSE_NAMED_TAB.exec(normalized.toLowerCase().replace(/[^a-z0-9\s.]/g, '').trim());
+  if (namedTab && !NOT_A_TAB_NAME.test(namedTab[1]!)) {
+    return { type: 'close_browser_tab', target: namedTab[1]!, reply: `Closing the ${namedTab[1]} tab, sir.` };
+  }
   if (clean === 'close current tab') {
     return { type: 'close_current_tab', reply: 'Closing current tab, sir.' };
   }
@@ -237,7 +259,8 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   if (clean === 'is youtube open') {
     return { type: 'is_tab_open', target: 'youtube', reply: 'Checking if YouTube is open, sir.' };
   }
-  if (clean === 'enable full control mode') {
+  // Near-misses too ("enable full controll mode"); the approval is still asked.
+  if (isEnableFullControlPhrase(clean)) {
     return { type: 'enable_full_control_session', reply: 'Enabling full control mode, sir.' };
   }
 

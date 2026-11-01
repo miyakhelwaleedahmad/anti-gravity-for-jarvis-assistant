@@ -11,7 +11,7 @@ export function normalizeVoiceInput(text: string): string {
   if (!text) return "";
 
   // 1. Lowercase and replace punctuation (keeping hyphens for now to handle "you-tube")
-  let result = text.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim();
+  let result = text.toLowerCase().replace(/[^a-z0-9\s.-]/g, '').trim();
 
   // Collapse spaces
   result = result.replace(/\s+/g, ' ');
@@ -23,7 +23,8 @@ export function normalizeVoiceInput(text: string): string {
   result = result.replace(/\bgit hub\b/g, 'github');
 
   // Strip remaining hyphens
-  result = result.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  // A dot stays only between letters or digits ("github.com", "2.5", phase A3).
+  result = result.replace(/[^a-z0-9\s.]/g, '').replace(/(?<![a-z0-9])\.|\.(?![a-z0-9])/g, '').replace(/\s+/g, ' ').trim();
 
   // 3. Strip wake word prefixes
   const wakePrefixes = ['hey jarvis', 'jarvis'];

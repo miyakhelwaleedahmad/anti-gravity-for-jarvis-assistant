@@ -118,6 +118,12 @@
       ],
       "reason": "riskOf throws once, as fault injection: unreadable metadata must refuse the call; restored right after; uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
     },
+    "tests/routingA3Test.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
     "tests/scenarios/harness.ts": {
       "replaces": [
         "speak",

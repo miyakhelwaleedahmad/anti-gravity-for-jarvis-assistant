@@ -14,6 +14,7 @@
  */
 
 import { clampSessionMinutes, permissionSession } from '../../control/permissionSession.js';
+import { currentApproval, isSameCall } from '../../security/approvalScope.js';
 import { approvalGate } from '../../security/approvalGate.js';
 import { securityAuditLogger } from '../../security/securityAuditLogger.js';
 import { getRequestSource } from '../../core/traceContext.js';
@@ -66,7 +67,12 @@ export async function execute(args: Record<string, unknown> = {}): Promise<strin
 
   // ── action: enable (default) ────────────────────────────────────────────
   const isVoice = source === 'voice';
-  const approved = await approvalGate.requestApproval(
+  // The registry already asked the owner for this very call (risk 3, typed);
+  // asking again here was a second box for the same thing (owner's PC,
+  // 2026-10-31). Called any other way, or with other arguments, it still asks.
+  const approvedCall = currentApproval();
+  const alreadyApproved = approvedCall !== undefined && isSameCall(approvedCall, 'enable_full_control_session', args);
+  const approved = alreadyApproved || await approvalGate.requestApproval(
     'Enable Full Control Session',
     `enable_full_control_session for ${durationMinutes} minute(s)`,
     'HIGH_RISK',

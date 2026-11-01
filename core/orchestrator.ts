@@ -729,7 +729,8 @@ export class JarvisOrchestrator {
           this.speak(result?.success && result.output === 'true' ? `Yes, the ${route.target} tab is open, sir.` : `No, the ${route.target} tab is not open, sir.`);
         } else if (route.type === 'enable_full_control_session') {
           const result = await runRoutedTool('enable_full_control_session', { source });
-          this.speak(result?.success ? `Full control mode enabled, sir.` : 'Failed to enable full control, sir.');
+          // Why it was not turned on (not approved, …), not only that it failed.
+          this.speak(result?.success ? `Full control mode enabled, sir.` : failureReply(result, 'I did not turn on full control mode, sir.'));
         } else if (route.type === 'status') {
           // One sentence from a real reading; no LLM request.
           const result = await runRoutedTool('system_overview', {});
