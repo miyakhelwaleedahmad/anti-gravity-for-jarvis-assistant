@@ -27,10 +27,28 @@ Cloud machine: Linux, Node 22, no PowerShell 7, no pygame. The owner's PC and Wi
 | Full suite after the N1/N2 fixes | **206 passed, 0 failed**, 1 blocked (realTtsHandoffTest: no pygame), 9 skipped; DO_NOT_BREAK all PASS | `evidence/full_suite_review2.txt` |
 | Independent review, round 3 (the N1/N2 fixes) | **PASS** (no defects; N4–N6 info) | `review.md` |
 
+## On the owner's PC (Windows 10 19045), 2026-11-01, commit `915584c`
+
+| Check | Result |
+|---|---|
+| `git log -1` | `915584c` |
+| `pnpm test -- --only=routingA3Test,routeGoldenTest,honestActionReplyTest,deterministicCommandRouteTest` | **4 passed, 0 failed** |
+| "close youtube tab", "close the youtube tab" (typed) | **Pass (routing)**: `Deterministic command route: type="close_browser_tab" target="youtube"`, no planner. The tab closed (the rollback names it, the next tab reading no longer lists it), but JARVIS said "I could not confirm it worked: the tab is still open" both times: the close check reads too early (A4, N-PC4). The second close took the last tab and JARVIS's Chrome exited (A4, N-PC8). |
+| "enable full control mode" (typed), approved | **Pass**: one approval box, "Full control mode enabled, sir." |
+| "enable full controll mode" (typed), answered "no" | **Pass**: the route, one approval box, "Cancelled, sir. You did not approve it, so nothing was done."; full control stayed off |
+| "close notepad and chrome" | **Pass, as reported by the owner** ("it worked"); no log was pasted |
+| "open github.com" | not tried |
+| Spoken (voice) versions of the A3 phrases | not tried: all phrases were typed |
+
+Seen in the same logs, not caused by A3 (recorded in the tracker):
+- Echo again: "Opening youtube, sir." was heard as "opening YouTube search", and a YouTube search ran (Voice item).
+- Noise heard as a command: "welcome tablet" led the planner to a `run_command`, refused by the safety rule (shell characters). Voice item.
+- After an interruption, `Speaking timeout (12000ms) — TTS speaking_end was never received`; JARVIS recovered by itself (B4).
+
 ## Not verified
 
-- On the owner's PC: none of the A3 phrases yet. To check after a push the owner approves:
-  - "close the youtube tab" and "close youtube tab" close the tab by the fast route (log: `close_browser_tab`, no planner); "close the tab" does not use that route;
+- On the owner's PC (still open): "open github.com"; spoken versions of the A3 phrases. The other PC checks passed (above). The original list:
+  - "close the youtube tab" and "close youtube tab" close the tab by the fast route (log: `close_browser_tab`, no planner); "close the tab" does not use that route (since phase A4 it has its own route, `close_current_tab`);
   - "enable full controll mode" (or another near-miss) asks for approval **once**; answering no is spoken as not approved;
   - "close notepad and chrome" closes both, or says plainly which one it could not close;
   - "open github.com" keeps the dot in the log's normalised text.
