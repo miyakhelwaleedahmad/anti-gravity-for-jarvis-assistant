@@ -326,6 +326,22 @@ export class JarvisOrchestrator {
     if (this._loopExecuting) {
       console.warn('[Orchestrator] ⚠️  Concurrent process() call detected — previous loop aborted, proceeding.');
       agentStateMachine.reset();
+    } else if (agentStateMachine.is(AgentState.LISTENING)) {
+      // Typed while JARVIS waits for speech after "Jarvis": the typed request
+      // takes over (owner's PC, N-PC2: it crashed with LISTENING -> PLANNING).
+      // The recording finishes as usual; what it hears comes in as a voice request.
+      console.log('[Orchestrator] Typed input while listening — it takes over.');
+      agentStateMachine.transition(AgentState.IDLE);
+    } else if (source === 'cli' && !agentStateMachine.is(AgentState.IDLE) && !agentStateMachine.is(AgentState.PROCESSING_STT)) {
+      // Typed while a state is left over with no request running (REFLECTING
+      // and the like): reset, as when a request is still running (N-PC2:
+      // REFLECTING -> PLANNING). Typed text only: spoken input keeps its own
+      // path, and a spoken request waiting in the queue still runs (review N1).
+      console.warn(`[Orchestrator] ⚠️  State ${agentStateMachine.currentState} left over with no request marked running — reset to IDLE.`);
+      // A spoken request waiting in the voice queue would start on IDLE and
+      // replace the typed one: the typed text replaces it, as barge-in does (owner, R1).
+      this.runBargeInCallbacks();
+      agentStateMachine.reset();
     }
 
     console.log(`[Orchestrator] Processing input [${source}]: "${input}"`);

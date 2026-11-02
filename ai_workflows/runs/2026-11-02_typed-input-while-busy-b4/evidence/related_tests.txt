@@ -1,0 +1,40 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=typedWhileBusyB4Test,bargeInEchoTest,bargeInProcessingTest,interruptGatingTest,supersededRequestTest,voiceRouteMockTest,speakingWatchdogQueueTest,speechStateTest,stopClearsTtsQueueTest,ttsLifecycleStateTest,ttsRetryWatchdogTest,voiceQueueAntiDeadlockTest,voiceContinuationFallbackTest,watchdogUnitTest,actionQueueRecoveryTest,voiceApprovalTest,voiceNormalizerTest,voiceYouTubeIntegrationTest,systemStateRouteTest,nodeBridgeSingletonTest,openAppSmokeTest,latencySmokeTest,deterministicCommandRouteTest,honestActionReplyTest,routingA3Test,tabRouteReplyA4Test,tabTargetingA4Test,boundaryDoublesTest,taskFailureHonestyTest
+
+
+=== JARVIS test suite — 29 file(s) ===
+
+  PASS    actionQueueRecoveryTest                      1629ms
+  PASS    bargeInEchoTest                              384ms
+  PASS    bargeInProcessingTest                        1228ms
+  PASS    boundaryDoublesTest                          400ms
+  PASS    deterministicCommandRouteTest                1222ms
+  PASS    honestActionReplyTest                        3281ms
+  PASS    interruptGatingTest                          371ms
+  PASS    latencySmokeTest                             1318ms
+  PASS    nodeBridgeSingletonTest                      494ms
+  PASS    openAppSmokeTest                             502ms
+  PASS    routingA3Test                                1467ms
+  PASS    speakingWatchdogQueueTest                    4569ms
+  PASS    speechStateTest                              1232ms
+  PASS    stopClearsTtsQueueTest                       1253ms
+  PASS    supersededRequestTest                        4072ms
+  PASS    systemStateRouteTest                         1340ms
+  PASS    tabRouteReplyA4Test                          3147ms
+  PASS    tabTargetingA4Test                           12713ms
+  PASS    taskFailureHonestyTest                       1446ms
+  PASS    ttsLifecycleStateTest                        1271ms
+  PASS    ttsRetryWatchdogTest                         5507ms
+  PASS    typedWhileBusyB4Test                         5644ms
+  PASS    voiceApprovalTest                            38831ms
+  PASS    voiceContinuationFallbackTest                1298ms
+  PASS    voiceNormalizerTest                          394ms
+  PASS    voiceQueueAntiDeadlockTest                   1215ms
+  PASS    voiceRouteMockTest                           1312ms
+  PASS    voiceYouTubeIntegrationTest                  1290ms
+  PASS    watchdogUnitTest                             992ms
+
+=== 29 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

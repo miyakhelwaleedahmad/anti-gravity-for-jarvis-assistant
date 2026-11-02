@@ -1,0 +1,4 @@
+M1 typed input in LISTENING not handled: MISSED | 
+M4 barge-in while SPEAKING removed: CAUGHT | FAIL: …and the barge-in stops the reply being spoken (a "stop" to tts.py) (no command sent)
+
+1/2 caught

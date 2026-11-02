@@ -1,0 +1,7 @@
+M1 typed input in LISTENING not handled: MISSED | 
+M2 a left-over state not reset: CAUGHT | FAIL: left in EXECUTING: the typed request runs and is answered (I encountered an unexpected error, sir. Please try again.)
+M3 the wrong fix: allow LISTENING -> PLANNING in the state rules: CAUGHT | FAIL: the state rules are unchanged: LISTENING → PLANNING is still refused
+M4 barge-in while SPEAKING removed: MISSED | 
+
+2/4 caught
+TREE_RESTORED

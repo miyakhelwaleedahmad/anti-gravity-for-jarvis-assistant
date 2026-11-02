@@ -1,0 +1,348 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[Orchestrator] 🎯 26 skill(s) loaded into ToolRegistry: 79 tools in total.
+[UnifiedContext] Building context heavy=false depth=fast budget=2400tok [PARALLEL]
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 79 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain, open_app, cancel_current_action, explain_code, control_app, control_browser, control_file, control_keyboard, control_mouse, control_process, control_system, control_window, disable_full_control_session, enable_full_control_session, get_active_window, get_browser_tabs, get_jarvis_service_status, get_open_apps, get_pc_state, get_permission_status, get_system_state, ingest_documents, is_app_open, is_tab_open, deep_search, search_documents, get_weather
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[GoalManager] ✅ Initialized. 0 historical goal(s) found.
+[Orchestrator] 🎯 GoalManager initialized.
+[Memory] Initialized. Short-term: 0 Long-term: 0
+
+=== Typed input while JARVIS is listening or busy (phase B4) ===
+
+--- 1. typed while LISTENING (after "Jarvis") ---
+[AgentStateMachine] IDLE → LISTENING
+[Orchestrator] Processing input [cli]: "what is the weather in paris today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+[Orchestrator] ❌ Unhandled error in agent loop: Error: [AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+    at AgentStateMachine._doTransition (/home/user/anti-gravity-for-jarvis-assistant/core/agentStateMachine.ts:185:13)
+    at AgentStateMachine.transition (/home/user/anti-gravity-for-jarvis-assistant/core/agentStateMachine.ts:167:19)
+    at JarvisOrchestrator.runAgentLoop (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:864:23)
+    at <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:378:113)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
+    at JarvisOrchestrator.process (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:378:42)
+    at async JarvisOrchestrator.orchestrator.process (/home/user/anti-gravity-for-jarvis-assistant/tests/fakeTts.ts:45:20)
+    at async typed (/home/user/anti-gravity-for-jarvis-assistant/tests/typedWhileBusyB4Test.ts:77:3)
+    at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/typedWhileBusyB4Test.ts:87:16)
+[AgentStateMachine] IDLE → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 26ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[Redis] Initial connection failed — running without cache.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  FAIL: a planner request typed in LISTENING runs and is answered (I encountered an unexpected error, sir. Please try again.)
+  PASS: …and JARVIS ends idle (IDLE)
+[AgentStateMachine] IDLE → LISTENING
+[Orchestrator] Processing input [cli]: "what time is it"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="time"
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+[AgentStateMachine] route to planning: transition to PLANNING refused from LISTENING ([AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]).
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> EXECUTING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+[AgentStateMachine] route to execution: transition to EXECUTING refused from LISTENING ([AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> EXECUTING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]).
+[AgentStateMachine] IDLE → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 1ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: a fast route ("what time is it") typed in LISTENING runs (It is 04:10 PM, sir.)
+[AgentStateMachine] IDLE → LISTENING
+[Orchestrator] Processing input [cli]: "close youtube tab"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="close_browser_tab" target="youtube"
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+[AgentStateMachine] route to planning: transition to PLANNING refused from LISTENING ([AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]).
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> EXECUTING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+[AgentStateMachine] route to execution: transition to EXECUTING refused from LISTENING ([AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> EXECUTING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]).
+[AgentStateMachine] IDLE → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 38ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: a fast route through planning ("close youtube tab") typed in LISTENING runs (and says its Chrome is not running) (My Chrome is not running, sir, so I did not change any tab.)
+--- 2. typed in a state left over with no request running ---
+[AgentStateMachine] IDLE → PLANNING
+[Orchestrator] Processing input [cli]: "what is the weather in paris today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] Building context heavy=true depth=balanced budget=2400tok [PARALLEL]
+[Timing] retrieveForPlanning: 1ms
+[UnifiedContext] parallel=1.1ms total=1.9ms heavy=true depth=balanced tokens=33/2400
+[Timing] buildContext: 2ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 10ms (Estimated Tokens: ~899)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=899
+[Timing] LLM returned in 0ms — tokens_used=? prompt_tokens=?
+
+🤖 JARVIS: Paris is sunny today, sir.
+
+[AgentStateMachine] PLANNING → SPEAKING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] SPEAKING → IDLE
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............     2ms  │
+│  LLM Network...............     0ms  │
+│  TokensEstimated.......     899 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................    13ms  │
+└────────────────────────────────────────────┘
+
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: left in PLANNING: the typed request runs and is answered (Paris is sunny today, sir.)
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[Orchestrator] Processing input [cli]: "what is the weather in paris today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: EXECUTING -> PLANNING. Allowed: [OBSERVING, INTERRUPTED]
+[Orchestrator] ❌ Unhandled error in agent loop: Error: [AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: EXECUTING -> PLANNING. Allowed: [OBSERVING, INTERRUPTED]
+    at AgentStateMachine._doTransition (/home/user/anti-gravity-for-jarvis-assistant/core/agentStateMachine.ts:185:13)
+    at AgentStateMachine.transition (/home/user/anti-gravity-for-jarvis-assistant/core/agentStateMachine.ts:167:19)
+    at JarvisOrchestrator.runAgentLoop (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:864:23)
+    at <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:378:113)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
+    at JarvisOrchestrator.process (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:378:42)
+    at async JarvisOrchestrator.orchestrator.process (/home/user/anti-gravity-for-jarvis-assistant/tests/fakeTts.ts:45:20)
+    at async typed (/home/user/anti-gravity-for-jarvis-assistant/tests/typedWhileBusyB4Test.ts:77:3)
+    at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/typedWhileBusyB4Test.ts:106:16)
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 3ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[Redis] Cannot connect after 3 retries — running without cache.
+  FAIL: left in EXECUTING: the typed request runs and is answered (I encountered an unexpected error, sir. Please try again.)
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] EXECUTING → OBSERVING
+[Orchestrator] Processing input [cli]: "what is the weather in paris today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: OBSERVING -> PLANNING. Allowed: [REFLECTING, INTERRUPTED]
+[Orchestrator] ❌ Unhandled error in agent loop: Error: [AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: OBSERVING -> PLANNING. Allowed: [REFLECTING, INTERRUPTED]
+    at AgentStateMachine._doTransition (/home/user/anti-gravity-for-jarvis-assistant/core/agentStateMachine.ts:185:13)
+    at AgentStateMachine.transition (/home/user/anti-gravity-for-jarvis-assistant/core/agentStateMachine.ts:167:19)
+    at JarvisOrchestrator.runAgentLoop (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:864:23)
+    at <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:378:113)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
+    at JarvisOrchestrator.process (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:378:42)
+    at async JarvisOrchestrator.orchestrator.process (/home/user/anti-gravity-for-jarvis-assistant/tests/fakeTts.ts:45:20)
+    at async typed (/home/user/anti-gravity-for-jarvis-assistant/tests/typedWhileBusyB4Test.ts:77:3)
+    at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/typedWhileBusyB4Test.ts:106:16)
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 2ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  FAIL: left in OBSERVING: the typed request runs and is answered (I encountered an unexpected error, sir. Please try again.)
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[Orchestrator] Processing input [cli]: "what is the weather in paris today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: REFLECTING -> PLANNING. Allowed: [REPAIRING, SPEAKING, IDLE]
+[Orchestrator] ❌ Unhandled error in agent loop: Error: [AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: REFLECTING -> PLANNING. Allowed: [REPAIRING, SPEAKING, IDLE]
+    at AgentStateMachine._doTransition (/home/user/anti-gravity-for-jarvis-assistant/core/agentStateMachine.ts:185:13)
+    at AgentStateMachine.transition (/home/user/anti-gravity-for-jarvis-assistant/core/agentStateMachine.ts:167:19)
+    at JarvisOrchestrator.runAgentLoop (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:864:23)
+    at <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:378:113)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
+    at JarvisOrchestrator.process (/home/user/anti-gravity-for-jarvis-assistant/core/orchestrator.ts:378:42)
+    at async JarvisOrchestrator.orchestrator.process (/home/user/anti-gravity-for-jarvis-assistant/tests/fakeTts.ts:45:20)
+    at async typed (/home/user/anti-gravity-for-jarvis-assistant/tests/typedWhileBusyB4Test.ts:77:3)
+    at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/typedWhileBusyB4Test.ts:106:16)
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 1ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  FAIL: left in REFLECTING: the typed request runs and is answered (I encountered an unexpected error, sir. Please try again.)
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → REPAIRING
+[Orchestrator] Processing input [cli]: "what is the weather in paris today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] REPAIRING → PLANNING
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] ⚡ Cache hit total=0.1ms heavy=true
+[Timing] buildContext: 0ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 2ms (Estimated Tokens: ~921)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=921
+[Timing] LLM returned in 0ms — tokens_used=? prompt_tokens=?
+
+🤖 JARVIS: Paris is sunny today, sir.
+
+[AgentStateMachine] PLANNING → SPEAKING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] SPEAKING → IDLE
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............     0ms  │
+│  LLM Network...............     0ms  │
+│  TokensEstimated.......     921 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................     4ms  │
+└────────────────────────────────────────────┘
+
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: left in REPAIRING: the typed request runs and is answered (Paris is sunny today, sir.)
+--- 3. unchanged ---
+[AgentStateMachine] IDLE → SPEAKING
+[Orchestrator] 🚨 Barge-in detected in state SPEAKING. Input: "what is the weather in paris today"
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[AgentStateMachine] 🛑 INTERRUPT TRIGGERED: SPEAKING → INTERRUPTED
+[AgentStateMachine] SPEAKING → INTERRUPTED
+[AgentStateMachine] INTERRUPTED → PROCESSING_STT
+[Orchestrator] Processing input [cli]: "what is the weather in paris today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] PROCESSING_STT → PLANNING
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] ⚡ Cache hit total=0.0ms heavy=true
+[Timing] buildContext: 0ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 1ms (Estimated Tokens: ~921)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=921
+[Timing] LLM returned in 0ms — tokens_used=? prompt_tokens=?
+
+🤖 JARVIS: Paris is sunny today, sir.
+
+[AgentStateMachine] PLANNING → SPEAKING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] SPEAKING → IDLE
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............     0ms  │
+│  LLM Network...............     0ms  │
+│  TokensEstimated.......     921 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................     4ms  │
+└────────────────────────────────────────────┘
+
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: typed while SPEAKING: barge-in, the new request is answered (Paris is sunny today, sir.)
+[Orchestrator] Processing input [cli]: "what is the weather in london today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] IDLE → PLANNING
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] Building context heavy=true depth=balanced budget=2400tok [PARALLEL]
+[Timing] retrieveForPlanning: 0ms
+[UnifiedContext] parallel=0.2ms total=0.3ms heavy=true depth=balanced tokens=126/2400
+[Timing] buildContext: 0ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 1ms (Estimated Tokens: ~1012)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=1012
+[Orchestrator] ⚠️  Concurrent process() call detected — previous loop aborted, proceeding.
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[Orchestrator] Processing input [cli]: "what is the weather in paris today"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] IDLE → PLANNING
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] ⚡ Cache hit total=0.0ms heavy=true
+[Timing] buildContext: 0ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 0ms (Estimated Tokens: ~935)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=935
+[Timing] LLM returned in 0ms — tokens_used=? prompt_tokens=?
+
+🤖 JARVIS: Paris is sunny today, sir.
+
+[AgentStateMachine] PLANNING → SPEAKING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] SPEAKING → IDLE
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............     0ms  │
+│  LLM Network...............     0ms  │
+│  TokensEstimated.......     935 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................     2ms  │
+└────────────────────────────────────────────┘
+
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[Timing] LLM returned in 1502ms — tokens_used=? prompt_tokens=?
+[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "what is the weather in london today". Goal marked FAILED.
+[Orchestrator] callId 7bz5fu is no longer the current active call. Skipping state reset.
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............     0ms  │
+│  LLM Network...............  1502ms  │
+│  TokensEstimated.......    1012 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................  1504ms  │
+└────────────────────────────────────────────┘
+
+  PASS: typed while another request runs: that one is aborted, the new one is answered (Paris is sunny today, sir.)
+[AgentStateMachine] IDLE → LISTENING
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+  PASS: the state rules are unchanged: LISTENING → PLANNING is still refused
+
+8 passed, 4 failed

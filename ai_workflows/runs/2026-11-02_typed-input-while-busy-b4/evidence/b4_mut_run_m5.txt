@@ -1,0 +1,3 @@
+M5 a running request is not aborted by the new one: CAUGHT | FAIL: …and the one it replaced is not (it was aborted; review R5) (Paris is sunny today, sir. | London is rainy today, sir.)
+
+1/1 caught

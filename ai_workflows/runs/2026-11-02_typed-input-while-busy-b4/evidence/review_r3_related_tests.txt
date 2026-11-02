@@ -1,0 +1,29 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=typedWhileBusyB4Test,boundaryDoublesTest,bargeInProcessingTest,bargeInEchoTest,interruptGatingTest,supersededRequestTest,voiceRouteMockTest,voiceQueueAntiDeadlockTest,speakingWatchdogQueueTest,speechStateTest,nodeBridgeSingletonTest,openAppSmokeTest,latencySmokeTest,deterministicCommandRouteTest,goalRuntimeTest,listeningRecoveryTest,approvalTypeAheadTest,shutdownStepsTest
+
+
+=== JARVIS test suite — 18 file(s) ===
+
+  PASS    approvalTypeAheadTest                        2123ms
+  PASS    bargeInEchoTest                              439ms
+  PASS    bargeInProcessingTest                        1522ms
+  PASS    boundaryDoublesTest                          433ms
+  PASS    deterministicCommandRouteTest                1723ms
+  PASS    goalRuntimeTest                              2672ms
+  PASS    interruptGatingTest                          425ms
+  PASS    latencySmokeTest                             1740ms
+  PASS    listeningRecoveryTest                        4135ms
+  PASS    nodeBridgeSingletonTest                      526ms
+  PASS    openAppSmokeTest                             607ms
+  PASS    shutdownStepsTest                            1748ms
+  PASS    speakingWatchdogQueueTest                    4527ms
+  PASS    speechStateTest                              1543ms
+  PASS    supersededRequestTest                        4297ms
+  PASS    typedWhileBusyB4Test                         7697ms
+  PASS    voiceQueueAntiDeadlockTest                   1533ms
+  PASS    voiceRouteMockTest                           1466ms
+
+=== 18 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.
