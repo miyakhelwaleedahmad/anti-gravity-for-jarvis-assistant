@@ -1,0 +1,24 @@
+M1 time back to the three exact wordings: CAUGHT | FAIL: "what  time is this" → the time (planner)
+M2 spaces not collapsed: MISSED | 
+M3 no date answer: CAUGHT | FAIL: "what's the date" → the date (planner)
+M4 time pattern not anchored at the end (over-match): CAUGHT | FAIL: "what time is my meeting" → not the time or date answer (time)
+M5 date pattern not anchored at the end (over-match): CAUGHT | FAIL: "what is the date of the meeting" → not the date answer (date)
+M6 clock line back to UTC time: CAUGHT | FAIL: …the local time (16:34)
+M7 cache hit keeps the old clock line: CAUGHT | FAIL: on a cache hit the clock line is made fresh (time zone changed to London) ([SYS now=Monday 2026-11-02 16:34 local time (UTC+05:00, Asia/Karachi) depth=balanced budg
+M8 time zone offset sign flipped: CAUGHT | FAIL: …and the time zone (UTC+05:00)
+M9 cache hit refreshes systemState but not the context sent: CAUGHT | FAIL: on a cache hit the clock line is made fresh (time zone changed to London) ([SYS now=Monday 2026-11-02 11:34 local time (UTC+00:00, Europe/London) depth=balanced bud
+
+8/9 caught
+
+Checksums before:
+1f41d5af4d7a55df3dfaab30560efbc1  core/deterministicRoutes.ts
+00caed8559f4852d54a9fd55756b58d4  memory/unifiedContextBuilder.ts
+Checksums after:
+1f41d5af4d7a55df3dfaab30560efbc1  core/deterministicRoutes.ts
+00caed8559f4852d54a9fd55756b58d4  memory/unifiedContextBuilder.ts
+TREE RESTORED: yes
+ .../runs/2026-10-31_routing-a3/verification.md     | 22 +++++++++++++++--
+ core/deterministicRoutes.ts                        | 28 ++++++++++++++++++++--
+ memory/unifiedContextBuilder.ts                    | 17 ++++++++++---
+ tests/boundary-doubles.json                        |  6 +++++
+ 4 files changed, 66 insertions(+), 7 deletions(-)

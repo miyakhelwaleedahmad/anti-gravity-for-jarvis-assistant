@@ -1,0 +1,22 @@
+M1 time back to the three exact wordings: CAUGHT | FAIL: "what  time is this" → the time, local (planner)
+M3 no date answer: CAUGHT | FAIL: "what's the date" → the date (planner)
+M4 time pattern not anchored at the end (over-match): CAUGHT | FAIL: "what time is it in london" → not the time or date answer (time)
+M5 date pattern not anchored at the end (over-match): CAUGHT | FAIL: "what is the date of the meeting" → not the date answer (date)
+M6 clock line back to UTC time: CAUGHT | FAIL: …the local time (16:47)
+M7 cache hit keeps the old clock line: CAUGHT | FAIL: on a cache hit the clock line is made fresh (time zone changed to Tokyo, no summer time) ([SYS now=Monday 2026-11-02 16:47 local time (UTC+05:00, Asia/Karachi) dept
+M8 time zone offset sign flipped: CAUGHT | FAIL: …and the time zone (UTC+05:00)
+M9 cache hit refreshes systemState but not the context sent: CAUGHT | FAIL: on a cache hit the clock line is made fresh (time zone changed to Tokyo, no summer time) ([SYS now=Monday 2026-11-02 20:47 local time (UTC+09:00, Asia/Tokyo) depth=
+M10 time reply in the PC's regional format (T2): CAUGHT | FAIL: with an Arabic regional format: the time reply is still English (It is ٠٤:٤٧ م, sir.)
+M11 date reply in the PC's regional format (T2): CAUGHT | FAIL: …and so is the date reply (Today is الاثنين، ٢ نوفمبر ٢٠٢٦, sir.)
+M12 a trailing jarvis is not dropped (T3): CAUGHT | FAIL: "What's the time, Jarvis?" → the time, local (planner)
+M13 'what is time' and the like match again (T5): CAUGHT | FAIL: "what is time" → not the time or date answer (time)
+
+12/12 caught
+
+Checksums before:
+486cfccd88ebafc96208da1e2cb823d7  core/deterministicRoutes.ts
+00caed8559f4852d54a9fd55756b58d4  memory/unifiedContextBuilder.ts
+Checksums after:
+486cfccd88ebafc96208da1e2cb823d7  core/deterministicRoutes.ts
+00caed8559f4852d54a9fd55756b58d4  memory/unifiedContextBuilder.ts
+TREE RESTORED: yes

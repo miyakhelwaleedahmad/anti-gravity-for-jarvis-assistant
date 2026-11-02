@@ -194,6 +194,33 @@ const SYSTEM_STATUS_PHRASES = new Set([
   'how is my system doing', 'how is the system doing',
 ]);
 
+/**
+ * Questions about the time or the date, after punctuation is dropped ("what's" is
+ * "whats"; normalizeVoiceInput has already collapsed spaces and dropped a leading
+ * "jarvis", "can you" and a trailing "please"). Whole-sentence only: "what time is
+ * my meeting" and "tell me the time in london" still go to the planner. Bare
+ * fragments ("what time", "the date") are left out: they may be JARVIS's own
+ * words heard back (N-PC10, review T5).
+ */
+const TIME_QUESTION = [
+  /^what time is (it|this)( now| right now)?$/,
+  /^(do you know )?what time it is$/,
+  /^(whats|what is) the (current )?time( now| right now)?$/,
+  /^tell me (the )?(current )?time( now)?$/,
+  /^tell me what time (it is|is it|is)( now)?$/,
+  /^give me the time$/,
+  /^(current time|time now|time)$/,
+];
+const DATE_QUESTION = [
+  /^(whats|what is) the (current )?date( today)?$/,
+  /^what day is (it|today)( today)?$/,
+  /^tell me what day it is$/,
+  /^(whats|what is) todays date$/,
+  /^(whats|what is) today$/,
+  /^(todays date|current date)$/,
+  /^tell me (the |todays )?date( today)?$/,
+];
+
 /** "Is my backend running?" and the like: answered from dev_status. */
 const DEV_STATUS_QUESTION =
   /^(is|are) (my|the) (backend|frontend|api|server|servers|dev server|development server|local server|app server) (still )?(running|up|on)$|^(what|which) (local |dev |development )?servers are running$|^check (my|the) (dev |local )?servers$/;
@@ -310,10 +337,18 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
     return { type: 'list_capabilities', reply: capabilityListReply() };
   }
 
-  // 4. Time
-  if (clean === 'what time is it' || clean === 'time' || clean === 'what is the time') {
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // 4. Time and date, from the PC clock. Only three exact wordings used to match;
+  //    the rest went to the planner, which tried powershell and was refused (N-PC10).
+  //    In English whatever the PC's regional format: the voice is English (review T2).
+  //    "jarvis" at the end ("what's the time, jarvis") is dropped here only (review T3).
+  const clockAsk = clean.replace(/ jarvis$/, '');
+  if (TIME_QUESTION.some((pattern) => pattern.test(clockAsk))) {
+    const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     return { type: 'time', reply: `It is ${timeStr}, sir.` };
+  }
+  if (DATE_QUESTION.some((pattern) => pattern.test(clockAsk))) {
+    const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return { type: 'date', reply: `Today is ${dateStr}, sir.` };
   }
 
   // 5. System status, read from the machine. It used to answer "All systems

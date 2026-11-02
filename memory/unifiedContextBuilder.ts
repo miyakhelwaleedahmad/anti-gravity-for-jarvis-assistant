@@ -96,7 +96,9 @@ export class UnifiedContextBuilder {
     const hit = this.hotCache.get(cacheKey) ?? this.cache.get(cacheKey);
     if (hit) {
       console.log(`[UnifiedContext] ⚡ Cache hit total=${(performance.now() - totalStart).toFixed(1)}ms heavy=${includeHeavy}`);
-      return hit;
+      // The memory may be reused; the clock may not (N-PC10).
+      const systemState = _buildSystemState(depthHint, budget);
+      return { ...hit, systemState, mergedContext: hit.mergedContext.replace(hit.systemState, () => systemState) };
     }
 
     console.log(`[UnifiedContext] Building context heavy=${includeHeavy} depth=${depthHint} budget=${budget}tok [PARALLEL]`);
@@ -251,7 +253,16 @@ function _estimateTokens(text: string): number {
 }
 
 function _buildSystemState(depth: string, budget: number): string {
-  // Phase 7: minimal system state — trimmed from 6 lines to 3 to save ~40 tokens per request
+  // Phase 7: minimal system state — trimmed from 6 lines to 3 to save ~40 tokens per request.
+  // The owner's local date, time and time zone: a bare UTC time sent the planner
+  // to powershell for the clock, which is refused (N-PC10).
   const now = new Date();
-  return `[SYS t=${now.toISOString().slice(11, 19)} depth=${depth} budget=${budget}tok]`;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const offset = -now.getTimezoneOffset();
+  const zoneOffset = `UTC${offset >= 0 ? '+' : '-'}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+  const zoneName = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  return `[SYS now=${weekday} ${date} ${time} local time (${zoneOffset}${zoneName ? `, ${zoneName}` : ''}) depth=${depth} budget=${budget}tok]`;
 }
