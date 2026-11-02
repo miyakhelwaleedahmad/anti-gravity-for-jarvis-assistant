@@ -48,7 +48,7 @@ One existing behaviour changes: "what time is it" now always answers in English 
 
 - **Not verified with the real model:** whether Gemini now answers time questions that have no fast route ("how long until 5 pm") from the clock line, instead of calling `run_command`. The test uses a stand-in model; this is for the PC test.
 - The time in another place ("what time is it in London") still goes to the planner, which may still reach for a shell.
-- The locale check proves the English replies only where the runtime takes its locale from `LC_ALL` (Linux, macOS). On Windows, CI included, it is reported as not proven (review T10, T11). M10 and M11 were caught on Linux.
+- The locale check proves the English replies only where the runtime takes its locale from `LC_ALL` (Linux, macOS). M10 and M11 were caught on Linux. On Windows the check is expected to print "not proven on this platform" (review T10, T11); that is not yet seen, because the first Windows CI run failed before reaching it (see "After the push").
 - Wordings outside the lists still go to the planner. "OK Jarvis, what time is it?" is one: `normalizeVoiceInput` drops only a leading "jarvis" / "hey jarvis", a gap shared by every route (review T3).
 - Review T9 (info), not changed:
   - the cache key leaves out `budgetOverride`, which no caller passes today;
@@ -67,3 +67,26 @@ One existing behaviour changes: "what time is it" now always answers in English 
    - T6: exact local-time checks, real look-alike phrases;
    - T7 and T8: these records.
 4. **Review round 2, PASS:** no code change. T10 (the locale check reports "not proven" where the child ignores `LC_ALL`), T11 and T12 (records, one more idle check) fixed; T13 is info.
+
+## After the push: Windows CI failure, test-only fix
+
+The owner approved the push of `e08e37a`. CI run 41450761455 then failed on `windows`: 213 passed, **1 failed** (`timeQuestionsNpc10Test`). `build-and-test` (Linux) and `python-checks` passed. The failing checks:
+
+```
+FAIL: with an Arabic regional format: the time reply is still English (no output:
+  Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: Only URLs with a scheme in: file, data, and node are supported by the default ESM lo…
+FAIL: …and so is the date reply (no output)
+```
+
+**Cause.** The locale check writes a child script, `locale-probe.mts`, that imports `core/deterministicRoutes.ts` by `path.join(...)`. On Windows that is a drive-letter path (`D:\a\…`). Node's ESM loader reads `D:` as a URL scheme and refuses it, so the child printed nothing. `crashPolicyTest` passes on Windows with plain paths because its child is a `.ts` file, which tsx loads another way. The reviewer and I had wrongly assumed the two work the same.
+
+**Fix** (owner approved, test-only; no JARVIS code changed): `tests/timeQuestionsNpc10Test.ts` imports `pathToFileURL` from `url`, and the child script imports the file by `pathToFileURL(path.join(repoRoot, 'core', 'deterministicRoutes.ts')).href`, a `file://` URL that works on Windows and Linux. A one-line comment says why. 2 lines changed, 1 added.
+
+| Check | Result | File |
+|---|---|---|
+| Reproduction, on Linux, with the specifier the test wrote on Windows (`D:\a\…\core\deterministicRoutes.ts`) | exit 1, no output, `ERR_UNSUPPORTED_ESM_URL_SCHEME … Received protocol 'd:'`. The `file:///…` form loads and answers | `evidence/windows_esm_repro.mjs`, `evidence/windows_esm_repro.txt` |
+| The test after the fix | **84/84** | `evidence/winfix_checks.txt` |
+| M10, M11 with the fixed test | **2/2 caught**; tree restored | `evidence/npc10_mut_run_winfix.txt` |
+| Related tests (28: the 26 before, plus `crashPolicyTest` and `llmTimingTest`, which also start child scripts) | **28 passed** | `evidence/winfix_related_tests.txt` |
+| Typecheck | 0 errors | `evidence/winfix_typecheck.txt` |
+| Windows CI with the fix | **not run**: CI runs only on pushed code, and this fix is not committed or pushed | — |

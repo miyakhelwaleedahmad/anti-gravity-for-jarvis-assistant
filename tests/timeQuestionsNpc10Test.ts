@@ -21,7 +21,7 @@ process.env['TZ'] = 'Asia/Karachi';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { spawnSync } from 'child_process';
 import { installFakeTts } from './fakeTts.js';
 
@@ -108,7 +108,8 @@ for (const ask of NOT_DATE) {
   // Review T2: the replies are in English whatever the PC's regional format.
   // A child process with an Arabic (Saudi) locale, which also changes the digits.
   const probe = path.join(workspace, 'locale-probe.mts');
-  fs.writeFileSync(probe, `import { matchDeterministicCommand } from ${JSON.stringify(path.join(repoRoot, 'core', 'deterministicRoutes.ts'))};\n`
+  // A file:// URL: on Windows a plain D:\… path is read as a URL scheme (Windows CI, N-PC10).
+  fs.writeFileSync(probe, `import { matchDeterministicCommand } from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'core', 'deterministicRoutes.ts')).href)};\n`
     + `console.log(JSON.stringify([Intl.DateTimeFormat().resolvedOptions().locale, matchDeterministicCommand('what time is it')?.reply, matchDeterministicCommand('what day is it')?.reply]));\n`);
   const env = { ...process.env, LC_ALL: 'ar_SA.UTF-8', LANG: 'ar_SA.UTF-8' };
   const child = spawnSync(process.execPath, [path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'), probe], { env, encoding: 'utf8', timeout: 120_000 });

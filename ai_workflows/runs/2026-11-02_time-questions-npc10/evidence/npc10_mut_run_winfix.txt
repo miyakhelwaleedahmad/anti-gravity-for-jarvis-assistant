@@ -1,0 +1,5 @@
+M10 time reply in the PC's regional format (T2): CAUGHT | FAIL: with an Arabic regional format: the time reply is still English (It is ٠٦:٣٨ م, sir.)
+M11 date reply in the PC's regional format (T2): CAUGHT | FAIL: …and so is the date reply (Today is الاثنين، ٢ نوفمبر ٢٠٢٦, sir.)
+
+2/2 caught
+TREE RESTORED: yes
