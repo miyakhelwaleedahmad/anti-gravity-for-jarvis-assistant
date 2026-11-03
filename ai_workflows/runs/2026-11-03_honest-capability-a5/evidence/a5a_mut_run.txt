@@ -1,0 +1,15 @@
+M1 a failed window read is a silent empty result again: CAUGHT | FAIL: getWindowsState says why it has no windows (undefined)
+M2 the observer does not keep why the read failed: CAUGHT | FAIL: …with the reason of this read (not only "not read yet") (The open windows could not be read: the window list has not been read yet)
+M3 get_open_apps ignores an unread list: CAUGHT | FAIL: get_open_apps: a failure, not [] (true [])
+M4 is_app_open ignores an unread list: CAUGHT | FAIL: is_app_open: a failure, not "false" (true false)
+M5 get_active_window ignores an unread list: CAUGHT | FAIL: get_active_window: a failure, not an empty window (true {
+M6 Chrome not running is 'no tabs': CAUGHT | FAIL: is_tab_open: a failure, not "false" (true false)
+M7 a tab list that fails is 'no tabs': CAUGHT | FAIL: Chrome running but its tab list fails: is_tab_open is a failure, not "false" (true false)
+M8 is_tab_open reads the snapshot again: CAUGHT | FAIL: is_tab_open: a failure, not "false" (true false)
+M9 route is_tab_open says 'No' when Chrome was not read: CAUGHT | FAIL: JARVIS's Chrome down: "is youtube open" says so (Q1), not "No" (No, the youtube tab is not open, sir.)
+M10 route whats_running lists no apps when the windows were not read: CAUGHT | FAIL: "whats running": says the windows could not be read, lists no apps (No development server is running on the usual ports, sir (3000, 3001, 4200, 5000, 5173, 8000, 80
+M11 route get_browser_tabs falls back to the snapshot: CAUGHT | FAIL: "what tabs are open" with Chrome down: says so, lists no stale tab (One tab is open, sir. On screen: YouTube.)
+
+11/11 caught
+
+TREE RESTORED: yes (md5 of the 9 changed source files unchanged)

@@ -46,12 +46,23 @@ export interface OpenAppInfo {
 export interface WindowsStateResult {
   activeWindow: ActiveWindowInfo;
   openApps: OpenAppInfo[];
+  /**
+   * Set when the window list could not be read, with the reason. The lists are
+   * then empty because nothing was read, not because nothing is open (phase
+   * A5a, TRA-07: "what's running" used to answer with an empty list).
+   */
+  unavailable?: string;
 }
 
 const EMPTY_RESULT: WindowsStateResult = {
   activeWindow: { title: '', processName: '', pid: 0 },
   openApps: [],
 };
+
+/** No windows, because none could be read: says why (A5a). */
+function unavailableResult(reason: string): WindowsStateResult {
+  return { activeWindow: { ...EMPTY_RESULT.activeWindow }, openApps: [], unavailable: reason };
+}
 
 // ── Persistent Session Manager ────────────────────────────────────────────────
 
@@ -331,7 +342,7 @@ psSession.start();
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /** Last successful result, returned to background polls while the session is busy. */
-let lastGood: WindowsStateResult = EMPTY_RESULT;
+let lastGood: WindowsStateResult = unavailableResult('the window list has not been read yet');
 let lastLoggedError = '';
 let lastLoggedAt = 0;
 let suppressedErrors = 0;
@@ -406,8 +417,9 @@ async function freshStateForAction(reason: string): Promise<WindowsStateResult> 
       openApps: windows.map((w) => ({ name: w.process, pid: w.pid, windowTitle: w.title, hwnd: w.hwnd })),
     };
   } catch (err) {
-    logPollFailure(`no current window list for an action: ${reason}; a fresh one failed too: ${err instanceof Error ? err.message : String(err)}`);
-    return EMPTY_RESULT;
+    const why = `no current window list for an action: ${reason}; a fresh one failed too: ${err instanceof Error ? err.message : String(err)}`;
+    logPollFailure(why);
+    return unavailableResult(why);
   }
 }
 
@@ -442,7 +454,7 @@ export async function getWindowsState(
       stdout = result.stdout.trim();
     }
 
-    if (!stdout) return EMPTY_RESULT;
+    if (!stdout) return unavailableResult('PowerShell returned no window list');
 
     const parsed = JSON.parse(stdout);
 
@@ -478,6 +490,6 @@ export async function getWindowsState(
     }
     if (!options.allowStale) return freshStateForAction(err.message);
     logPollFailure(err.message);
-    return EMPTY_RESULT;
+    return unavailableResult(String(err?.message ?? err));
   }
 }

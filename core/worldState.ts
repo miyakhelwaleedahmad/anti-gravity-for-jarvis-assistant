@@ -204,6 +204,8 @@ export class WorldState {
           (disk ? `, ${clean(disk.mount, 8)} ${Math.round(disk.freeGB)} GB free` : '');
       }
       case 'apps': {
+        // Not read is not "none open" (phase A5a, review R4).
+        if (typeof d?.unavailable === 'string' && d.unavailable) return `apps (${when}): not readable (${clean(d.unavailable, 80)})`;
         const active = clean(d?.activeWindow?.title, 60);
         const apps = (d?.openApps ?? []).slice(0, 6).map((a: any) => clean(a?.name, 20)).filter(Boolean);
         return `apps (${when}): active "${active || 'none'}"; open: ${apps.join(', ') || 'none'}`;

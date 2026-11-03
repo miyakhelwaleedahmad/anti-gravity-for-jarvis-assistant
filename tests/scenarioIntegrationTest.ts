@@ -116,7 +116,9 @@ try {
   let out = await say('1 browser contents', 'What is currently open in my browser?');
   ok('the tabs and the one on screen, in at most three sentences', /4 tabs are open/.test(out.reply) && /On screen: Shop - Home/.test(out.reply) && sentences(out.reply) <= 3 && noFailurePhrase(out.reply), out.reply);
   ok('0–1 LLM requests', out.llm <= 1, String(out.llm));
-  ok('from a real reading (browser_state in the registry history)', out.calls.some((c) => c.tool === 'browser_state' && c.success));
+  // Since phase A5a the route reads through get_browser_tabs, which reads JARVIS's Chrome live
+  // (it used to be the 12 s snapshot; tests/honestReadToolsA5aTest.ts §2 proves the live read).
+  ok('from a real reading (the live get_browser_tabs in the registry history)', out.calls.some((c) => c.tool === 'get_browser_tabs' && c.success));
 
   console.log('\n--- 2. "Is my backend running?" ---');
   out = await say('2 backend running', 'Is my backend running?');

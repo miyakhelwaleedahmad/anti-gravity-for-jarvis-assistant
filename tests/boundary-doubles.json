@@ -131,6 +131,12 @@
       ],
       "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback. sendToRole records the stop command sent to tts.py on barge-in, then calls the fake's own sendToRole"
     },
+    "tests/honestReadToolsA5aTest.ts": {
+      "replaces": [
+        "installFakeTts"
+      ],
+      "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback, so the spoken route replies can be read"
+    },
     "tests/timeQuestionsNpc10Test.ts": {
       "replaces": [
         "installFakeTts"

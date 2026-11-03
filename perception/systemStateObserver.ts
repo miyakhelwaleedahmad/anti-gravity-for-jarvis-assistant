@@ -58,6 +58,7 @@ export class SystemStateObserver {
       timestamp: new Date().toISOString(),
       activeWindow: { title: '', processName: '', pid: 0 },
       openApps: [],
+      windowsUnavailable: 'the window list has not been read yet',
       chrome: { running: false, debugPort: 9222, tabs: [] },
       jarvisServices: {
         redis: 'unknown',
@@ -152,9 +153,12 @@ export class SystemStateObserver {
       const activeWindowChanged = JSON.stringify(this.state.activeWindow) !== JSON.stringify(windowsData.activeWindow);
       const openAppsChanged = JSON.stringify(this.state.openApps) !== JSON.stringify(windowsData.openApps);
       
-      if (activeWindowChanged || openAppsChanged) {
+      // Why the lists are empty when they could not be read (A5a, TRA-07): the read tools say so.
+      const unavailableChanged = this.state.windowsUnavailable !== windowsData.unavailable;
+      if (activeWindowChanged || openAppsChanged || unavailableChanged) {
         this.state.activeWindow = windowsData.activeWindow;
         this.state.openApps = windowsData.openApps;
+        this.state.windowsUnavailable = windowsData.unavailable;
         this.stateChanged = true;
       }
     } finally {

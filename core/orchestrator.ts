@@ -723,26 +723,31 @@ export class JarvisOrchestrator {
           this.speak(result?.success ? systemStateSummary(parseJson(result.output)) : 'Failed to retrieve system state, sir.');
         } else if (route.type === 'get_browser_tabs') {
           // The tabs with the one on screen (P8), said in at most three sentences.
-          const live = await runRoutedTool('browser_state', {});
-          const state = live?.success ? parseJson(live.output.replace(/^<untrusted_context[^>]*>\n?|\n?<\/untrusted_context>$/g, '')) : null;
-          if (state?.tabs) {
-            console.log(`[Orchestrator] Browser:\n${live!.output}`);
-            this.speak(tabsSummary(state.tabs));
-          } else {
-            if (live && !live.success) console.log(`[Orchestrator] ${live.output}`);
-            const seen = await runRoutedTool('get_browser_tabs', {});
-            const tabs = seen?.success ? parseJson(seen.output) : null;
-            this.speak(Array.isArray(tabs) && tabs.length
-              ? tabsSummary(tabs)
-              : 'Chrome is not reachable for me, sir. The console shows how to start it with the debugging port.');
-          }
+          // Read from JARVIS's Chrome now; when it cannot be read, why, never
+          // stale tabs from a snapshot (phase A5a, owner Q1, Q2).
+          const result = await runRoutedTool('get_browser_tabs', {});
+          const tabs = result?.success ? parseJson(result.output) : null;
+          if (result?.success) console.log(`[Orchestrator] Browser tabs:\n${result.output}`);
+          else console.log(`[Orchestrator] ${result?.error ?? result?.output ?? ''}`);
+          this.speak(Array.isArray(tabs)
+            ? tabsSummary(tabs)
+            : String(parseJson(result?.output ?? '')?.['spoken'] ?? 'I could not read my Chrome\'s tabs, sir.'));
         } else if (route.type === 'whats_running') {
           const [apps, servers] = await Promise.all([runRoutedTool('get_open_apps', {}), runRoutedTool('dev_status', {})]);
           const appList = apps?.success ? parseJson(apps.output) : null;
-          this.speak(runningSummary(Array.isArray(appList) ? appList : [], servers?.success ? devStatusReply(servers.output) : 'I could not check the local servers, sir.'));
+          const serverReply = servers?.success ? devStatusReply(servers.output) : 'I could not check the local servers, sir.';
+          // A window list that could not be read is said as such, not as "no apps" (A5a, TRA-07).
+          if (!apps?.success) console.log(`[Orchestrator] ${apps?.error ?? apps?.output ?? ''}`);
+          this.speak(apps?.success
+            ? runningSummary(Array.isArray(appList) ? appList : [], serverReply)
+            : `${String(parseJson(apps?.output ?? '')?.['spoken'] ?? 'I can\'t read the open windows right now, sir.')} ${serverReply}`);
         } else if (route.type === 'is_tab_open' && route.target) {
           const result = await runRoutedTool('is_tab_open', { tabNameOrUrl: route.target });
-          this.speak(result?.success && result.output === 'true' ? `Yes, the ${route.target} tab is open, sir.` : `No, the ${route.target} tab is not open, sir.`);
+          // "No" only when Chrome was read and the tab is not there; otherwise why (A5a, owner Q1).
+          if (!result?.success) console.log(`[Orchestrator] ${result?.error ?? result?.output ?? ''}`);
+          this.speak(result?.success
+            ? (result.output === 'true' ? `Yes, the ${route.target} tab is open, sir.` : `No, the ${route.target} tab is not open, sir.`)
+            : String(parseJson(result?.output ?? '')?.['spoken'] ?? 'I could not read my Chrome\'s tabs, sir.'));
         } else if (route.type === 'enable_full_control_session') {
           const result = await runRoutedTool('enable_full_control_session', { source });
           // Why it was not turned on (not approved, …), not only that it failed.
