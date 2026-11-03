@@ -91,16 +91,18 @@ export class FileController {
   }
 
   public async readFile(filePath: string): Promise<string> {
+    // A refusal or a failed read is thrown, never returned as text: the kernel
+    // counts returned text as the file's contents (A5c, TRA-10).
     try {
       this.ensureApproved(filePath, 'readFile');
       // Keys, tokens and passwords are not read at all: `.env` and files named
       // for what they hold (SEC-14). Only `.env` itself was caught before.
       if (filePath.endsWith('.env') || isSecretFile(filePath)) {
-        return `Error reading file: ${SECRET_FILE_REFUSAL}`;
+        throw new Error(SECRET_FILE_REFUSAL);
       }
       return await fs.promises.readFile(filePath, 'utf-8');
     } catch (err: any) {
-      return `Error reading file: ${err.message}`;
+      throw new Error(`Error reading file: ${err?.message ?? String(err)}`);
     }
   }
 

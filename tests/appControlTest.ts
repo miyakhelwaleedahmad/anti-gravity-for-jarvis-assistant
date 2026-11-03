@@ -58,9 +58,12 @@ console.log('--- Test 1: listApps() ---');
 let listResult: string = '';
 try {
   listResult = await appController.listApps();
-  ok('listApps() resolves without throwing', true);
+  ok('listApps() lists the apps, or fails with its reason', true);
 } catch (err: any) {
-  ok(`listApps() resolves without throwing (got: ${err.message})`, false);
+  // Since phase A5c an unread window list is a failure with its reason (review C5);
+  // on Windows the list must be read.
+  listResult = String(err?.message ?? '');
+  ok(`listApps() lists the apps, or fails with its reason (${listResult.slice(0, 80)})`, process.platform !== 'win32' && /could not be read/.test(listResult));
 }
 ok('listApps() returns a string', typeof listResult === 'string');
 
@@ -111,11 +114,21 @@ console.log('\n--- Test 5: focusApp() permission ---');
 let focusResult: string = '';
 try {
   focusResult = await appController.focusApp('notepad');
-  ok('focusApp("notepad") resolves without throwing', true);
+  ok('focusApp("notepad") focuses it, or fails with its reason', true);
 } catch (err: any) {
-  // Acceptable if notepad isn't open
+  // Since phase A5c a failure is thrown with its reason (it used to be returned as
+  // text and counted as done): no Notepad window, or the window list not readable.
   focusResult = err.message;
-  ok('focusApp("notepad") resolves without throwing', false);
+  // On Windows the test opened Notepad (Test 2), so it must be focused there (review C8),
+  // unless the window list (at most 20 programs) left it out: a full read decides (review C12).
+  let leftOut = false;
+  if (process.platform === 'win32' && /No running window found/.test(err.message)) {
+    const { freshWindowList } = await import('../perception/windowsState.js');
+    const all = await freshWindowList.read().catch(() => []);
+    leftOut = !all.some((w: { process?: string }) => /notepad/i.test(String(w.process ?? '')));
+  }
+  ok(`focusApp("notepad") focuses it, or fails with its reason (${String(err.message).slice(0, 80)})`,
+    process.platform === 'win32' ? leftOut : /No running window found|could not be read/.test(err.message));
 }
 console.log(`  ℹ️  focusApp result: ${focusResult.substring(0, 80)}`);
 

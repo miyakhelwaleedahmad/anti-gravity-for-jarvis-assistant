@@ -59,16 +59,13 @@ export class BrowserController {
   }
 
   public async listTabs(): Promise<string> {
+    // A failure is thrown, never returned as text (A5c, TRA-10).
     if (!permissionSession.checkPermission(0, 'List browser tabs')) {
-      return 'Permission denied.';
+      throw new Error('Permission denied.');
     }
-    try {
-      const tabs = await this.fetchCDPTabs();
-      const pageTabs = tabs.filter(t => t.type === 'page').map(t => ({ title: t.title, url: t.url }));
-      return JSON.stringify(pageTabs, null, 2);
-    } catch (err) {
-      return err instanceof Error ? err.message : String(err);
-    }
+    const tabs = await this.fetchCDPTabs();
+    const pageTabs = tabs.filter(t => t.type === 'page').map(t => ({ title: t.title, url: t.url }));
+    return JSON.stringify(pageTabs, null, 2);
   }
 
   /** The one tab a name means; null when none does, or when it is not clear which (several, none on screen). */
@@ -124,7 +121,8 @@ export class BrowserController {
     // Several matches and none on screen, or no tab on screen: a question (owner, Q1).
     const tab = await resolveTabOrAsk(query, port);
     if (!tab) {
-      return `Tab matching "${query}" is not open.`;
+      // Nothing was closed: a failure, not a done action (owner, A5c Q1).
+      throw new Error(`Tab matching "${query}" is not open, so nothing was closed.`);
     }
 
     // The same rule as browser_tab: the level of the tab found, and a question

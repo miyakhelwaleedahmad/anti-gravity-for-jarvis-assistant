@@ -4,7 +4,7 @@
  * Performs window manipulations (focus, minimize, maximize, move, resize, close).
  */
 
-import { freshWindowList, getWindowsState } from '../perception/windowsState.js';
+import { freshWindowList, getWindowsState, openAppsOrWhy } from '../perception/windowsState.js';
 import { runAutomateScript } from './helper.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
@@ -54,7 +54,7 @@ export class WindowController {
       return target;
     }
 
-    const apps = openApps ?? (await this.deps.windows()).openApps;
+    const apps = openApps ?? openAppsOrWhy(await this.deps.windows());
     const match = matchAppWindows(target, apps).windows.find(hasHandle);
 
     if (!match) {
@@ -66,24 +66,21 @@ export class WindowController {
 
   public async getActiveWindow(): Promise<string> {
     const state = await this.deps.windows();
+    openAppsOrWhy(state);
     return JSON.stringify(state.activeWindow, null, 2);
   }
 
   public async listOpenWindows(): Promise<string> {
-    const state = await this.deps.windows();
-    return JSON.stringify(state.openApps, null, 2);
+    return JSON.stringify(openAppsOrWhy(await this.deps.windows()), null, 2);
   }
 
   public async focusWindow(target: string): Promise<string> {
+    // A failure is thrown, never returned as text (A5c, TRA-10).
     if (!permissionSession.checkPermission(1, `Focus window ${target}`)) {
-      return 'Permission denied.';
+      throw new Error('Permission denied.');
     }
-    try {
-      const hwnd = await this.findHwnd(target);
-      return this.deps.automate(['-Action', 'control-window', '-ActionType', 'focus', '-Hwnd', hwnd]);
-    } catch (err) {
-      return err instanceof Error ? err.message : String(err);
-    }
+    const hwnd = await this.findHwnd(target);
+    return this.deps.automate(['-Action', 'control-window', '-ActionType', 'focus', '-Hwnd', hwnd]);
   }
 
   public async closeWindow(target: string): Promise<string> {
@@ -100,7 +97,9 @@ export class WindowController {
       throw new Error('Permission Level 2 required.');
     }
 
-    const openApps = (await this.deps.windows()).openApps;
+    // By name, an unread list is said as such, not "not found" (review C5); a handle needs no list.
+    const state = await this.deps.windows();
+    const openApps = isHwnd(target) ? state.openApps : openAppsOrWhy(state);
     let hwnd: string;
     /** The window being closed, with its program, when known. */
     let owner: AppWindow | undefined;

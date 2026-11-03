@@ -59,6 +59,15 @@ const EMPTY_RESULT: WindowsStateResult = {
   openApps: [],
 };
 
+/**
+ * The open windows of a reading, or why they could not be read: an action never
+ * takes "not read" for "no such window" (phase A5c, owner Q3; review C5).
+ */
+export function openAppsOrWhy(state: WindowsStateResult): OpenAppInfo[] {
+  if (state.unavailable) throw new Error(`The open windows could not be read: ${state.unavailable}`);
+  return state.openApps;
+}
+
 /** No windows, because none could be read: says why (A5a). */
 function unavailableResult(reason: string): WindowsStateResult {
   return { activeWindow: { ...EMPTY_RESULT.activeWindow }, openApps: [], unavailable: reason };

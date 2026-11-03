@@ -6,7 +6,7 @@
  */
 
 import { execFile, spawn } from 'child_process';
-import { getWindowsState, type WindowsStateResult } from '../perception/windowsState.js';
+import { getWindowsState, openAppsOrWhy, type WindowsStateResult } from '../perception/windowsState.js';
 import { runAutomateScript } from './helper.js';
 import { browserCloseRefusal, browserPageRefusal, hasHandle, matchAppWindows, planAppClose, programFor, programKey } from './appMatch.js';
 import { withoutApproval } from '../security/approvalScope.js';
@@ -138,7 +138,8 @@ export class AppController {
     // What would close is worked out first: the question names those windows,
     // and nothing is asked for a close that is refused anyway (R4-5).
     const winState = await this.deps.windows();
-    const plan = planAppClose(target, winState.openApps);
+    // Not read is not "no such app" (review C5).
+    const plan = planAppClose(target, openAppsOrWhy(winState));
 
     if (plan.kind === 'none') {
       // Thrown, not returned: a returned message counted as success, and the
@@ -186,15 +187,16 @@ export class AppController {
   }
 
   public async focusApp(target: string): Promise<string> {
+    // A failure is thrown, never returned as text: the kernel counts any returned text as done (A5c, TRA-10).
     if (!permissionSession.checkPermission(1, `Focus app ${target}`)) {
-      return 'Permission denied.';
+      throw new Error('Permission denied.');
     }
 
     const winState = await this.deps.windows();
-    const match = matchAppWindows(target, winState.openApps).windows.find(hasHandle);
+    const match = matchAppWindows(target, openAppsOrWhy(winState)).windows.find(hasHandle);
 
     if (!match) {
-      return `No running window found for app "${target}".`;
+      throw new Error(`No running window found for app "${target}".`);
     }
 
     await this.deps.automate(['-Action', 'control-window', '-ActionType', 'focus', '-Hwnd', match.hwnd]);
@@ -227,7 +229,7 @@ export class AppController {
 
   public async listApps(): Promise<string> {
     const winState = await this.deps.windows();
-    const apps = winState.openApps.map(app => `${app.name} (PID: ${app.pid}) - ${app.windowTitle}`);
+    const apps = openAppsOrWhy(winState).map(app => `${app.name} (PID: ${app.pid}) - ${app.windowTitle}`);
     return JSON.stringify(apps, null, 2);
   }
 

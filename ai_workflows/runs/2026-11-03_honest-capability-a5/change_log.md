@@ -58,3 +58,68 @@ Base commit: `62f0a99`. Owner's Gate 1 for A5a, 2026-11-03:
 - The window tools still read the snapshot (up to 8–10 s old) when it was read. Only an unread list changes.
 - Between `get_browser_tabs`' two list calls, the count can be off by one: a tab closed in that gap still appears, and a newly opened tab is listed last. No tab that exists at both reads is lost (R15). A duplicate tab id would be listed twice; Chrome's ids are unique (R16).
 - "Full suite green" is on Linux. Windows CI runs after a push.
+
+---
+
+# Change Log — sub-phase A5c (kernel: TRA-10 and the B1 item)
+
+Base commit: `735c0a2`. Owner's Gate 1, 2026-11-03:
+- "Approve A5c (Recommended)", with the protected file `control/pcControlKernel.ts`;
+- Q1: "A failure: nothing closed";
+- Q2 and Q3: "A failure with the reason".
+
+## The change
+
+The kernel counted any returned value as done. Controllers now **throw** a failure, with its reason, instead of returning it as text. The kernel already turned a thrown error into `success:false` and a "failure" line in the audit log.
+
+| File | Change |
+|---|---|
+| `control/appController.ts` | `focusApp`: "Permission denied." and "No running window found for app …" are thrown. `focusApp`, close-app and the app list: an unread list is a failure with the reason (review C5). |
+| `perception/windowsState.ts` | `openAppsOrWhy(state)`: the open windows, or a failure with the reason when they were not read. It is shared by the app and window controllers (review C5). |
+| `control/actionQueue.ts` | The final (not retried) failures add "could not be read", "is not open, so nothing was closed" and "No running window found". A retry cost another long read, could run into the queue's 10 s limit and lost the reason (review C4). |
+| `skills/get_pc_state/skill.ts` | On failure it returns the kernel's result (with the reason), not its empty message (review C2). |
+| `control/windowController.ts` | `focusWindow`: "Permission denied." is thrown, and errors are no longer caught and returned as text. A list that was not read (A5a's `unavailable`) is a failure with the reason, not "none" or "not found" (Q3). That covers `listOpenWindows`, `getActiveWindow`, the window search `findHwnd` (used by focus, minimize, maximize, move, resize) and close by name (review C5). |
+| `control/browserController.ts` | `listTabs`: "Permission denied." is thrown, and errors are no longer returned as text. `closeTab`: a tab that is not open is a failure, "… is not open, so nothing was closed." (Q1). |
+| `control/systemController.ts` | PowerShell comes through an injectable dependency (as in `processController`). Disk and startup lists: PowerShell's non-zero exit, or PowerShell not starting, is a failure with the reason (Q2). They used to be an empty answer or `{"error"}`, both counted as success. Exit 0 with nothing printed is `[]` (really empty). |
+| `control/processController.ts` | `listProcesses`: a failed or empty PowerShell answer is a failure with the reason, not `[]` (Q2). Its PowerShell runner says why PowerShell could not start (review C6). |
+| `control/fileController.ts` | `readFile`: the secret-file refusal and a failed read are thrown, not returned as the file's "contents". |
+| `control/pcControlKernel.ts` (protected) | `reportedFailureOf`: a returned JSON object with `success:false` or a top-level `error` is a failure with that reason. Plain text and lists are not judged, so nothing is guessed from words. Someone else's data is passed through unjudged (`passThrough`): a file's contents, command and PowerShell output, the service, battery, disk and startup reads (review C3). `getPcState`: an unread window list is a failure (Q3). |
+
+## Tests
+
+| File | Change |
+|---|---|
+| `tests/kernelOutcomeA5cTest.ts` (new) | 40 checks, with every dependency stood in (windows, PowerShell, Chrome, permission), so it is the same on Windows and Linux. Each failure path above is checked through the kernel. The kernel's own JSON rule: `{error}`, `{success:false}`, a list, plain text. The planner's tool (`control_app`) and the audit log. Unchanged: actions that did happen, and read lists, stay successes. |
+| `tests/appControlTest.ts`, `browserControlTest.ts`, `fileControlSafetyTest.ts`, `systemControlSafetyTest.ts` | After review rounds 1–2: `appControlTest`'s `focusApp` must succeed on Windows unless a full window read has no Notepad (C8, C12), and its `listApps` lists the apps or, off Windows, fails with "could not be read" (the C5 change made it throw here). The tab-list failure must name Chrome (C8). Each asserted the old contract, "resolves without throwing" or "a missing file does not throw", which is the TRA-10 behaviour. Each now asserts "does it, or fails with its reason". On the base code these pass; with A5c they failed until changed (`evidence/a5c_related_base.txt`). |
+| `tests/filesAndDevToolsTest.ts`, `tests/secretFileTest.ts`, `tests/windowControlTest.ts` | Called a controller directly and read a refusal or "not found" from the returned text. They now read the thrown message. The meaning is the same. `windowControlTest` runs only on Windows, so this was found by the review (C1). |
+
+## Evidence
+
+| Check | Result | File |
+|---|---|---|
+| New test on the base code | 10 passed, **20 failed** | `evidence/a5c_old_code_checks.txt` |
+| New test after the change | **31/31** (30, then 1 check added when M16 was missed: a list returned as itself, not as text) | `evidence/a5c_new_code_checks.txt` |
+| The 5 old-contract tests on the base code / with A5c / after their update | pass / **5 fail** / **6 pass** (with `secretFileTest`) | `evidence/a5c_related_base.txt`, `evidence/a5c_related_tests.txt` (first run), `evidence/a5c_updated_tests.txt` |
+| Typecheck | 0 errors. The first run had 4 errors in the updated old tests (their `ok()` takes 2 arguments); fixed | `evidence/a5c_typecheck.txt` |
+| Mutation check, 16 mutants | **16/16 caught** (M16 missed at first: lists in text are never parsed; caught after the real-list check); tree restored | `evidence/a5c_mut.py`, `evidence/a5c_mut_run.txt` |
+| Related tests (all 50 that touch the kernel, the controllers or the control skills, and 4 more) | **49 passed**, 0 failed; `windowControlTest` blocked (needs Windows), `processControlSafetyTest` environment (needs a Windows process table), both as on the base code | `evidence/a5c_related_tests.txt` |
+| Full suite (before review) | **212 passed, 0 failed**, 1 blocked (no pygame), 9 skipped | `evidence/a5c_full_suite.txt` |
+| Independent review, round 1 | CHANGES REQUIRED (C1, C2 high; C3, C4 med; C5–C9 low; C10 info) | `review.md` |
+| Review round 1 checks on that code (C2–C5) | 31 passed, **9 failed** | `evidence/a5c_review_r1_old_code_checks.txt` |
+| Test after the round-1 fixes | **40/40** | `evidence/a5c_review_r1_new_code_checks.txt` |
+| After round 1: typecheck; mutation check, 24 mutants (M10 retargeted, new M17–M24); related tests; full suite | typecheck 0 errors; **24/24 caught**, tree restored; related tests 51 passed, 1 failed (`appControlTest`'s `listApps` check, which the C5 change made throw on Linux; updated, then 7/7); the full suite after that update: **212 passed, 0 failed**, 1 blocked (no pygame), 9 skipped | `evidence/a5c_typecheck.txt`, `a5c_mut_run_r1.txt`, `a5c_related_tests_r1.txt`, `a5c_updated_tests.txt`, `a5c_full_suite_r1.txt` |
+| Independent review, round 2 | **PASS** (C11–C14 low, C15 info) | `review.md` |
+| `appControlTest` after the C12 change | passes | `evidence/a5c_appcontrol_final.txt` |
+
+## Known limits (recorded, not changed)
+
+- TRA-10's second part: keyboard, mouse, process and system actions are still not checked after the fact (`core/verifiers.ts`). That is for A5d/A5e.
+- The audit log's `rollbackAvailable: true` is still a fixed value.
+- Other new failures of a mutating action are retried once by the action queue, as any thrown failure already was: a WinAutomate error, or "Window matching … not found". "Permission denied." is final (it matches "denied"), and so are the unread list, the tab that is not open and the missing app window (review C4, C9).
+- A non-zero PowerShell exit discards a list that was partly read, for example with one unreadable volume (review C7).
+- `processController`'s runner message when PowerShell cannot start has no check in the test suite. The reviewer saw it on this Linux machine, which has no PowerShell: "PowerShell could not start: Command failed with ENOENT…" (C6, C11).
+- `processControlSafetyTest` needs a Windows process table and is "environment" here, before and after.
+- "Close the current window" with the window list unread says "No active window to close.", a false "none" (nothing is closed). This was there before A5c (review C13).
+- `checkService` and the battery read ignore PowerShell's exit code: without PowerShell, or for a service that does not exist, the service check is an empty success and the battery says "not available". This was there before A5c, outside the owner's Q2 lists (review C14).
+- A passing PowerShell failure while kill or restart looks up the process is now final, not retried once (it matches "could not be read"). The reason is kept (review round 2, b).
+- Restarting an app with the window list unread now fails with the reason instead of opening a second copy (review C15).

@@ -50,9 +50,10 @@ console.log('\n--- Test 3: readFile() on missing file ---');
 let missingResult: string = '';
 try {
   missingResult = await fileController.readFile('C:\\this\\file\\does\\not\\exist.txt');
-  ok('readFile() missing file does not throw', true);
+  ok('readFile() missing file is a failure, not its contents (it resolved)', false);
 } catch (err: any) {
-  ok('readFile() missing file does not throw', false);
+  // Since phase A5c a failed read is thrown (it used to be returned as the file's "contents").
+  ok('readFile() missing file is a failure, not its contents', true);
   missingResult = err.message;
 }
 ok('readFile() missing file returns error message', missingResult.toLowerCase().includes('error') || missingResult.toLowerCase().includes('not found') || missingResult.includes('ENOENT'));

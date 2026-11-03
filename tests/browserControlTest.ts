@@ -24,9 +24,12 @@ console.log('--- Test 1: listTabs() fallback ---');
 let tabsResult: string = '';
 try {
   tabsResult = await browserController.listTabs();
-  ok('listTabs() resolves without throwing', true);
-} catch {
-  ok('listTabs() resolves without throwing', false);
+  ok('listTabs() lists the tabs, or fails with its reason', true);
+} catch (err: any) {
+  // Since phase A5c a failure is thrown with its reason, not returned as text.
+  tabsResult = String(err?.message ?? '');
+  // The reason names Chrome: JARVIS's own Chrome is not running here (review C8).
+  ok(`listTabs() lists the tabs, or fails with its reason (${tabsResult.slice(0, 80)})`, /Chrome/.test(tabsResult));
 }
 ok('listTabs() returns a string', typeof tabsResult === 'string');
 // When DevTools unavailable, should mention it or return empty list

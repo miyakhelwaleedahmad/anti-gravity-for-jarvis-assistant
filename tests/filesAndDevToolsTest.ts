@@ -158,7 +158,8 @@ if (linked) {
   ok('a link inside an approved folder that leads out is refused', !r.success && /approved folders/.test(r.output), r.output.slice(0, 120));
   // The older control_file tool compared paths as text and read through such a link.
   const { fileController } = await import('../control/fileController.js');
-  const read = await fileController.readFile(path.join(scratch, 'way-out', path.basename(outside)));
+  // Since phase A5c the refusal is thrown (a failure), not returned as text.
+  const read = await fileController.readFile(path.join(scratch, 'way-out', path.basename(outside))).catch((e: Error) => e.message);
   ok('control_file cannot read through that link either', /Access Denied/.test(read), read.slice(0, 100));
 }
 r = await run('files', { action: 'create', path: path.join(scratch, 'run-me.bat'), content: 'del /q *' });

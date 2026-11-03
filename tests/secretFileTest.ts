@@ -62,7 +62,8 @@ ok('…and its text is in no result', !read.output.includes(VALUE));
 const compare = await toolRegistryV2.execute('files', { action: 'compare', path: tokenFile, other: notes });
 ok('files compare refuses it (a diff shows contents)', !compare.success && !compare.output.includes(VALUE), compare.output.slice(0, 90));
 
-const viaController = await fileController.readFile(tokenFile);
+// Since phase A5c the refusal is thrown (a failure), not returned as text.
+const viaController = await fileController.readFile(tokenFile).catch((e: Error) => e.message);
 ok('control_file read refuses it', /does not read/.test(viaController) && !viaController.includes(VALUE), viaController.slice(0, 90));
 
 const parsed = parseFile(tokenFile);

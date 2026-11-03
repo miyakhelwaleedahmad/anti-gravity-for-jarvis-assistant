@@ -85,7 +85,8 @@ ok('closeCurrentWindow() below Level 2 is refused, nothing closed', /permission|
 
 // ── Test 4: focusWindow() on a window that is not open ───────────────────────
 console.log('\n--- Test 4: focusWindow() on a window that is not open ---');
-const focus = await windowController.focusWindow('definitely_not_open_window_xyz');
+// Since phase A5c "not found" is thrown (a failure), not returned as text (review C1).
+const focus = await windowController.focusWindow('definitely_not_open_window_xyz').catch((e: Error) => e.message);
 ok('focusWindow() says the window was not found', /not found/i.test(focus), focus);
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);

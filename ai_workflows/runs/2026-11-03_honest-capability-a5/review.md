@@ -46,3 +46,51 @@ The reviewer ran the tests and probes again, without relying on the evidence fil
 | R16 | info | A duplicate id beyond 20 would be listed twice; Chrome's ids are unique | Recorded |
 | R17 | info | `readablePort` reads `JARVIS_CDP_PORT` from `process.env`, `running()` from the injected env; only differs for an injected instance (tests) | Recorded |
 | R18 | info | The stand-in skips PowerShell's end-token framing (covered by `windowsStateSessionTest`) and the one-shot fallback (not covered, as before) | Recorded |
+
+---
+
+# Review — sub-phase A5c (kernel)
+
+Reviewer: a separate agent session (general-purpose), read-only. Not a human.
+
+## Round 1 — CHANGES REQUIRED
+
+Confirmed:
+- only the kernel calls the changed controller methods, and every kernel caller is a `control_*` skill that stringifies the result, so failures reach the registry as `success:false`;
+- no uncaught exception or unhandled rejection outside tests;
+- no legitimate kernel output from a JARVIS controller has a top-level `error` or `success:false`;
+- B1 is covered for app, window and process.
+
+Typecheck 0; 15 tests through the runner.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| C1 | high | `windowControlTest` (Windows only; blocked here) awaited `focusWindow` on a missing window with no catch: it would crash on Windows CI and the owner's PC | **Fixed**: it reads the thrown message and keeps its "not found" check |
+| C2 | high | `get_pc_state` (the planner's tool) returned the kernel's empty `message` on failure: an empty success, the reason lost | **Fixed**: on failure the skill returns the kernel's result as JSON, read as a failure by the registry. Test first (through `toolRegistryV2`); M17 |
+| C3 | med | The kernel's JSON rule also judged pass-through data: a JSON file with its own `error` field was reported as a failure, its contents dropped; the same for command and PowerShell output | **Fixed**: `executeAction(..., { passThrough: true })` for `readFile`, `runShellCommand`, `runPowerShell`, `checkService`, battery, disk and startup lists. Test first; M18 |
+| C4 | med | The action queue retried the new failures; an unread window list (up to about 20 s a read) could hit the queue's 10 s limit, and its reason was lost to "Timeout or Aborted" | **Fixed**: "could not be read", "is not open, so nothing was closed" and "No running window found" are final failures in `control/actionQueue.ts`. Test first (one read, not two); M19, M20 |
+| C5 | low | `focusApp`, close-app, the app list and window close by name still took an unread list for "no such window" | **Fixed**: one helper, `openAppsOrWhy` (`perception/windowsState.ts`), used by all of them and by the window list. Test first; M21–M24 |
+| C6 | low | `processController`'s PowerShell runner did not say why PowerShell could not start | **Fixed**, as in `systemController` (not tested here: it needs a missing PowerShell; recorded) |
+| C7 | low | A non-zero PowerShell exit discards a list that was partly read (one unreadable volume, say) | Recorded (known limit) |
+| C8 | low | Two updated old tests passed vacuously on Windows | **Fixed**: `focusApp` must succeed on Windows (Notepad is open there); the tab-list failure must name Chrome |
+| C9 | low | Records: "a refused focus is asked twice" was wrong; `windowControlTest` not listed; the `findHwnd` "close" claim was wrong | **Fixed** in `change_log.md` |
+| C10 | info | B1 covered; the kernel's JSON rule was tested only with a stand-in | The `get_pc_state` tool case added (C2) |
+
+## Round 2 — PASS
+
+The reviewer re-ran the round-1 probes against the current tree:
+- C2: `get_pc_state` fails with the reason in both `error` and `output`;
+- C3: a JSON-RPC error file and a `{"success":false}` file are read as successes, with their full contents;
+- C4: a slow unread list is read once and keeps its reason, where an 11 s read used to become "Timeout or Aborted";
+- C5: close by handle with the list unread still asks for a protected program, refuses when its owner can't be read, and refuses a browser;
+- C6: seen on this host, which has no PowerShell.
+
+`win_automate.ps1`'s focus never throws a refused focus, so the stricter Windows check can't fail on that. `passThrough` is complete. Typecheck 0; 15 tests through the runner.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| C11 | low | Change log: the A5c tables were not updated for round 1; C6 "not tested here" was wrong | **Fixed** |
+| C12 | low | On Windows with more than 20 titled windows, Notepad can be left out of the list and the stricter `focusApp` check fails for a reason unrelated to A5c | **Fixed**: on Windows a "No running window found" is accepted only when a full window read has no Notepad either |
+| C13 | low | "Close the current window" with the list unread says "No active window" (before A5c; nothing is closed) | Recorded |
+| C14 | low | `checkService` and the battery read ignore PowerShell's exit code (before A5c) | Recorded |
+| C15 | info | Restart with the list unread now fails with the reason instead of opening a second copy | Recorded (better behaviour) |

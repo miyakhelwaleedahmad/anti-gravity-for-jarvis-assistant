@@ -34,6 +34,23 @@ export interface KernelResult {
   error: string | null;
 }
 
+/**
+ * The failure a controller reported in its answer, if any: a JSON object with
+ * `success: false`, or with a top-level `error`. Plain text and lists are not
+ * judged (no guessing from words); controllers throw their failures (A5c, TRA-10).
+ */
+export function reportedFailureOf(message: unknown): string | undefined {
+  const text = typeof message === 'string' ? message.trim() : '';
+  const parsed = typeof message === 'object' && message !== null ? message
+    : text.startsWith('{') ? (() => { try { return JSON.parse(text); } catch { return undefined; } })() : undefined;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const { success, error } = parsed as { success?: unknown; error?: unknown };
+  const why = typeof error === 'string' ? error.trim()
+    : error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string' ? String((error as { message: string }).message).trim() : '';
+  if (success === false) return why || 'The action reported a failure.';
+  return why || undefined;
+}
+
 /** Aborts when either signal does (the caller's budget or the action queue's timeout). */
 function either(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined {
   const signals = [a, b].filter((x): x is AbortSignal => !!x);
@@ -46,7 +63,12 @@ export class PcControlKernel {
     targetName: string,
     isReadOnly: boolean,
     /** Gets the action queue's signal (its timeout); a command passes it on to its process (REL-01). */
-    runFn: (signal?: AbortSignal) => Promise<any>
+    runFn: (signal?: AbortSignal) => Promise<any>,
+    /**
+     * The answer is someone else's data (a file, a command's output, PowerShell's
+     * own JSON), not a controller's report: its "error" fields are not judged (review C3).
+     */
+    options: { passThrough?: boolean } = {},
   ): Promise<KernelResult> {
     const t0 = performance.now();
     const permLevel = permissionSession.getCurrentLevel();
@@ -60,6 +82,9 @@ export class PcControlKernel {
         // Queue stateful mutations
         message = await actionQueue.enqueue(actionName, (queueSignal) => runFn(queueSignal));
       }
+      // A controller's own report of failure is a failure (A5c, TRA-10).
+      const reported = options.passThrough ? undefined : reportedFailureOf(message);
+      if (reported) throw new Error(reported);
       
       const durationMs = Math.round(performance.now() - t0);
       const result: KernelResult = {
@@ -126,6 +151,8 @@ export class PcControlKernel {
   public async getPcState(): Promise<KernelResult> {
     return this.executeAction('getPcState', 'system', true, async () => {
       const win = await getWindowsState();
+      // Not read is not "no windows" (A5c, owner Q3; A5a's reason).
+      if (win.unavailable) throw new Error(`The open windows could not be read: ${win.unavailable}`);
       const chrome = await getChromeState();
       const svcs = await getJarvisServiceState();
       return JSON.stringify({ activeWindow: win.activeWindow, openApps: win.openApps, chrome, jarvisServices: svcs }, null, 2);
@@ -338,7 +365,7 @@ export class PcControlKernel {
   }
 
   public async readFile(filePath: string): Promise<KernelResult> {
-    return this.executeAction('readFile', filePath, true, () => fileController.readFile(filePath));
+    return this.executeAction('readFile', filePath, true, () => fileController.readFile(filePath), { passThrough: true });
   }
 
   public async writeFile(filePath: string, content: string): Promise<KernelResult> {
@@ -390,11 +417,11 @@ export class PcControlKernel {
   // ── System/Admin ───────────────────────────────────────────────────────────
 
   public async runShellCommand(command: string, signal?: AbortSignal): Promise<KernelResult> {
-    return this.executeAction('runShellCommand', command, false, (qs) => adminController.runShellCommand(command, either(signal, qs)));
+    return this.executeAction('runShellCommand', command, false, (qs) => adminController.runShellCommand(command, either(signal, qs)), { passThrough: true });
   }
 
   public async runPowerShell(command: string, signal?: AbortSignal): Promise<KernelResult> {
-    return this.executeAction('runPowerShell', command, false, (qs) => adminController.runPowerShell(command, either(signal, qs)));
+    return this.executeAction('runPowerShell', command, false, (qs) => adminController.runPowerShell(command, either(signal, qs)), { passThrough: true });
   }
 
   public async checkService(serviceName: string): Promise<KernelResult> {
@@ -402,7 +429,7 @@ export class PcControlKernel {
       const name = checkServiceName(serviceName);
       const { stdout } = await execa('powershell', ['-NoProfile', '-Command', `Get-Service -Name '${name}' | Select-Object Status | ConvertTo-Json`], { reject: false, env: childEnv(), extendEnv: false });
       return stdout.trim();
-    });
+    }, { passThrough: true });
   }
 
   public async startService(serviceName: string, signal?: AbortSignal): Promise<KernelResult> {
@@ -422,18 +449,18 @@ export class PcControlKernel {
   }
 
   public async getDiskStatus(): Promise<KernelResult> {
-    return this.executeAction('getDiskStatus', 'disk', true, () => systemController.getDiskStatus());
+    return this.executeAction('getDiskStatus', 'disk', true, () => systemController.getDiskStatus(), { passThrough: true });
   }
 
   public async getBatteryStatusIfAvailable(): Promise<KernelResult> {
     return this.executeAction('getBatteryStatus', 'battery', true, async () => {
       const { stdout } = await execa('powershell', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining | ConvertTo-Json'], { reject: false, env: childEnv(), extendEnv: false });
       return stdout.trim() || 'Battery not available (likely desktop PC)';
-    });
+    }, { passThrough: true });
   }
 
   public async getStartupTasks(): Promise<KernelResult> {
-    return this.executeAction('getStartupTasks', 'startup', true, () => systemController.getStartupTasks());
+    return this.executeAction('getStartupTasks', 'startup', true, () => systemController.getStartupTasks(), { passThrough: true });
   }
 
   public async openSystemSettings(page: string): Promise<KernelResult> {

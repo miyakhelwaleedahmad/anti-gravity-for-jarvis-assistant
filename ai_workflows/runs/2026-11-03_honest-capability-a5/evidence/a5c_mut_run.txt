@@ -1,0 +1,20 @@
+M1 focusApp: no window returned as text: CAUGHT | FAIL: focus app, no such window: a failure with the reason ({"success":true,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":1,"message":"No runnin
+M2 focusApp: permission refusal returned as text: CAUGHT | FAIL: focus app, permission refused: a failure ({"success":true,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":0,"message":"Permission denied.","
+M3 focusWindow: an error caught and returned as text: CAUGHT | FAIL: focus window, no such window: a failure with the reason (it was caught and returned as text) ({"success":true,"action":"focusWindow","target":"notepad","permissionL
+M4 focusWindow: permission refusal returned as text: CAUGHT | FAIL: focus window, permission refused: a failure ({"success":true,"action":"focusWindow","target":"notepad","permissionLevel":1,"durationMs":0,"message":"Permission deni
+M5 listTabs: permission refusal returned as text: CAUGHT | FAIL: list tabs, permission refused: a failure ({"success":true,"action":"getChromeTabs","target":"browser","permissionLevel":1,"durationMs":0,"message":"Permission denie
+M6 listTabs: an unreadable list returned as text: CAUGHT | FAIL: list tabs, Chrome not running: a failure with the reason ({"success":true,"action":"getChromeTabs","target":"browser","permissionLevel":1,"durationMs":0,"message":"
+M7 closeTab: a tab that is not open is a success (Q1): CAUGHT | FAIL: close a tab that is not open: a failure, nothing closed (Q1) ({"success":true,"action":"closeBrowserTab","target":"youtube","permissionLevel":1,"durationMs":24,"mes
+M8 system lists: PowerShell's exit code ignored (Q2): CAUGHT | FAIL: disk status, PowerShell failed: a failure with the reason, not an empty success ({"success":true,"action":"getDiskStatus","target":"disk","permissionLevel":1,"durat
+M9 process list: a failed read is [] again (Q2): CAUGHT | FAIL: process list, PowerShell failed: a failure, not [] ({"success":true,"action":"listProcesses","target":"processes","permissionLevel":1,"durationMs":0,"message":"[]",
+M10 window list: not read is 'none' again (Q3): CAUGHT | FAIL: list open windows, the list was not read: a failure with the reason, not [] ({"success":true,"action":"getOpenWindows","target":"windows","permissionLevel":1,"durat
+M11 PC state: not read is 'no windows' again (Q3): CAUGHT | FAIL: PC state, the window list was not read: a failure with the reason ({"success":true,"action":"getPcState","target":"system","permissionLevel":1,"durationMs":21,"mess
+M12 readFile: the secret-file refusal returned as text: CAUGHT | FAIL: read a secret file: a failure (refused), its text in no result ({"success":true,"action":"readFile","target":"/tmp/jarvis-kernel-a5c-knJTn3/data/.env","permissionLe
+M13 readFile: a failed read returned as text: CAUGHT | FAIL: read a file that does not exist: a failure, not "Error reading file" as a success ({"success":true,"action":"readFile","target":"/tmp/jarvis-kernel-a5c-YRU7RT/data/
+M14 kernel: a controller's reported failure ignored: CAUGHT | FAIL: a returned {"error"} object: a failure with that reason ({"success":true,"action":"getSystemResources","target":"resources","permissionLevel":1,"durationMs":0,"mess
+M15 kernel: a top-level error is not a failure (only success:false): CAUGHT | FAIL: a returned {"error"} object: a failure with that reason ({"success":true,"action":"getSystemResources","target":"resources","permissionLevel":1,"durationMs":0,"mess
+M16 kernel: a list is judged as a failure too: CAUGHT | FAIL: …also when a list is returned as itself, not as text ({"success":false,"action":"getSystemResources","target":"resources","permissionLevel":1,"durationMs":0,"messag
+
+16/16 caught
+
+TREE RESTORED: yes (md5 of the 7 changed source files unchanged)

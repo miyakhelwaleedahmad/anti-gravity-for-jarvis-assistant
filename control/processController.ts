@@ -63,6 +63,8 @@ function chooseProcess(matches: ProcessInfo[], target: string): ProcessInfo {
 const systemDeps: ProcessControllerDeps = {
   powershell: async (script) => {
     const r = await execa('powershell', ['-NoProfile', '-Command', script], { reject: false, env: childEnv(), extendEnv: false });
+    // PowerShell that does not start says why (ENOENT…), as in systemController (review C6).
+    if (r.failed && r.exitCode === undefined) throw new Error(`PowerShell could not start: ${r.shortMessage ?? r.message ?? 'no reason given'}`);
     return { exitCode: r.exitCode, stdout: String(r.stdout ?? ''), stderr: String(r.stderr ?? '') };
   },
   approve: (title, command) => approvalGate.requestApproval(title, command),
@@ -77,10 +79,13 @@ export class ProcessController {
       throw new Error('Permission denied.');
     }
 
+    // Not read is not "no processes" (A5c, owner Q2): a failure with the reason.
+    const r = await this.deps.powershell('Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet | ConvertTo-Json');
+    if (r.exitCode !== 0 || !r.stdout.trim()) {
+      throw new Error(`The process list could not be read: ${r.stderr.trim().slice(0, 300) || `PowerShell exit ${r.exitCode ?? 'unknown'}`}`);
+    }
     try {
-      const { stdout } = await this.deps.powershell('Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet | ConvertTo-Json');
-
-      const parsed = JSON.parse(stdout);
+      const parsed = JSON.parse(r.stdout);
       const list = Array.isArray(parsed) ? parsed : [parsed];
       return list.map((p: any) => ({
         name: p.ProcessName || '',
@@ -88,8 +93,8 @@ export class ProcessController {
         cpu: p.CPU || 0,
         workingSet: p.WorkingSet || 0
       }));
-    } catch {
-      return [];
+    } catch (err) {
+      throw new Error(`The process list could not be read: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

@@ -1,0 +1,67 @@
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+
+=== Kernel outcomes (phase A5c) ===
+
+--- 1. app and window actions that did not happen ---
+  PASS: focus app, no such window: a failure with the reason ({"success":false,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":1,"message":"","error":"No running window found for app \"notepad\"."})
+  PASS: focus app, permission refused: a failure ({"success":false,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":1,"message":"","error":"Permission denied."})
+  PASS: focus window, permission refused: a failure ({"success":false,"action":"focusWindow","target":"notepad","permissionLevel":1,"durationMs":0,"message":"","error":"Permission denied."})
+[ActionQueue] Action "focusWindow" failed (attempt 1/2). Retrying... Error: Window matching "notepad" not found.
+  PASS: focus window, no such window: a failure with the reason (it was caught and returned as text) ({"success":false,"action":"focusWindow","target":"notepad","permissionLevel":1,"durationMs":502,"message":"","error":"Window matching \"notepad\" not found."})
+[ActionQueue] Action "focusWindow" failed (attempt 1/2). Retrying... Error: WinAutomate script failed (exit 1): no such window (test)
+  PASS: focus window, Windows refused it: a failure with the reason (not the error as a success message) ({"success":false,"action":"focusWindow","target":"notepad","permissionLevel":1,"durationMs":502,"message":"","error":"WinAutomate script failed (exit 1): no suc)
+--- 2. browser ---
+  PASS: list tabs, Chrome not running: a failure with the reason ({"success":false,"action":"getChromeTabs","target":"browser","permissionLevel":1,"durationMs":0,"message":"","error":"JARVIS's own Chrome is not running, so no )
+  PASS: list tabs, permission refused: a failure ({"success":false,"action":"getChromeTabs","target":"browser","permissionLevel":1,"durationMs":0,"message":"","error":"Permission denied."})
+  PASS: close a tab that is not open: a failure, nothing closed (Q1) ({"success":false,"action":"closeBrowserTab","target":"youtube","permissionLevel":1,"durationMs":13,"message":"","error":"Tab matching \"youtube\" is not open, s)
+  PASS: …and it is not retried (the tab list read once: C4) (1 read(s))
+  PASS: (unchanged) list tabs, Chrome running: a success with the tab ({"success":true,"action":"getChromeTabs","target":"browser","permissionLevel":1,"durationMs":2,"message":"[\n  {\n    \"title\": \"Inbox - Gmail\",\n    \"url\")
+--- 3. system and process lists PowerShell could not read (Q2) ---
+  PASS: disk status, PowerShell failed: a failure with the reason, not an empty success ({"success":false,"action":"getDiskStatus","target":"disk","permissionLevel":1,"durationMs":0,"message":"","error":"PowerShell could not read the disks: Get-Volu)
+  PASS: startup tasks, PowerShell failed: a failure ({"success":false,"action":"getStartupTasks","target":"startup","permissionLevel":1,"durationMs":0,"message":"","error":"PowerShell could not read the startup pr)
+  PASS: disk status, PowerShell missing: a failure, not {"error"} as a success ({"success":false,"action":"getDiskStatus","target":"disk","permissionLevel":1,"durationMs":0,"message":"","error":"spawn powershell ENOENT (test)"})
+  PASS: process list, PowerShell failed: a failure, not [] ({"success":false,"action":"listProcesses","target":"processes","permissionLevel":1,"durationMs":0,"message":"","error":"The process list could not be read: Get-)
+--- 4. window list / PC state not read (Q3) ---
+  PASS: list open windows, the list was not read: a failure with the reason, not [] ({"success":false,"action":"getOpenWindows","target":"windows","permissionLevel":1,"durationMs":0,"message":"","error":"The open windows could not be read: Power)
+[windowsState] Poll failed (non-fatal): no current window list for an action: PowerShell did not answer (test); a fresh one failed too: a fresh PowerShell failed too (test)
+  PASS: PC state, the window list was not read: a failure with the reason ({"success":false,"action":"getPcState","target":"system","permissionLevel":1,"durationMs":0,"message":"","error":"The open windows could not be read: no current)
+  PASS: focus app, the list was not read: says so, not "No running window found" (C5) ({"success":false,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":0,"message":"","error":"The open windows could not be read: PowerShell )
+  PASS: …and it is not retried (one read, the reason kept: C4) (1 read(s))
+  PASS: close app, the list was not read: says so (C5) ({"success":false,"action":"closeApp","target":"notepad","permissionLevel":1,"durationMs":0,"message":"","error":"The open windows could not be read: PowerShell )
+  PASS: list apps, the list was not read: says so, not "no apps" (C5) ({"success":false,"action":"getOpenApps","target":"apps","permissionLevel":1,"durationMs":0,"message":"","error":"The open windows could not be read: PowerShell )
+  PASS: close window by name, the list was not read: says so (C5) ({"success":false,"action":"closeWindow","target":"notepad","permissionLevel":1,"durationMs":0,"message":"","error":"The open windows could not be read: PowerShe)
+  PASS: minimize window, the list was not read: says so, read once (C4) (1 read(s) {"success":false,"action":"minimizeWindow","target":"notepad","permissionLevel":1,"durationMs":0,"message":"","error":"T)
+--- 5. file read ---
+  PASS: read a file that does not exist: a failure, not "Error reading file" as a success ({"success":false,"action":"readFile","target":"/tmp/jarvis-kernel-a5c-itDL5v/data/missing.txt","permissionLevel":1,"durationMs":3,"message":"","error":"Error re)
+  PASS: read a secret file: a failure (refused), its text in no result ({"success":false,"action":"readFile","target":"/tmp/jarvis-kernel-a5c-itDL5v/data/.env","permissionLevel":1,"durationMs":0,"message":"","error":"Error reading f)
+  PASS: (unchanged) read a normal file: a success with its text ({"success":true,"action":"readFile","target":"/tmp/jarvis-kernel-a5c-itDL5v/data/notes.txt","permissionLevel":1,"durationMs":1,"message":"buy milk","error":null)
+  PASS: read a JSON file with its own "error" field: a success with its contents (C3) ({"success":true,"action":"readFile","target":"/tmp/jarvis-kernel-a5c-itDL5v/data/reply.json","permissionLevel":1,"durationMs":0,"message":"{\"jsonrpc\":\"2.0\",)
+--- 6. the kernel itself ---
+  PASS: a returned {"error"} object: a failure with that reason ({"success":false,"action":"getSystemResources","target":"resources","permissionLevel":1,"durationMs":0,"message":"","error":"the system could not be read (test))
+  PASS: a returned {"success": false}: a failure with its reason ({"success":false,"action":"getSystemResources","target":"resources","permissionLevel":1,"durationMs":0,"message":"","error":"refused (test)"})
+  PASS: a list is data, not a failure ({"success":true,"action":"getSystemResources","target":"resources","permissionLevel":1,"durationMs":0,"message":"[{\"error\":\"inside a list is data\"}]","error)
+  PASS: …also when a list is returned as itself, not as text ({"success":true,"action":"getSystemResources","target":"resources","permissionLevel":1,"durationMs":0,"message":"[{\"error\":\"a list returned as itself, not as)
+  PASS: plain text stays a success (no guessing from words) ({"success":true,"action":"getSystemResources","target":"resources","permissionLevel":1,"durationMs":0,"message":"Error is a word in this sentence.","error":null)
+  PASS: (unchanged) the real system status: a success ({
+  "platform": "linux",
+  "release": "6.18.44-fc-v230",
+  "arch": "x64",
+  "upt)
+--- 7. through the planner's tool, and in the audit log ---
+[GraphMemory] Neo4j disabled.
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+  PASS: control_app focus, no window: the tool fails (the planner is told so) (false No running window found for app "notepad".)
+  PASS: …and the audit log records a failure, not "success" ([{"action":"focusApp","result":"failure","error":"No running window found for app \"notepad\"."}])
+  PASS: get_pc_state, the window list not read: the tool fails with the reason, not an empty success (C2) (false The open windows could not be read: no current window list for an action: PowerShell did not answer (test); a fresh one failed too: a fresh )
+--- 8. unchanged: actions that happened ---
+  PASS: focus app, the window exists: a success ({"success":true,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":0,"message":"Focused window: \"notes.txt - Notepad\"","error":null})
+  PASS: focus window, Windows did it: a success ({"success":true,"action":"focusWindow","target":"notepad","permissionLevel":1,"durationMs":0,"message":"Focused window 0x1A2B","error":null})
+  PASS: disk status, PowerShell answered: a success with the answer ({"success":true,"action":"getDiskStatus","target":"disk","permissionLevel":1,"durationMs":0,"message":"[{\"DriveLetter\":\"C\"}]","error":null})
+  PASS: process list, PowerShell answered: a success with the list ({"success":true,"action":"listProcesses","target":"processes","permissionLevel":1,"durationMs":0,"message":"[\n  {\n    \"name\": \"notepad\",\n    \"pid\": 7,\)
+  PASS: list open windows, the list was read: a success with it ({"success":true,"action":"getOpenWindows","target":"windows","permissionLevel":1,"durationMs":0,"message":"[\n  {\n    \"name\": \"notepad\",\n    \"pid\": 7,\n)
+
+40 passed, 0 failed

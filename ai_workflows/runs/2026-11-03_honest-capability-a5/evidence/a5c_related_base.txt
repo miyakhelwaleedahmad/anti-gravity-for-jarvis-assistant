@@ -1,0 +1,25 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=appControlTest,browserControlTest,fileControlSafetyTest,filesAndDevToolsTest,processControlSafetyTest,systemControlSafetyTest,windowControlTest
+
+
+=== JARVIS test suite — 7 file(s) ===
+
+  PASS    appControlTest                               524ms
+  PASS    browserControlTest                           373ms
+  PASS    fileControlSafetyTest                        433ms
+  PASS    filesAndDevToolsTest                         2865ms
+  FAIL    processControlSafetyTest                     541ms  (expected here: needs Windows process table)
+  PASS    systemControlSafetyTest                      489ms
+  BLOCKED windowControlTest                            480ms  (needs Windows: JARVIS reads windows through Windows PowerShell.)
+
+=== 5 passed · 0 failed · 0 timed out · 1 blocked · 1 environment · 0 skipped ===
+
+Blocked, not verified (the environment the test needs was not available):
+  - windowControlTest: needs Windows: JARVIS reads windows through Windows PowerShell.
+
+Failed for a missing prerequisite, not a defect:
+  - processControlSafetyTest (needs Windows process table)
+
+No failures, but the blocked tests above were not verified.
+ ELIFECYCLE  Test failed. See above for more details.

@@ -33,3 +33,39 @@ Gate 1 for A5a: **approved** by the owner on 2026-11-03, with:
 - Q2: "Read Chrome live (Recommended)".
 
 The other sub-phases each need their own Gate 1.
+
+## A5c in detail (kernel: TRA-10 and the B1 item)
+
+Diagnosis D3, checked again at `735c0a2`. The kernel (`control/pcControlKernel.ts:55-87`) counts any returned value as success, and only a thrown error as failure. Controllers return failures as text in 11 places:
+
+| Controller | Place | Returned as success today |
+|---|---|---|
+| `appController` | `focusApp` (:190, :197) | "Permission denied.", "No running window found for app …" |
+| `windowController` | `focusWindow` (:79, :85) | "Permission denied.", and any error turned into text |
+| `browserController` | `listTabs` (:63, :70); `closeTab` (:127) | "Permission denied.", an error as text, "Tab matching … is not open." (nothing closed) |
+| `systemController` | disk info, startup tasks (:54, :70) | `{"error": …}`; also PowerShell's non-zero exit is ignored, so an empty answer counts as success |
+| `processController` | `listProcesses` (:92) | `[]` when the list could not be read |
+| `fileController` | `readFile` (:99, :103) | "Error reading file: …" |
+
+The Windows window script (`control/win_automate.ps1`) already throws on a failed window action (since A1), so `minimize`, `maximize`, `close`, `move` and `resize` are fine.
+
+| # | Change | Files (protected in **bold**) |
+|---|---|---|
+| P1 | Each of those 11 places throws an error with the same reason instead of returning it as text. PowerShell's non-zero exit in `systemController` is a failure. | `control/appController.ts`, `windowController.ts`, `browserController.ts`, `systemController.ts`, `processController.ts`, `fileController.ts` |
+| P2 | Defence in depth in the kernel: a returned JSON object with `success: false` or a top-level `error` is a failure, with that reason. Plain text stays a success, as today, so there is no guessing from words. The audit log records the real result (already true once failures throw). | **`control/pcControlKernel.ts`** |
+| T | New `tests/kernelOutcomeA5cTest.ts`: each failure path, with the controllers' dependencies stood in (permission refused, no window, PowerShell error, list failure), gives `success:false` with the reason through the kernel and through the tool the planner calls. Successful actions stay successes. The B1 item ("a controller failure returned without throwing … reported as a failure through the kernel, with a test") is covered. | tests |
+
+Not in A5c (recorded):
+- verifying keyboard, mouse, process and system actions after the fact (TRA-10's second part) is for A5d/A5e, with the verifiers;
+- the audit log's fixed `rollbackAvailable: true`;
+- `get_pc_state` and `windowController.listOpenWindows` turning an unread window list into `[]`. These now see A5a's `unavailable` field; making them fail on it is a one-line change each, and is included in P1 if the owner agrees (Q3 below).
+
+Owner choices for A5c:
+- Q1. `control_browser close` for a tab that is not open: **a failure, "nothing was closed"** (recommended), or a success as today.
+- Q2. `systemController` disk and startup lists when PowerShell fails: **a failure with the reason** (recommended), or the empty answer as today.
+- Q3. `get_pc_state` / `list_open_windows` when the window list was not read (A5a's reason): **a failure with the reason** (recommended), or `[]` as today.
+
+Gate 1 for A5c: **approved** by the owner on 2026-11-03:
+- "Approve A5c (Recommended)", with the protected file `control/pcControlKernel.ts`;
+- Q1: "A failure: nothing closed (Recommended)";
+- Q2 and Q3: "A failure with the reason (Recommended)".
