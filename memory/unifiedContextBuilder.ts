@@ -255,7 +255,8 @@ function _estimateTokens(text: string): number {
 function _buildSystemState(depth: string, budget: number): string {
   // Phase 7: minimal system state — trimmed from 6 lines to 3 to save ~40 tokens per request.
   // The owner's local date, time and time zone: a bare UTC time sent the planner
-  // to powershell for the clock, which is refused (N-PC10).
+  // to powershell for the clock, which is refused (N-PC10). Stated as a fact, not an
+  // order: this line sits in the untrusted context block (review T14).
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const offset = -now.getTimezoneOffset();
@@ -264,5 +265,5 @@ function _buildSystemState(depth: string, budget: number): string {
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  return `[SYS now=${weekday} ${date} ${time} local time (${zoneOffset}${zoneName ? `, ${zoneName}` : ''}) depth=${depth} budget=${budget}tok]`;
+  return `[SYS now=${weekday} ${date} ${time} local time (${zoneOffset}${zoneName ? `, ${zoneName}` : ''}), read from this PC's clock for this request. depth=${depth} budget=${budget}tok]`;
 }

@@ -30,6 +30,17 @@ MUTANTS = [
    "  const clockAsk = clean.replace(/ jarvis$/, '');", "  const clockAsk = clean;"),
   ("M13 'what is time' and the like match again (T5)", R,
    "  /^(whats|what is) the (current )?time( now| right now)?$/,", "  /^(whats|what is) (the )?(current )?time( now| right now)?$/,"),
+  # Follow-up P3, P4 (owner's PC, 2026-11-02 at c568b49)
+  ("M14 'which day' / 'what day is this' not matched (P3)", R,
+   "  /^(what|which) day is (it|today|this)( today)?$/,", "  /^what day is (it|today)( today)?$/,"),
+  ("M15 'what date is it' / 'which date is today' not matched (P3)", R,
+   "  /^(what|which) date is (it|today)( today)?$/,\n", ""),
+  ("M16 the clock line no longer says it is this PC's clock (P4, T14)", U,
+   ", read from this PC's clock for this request.", ""),
+  ("M17 the 'which day' pattern not anchored at the end (T17)", R,
+   "  /^(what|which) day is (it|today|this)( today)?$/,", "  /^(what|which) day is (it|today|this)( today)?/,"),
+  ("M18 'what date is this' answered with today's date (T15)", R,
+   "  /^(what|which) date is (it|today)( today)?$/,", "  /^(what|which) date is (it|today|this)( today)?$/,"),
 ]
 only = os.environ.get("MUT_ONLY")
 if only: MUTANTS = [m for m in MUTANTS if m[0].split()[0] in only.split(",")]

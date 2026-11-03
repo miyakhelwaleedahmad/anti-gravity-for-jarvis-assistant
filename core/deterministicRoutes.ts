@@ -200,7 +200,8 @@ const SYSTEM_STATUS_PHRASES = new Set([
  * "jarvis", "can you" and a trailing "please"). Whole-sentence only: "what time is
  * my meeting" and "tell me the time in london" still go to the planner. Bare
  * fragments ("what time", "the date") are left out: they may be JARVIS's own
- * words heard back (N-PC10, review T5).
+ * words heard back (N-PC10, review T5). "what date is this" is left out too: it may
+ * be about a document or photo on screen (review T15).
  */
 const TIME_QUESTION = [
   /^what time is (it|this)( now| right now)?$/,
@@ -213,7 +214,8 @@ const TIME_QUESTION = [
 ];
 const DATE_QUESTION = [
   /^(whats|what is) the (current )?date( today)?$/,
-  /^what day is (it|today)( today)?$/,
+  /^(what|which) day is (it|today|this)( today)?$/,
+  /^(what|which) date is (it|today)( today)?$/,
   /^tell me what day it is$/,
   /^(whats|what is) todays date$/,
   /^(whats|what is) today$/,

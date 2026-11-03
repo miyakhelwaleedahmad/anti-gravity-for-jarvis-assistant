@@ -90,3 +90,34 @@ FAIL: …and so is the date reply (no output)
 | Related tests (28: the 26 before, plus `crashPolicyTest` and `llmTimingTest`, which also start child scripts) | **28 passed** | `evidence/winfix_related_tests.txt` |
 | Typecheck | 0 errors | `evidence/winfix_typecheck.txt` |
 | Windows CI with the fix | **not run**: CI runs only on pushed code, and this fix is not committed or pushed | — |
+
+## Follow-up after the owner's PC test (P3, P4)
+
+On the owner's PC, 2026-11-02 at `c568b49`:
+- "what time is this" got the fast answer ("It is 08:12 PM, sir."), with no planner;
+- "what day is this" was not on the list, and the model **still called `run_command` with powershell**, which was refused;
+- "which day is today" was not on the list either, but the model answered from the clock line ("Today is Monday, November 2, 2026."), with no tool.
+
+The owner asked to "move to the problem that are remaining and fix it". The same two protected files were approved for N-PC10.
+
+| # | Change (final) | File (protected) |
+|---|---|---|
+| P3 | The day pattern is now `/^(what\|which) day is (it\|today\|this)( today)?$/` (was `what day is (it\|today)`). A new date pattern is `/^(what\|which) date is (it\|today)( today)?$/`. So "what day is this", "which day is it / today / this" and "what / which date is it / today", each optionally ending in " today", get the fast date answer. "what date is this" and "which date is this" stay with the planner: they may be about a document or photo on screen (review T15). Other look-alikes stay with the planner too: "which day is the meeting", "which day is it tomorrow", "what date is the meeting", … | `core/deterministicRoutes.ts` |
+| P4 | The clock line says where the time comes from, as a fact: `[SYS now=Monday 2026-11-02 22:03 local time (UTC+05:00, Asia/Karachi), read from this PC's clock for this request. depth=… budget=…]`. A first version gave the model an order ("answer date and time questions from this; no tool or command is needed"). The review found that line sits inside the untrusted context block, whose rule says never to follow instructions found there (T14), so the order was replaced by the fact. Whether the model now stops reaching for a shell can only be seen on the PC. | `memory/unifiedContextBuilder.ts` |
+
+Not changed: the review's better option for T14, a trusted system message with the clock (in the protected `core/orchestrator.ts`), is for the owner to decide.
+
+| Check | Result | File |
+|---|---|---|
+| New checks on the code before P3 and P4 (7 wordings, 4 look-alikes, the clock-line text) | 88 passed, **8 failed** | `evidence/fu_old_code_checks.txt` |
+| After P3 and P4 (first version) | 96/96 | `evidence/fu_new_code_checks.txt` |
+| Review round 3 checks (T14, T15, T17) on that version | 97 passed, **4 failed** | `evidence/fu_review_old_code_checks.txt` |
+| Final test | **101/101** | `evidence/fu_review_new_code_checks.txt` |
+| Related tests (31, including `scenarioIntegrationTest` and the prompt-injection tests) | **31 passed** | `evidence/fu_related_tests.txt` |
+| Typecheck | 0 errors | `evidence/fu_typecheck.txt` |
+| Mutation check, 17 mutants (new M14–M18) | **17/17 caught**; tree restored | `evidence/fu_mut_run.txt` |
+| Full suite | **210 passed, 0 failed**, 1 blocked (no pygame), 9 skipped | `evidence/fu_full_suite.txt` |
+
+## CI note: `3111ff6` (A3 records only)
+
+Windows CI run 41471896829 failed once in `scenarioIntegrationTest`. The reply listed tab addresses (`127.0.0.1:54659`) instead of page titles: the test's 15 s wait for titles gave up silently on a slow runner. The same code had passed Windows CI an hour before (`c568b49`). The one re-run of the failed job passed, so this is a timing weakness in an existing test, not in N-PC10. Recorded here, not changed.

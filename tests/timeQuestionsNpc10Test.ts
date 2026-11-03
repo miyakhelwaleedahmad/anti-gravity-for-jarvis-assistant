@@ -88,6 +88,9 @@ const DATE_ASKS = [
   'what is today', 'can you tell me the date',
   // review T3, T4
   "what's the date jarvis", 'current date', "what's the current date", "what's today", 'tell me what day it is',
+  // owner's PC, 2026-11-02 at c568b49 (follow-up P3): these went to the planner
+  'what day is this', 'which day is today', 'which day is it', 'which day is this', 'which date is today',
+  'what date is today', 'what date is it',
 ];
 for (const ask of DATE_ASKS) {
   const before = dateNow();
@@ -98,6 +101,9 @@ for (const ask of DATE_ASKS) {
 const NOT_DATE = [
   'what is the date of the meeting', 'what day is the meeting', "what is today's weather", "what's today's weather",
   'what day is tomorrow', 'date', 'the date', 'what day', 'what date',
+  'which day is the meeting', 'which day is better', 'which date is the exam', 'what date is the meeting',
+  // review T15: "this" may point at a document or photo on screen; T17: end anchor
+  'what date is this', 'which date is this', 'which day is it tomorrow', 'what day is this file from',
 ];
 for (const ask of NOT_DATE) {
   const r = matchDeterministicCommand(ask);
@@ -183,6 +189,11 @@ const ymd = (tz: string) => new Intl.DateTimeFormat('en-CA', { year: 'numeric', 
   ok('…with the local date', sent.includes(ymd('Asia/Karachi')), ymd('Asia/Karachi'));
   ok('…the local time', sent.includes(before) || sent.includes(after), before);
   ok('…and the time zone (UTC+05:00)', sent.includes('UTC+05:00'));
+  // Follow-up P4 (owner's PC: the model still ran powershell for "what day is this").
+  // A fact, not an order: the block it sits in is untrusted, and the model is told
+  // never to follow instructions found there (review T14).
+  ok('…and the line says where the time comes from: this PC\'s clock, now', /read from this PC's clock for this request/.test(sent));
+  ok('…as a fact, with no instruction inside the untrusted block', !/answer date and time questions|no tool or command is needed/.test(sent));
 }
 {
   const { unifiedContextBuilder } = await import('../memory/unifiedContextBuilder.js');
