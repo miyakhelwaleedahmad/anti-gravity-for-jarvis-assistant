@@ -404,6 +404,12 @@ const { execute: openApp } = await import('../skills/automation/skill.js');
   {
     const { appController } = await import('../control/appController.js');
     const { matchDeterministicCommand } = await import('../core/deterministicRoutes.js');
+    // These checks are about the names Windows knows (msedge.exe, firefox.exe). Since
+    // phase A5d (owner Q2) open_app refuses them off Windows, so the platform is
+    // Windows here, on any OS; the refusal itself is checked after this block.
+    const automation = await import('../skills/automation/skill.js');
+    const realPlatform = automation.openAppDeps.platform;
+    automation.openAppDeps.platform = () => 'win32';
     const own3 = await fakeChrome(0, ['Inbox']); cleanup.push(own3);
     process.env['JARVIS_CDP_PORT'] = String(own3.port);
     const tabsBefore = own3.pages.length;
@@ -472,6 +478,12 @@ const { execute: openApp } = await import('../skills/automation/skill.js');
         route?.type === 'open_app' && route.target === 'chrome' && r.method === 'jarvis-chrome' && r.success === true && openers.length === 0, `${JSON.stringify(route)} ${JSON.stringify(r)}`);
     }
     delete process.env['JARVIS_CDP_PORT'];
+    automation.openAppDeps.platform = () => 'linux';
+    openers.length = 0;
+    const offWindows = JSON.parse(await openApp({ target: 'edge' }));
+    ok('off Windows, open_app "edge" (msedge.exe) is refused, needs Windows, nothing started (phase A5d, Q2)',
+      offWindows.success === false && /needs Windows/.test(String(offWindows.error)) && openers.length === 0, `${JSON.stringify(offWindows)} ${openers.join(' | ')}`);
+    automation.openAppDeps.platform = realPlatform;
   }
   const { youtubeSearchTool, siteSearchTool } = await import('../core/tools/youtubeTools.js');
   const ys = JSON.parse(await youtubeSearchTool.execute({ query: 'lofi', open: 'results' }));

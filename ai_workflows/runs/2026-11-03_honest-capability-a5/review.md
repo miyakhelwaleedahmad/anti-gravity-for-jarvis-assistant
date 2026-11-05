@@ -94,3 +94,46 @@ The reviewer re-ran the round-1 probes against the current tree:
 | C13 | low | "Close the current window" with the list unread says "No active window" (before A5c; nothing is closed) | Recorded |
 | C14 | low | `checkService` and the battery read ignore PowerShell's exit code (before A5c) | Recorded |
 | C15 | info | Restart with the list unread now fails with the reason instead of opening a second copy | Recorded (better behaviour) |
+
+---
+
+# Review — sub-phase A5d (open_app)
+
+Reviewer: a separate agent session (general-purpose), read-only. Not a human.
+
+## Round 1 — CHANGES REQUIRED (records only)
+
+The reviewer ran:
+- the typecheck: 0 errors;
+- 8 related tests through the runner: all pass;
+- the new test: 16/16;
+- a probe of the real launcher, using the real `child_process` and a fake `xdg-open`:
+  - exit 0 is a success;
+  - exit 2 is a failure with the code;
+  - SIGKILL is a success;
+  - a launcher still running is "started" after 3001 ms;
+  - a missing launcher is an ENOENT failure, answered once;
+  - Node exits at once afterwards (no timer is left).
+
+Confirmed:
+- there is one answer per open;
+- 'exit' is the right event with `stdio:'ignore'`;
+- `env` is always `childEnv()`;
+- the gate's placement keeps `openAppSmokeTest` unchanged;
+- failure replies stay under the 120-character cutoff;
+- production code changed only in the 3 approved files;
+- the recorded numbers match the evidence.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| D1 | med | The change log said every unchecked open says "I started…"; only the voice/text route does. The planner path still says "Opening X, sir." | **Fixed** in `change_log.md`; recorded as a known limit, with a follow-up to propose |
+| D2 | low | A launcher ended by a signal (code null) counts as success; the record said only "exit 0" | **Recorded** as it is (it was so before; Linux and macOS only) |
+| D3 | low | On Windows, `start` for a missing program probably waits on a dialog, so "finish at once" is not always true | The code comment and the known limit were reworded; this is to be checked on the PC |
+| D4 | low | Off Windows, "open cmd" asks for approval before refusing; the audit log says allowed | Recorded (`fullControlLimitTest` expects the prompt) |
+| D5 | low | Record details: `spotify:` in the diagnosis; "downloads … never true"; the 16/16 evidence; the gate quote | **Fixed**: the diagnosis was corrected; downloads was hedged; `evidence/a5d_new_code_checks_16.txt` was added; the quotes were made the same. The test header's example is now Settings |
+| D6 | info | The reply follows the verifier: Settings on Windows says "I started…" (as Q1 chose); a desktop check that times out does too | Recorded |
+| D7 | info | Off Windows the gate is complete for today's allow-lists; nothing legitimate is refused | — |
+| D8 | info | Test quality is good; the null-code case is not tested; jarvisChromeTest's restore is not in a `finally` | Not changed |
+| D9 | info | The added wait is at most 3 s, within the 20 s sandbox budget; `control_app open` has the old behaviour | Recorded |
+
+No code fault was found. Code changed after the review: one comment in `skills/automation/skill.ts` (D3) and one comment in the test header (D5).

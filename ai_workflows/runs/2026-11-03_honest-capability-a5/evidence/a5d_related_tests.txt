@@ -1,0 +1,89 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=backgroundResearchTest,browserControlAgentTest,delegationRoutingTest,desktopControlTest,deterministicCommandRouteTest,dispatchAuthzTest,episodicPersistenceTest,errorHandlingAuditTest,executionDispatchAuditTest,finalIntegrationSuiteTest,fullControlLimitTest,fullSystemIntegrationTest,honestReadToolsA5aTest,issueStoreTest,jarvisAgentIntegrationTest,jarvisChromeTest,llmClientBehaviourTest,noGroqForLocalCommandsTest,openAppHonestA5dTest,openAppSecurityTest,openAppSmokeTest,plannerDecisionAuditTest,plannerDesktopToolSelectionTest,policyOwnershipTest,registryRepairHonestyTest,repairRunTest,riskEngineTest,routingA3Test,selfCheckTest,simpleNoGoalTest,skillLoadOrderTest,taskFailureHonestyTest,toolDiscoverabilityAuditTest,toolExecutionPipelineVerificationTest,toolPerformanceBenchmarkTest,toolRegistryOptimizationTest,voiceContinuationFallbackTest,voiceRouteMockTest,voiceYouTubeIntegrationTest,windowsToolsTest,workspaceRootPortabilityTest,boundaryDoublesTest,routeGoldenTest,docsHygieneTest,honestReadToolsA5aTest,kernelOutcomeA5cTest
+
+
+=== JARVIS test suite — 45 file(s) ===
+
+  PASS    backgroundResearchTest                       1460ms
+  PASS    boundaryDoublesTest                          397ms
+  PASS    browserControlAgentTest                      11107ms
+  PASS    delegationRoutingTest                        1282ms
+  PASS    desktopControlTest                           10671ms
+  PASS    deterministicCommandRouteTest                1505ms
+  PASS    dispatchAuthzTest                            1410ms
+  PASS    docsHygieneTest                              1293ms
+  PASS    episodicPersistenceTest                      491ms
+  PASS    errorHandlingAuditTest                       1144ms
+  PASS    executionDispatchAuditTest                   3449ms
+  SKIP  finalIntegrationSuiteTest                    live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  PASS    fullControlLimitTest                         510ms
+  PASS    fullSystemIntegrationTest                    1367ms
+  PASS    honestReadToolsA5aTest                       3458ms
+  PASS    issueStoreTest                               662ms
+  PASS    jarvisAgentIntegrationTest                   3816ms
+  FAIL    jarvisChromeTest                             13401ms
+  PASS    kernelOutcomeA5cTest                         2262ms
+  PASS    llmClientBehaviourTest                       1211ms
+  PASS    noGroqForLocalCommandsTest                   1518ms
+  PASS    openAppHonestA5dTest                         5684ms
+  PASS    openAppSecurityTest                          453ms
+  PASS    openAppSmokeTest                             483ms
+  PASS    plannerDecisionAuditTest                     1302ms
+  PASS    plannerDesktopToolSelectionTest              1191ms
+  PASS    policyOwnershipTest                          622ms
+  PASS    registryRepairHonestyTest                    1450ms
+  PASS    repairRunTest                                6607ms
+  PASS    riskEngineTest                               1488ms
+  PASS    routeGoldenTest                              1360ms
+  PASS    routingA3Test                                1351ms
+  PASS    selfCheckTest                                1529ms
+  PASS    simpleNoGoalTest                             1304ms
+  PASS    skillLoadOrderTest                           2848ms
+  PASS    taskFailureHonestyTest                       1470ms
+  PASS    toolDiscoverabilityAuditTest                 1282ms
+  PASS    toolExecutionPipelineVerificationTest        1381ms
+  PASS    toolPerformanceBenchmarkTest                 1228ms
+  PASS    toolRegistryOptimizationTest                 1334ms
+  PASS    voiceContinuationFallbackTest                1376ms
+  PASS    voiceRouteMockTest                           1455ms
+  PASS    voiceYouTubeIntegrationTest                  1464ms
+  PASS    windowsToolsTest                             5189ms
+  PASS    workspaceRootPortabilityTest                 388ms
+
+=== 43 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 1 skipped ===
+
+Skipped (not run, so not passed):
+  - finalIntegrationSuiteTest: live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+
+Real failures:
+  - jarvisChromeTest: === Results: 117 passed, 12 failed ===
+        FAIL: "open edge": route open_app edge, which starts msedge.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":false,"target":"edge","resolvedTarget":"msedge.exe","platform":"linux","error":"edge needs Windows: \"msedge.exe\" is a Windows p
+        FAIL: "launch edge": route open_app edge, which starts msedge.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":false,"target":"edge","resolvedTarget":"msedge.exe","platform":"linux","error":"edge needs Windows: \"msedge.exe\" is a Windows
+        FAIL: "open firefox": route open_app firefox, which starts firefox.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"firefox","reply":"Opening firefox, sir."} {"success":false,"target":"firefox","resolvedTarget":"firefox.exe","platform":"linux","error":"firefox needs Windows: \"firefox
+        FAIL: "open firefox for me": route open_app firefox, which starts firefox.exe itself, not JARVIS's Chrome ({"type":"open_app","target":"firefox","reply":"Opening firefox, sir."} {"success":false,"target":"firefox","resolvedTarget":"firefox.exe","platform":"linux","error":"firefox needs Windows: \"
+        FAIL: "open microsoft edge": route open_app edge, which starts msedge.exe, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":false,"target":"edge","resolvedTarget":"msedge.exe","platform":"linux","error":"edge needs Windows: \"msedge.exe\" is a Window
+        FAIL: "Open Microsoft Edge": route open_app edge, which starts msedge.exe, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":false,"target":"edge","resolvedTarget":"msedge.exe","platform":"linux","error":"edge needs Windows: \"msedge.exe\" is a Window
+        FAIL: "launch microsoft edge for me": route open_app edge, which starts msedge.exe, not JARVIS's Chrome ({"type":"open_app","target":"edge","reply":"Opening edge, sir."} {"success":false,"target":"edge","resolvedTarget":"msedge.exe","platform":"linux","error":"edge needs Windows: \"msedge.exe\" is
+        FAIL: "open mozilla firefox": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome ({"type":"open_app","target":"firefox","reply":"Opening firefox, sir."} {"success":false,"target":"firefox","resolvedTarget":"firefox.exe","platform":"linux","error":"firefox needs Windows: \"firefo
+        FAIL: "Open Mozilla Firefox": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome ({"type":"open_app","target":"firefox","reply":"Opening firefox, sir."} {"success":false,"target":"firefox","resolvedTarget":"firefox.exe","platform":"linux","error":"firefox needs Windows: \"firefo
+        FAIL: "start mozilla firefox please": route open_app firefox, which starts firefox.exe, not JARVIS's Chrome ({"type":"open_app","target":"firefox","reply":"Opening firefox, sir."} {"success":false,"target":"firefox","resolvedTarget":"firefox.exe","platform":"linux","error":"firefox needs Windows: 
+        FAIL: open_app "mozilla firefox" (as the planner may call it) starts firefox.exe ({"success":false,"target":"mozilla firefox","resolvedTarget":"firefox.exe","platform":"linux","error":"mozilla firefox needs Windows: \"firefox.exe\" is a Windows program or page, and this computer is not running Win
+        FAIL: open_app "microsoft edge" (as the planner may call it) starts msedge.exe, not JARVIS's Chrome ({"success":false,"target":"microsoft edge","resolvedTarget":"msedge.exe","platform":"linux","error":"microsoft edge needs Windows: \"msedge.exe\" is a Windows program or page, and this computer is 
+        …
+      [GoalManager] ✅ Initialized. 0 historical goal(s) found.
+      [Orchestrator] 🎯 GoalManager initialized.
+      [Memory] Initialized. Short-term: 0 Long-term: 0
+      [Redis] Initial connection failed — running without cache.
+      [JarvisChrome] Starting Chrome (/opt/pw-browsers/chromium) with JARVIS's own profile (/tmp/jarvis-own-chrome-real-fU3Heu).
+      [JarvisChrome] JARVIS's Chrome answers on 127.0.0.1:36033.
+        PASS: started: the port is the one in the profile file (36033 / 36033)
+        PASS: cdpPort() finds it through the profile
+        PASS: a second request reuses it (1 start(s))
+        PASS: a page opens in it
+        (Chrome's process exited 0.0 s after its port closed)
+        PASS: close: the port no longer answers and Chrome exited (closed=true exit=0)
+        PASS: …and after that it is not running
+      [Redis] Cannot connect after 3 retries — running without cache.
+      === Results: 117 passed, 12 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

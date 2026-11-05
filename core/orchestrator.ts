@@ -681,8 +681,9 @@ export class JarvisOrchestrator {
           const opened = parseJson(result?.output ?? '');
           const chromeReason = !result?.success && opened?.['method'] === 'jarvis-chrome'
             ? String(opened?.['spoken'] ?? (result?.error ?? '').split(/(?<=\.)\s/)[0] ?? '') : '';
+          // Started, but nothing could check that it opened: said as such (phase A5d, owner Q1).
           const reply = result?.success
-            ? route.reply
+            ? (result.verification?.status === 'unverifiable' ? `I started ${route.target}, sir, but I can't check from here that it opened.` : route.reply)
             : chromeReason ? `I couldn't open ${route.target}, sir. ${chromeReason}`
             : failureReply(result, `I tried to open ${route.target} but encountered an issue, sir.`);
           this.speak(reply);

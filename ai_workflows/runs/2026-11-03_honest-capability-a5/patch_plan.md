@@ -69,3 +69,26 @@ Gate 1 for A5c: **approved** by the owner on 2026-11-03:
 - "Approve A5c (Recommended)", with the protected file `control/pcControlKernel.ts`;
 - Q1: "A failure: nothing closed (Recommended)";
 - Q2 and Q3: "A failure with the reason (Recommended)".
+
+## A5d in detail (open_app: TRA-19)
+
+Diagnosis D4, checked again at `1cab883`:
+- `openTarget` (`skills/automation/skill.ts:44-115`, protected) reports success 50 ms after spawning the launcher. It never waits for the launcher's exit, so a launcher that fails after that moment still counts as success. On Windows the launcher is `cmd /c start "" <target>`, elsewhere `xdg-open` or `open`.
+- `verifyOpenApp` (`core/verifiers.ts:372-389`) checks web pages and Chrome in JARVIS's Chrome on every OS, and on Windows checks that an app is running. It returns "unverifiable" for web pages opened outside JARVIS's Chrome, for `ms-settings:` pages, and for **everything off Windows**. (Corrected by review D5: an earlier draft also named `spotify:` and other URIs; on Windows Spotify is checked as a running app.) The registry keeps "unverifiable" as success (`core/toolRegistryV2.ts:1157-1159`), and the route says "Opening settings, sir." as if it were done.
+- Off Windows, the allow-list's Windows names (`notepad.exe`, `calc.exe`, `ms-settings:`, `shell:Downloads`, `firefox.exe`, `msedge.exe`, `chrome.exe`) are handed to `xdg-open`, which cannot open them. (`chrome` itself now goes to JARVIS's Chrome, A2.)
+
+| # | Change | Files (protected in **bold**) |
+|---|---|---|
+| P1 | The launcher's exit is waited for, up to a short limit (about 3 s). A non-zero exit, or a failure to start, is a failure with the reason. A launcher still running at the limit, as `xdg-open` can be, is "started". | **`skills/automation/skill.ts`** (`openTarget`) |
+| P2 | An open that cannot be checked is said as such. The result carries `checked: false`, and the route says "I started spotify, sir, but I can't check from here that it opened." instead of "Opening spotify, sir." Checked opens keep their reply. | **`skills/automation/skill.ts`**, **`core/orchestrator.ts`** (the `open_app` route reply only) |
+| P3 | Off Windows, a Windows-only target (`.exe`, `ms-settings:`, `shell:`) is refused with "This needs Windows" on a real open. A dry run still shows what it would resolve to, so the protected `openAppSmokeTest` is unchanged. | `security/openAppPolicy.ts` (a `windowsOnlyTarget` helper), **`skills/automation/skill.ts`** |
+| T | New `tests/openAppHonestA5dTest.ts`. The launcher is stood in for (exit 0, exit 1, failure to start, still running), so the test is the same on every OS. Also covered: the unchecked-open reply; a checked open unchanged; off-Windows refusal of Windows names on real opens only; dry runs unchanged; JARVIS's-Chrome opens unchanged. | tests |
+
+Owner choices for A5d:
+- Q1. An open JARVIS cannot check (Spotify, a Settings page, or any app when not on Windows): **say "I started X, sir, but I can't check from here that it opened."** (recommended), or keep "Opening X, sir."
+- Q2. Off Windows, Windows-only targets ("open notepad" on Linux): **refuse with "needs Windows"** (recommended), or try anyway as today. This does not affect your Windows PC.
+
+Gate 1 for A5d: **approved** by the owner on 2026-11-03:
+- "Approve A5d (Recommended)", with the protected files `skills/automation/skill.ts` and `core/orchestrator.ts` (the `open_app` route reply only);
+- Q1: "Say it wasn't checked (Recommended)";
+- Q2: "Refuse: needs Windows (Recommended)".

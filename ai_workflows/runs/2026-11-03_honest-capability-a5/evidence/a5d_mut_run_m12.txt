@@ -1,0 +1,4 @@
+M12 spawn bound at load (patched child_process missed) [openAppHonestA5dTest]: CAUGHT | FAIL: the real launcher calls child_process.spawn as patched after load (seen="")
+
+1/1 caught
+tree restored (md5): YES

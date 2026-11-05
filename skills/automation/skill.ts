@@ -13,13 +13,32 @@ import { securityAuditLogger } from '../../security/securityAuditLogger.js';
 import { approvalGate } from '../../security/approvalGate.js';
 import { childEnv } from '../../system/childEnv.js';
 import { getRequestSource } from '../../core/traceContext.js';
-import { resolveTargetUrl } from '../../security/openAppPolicy.js';
+import { resolveTargetUrl, windowsOnlyTarget } from '../../security/openAppPolicy.js';
 import { showInJarvisChrome } from '../../control/jarvisChrome.js';
 
 // open_app's allow-lists and checks live in security/openAppPolicy.ts (ARCH-04).
 export { resolveTargetUrl };
 
 type OpenAppSource = 'voice' | 'text' | 'llm';
+
+/**
+ * The launcher and the platform, so tests can stand in for them on any OS
+ * (phase A5d). Nothing else changes them.
+ */
+export const openAppDeps = {
+  // Calls the live binding, as the code did before: a patched child_process.spawn still applies.
+  // Always with the filtered environment (SEC-101).
+  spawn: ((cmd: string, args: string[], options: Record<string, unknown>) => spawn(cmd, args, { ...options, env: childEnv() } as any)) as (cmd: string, args: string[], options: Record<string, unknown>) => { on(event: string, fn: (...a: any[]) => void): unknown; unref(): void },
+  platform: (): NodeJS.Platform => process.platform,
+};
+
+/**
+ * How long the answer waits for the launcher to finish (phase A5d, TRA-19).
+ * A launcher that has handed the open on exits at once. One still running then
+ * (some `xdg-open`s stay with the app; on Windows, `start` may wait on a "cannot
+ * find" dialog) counts as started, and the verifier checks apps afterwards.
+ */
+const LAUNCHER_WAIT_MS = 3_000;
 
 /**
  * A web page in a new tab of JARVIS's Chrome, or (for "chrome") that Chrome
@@ -43,7 +62,7 @@ async function openInJarvisChrome(target: string, resolvedTarget: string): Promi
 
 function openTarget(target: string, resolvedTarget: string): Promise<string> {
   return new Promise((resolve) => {
-    const platform = process.platform;
+    const platform = openAppDeps.platform();
 
     console.log(`[open_app] target="${target}" resolved="${resolvedTarget}"`);
 
@@ -67,8 +86,19 @@ function openTarget(target: string, resolvedTarget: string): Promise<string> {
 
     console.log(`[open_app] platform=${platform} command=${cmd} args=${args.join(',')}`);
 
+    // The answer waits for the launcher's own outcome (phase A5d, TRA-19): it
+    // used to be "success" 50 ms after the spawn, whatever the launcher did next.
+    let settled = false;
+    const answer = (body: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(JSON.stringify({ target, resolvedTarget, platform, method, ...body }));
+    };
+    const timer = setTimeout(() => answer({ success: true, launcherStillRunning: true }), LAUNCHER_WAIT_MS);
+
     try {
-      const proc = spawn(cmd, args, {
+      const proc = openAppDeps.spawn(cmd, args, {
         detached: true,
         stdio: 'ignore',
         shell: false,
@@ -77,42 +107,14 @@ function openTarget(target: string, resolvedTarget: string): Promise<string> {
         ...(platform === 'win32' ? { windowsHide: true } : {})
       });
 
-      let errorOccurred = false;
-      proc.on('error', (err) => {
-        errorOccurred = true;
-        resolve(JSON.stringify({
-          success: false,
-          target,
-          resolvedTarget,
-          platform,
-          method,
-          error: err.message
-        }));
-      });
+      proc.on('error', (err: Error) => answer({ success: false, error: err.message }));
+      proc.on('exit', (code: number | null) => answer(code === 0 || code === null
+        ? { success: true }
+        : { success: false, error: `The launcher (${cmd}) exited with code ${code}, so ${target} may not have opened.` }));
 
       proc.unref();
-
-      // Give Node event loop a tick to register immediate spawn failures
-      setTimeout(() => {
-        if (!errorOccurred) {
-          resolve(JSON.stringify({
-            success: true,
-            target,
-            resolvedTarget,
-            platform,
-            method
-          }));
-        }
-      }, 50);
     } catch (err: any) {
-      resolve(JSON.stringify({
-        success: false,
-        target,
-        resolvedTarget,
-        platform,
-        method,
-        error: String(err)
-      }));
+      answer({ success: false, error: String(err) });
     }
   });
 }
@@ -180,6 +182,14 @@ export async function execute(args: Record<string, unknown>, signal?: AbortSigna
 
   if (/^https?:\/\//i.test(resolved.resolvedTarget) || resolved.resolvedTarget === 'chrome.exe') {
     return openInJarvisChrome(target, resolved.resolvedTarget);
+  }
+  // A Windows program or page cannot be opened elsewhere: say so, launch nothing
+  // (phase A5d, owner Q2). A dry run above still shows what it resolves to.
+  if (openAppDeps.platform() !== 'win32' && windowsOnlyTarget(resolved.resolvedTarget)) {
+    return JSON.stringify({
+      success: false, target, resolvedTarget: resolved.resolvedTarget, platform: openAppDeps.platform(),
+      error: `${target} needs Windows: "${resolved.resolvedTarget}" is a Windows program or page, and this computer is not running Windows.`,
+    });
   }
   return openTarget(target, resolved.resolvedTarget);
 }

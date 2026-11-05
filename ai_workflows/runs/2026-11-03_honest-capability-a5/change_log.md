@@ -123,3 +123,62 @@ The kernel counted any returned value as done. Controllers now **throw** a failu
 - `checkService` and the battery read ignore PowerShell's exit code: without PowerShell, or for a service that does not exist, the service check is an empty success and the battery says "not available". This was there before A5c, outside the owner's Q2 lists (review C14).
 - A passing PowerShell failure while kill or restart looks up the process is now final, not retried once (it matches "could not be read"). The reason is kept (review round 2, b).
 - Restarting an app with the window list unread now fails with the reason instead of opening a second copy (review C15).
+
+---
+
+# Change Log — sub-phase A5d (open_app: TRA-19)
+
+Base commit: `1cab883`. Owner's Gate 1, 2026-11-03:
+- "Approve A5d (Recommended)", with the protected files `skills/automation/skill.ts` and `core/orchestrator.ts` (the `open_app` route reply only);
+- Q1: "Say it wasn't checked (Recommended)";
+- Q2: "Refuse: needs Windows (Recommended)".
+
+## The change
+
+| File | Change |
+|---|---|
+| `skills/automation/skill.ts` (protected) | `openTarget` waits for the launcher's own outcome, for up to 3 s (P1). Exit 0 is a success, and so is a launcher ended by a signal (exit code null; Linux and macOS only), as before (review D2). A non-zero exit is a failure: "The launcher (cmd) exited with code N, so X may not have opened." A failure to start is a failure with its reason. A launcher still running after 3 s is "started" (`launcherStillRunning: true`). Before, the answer was success 50 ms after the spawn, whatever the launcher did next. On a real open off Windows, a Windows-only target is refused with "X needs Windows: … this computer is not running Windows.", and nothing is launched (P3, Q2). A dry run returns earlier, so it still shows the resolution. The launcher and the platform come through `openAppDeps`, so tests can stand in for them. Its `spawn` calls `child_process.spawn` when called, as the code did before, so a patch made after load still applies. It always passes the filtered environment, `childEnv()` (SEC-101), which the caller already passes too. |
+| `security/openAppPolicy.ts` | `windowsOnlyTarget(resolvedTarget)`: a `.exe`, an `ms-settings:` page or a `shell:` folder. |
+| `core/orchestrator.ts` (protected; the `open_app` route reply only) | On the voice/text route, a success whose check was "unverifiable" says "I started X, sir, but I can't check from here that it opened." (P2, Q1). Checked opens keep "Opening X, sir.", and failures keep their replies. |
+
+## Tests
+
+| File | Change |
+|---|---|
+| `tests/openAppHonestA5dTest.ts` (new) | 16 checks. The launcher (exit 0, exit 1 after 300 ms, a failure to start after 120 ms, still running) and the platform are stood in for, so the test is the same on Windows and Linux. Off Windows: `notepad` and `settings` refused with nothing launched; a dry run unchanged; `code` still launched; on Windows, `notepad` launched. The route: "open settings" says it could not check; a failed launch is not "Opening"; "open youtube" in JARVIS's Chrome (a fake DevTools server) still says "Opening youtube, sir.". The real launcher goes through a `child_process.spawn` patched after load (added when mutant M12 was missed). |
+| `tests/boundary-doubles.json` | An entry for the new test (`installFakeTts`). |
+| `tests/jarvisChromeTest.ts` | Its "browser named explicitly" checks are about Windows names (`msedge.exe`, `firefox.exe`), and Q2 refused them on Linux (12 checks failed, `evidence/a5d_related_tests.txt`). They now run with the platform stood in as Windows. One check was added: off Windows, "edge" is refused with "needs Windows" and nothing started. The real platform is restored afterwards. |
+
+## Evidence
+
+| Check | Result | File |
+|---|---|---|
+| New test on the base code | 5 passed, **10 failed** (of the first 15 checks) | `evidence/a5d_old_code_checks.txt` |
+| New test after the change | **15/15**, then **16/16** with the M12 check | `evidence/a5d_new_code_checks.txt`, `evidence/a5d_new_code_checks_16.txt` |
+| First related run | `jarvisChromeTest` failed 12 checks (Q2 on Linux); updated as above | `evidence/a5d_related_tests.txt` |
+| `jarvisChromeTest`, `openAppHonestA5dTest`, `openAppSmokeTest` after the update | 3/3 pass | `evidence/a5d_updated_tests.txt` |
+| Typecheck | 0 errors | `evidence/a5d_typecheck.txt` |
+| Mutation check, 12 mutants | **11/12 caught** at first. M12 (spawn bound at load) was missed, because `voiceRouteMockTest` patches `child_process` before it loads the skill. After the added check: **12/12 caught**, tree restored (md5) | `evidence/a5d_mut.py`, `evidence/a5d_mut_run.txt`, `evidence/a5d_mut_run_m12.txt` |
+| First full suite | 212 passed, **1 failed**: `childEnvCoverageTest` found the new wrapper's `spawn` call without `env` (`skill.ts:30`). The wrapper now always passes `childEnv()`; the 5 affected tests then passed | (overwritten by the run below) |
+| Mutation check after that, 13 mutants (M13: the wrapper drops the filtered environment) | **13/13 caught**, tree restored (md5) | `evidence/a5d_mut_run_r1.txt` |
+| Related tests (the 41 that touch `open_app`, the automation skill or its policy, and `boundaryDoublesTest`, `routeGoldenTest`, `docsHygieneTest`, `kernelOutcomeA5cTest`, `scenarioIntegrationTest`, `verifyAfterActTest`, `childEnvCoverageTest`) | **47 passed, 0 failed**, 1 skipped (`finalIntegrationSuiteTest`, live provider test). A first run stopped on a wrong test name (`verifierTest`) | `evidence/a5d_related_tests_final.txt` |
+| Full suite | **213 passed, 0 failed**, 1 blocked (no pygame), 9 skipped | `evidence/a5d_full_suite.txt` |
+
+## Deviations from the plan
+
+- P2 uses the registry's existing `verification.status` ("unverifiable") in the route, not a new `checked: false` field. The verifier already decides what can be checked, so a second flag could disagree with it.
+- `jarvisChromeTest` was changed (above). It was not in the plan.
+- `openAppDeps.spawn` calls the live `child_process.spawn` binding, not a copy taken at load, and always passes `childEnv()` (found by `childEnvCoverageTest` in the first full suite).
+
+## Known limits (recorded, not changed)
+
+- On Windows, "open downloads" (`shell:Downloads`) is checked as an app called "downloads". The matcher also tries window titles, so an Explorer window titled "Downloads" probably passes; if it does not, the registry marks a folder that did open as VERIFICATION_FAILED. Not checked on the PC yet. This was there before A5d (`core/verifiers.ts`, `verifyOpenApp`; review D5).
+- A launcher that hangs adds up to 3 s before the answer. Within the 20 s sandbox budget (review D9).
+- On Windows, `cmd /c start` for a program that is not installed probably waits on a "Windows cannot find" dialog. After 3 s that counts as "started"; for apps, the verifier's check afterwards (up to 15 s) should turn it into a failure. Not checked on the PC yet (review D3).
+- Exit 0 from `cmd /c start` means the launch was handed to Windows, not that the app's window appeared. On Windows, apps are still checked afterwards by the verifier; Settings pages are not, and now say so.
+- Off Windows, every open outside JARVIS's Chrome is unchecked, so on the voice/text route it says "I started X, sir, but I can't check from here that it opened."
+- **Only the voice/text route says this.** An open that the planner (the LLM path) chooses still says "Opening X, sir." when it could not be checked (`core/orchestrator.ts`, the simple-reply tools; review D1). Gate 1 limited the orchestrator change to the route reply. A follow-up would apply Q1 there too.
+- Off Windows, "open cmd" asks for approval first and only then refuses with "needs Windows"; the audit log records the request as allowed although nothing started. `fullControlLimitTest` expects the approval prompt on Linux (review D4).
+- `control_app open` (`control/appController.ts`) has its own launcher. It still reports success at once and has no off-Windows refusal. It was outside A5d (review D9).
+- A desktop check that times out or cannot run is also "unverifiable", so a real app open can get the "I started…" reply (review D6).
+- "Full suite green" is on Linux. Windows CI runs after a push.

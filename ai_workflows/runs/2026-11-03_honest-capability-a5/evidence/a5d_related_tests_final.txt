@@ -1,0 +1,63 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=backgroundResearchTest,browserControlAgentTest,delegationRoutingTest,desktopControlTest,deterministicCommandRouteTest,dispatchAuthzTest,episodicPersistenceTest,errorHandlingAuditTest,executionDispatchAuditTest,finalIntegrationSuiteTest,fullControlLimitTest,fullSystemIntegrationTest,honestReadToolsA5aTest,issueStoreTest,jarvisAgentIntegrationTest,jarvisChromeTest,llmClientBehaviourTest,noGroqForLocalCommandsTest,openAppHonestA5dTest,openAppSecurityTest,openAppSmokeTest,plannerDecisionAuditTest,plannerDesktopToolSelectionTest,policyOwnershipTest,registryRepairHonestyTest,repairRunTest,riskEngineTest,routingA3Test,selfCheckTest,simpleNoGoalTest,skillLoadOrderTest,taskFailureHonestyTest,toolDiscoverabilityAuditTest,toolExecutionPipelineVerificationTest,toolPerformanceBenchmarkTest,toolRegistryOptimizationTest,voiceContinuationFallbackTest,voiceRouteMockTest,voiceYouTubeIntegrationTest,windowsToolsTest,workspaceRootPortabilityTest,boundaryDoublesTest,routeGoldenTest,docsHygieneTest,kernelOutcomeA5cTest,scenarioIntegrationTest,verifyAfterActTest,childEnvCoverageTest
+
+
+=== JARVIS test suite — 48 file(s) ===
+
+  PASS    backgroundResearchTest                       1487ms
+  PASS    boundaryDoublesTest                          374ms
+  PASS    browserControlAgentTest                      8941ms
+  PASS    childEnvCoverageTest                         869ms
+  PASS    delegationRoutingTest                        1469ms
+  PASS    desktopControlTest                           10988ms
+  PASS    deterministicCommandRouteTest                1501ms
+  PASS    dispatchAuthzTest                            1224ms
+  PASS    docsHygieneTest                              1320ms
+  PASS    episodicPersistenceTest                      507ms
+  PASS    errorHandlingAuditTest                       1536ms
+  PASS    executionDispatchAuditTest                   3330ms
+  SKIP  finalIntegrationSuiteTest                    live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  PASS    fullControlLimitTest                         572ms
+  PASS    fullSystemIntegrationTest                    1288ms
+  PASS    honestReadToolsA5aTest                       3530ms
+  PASS    issueStoreTest                               743ms
+  PASS    jarvisAgentIntegrationTest                   4045ms
+  PASS    jarvisChromeTest                             13642ms
+  PASS    kernelOutcomeA5cTest                         2307ms
+  PASS    llmClientBehaviourTest                       1337ms
+  PASS    noGroqForLocalCommandsTest                   1598ms
+  PASS    openAppHonestA5dTest                         5831ms
+  PASS    openAppSecurityTest                          538ms
+  PASS    openAppSmokeTest                             442ms
+  PASS    plannerDecisionAuditTest                     1357ms
+  PASS    plannerDesktopToolSelectionTest              1421ms
+  PASS    policyOwnershipTest                          718ms
+  PASS    registryRepairHonestyTest                    1606ms
+  PASS    repairRunTest                                6774ms
+  PASS    riskEngineTest                               1546ms
+  PASS    routeGoldenTest                              1479ms
+  PASS    routingA3Test                                1567ms
+  PASS    scenarioIntegrationTest                      45039ms
+  PASS    selfCheckTest                                1501ms
+  PASS    simpleNoGoalTest                             1258ms
+  PASS    skillLoadOrderTest                           2970ms
+  PASS    taskFailureHonestyTest                       1466ms
+  PASS    toolDiscoverabilityAuditTest                 1442ms
+  PASS    toolExecutionPipelineVerificationTest        1573ms
+  PASS    toolPerformanceBenchmarkTest                 1305ms
+  PASS    toolRegistryOptimizationTest                 1413ms
+  PASS    verifyAfterActTest                           6724ms
+  PASS    voiceContinuationFallbackTest                1451ms
+  PASS    voiceRouteMockTest                           1464ms
+  PASS    voiceYouTubeIntegrationTest                  1475ms
+  PASS    windowsToolsTest                             5098ms
+  PASS    workspaceRootPortabilityTest                 411ms
+
+=== 47 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 1 skipped ===
+
+Skipped (not run, so not passed):
+  - finalIntegrationSuiteTest: live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+
+No unexpected failures.
+EXIT=0

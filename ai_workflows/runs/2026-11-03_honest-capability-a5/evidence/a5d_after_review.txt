@@ -1,0 +1,19 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=openAppHonestA5dTest,jarvisChromeTest,openAppSmokeTest,childEnvCoverageTest,voiceRouteMockTest,fullControlLimitTest,docsHygieneTest,boundaryDoublesTest
+
+
+=== JARVIS test suite — 8 file(s) ===
+
+  PASS    boundaryDoublesTest                          392ms
+  PASS    childEnvCoverageTest                         810ms
+  PASS    docsHygieneTest                              1191ms
+  PASS    fullControlLimitTest                         480ms
+  PASS    jarvisChromeTest                             13291ms
+  PASS    openAppHonestA5dTest                         5630ms
+  PASS    openAppSmokeTest                             432ms
+  PASS    voiceRouteMockTest                           1429ms
+
+=== 8 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

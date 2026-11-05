@@ -58,6 +58,11 @@ const APPROVAL_REQUIRED_APPS: Record<string, string> = {
 };
 
 const BLOCKED_FILE_EXTENSION_RE = /\.(bat|cmd|ps1|vbs|js|exe)$/i;
+
+/** A target only Windows can open: a program file, a Settings page or a shell folder (phase A5d, owner Q2). */
+export function windowsOnlyTarget(resolvedTarget: string): boolean {
+  return /\.exe$/i.test(resolvedTarget) || /^(ms-settings|shell):/i.test(resolvedTarget);
+}
 const SHELL_METACHAR_RE = /[&|^%><;]/;
 const WINDOWS_ABSOLUTE_PATH_RE = /^[a-zA-Z]:[\\/]/;
 const POSIX_ABSOLUTE_PATH_RE = /^\//;
