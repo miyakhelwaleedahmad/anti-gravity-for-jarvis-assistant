@@ -240,7 +240,44 @@ Base commit: `2602948`. Owner's Gate 1, 2026-11-05:
 
 - The "last tool call" item can still be `self_check` itself, which counts as verified. The registry records every tool call; changing that is in the protected `core/toolRegistryV2.ts`.
 - The "service tool_registry" item is still a count of loaded tools.
-- On Windows, the full self-check starts one `powershell.exe` for the version query, which takes up to 5 s. `selfCheckTest`'s four full-mode calls do this on Windows CI too (review B4); no check there depends on the answer. It does not use the persistent PowerShell session that reads windows, so a stuck session there is not seen by this check.
+- On Windows, the full self-check starts one `powershell.exe` for the version query, which takes up to 5 s. (`selfCheckTest`'s full-mode calls did this on Windows CI too, review B4, and it did make a check fail there. Fixed after the push with a stand-in: see "After the push" below.) It does not use the persistent PowerShell session that reads windows, so a stuck session there is not seen by this check.
 - `JARVIS_CDP_PORT` set and answering is VERIFIED even when that Chrome is the owner's own, not JARVIS's.
 - A non-zero PowerShell exit puts the whole error message, with the command and line breaks, into the details, and says "did not answer" although PowerShell did answer, with an error (review B8, B10).
 - "Full suite green" is on Linux. Windows CI runs after a push. The PowerShell VERIFIED path has run only with a stand-in here; the real query is checked on Windows only.
+
+## After the push: Windows CI on `d9d7820` (test-only fix)
+
+CI run 42033994044 (`d9d7820`) failed on the Windows job, and the owner's rule stopped further changes until they were reported. The owner then approved, on 2026-11-05:
+- a test-only fix in `tests/selfCheckTest.ts`: a fast PowerShell stand-in, and comparing the ledger's outcomes instead of its time text;
+- one re-run of the failed Windows job.
+
+| Attempt | `selfCheckTest` | `scenarioIntegrationTest` | `browserControlAgentTest` | `selfCheckA5bTest` | Total |
+|---|---|---|---|---|---|
+| 1 (job 127267265678) | **FAIL**: "no issue, file or ledger entry changed" | **FAIL**, 4 checks: the dev server's restart reported `start_server: false`, and 3 checks after it | pass | pass (39 checks, the real PowerShell query included) | 216 passed, 2 failed |
+| 2, the one re-run (job 127296040980), same commit | pass (4.8 s; the clock did not tick over) | pass | **FAIL**: "click: the page changed, and the check says so (undefined)" | pass | 217 passed, 1 failed |
+
+### `selfCheckTest`: caused by A5b, fixed (test only)
+
+- **Cause.** The read-only check compared `JSON.stringify(healthLedger.all())` before and after four self-checks. The ledger's text includes "worked, N s ago", rounded to the second. On Windows, A5b's full self-check started the real `powershell.exe`. Its time was not measured; the whole test took 2.8 s. That start moved the rounded "N s ago", although nothing was recorded. The CI log does not show which of the check's three comparisons failed. The reproduction shows that the ledger text alone is enough to fail it. Off Windows the PowerShell item is BLOCKED and nothing starts, so Linux passed. Review B4 had flagged this real start, and it was recorded as harmless. That was wrong.
+- **Reproduced on Linux** with the committed test plus one edit, in the read-only section's self-check call only: `platform: () => 'win32', powershell: () => new Promise((r) => setTimeout(() => r({ ok: true, version: '5.1' }), 1500))`. The same check fails, 76 passed, 1 failed (`evidence/a5b_ci_fix_reproduce.txt`, which holds the output only). The test file was restored afterwards.
+- **Fix** (`tests/selfCheckTest.ts`; no production code):
+  - a `fastHost` stand-in (platform `win32`, a PowerShell that answers at once, no Chrome) in the four full-mode calls, so the test never starts PowerShell or reads the host;
+  - the read-only check compares `healthLedger.history(p)` for every pipeline, that is what was recorded, not the clock-dependent text.
+- **Results:**
+  - `selfCheckTest` 77/77 (`evidence/a5b_ci_fix_selfchecktest.txt`).
+  - A check of the fix (`evidence/a5b_ci_fix_mut.py`, `a5b_ci_fix_mut_run.txt`), 4/4 as expected, tree restored (md5):
+    - C1: PowerShell answering after 1.5 s still passes;
+    - M1 (the repair report records a ledger outcome) and M2 (it records an issue) fail exactly the read-only check;
+    - M3 (the stand-in removed) passes. Its label in the script, "fail-on-windows-only", is wrong (review W1): with the `history()` comparison it would pass on Windows too. `fastHost` only keeps the test from starting PowerShell or reading the host, and no check enforces that.
+  - Typecheck 0 errors.
+  - Related tests 30 passed, 0 failed, the same 2 environment (`evidence/a5b_ci_fix_related_tests.txt`).
+  - Full suite 214 passed, 0 failed, 1 blocked (no pygame), 9 skipped, exit 1 for the blocked test (`evidence/a5b_ci_fix_full_suite.txt`).
+  - All of this is on Linux, with Windows simulated by a slow PowerShell stand-in. The one approved re-run (attempt 2) ran on `d9d7820`, without the fix. The fix runs on Windows only with the next push's CI (review W4).
+  - Known limit (review W6): with stand-ins in every full-mode call, no test checks that the real Chrome and PowerShell readers write nothing. Reading the code, they do not (`jarvisChrome.running()`, `execFile`).
+
+### `scenarioIntegrationTest` and `browserControlAgentTest`: not caused by A5b (recorded, not fixed)
+
+- On the same commit, each failed in one attempt and passed in the other (`evidence/a5b_ci_windows_attempt1.txt`, `a5b_ci_windows_attempt2.txt`). A5b does not touch the dev-server, diagnosis, restart or browser-click code. Both tests passed on Windows CI for A5d (run 42010191425).
+- `scenarioIntegrationTest` (attempt 1): after "Why isn't my application working?", the restart of the crashed api server returned `start_server: false`, while the reply said "I started it again; it answers now". The 3 later checks (stop asked, cancelled, approved) depend on that step. The CI log shows only the last lines, so the reason for `false` is not known. It did not fail again in the re-run.
+- `browserControlAgentTest` (attempt 2): the click on "Show details" returned no verification at all (`undefined`). The log does not show why.
+- Both depend on timing on the Windows runner: real Chrome, and a server restart. They are recorded as open Windows-CI issues for a later phase. Neither is fixed or skipped here.

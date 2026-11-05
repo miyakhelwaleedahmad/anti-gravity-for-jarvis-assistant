@@ -1,0 +1,7 @@
+C1 PowerShell answers after 1.5 s (as a real start on Windows): expected pass, test PASSED -> OK | 
+M1 the repair report records a ledger outcome: expected fail, test FAILED -> OK | ❌ no issue, file or ledger entry changed
+M2 the repair report records an issue: expected fail, test FAILED -> OK | ❌ no issue, file or ledger entry changed
+M3 the full self-check starts the real PowerShell again (stand-in dropped): expected fail-on-windows-only, test PASSED -> OK | 
+
+4/4 as expected
+tree restored (md5): YES

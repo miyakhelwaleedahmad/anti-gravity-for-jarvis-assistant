@@ -196,3 +196,25 @@ Every round-1 fix was confirmed in the code. Nothing was broken by them, and the
 |---|---|---|---|
 | B9 | low | The review-driven behaviour changes (Chrome BLOCKED with autostart off, refining Q2; PowerShell timeout NOT_VERIFIED; the new names) were not listed as deviations; the Tests row described the 30-check version | **Fixed** in `change_log.md`. The owner confirmed the Q2 refinement (keep BLOCKED) on 2026-11-05 |
 | B10 | info | A non-zero PowerShell exit is said as "did not answer", with the full multi-line error | Recorded (known limit) |
+
+## After the push: the Windows CI test fix
+
+Reviewer: a separate agent session (general-purpose), read-only. Not a human.
+
+### Round 1 — CHANGES REQUIRED (records only)
+
+The reviewer confirmed:
+- the cause: the ledger text is rounded "N s ago". Reproduced independently in a scratch copy with Windows simulated: the committed test fails the read-only check, and the fixed test passes 77/77;
+- the fix: `fastHost` is in the four full-mode calls; comparing `history()` is stricter than the old text check, not weaker; no production code changed;
+- the typing: 0 errors, and a wrong stand-in is caught;
+- `win32` in the stand-in changes no assertion's meaning;
+- the other two Windows failures (`scenarioIntegrationTest`, `browserControlAgentTest`) are not from A5b. They run before the self-check tests in the runner's sorted order, never call a self-check, the health probes or the dashboard, and passed in A5d's CI. The attempt excerpts match both job logs.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| W1 | low | M3 was labelled "fail-on-windows-only"; it would pass on Windows too, and nothing enforces that PowerShell is not started | **Fixed** in `change_log.md` (the script's label is left, and said to be wrong) |
+| W2 | low | "about 1–3 s" and "0 s ago became 2 s ago" were not measured on CI; the log does not show which comparison failed | **Fixed**: reworded |
+| W3 | low | A known-limits line still said `selfCheckTest` starts PowerShell on Windows CI with no check depending on it | **Fixed**: amended, pointing to the new section |
+| W4 | low | The fix has not run on Windows; the re-run was on `d9d7820` | **Fixed**: stated; Windows confirmation comes with the next push's CI |
+| W5 | info | The reproduction evidence did not record the edit used | **Fixed**: the edit is in `change_log.md` |
+| W6 | info | No test checks that the real Chrome and PowerShell readers write nothing | Recorded (known limit) |

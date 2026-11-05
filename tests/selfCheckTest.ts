@@ -35,9 +35,14 @@ process.env['JARVIS_CHROME_PROFILE'] = path.join(root, 'no-chrome-profile');
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const { matchDeterministicCommand } = await import('../core/deterministicRoutes.js');
-const { healthLedger } = await import('../monitoring/healthLedger.js');
+const { healthLedger, LEDGER_PIPELINES } = await import('../monitoring/healthLedger.js');
 const { issueStore } = await import('../core/issueStore.js');
 const { healthCheck, repairReport, investigateStuck, captureInFlight, overclaims, runSelfCheck } = await import('../core/selfCheck.js');
+// The full self-check also reads Chrome and PowerShell (phase A5b). Stand-ins, so this test never
+// starts PowerShell or reads the host (review B4; on Windows CI a real start made the read-only check flaky).
+const fastHost = { platform: () => 'win32' as NodeJS.Platform, powershell: async () => ({ ok: true as const, version: '5.1 (stand-in)' }), chrome: async () => ({}) };
+// What the ledger recorded, without its "N s ago" text, which changes with the clock.
+const ledgerOutcomes = () => JSON.stringify(Object.values(LEDGER_PIPELINES).map((p) => healthLedger.history(p)));
 
 let passed = 0;
 let failed = 0;
@@ -118,10 +123,10 @@ ok('a worked outcome is VERIFIED', byName('speech output')?.state === 'VERIFIED'
 ok('a failed one is FAILING, named in the reply', byName('language model')?.state === 'FAILING' && /1 failing \(language model\)/.test(r.spoken), r.spoken);
 r = await healthCheck(false, { connectedRoles: () => ['stt', 'wakeword'] });
 ok('a service that is not connected: BLOCKED, not "not verified"', byName('speech output')?.state === 'BLOCKED', JSON.stringify(byName('speech output')));
-r = await healthCheck(true, { connectedRoles: allRoles, services: async () => [{ name: 'redis', status: 'online' }, { name: 'vector', status: 'loading' }] });
+r = await healthCheck(true, { ...fastHost, connectedRoles: allRoles, services: async () => [{ name: 'redis', status: 'online' }, { name: 'vector', status: 'loading' }] });
 ok('full: service probes are included', byName('service redis')?.state === 'VERIFIED' && byName('service vector')?.state === 'NOT_VERIFIED');
 ok('full: says what is not observed at all', r.details.some((l) => /Not observed by these checks/.test(l)));
-r = await healthCheck(true, { connectedRoles: allRoles, services: async () => { throw new Error('probe timed out'); } });
+r = await healthCheck(true, { ...fastHost, connectedRoles: allRoles, services: async () => { throw new Error('probe timed out'); } });
 ok('full: a failed probe is SKIPPED with the reason, not dropped', byName('service probes')?.state === 'SKIPPED' && /timed out/.test(byName('service probes')!.detail));
 issueStore.recordOccurrence({ component: 'tool:open_app', tool: 'open_app', message: 'Command timed out after 5000 ms' });
 r = await healthCheck(false, { connectedRoles: allRoles });
@@ -136,7 +141,7 @@ for (const p of ['brain_to_tts', 'stt_to_brain', 'wake_to_stt', 'brain_to_llm', 
 const tmpStore = issueStore.active().map((i) => i.issueId);
 for (const id of tmpStore) issueStore.resolve(id, { passed: true, evidence: 'open_app ran in 2 s' });
 const replies: string[] = [];
-for (const mode of ['quick', 'full', 'report', 'stuck'] as const) replies.push((await runSelfCheck(mode, { connectedRoles: allRoles, services: async () => [{ name: 'redis', status: 'online' }], goals: () => [], agents: () => ({ running: 0, waiting: 0, agents: [] }), snapshot: undefined } as never)).spoken);
+for (const mode of ['quick', 'full', 'report', 'stuck'] as const) replies.push((await runSelfCheck(mode, { ...fastHost, connectedRoles: allRoles, services: async () => [{ name: 'redis', status: 'online' }], goals: () => [], agents: () => ({ running: 0, waiting: 0, agents: [] }), snapshot: undefined } as never)).spoken);
 // Phase A5b: the permission level is said after the count.
 ok('everything observed working: the reply counts, it does not claim', /^Self-check: 5 of 5 checks verified\. No open issues are recorded\. Permission: [^.]+\.$/.test(replies[0] ?? ''), replies[0]);
 ok('no reply in any mode over-claims', replies.every((t) => !overclaims(t)), replies.join(' | '));
@@ -146,10 +151,10 @@ console.log('\n--- 4. Read-only ---');
 issueStore.flush();
 const dataDir = path.join(root, 'data', 'repairs');
 const listing = () => fs.readdirSync(dataDir).map((f) => `${f}:${fs.statSync(path.join(dataDir, f)).size}:${fs.statSync(path.join(dataDir, f)).mtimeMs}`).sort().join('|');
-const before = { files: listing(), issues: JSON.stringify(issueStore.all()), ledger: JSON.stringify(healthLedger.all()) };
-for (const mode of ['quick', 'full', 'report', 'stuck'] as const) await runSelfCheck(mode, { connectedRoles: allRoles, services: async () => [], goals: () => [], agents: () => ({ running: 0, waiting: 0, agents: [] }) });
+const before = { files: listing(), issues: JSON.stringify(issueStore.all()), ledger: ledgerOutcomes() };
+for (const mode of ['quick', 'full', 'report', 'stuck'] as const) await runSelfCheck(mode, { ...fastHost, connectedRoles: allRoles, services: async () => [], goals: () => [], agents: () => ({ running: 0, waiting: 0, agents: [] }) });
 issueStore.flush();
-ok('no issue, file or ledger entry changed', listing() === before.files && JSON.stringify(issueStore.all()) === before.issues && JSON.stringify(healthLedger.all()) === before.ledger);
+ok('no issue, file or ledger entry changed', listing() === before.files && JSON.stringify(issueStore.all()) === before.issues && ledgerOutcomes() === before.ledger);
 
 // ── Repair report ────────────────────────────────────────────────────────────
 const rep = await repairReport({});
