@@ -1,0 +1,21 @@
+Full self-check: 1 of 14 checks verified, 5 failing (service vector_memory, service llm, service stt, service tts, service wake_word), 5 blocked (speech output, speech recognition, wake word, Chrome for web pages, PowerShell for desktop control), 3 not verified yet. No open issues are recorded. Permission: level 1, safe control.
+Full self-check (read-only; nothing was changed):
+Permission: level 1, safe control
+  [BLOCKED] speech output: speech output: its service (tts) is not connected
+  [BLOCKED] speech recognition: speech recognition: its service (stt) is not connected
+  [BLOCKED] wake word: wake word: its service (wakeword) is not connected
+  [NOT_VERIFIED] language model: language model: not verified yet (no outcome observed this run)
+  [VERIFIED] last tool call: list_capabilities ran 0 s ago; not a check of what the tools can do
+  [NOT_VERIFIED] service redis: Redis is not connected; JARVIS uses its in-memory cache instead
+  [FAILING] service vector_memory: probe timed out
+  [FAILING] service llm: Groq: missing GROQ_API_KEY
+  [NOT_VERIFIED] service tool_registry: no tools registered yet
+  [FAILING] service stt: not connected
+  [FAILING] service tts: not connected
+  [FAILING] service wake_word: not connected
+  [BLOCKED] Chrome for web pages: not running, and JARVIS_CHROME_AUTOSTART is off, so JARVIS will not start it (Chrome found: /usr/bin/google-chrome)
+  [BLOCKED] PowerShell for desktop control: desktop control needs Windows, and this computer is not running Windows
+Open issues: 0
+Not observed by these checks: failures outside tool calls, speech, the wake word, the language model,
+the Python services and goal tasks; and a pipeline marked "not verified" has had no outcome this run.
+Chrome and PowerShell are checked only for whether they answer, not for every action that uses them.

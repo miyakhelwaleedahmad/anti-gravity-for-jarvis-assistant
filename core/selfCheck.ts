@@ -19,7 +19,7 @@
  * looked at (tests/selfCheckTest.ts holds every reply to that rule).
  */
 
-import { healthLedger, ledgerLabel, type LedgerStatus } from '../monitoring/healthLedger.js';
+import { healthLedger, ledgerLabel, LEDGER_PIPELINES, type LedgerStatus } from '../monitoring/healthLedger.js';
 import { issueStore, type Issue } from './issueStore.js';
 import { getRequestText, getTraceId } from './traceContext.js';
 
@@ -56,10 +56,29 @@ export interface InFlightSnapshot {
   approval?: string;
 }
 
+/** What the full self-check reads about Chrome (phase A5b). Reading it starts nothing. */
+export interface ChromeFacts {
+  /** JARVIS's Chrome (or the one on JARVIS_CDP_PORT), running and answering. */
+  running?: { port: number };
+  /** JARVIS_CDP_PORT, when the owner set it. */
+  fixedPort?: number;
+  /** Where Chrome is installed, if it was found. */
+  installedPath?: string;
+  /** JARVIS_CHROME_AUTOSTART is off: JARVIS does not start its Chrome (review B1). */
+  autostartOff?: boolean;
+}
+
+/** `slow`: no answer within the wait, which is not proof that PowerShell cannot work (review B3). */
+export type PowerShellAnswer = { ok: true; version: string } | { ok: false; reason: string; slow?: boolean };
+
 /** The parts of JARVIS a check reads; real ones by default, stand-ins in tests. */
 export interface SelfCheckDeps {
   connectedRoles?: () => string[];
-  services?: () => Promise<{ name: string; status: string; detail?: string }[]>;
+  services?: () => Promise<{ name: string; status: string; detail?: string; fallback?: boolean }[]>;
+  chrome?: () => Promise<ChromeFacts>;
+  powershell?: () => Promise<PowerShellAnswer>;
+  platform?: () => NodeJS.Platform;
+  permission?: () => { level: number; remainingSeconds: number | null } | Promise<{ level: number; remainingSeconds: number | null }>;
   goals?: () => { id: string; title?: string; objective?: string; status: string; blockedReason?: string; waitingFor?: string }[];
   agents?: () => { running: number; waiting: number; agents: { name: string; status: string; task?: string; progress?: string }[] };
   latestRun?: () => { runId: string; status: string; issueId?: string; startedAt: string; finishedAt?: string; summary: string; items?: CheckItem[] } | undefined;
@@ -74,16 +93,112 @@ export function noteInFlight(snapshot: InFlightSnapshot): void {
   lastSnapshot = snapshot;
 }
 
-function ledgerItem(s: LedgerStatus): CheckItem {
-  const name = ledgerLabel(s.pipeline);
-  if (s.state === 'healthy') return { name, state: 'VERIFIED', detail: s.detail };
-  if (s.state === 'degraded' || s.state === 'failing') return { name, state: s.blockedBy ? 'BLOCKED' : 'FAILING', detail: s.detail };
-  return { name, state: 'NOT_VERIFIED', detail: s.detail };
+/** The name a ledger pipeline is said by; the tools pipeline is the last tool call (phase A5b, TRA-08). */
+function pipelineName(p: LedgerStatus['pipeline']): string {
+  return p === LEDGER_PIPELINES.tools ? 'last tool call' : ledgerLabel(p);
 }
 
-function serviceItem(s: { name: string; status: string; detail?: string }): CheckItem {
+function ledgerItem(s: LedgerStatus, now = Date.now()): CheckItem {
+  const name = pipelineName(s.pipeline);
+  let detail = s.detail;
+  if (s.pipeline === LEDGER_PIPELINES.tools) {
+    // What ran and when, not "working" (review B2); the note only where it could be misread.
+    detail = s.state === 'healthy' && s.last
+      ? `${s.last.cause} ${Math.round((now - s.last.at) / 1000)} s ago; not a check of what the tools can do`
+      : s.detail.replace(/^tools: /, '');
+  }
+  if (s.state === 'healthy') return { name, state: 'VERIFIED', detail };
+  if (s.state === 'degraded' || s.state === 'failing') return { name, state: s.blockedBy ? 'BLOCKED' : 'FAILING', detail };
+  return { name, state: 'NOT_VERIFIED', detail };
+}
+
+function serviceItem(s: { name: string; status: string; detail?: string; fallback?: boolean }): CheckItem {
+  // Redis on the in-memory cache works by design, but it is not Redis (phase A5b, owner Q1).
+  if (s.fallback) return { name: `service ${s.name}`, state: 'NOT_VERIFIED', detail: 'Redis is not connected; JARVIS uses its in-memory cache instead' };
   const state: CheckState = s.status === 'online' ? 'VERIFIED' : s.status === 'offline' || s.status === 'degraded' ? 'FAILING' : 'NOT_VERIFIED';
   return { name: `service ${s.name}`, state, detail: s.detail ?? s.status };
+}
+
+const CHROME_ITEM = 'Chrome for web pages';
+const POWERSHELL_ITEM = 'PowerShell for desktop control';
+const POWERSHELL_WAIT_MS = 5_000;
+
+async function defaultChrome(): Promise<ChromeFacts> {
+  const { jarvisChrome, findChrome } = await import('../control/jarvisChrome.js');
+  const fixed = Number(process.env['JARVIS_CDP_PORT']);
+  const running = await jarvisChrome.running();
+  const installedPath = findChrome();
+  return {
+    ...(running ? { running: { port: running.port } } : {}),
+    ...(Number.isInteger(fixed) && fixed > 0 && fixed < 65536 ? { fixedPort: fixed } : {}),
+    ...(installedPath ? { installedPath } : {}),
+    // The same rule as jarvisChrome's start (control/jarvisChrome.ts).
+    ...(/^(off|0|false|no)$/i.test(process.env['JARVIS_CHROME_AUTOSTART']?.trim() ?? '') ? { autostartOff: true } : {}),
+  };
+}
+
+/** JARVIS's Chrome, read only: running, installed but not running (owner Q2), or missing. */
+async function chromeItem(deps: SelfCheckDeps): Promise<CheckItem> {
+  try {
+    const c = await (deps.chrome ?? defaultChrome)();
+    if (c.running) return { name: CHROME_ITEM, state: 'VERIFIED', detail: `Chrome is running and answers on port ${c.running.port}` };
+    if (c.fixedPort) return { name: CHROME_ITEM, state: 'FAILING', detail: `nothing answers on JARVIS_CDP_PORT ${c.fixedPort}, so JARVIS can't open or read web pages` };
+    if (c.installedPath && c.autostartOff) return { name: CHROME_ITEM, state: 'BLOCKED', detail: `not running, and JARVIS_CHROME_AUTOSTART is off, so JARVIS will not start it (Chrome found: ${c.installedPath})` };
+    if (c.installedPath) return { name: CHROME_ITEM, state: 'NOT_VERIFIED', detail: `not running; it starts when JARVIS opens a page (Chrome found: ${c.installedPath})` };
+    return { name: CHROME_ITEM, state: 'FAILING', detail: "Chrome is not installed where JARVIS looks (or JARVIS_CHROME_PATH is wrong), so web pages can't open" };
+  } catch (err) {
+    return { name: CHROME_ITEM, state: 'FAILING', detail: `the check failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+async function defaultPowerShell(): Promise<PowerShellAnswer> {
+  const { execFile } = await import('child_process');
+  const { childEnv } = await import('../system/childEnv.js');
+  return new Promise((resolve) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.ToString()'],
+      { timeout: POWERSHELL_WAIT_MS, windowsHide: true, env: childEnv() },
+      (err, stdout) => {
+        const version = String(stdout ?? '').trim();
+        if (err) resolve(err.killed ? { ok: false, reason: `no answer within ${POWERSHELL_WAIT_MS / 1000} s`, slow: true } : { ok: false, reason: err.message });
+        else if (!version) resolve({ ok: false, reason: 'it printed no version' });
+        else resolve({ ok: true, version });
+      });
+  });
+}
+
+/** PowerShell, which desktop control runs through: asked only on Windows. */
+async function powershellItem(deps: SelfCheckDeps): Promise<CheckItem> {
+  const platform = deps.platform ? deps.platform() : process.platform;
+  if (platform !== 'win32') return { name: POWERSHELL_ITEM, state: 'BLOCKED', detail: 'desktop control needs Windows, and this computer is not running Windows' };
+  try {
+    const r = await (deps.powershell ?? defaultPowerShell)();
+    if (r.ok) return { name: POWERSHELL_ITEM, state: 'VERIFIED', detail: `PowerShell ${r.version} answers` };
+    if (r.slow) return { name: POWERSHELL_ITEM, state: 'NOT_VERIFIED', detail: `PowerShell did not answer within ${POWERSHELL_WAIT_MS / 1000} s; it may only be slow to start, so desktop control was not checked` };
+    return { name: POWERSHELL_ITEM, state: 'FAILING', detail: `PowerShell did not answer (${r.reason}), so desktop control cannot work` };
+  } catch (err) {
+    return { name: POWERSHELL_ITEM, state: 'FAILING', detail: `the check failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+async function defaultPermission(): Promise<{ level: number; remainingSeconds: number | null }> {
+  const { permissionSession } = await import('../control/permissionSession.js');
+  return { level: permissionSession.getCurrentLevel(), remainingSeconds: permissionSession.getRemainingSeconds() };
+}
+
+/** The permission level, said as a line, not counted as a check (phase A5b). */
+async function permissionLine(deps: SelfCheckDeps): Promise<{ said: string; problem?: string }> {
+  try {
+    const p = await (deps.permission ?? defaultPermission)();
+    if (p.level === 2) {
+      if (p.remainingSeconds === null) return { said: 'full control' };
+      return { said: p.remainingSeconds < 60 ? 'full control, less than 1 min left' : `full control, ${Math.round(p.remainingSeconds / 60)} min left` };
+    }
+    if (p.level === 1) return { said: 'level 1, safe control' };
+    if (p.level === 0) return { said: 'level 0, read only' };
+    return { said: `level ${p.level}` };
+  } catch (err) {
+    return { said: 'not read', problem: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 function issueLine(i: Issue): SelfCheckReport['issues'][number] {
@@ -134,14 +249,14 @@ async function defaultConnectedRoles(): Promise<string[] | undefined> {
 async function defaultServices(): Promise<{ name: string; status: string; detail?: string }[]> {
   const { healthManager } = await import('../monitoring/healthManager.js');
   const snap = await healthManager.probe();
-  return Object.values(snap.services).map((s) => ({ name: s.name, status: s.status, ...(s.detail ? { detail: s.detail } : {}) }));
+  return Object.values(snap.services).map((s) => ({ name: s.name, status: s.status, ...(s.detail ? { detail: s.detail } : {}), ...(s.fallback ? { fallback: true } : {}) }));
 }
 
 /** Health ledger + open issues ("check yourself"); with `full`, every service probe too. */
 export async function healthCheck(full: boolean, deps: SelfCheckDeps = {}): Promise<SelfCheckReport> {
   const now = deps.now?.() ?? Date.now();
   const roles = deps.connectedRoles ? deps.connectedRoles() : await defaultConnectedRoles();
-  const items = healthLedger.all(roles, now).map(ledgerItem);
+  const items = healthLedger.all(roles, now).map((s) => ledgerItem(s, now));
   if (full) {
     try {
       const services = await (deps.services ?? defaultServices)();
@@ -149,12 +264,16 @@ export async function healthCheck(full: boolean, deps: SelfCheckDeps = {}): Prom
     } catch (err) {
       items.push({ name: 'service probes', state: 'SKIPPED', detail: `the probe failed: ${(err as Error).message}` });
     }
+    // Chrome and PowerShell in the full self-check only (phase A5b, owner Q3).
+    items.push(...await Promise.all([chromeItem(deps), powershellItem(deps)]));
   }
+  const permission = await permissionLine(deps);
   const issues = issueStore.active();
   const head = full ? 'Full self-check' : 'Self-check';
-  const spoken = `${head}: ${tally(items)}. ${issuesSentence(issues)}`;
+  const spoken = `${head}: ${tally(items)}. ${issuesSentence(issues)} Permission: ${permission.said}.`;
   const details = [
     `${head} (read-only; nothing was changed):`,
+    `Permission: ${permission.said}${permission.problem ? ` (${permission.problem})` : ''}`,
     ...itemLines(items),
     `Open issues: ${issues.length}`,
     ...issues.slice(0, 10).map((i) => `  ${i.issueId} [${i.status}] ${i.component}: ${i.summary} ×${i.occurrenceCount} (${issueLine(i).location})`),
@@ -163,6 +282,7 @@ export async function healthCheck(full: boolean, deps: SelfCheckDeps = {}): Prom
     details.push(
       'Not observed by these checks: failures outside tool calls, speech, the wake word, the language model,',
       'the Python services and goal tasks; and a pipeline marked "not verified" has had no outcome this run.',
+      'Chrome and PowerShell are checked only for whether they answer, not for every action that uses them.',
     );
   }
   if (issueStore.loadProblem) details.push(`Issue record: ${issueStore.loadProblem}`);
@@ -270,8 +390,8 @@ export async function investigateStuck(deps: SelfCheckDeps & { snapshot?: InFlig
   }
 
   const failing = healthLedger.all(undefined, now).filter((s) => s.state === 'degraded' || s.state === 'failing');
-  for (const f of failing) items.push(ledgerItem(f));
-  if (failing.length) findings.push(`Failing: ${failing.map((f) => ledgerLabel(f.pipeline)).join(', ')}.`);
+  for (const f of failing) items.push(ledgerItem(f, now));
+  if (failing.length) findings.push(`Failing: ${failing.map((f) => pipelineName(f.pipeline)).join(', ')}.`);
   const issues = issueStore.active();
 
   const spoken = findings.length

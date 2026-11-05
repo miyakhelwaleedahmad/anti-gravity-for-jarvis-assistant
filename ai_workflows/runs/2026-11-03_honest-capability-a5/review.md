@@ -137,3 +137,62 @@ Confirmed:
 | D9 | info | The added wait is at most 3 s, within the 20 s sandbox budget; `control_app open` has the old behaviour | Recorded |
 
 No code fault was found. Code changed after the review: one comment in `skills/automation/skill.ts` (D3) and one comment in the test header (D5).
+
+---
+
+# Review — sub-phase A5b (self_check)
+
+Reviewer: a separate agent session (general-purpose), read-only. Not a human.
+
+## Round 1 — CHANGES REQUIRED
+
+The reviewer ran:
+- the new test: 30/30;
+- `selfCheckTest` 77/77, `redisHealthAgreementTest` 11/11, `healthStatusTest` 10/10, `repairRunTest` 82/82, `selfHealingHonestyTest` 4/4, `childEnvCoverageTest` 8/8;
+- the typecheck: 0 errors;
+- a probe of the edge cases.
+
+Confirmed:
+- the Redis fallback is marked, while the dashboard and self-healer contract is unchanged;
+- a probe that throws comes only from a module-load or `initRedis` failure, and "degraded" is right for it;
+- the overall status is unchanged;
+- the Chrome check only reads (one `/json/version` call, 2 s limit), and nothing calls `ensure()`;
+- the PowerShell query is safe under `execFile` without a shell and matches `perception/windowsProbe.ts`;
+- the permission level is a line, not a check;
+- no overclaim;
+- the worst-case time is about 13 s, under the 25 s registry limit;
+- stand-ins are restored;
+- no protected file;
+- the counts in the records are right.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| B1 | med | With `JARVIS_CHROME_AUTOSTART` off, "it starts when JARVIS opens a page" is false: JARVIS does not start it | **Fixed**: BLOCKED, "JARVIS_CHROME_AUTOSTART is off, so JARVIS will not start it", using the same rule as `jarvisChrome`. Tests first (stand-in and the real check, autostart on and off); M20, M21 |
+| B2 | low | The tools detail still said "working"; one check was vacuous | **Fixed**: "X ran N s ago; not a check …"; the check asserts no "working". M22 |
+| B3 | low | A slow PowerShell (over 5 s) was FAILING, "cannot work" | **Fixed**: NOT_VERIFIED, "may only be slow to start"; a failure to start stays FAILING. M24 |
+| B4 | low | `selfCheckTest`'s full-mode calls read the host's real Chrome profile and, on Windows CI, start real PowerShell; no Windows check of the real query | **Fixed** in part: `JARVIS_CHROME_PROFILE` points at the test's folder; a Windows-only check of the real query was added to the new test. The real PowerShell start in `selfCheckTest` on Windows is recorded |
+| B5 | low | The after-probe evidence showed an older wording | **Fixed**: re-run on the final code |
+| B6 | low | "Why stuck" said "Failing: tools" next to the "last tool call" item; the note read oddly on a failing item | **Fixed**: the same name in both; the note only on a working item. M23 |
+| B7 | info | The full-suite file ends with exit 1 (the blocked pygame test), not stated | **Fixed** in `change_log.md` |
+| B8 | info | Nested brackets in speech; "1 min left" at 0 s; the full error text in details; the two checks one after the other | **Fixed**: item names without brackets (M26), "less than 1 min left" (M25), the two checks run at the same time. The error text is recorded |
+
+## Round 2 — PASS
+
+The reviewer re-ran:
+- the new test: 38/38, the same output as the evidence;
+- `selfCheckTest` 77/77, `childEnvCoverageTest` 8/8, `redisHealthAgreementTest` 11/11, `repairRunTest` 82/82;
+- the typecheck: 0 errors.
+
+The reviewer also ran the real PowerShell code path on Linux, with a fake `powershell.exe` and the platform stood in as Windows:
+- a version is VERIFIED;
+- exit 3 is FAILING;
+- an 8 s sleep is killed at about 5 s and is NOT_VERIFIED, "slow".
+
+With the two checks running at the same time, the total was about 5 s.
+
+Every round-1 fix was confirmed in the code. Nothing was broken by them, and the scope is unchanged.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| B9 | low | The review-driven behaviour changes (Chrome BLOCKED with autostart off, refining Q2; PowerShell timeout NOT_VERIFIED; the new names) were not listed as deviations; the Tests row described the 30-check version | **Fixed** in `change_log.md`. The owner confirmed the Q2 refinement (keep BLOCKED) on 2026-11-05 |
+| B10 | info | A non-zero PowerShell exit is said as "did not answer", with the full multi-line error | Recorded (known limit) |

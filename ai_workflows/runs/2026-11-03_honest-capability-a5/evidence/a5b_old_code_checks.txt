@@ -1,0 +1,38 @@
+
+=== Honest self-check (phase A5b) ===
+
+--- 1. the "tools" item ---
+  FAIL: no item says "tools: working" because one tool ran ([VERIFIED] tools: tools: working (list_capabilities ran, 0 s ago))
+  FAIL: it is said as the last tool call, with the tool ([VERIFIED] tools: tools: working (list_capabilities ran, 0 s ago))
+  FAIL: …and says it is not a check of what the tools can do ([VERIFIED] tools: tools: working (list_capabilities ran, 0 s ago))
+--- 2. Redis (Q1) ---
+  FAIL: Redis on its in-memory fallback: not verified ([VERIFIED] service redis: in-memory cache fallback)
+  FAIL: …with the reason: not connected, the in-memory cache is used ([VERIFIED] service redis: in-memory cache fallback)
+  PASS: Redis connected: verified, as before ([VERIFIED] service redis: round-trip OK)
+  FAIL: Redis's own probe can be stood in for (redisProbeDeps)
+--- 3. JARVIS's Chrome (Q2, Q3) ---
+  FAIL: running and answering: verified, with its port (no such item)
+  FAIL: installed but not running: not verified, starts when JARVIS opens a page (no such item)
+  FAIL: not installed: failing, web pages cannot open (no such item)
+  FAIL: JARVIS_CDP_PORT set and nothing answers there: failing, with the port (no such item)
+  FAIL: the check itself fails: failing, with the reason (no such item)
+  PASS: not in the quick self-check (Q3) (no such item)
+  FAIL: the real check: a Chrome path that does not exist is failing (no such item)
+  FAIL: the real check: installed, not running, nothing started: not verified (no such item)
+--- 4. PowerShell (Q3) ---
+  FAIL: on Windows, PowerShell answers: verified, with its version (no such item)
+  FAIL: on Windows, PowerShell does not answer: failing, with the reason (no such item)
+  FAIL: not Windows: blocked, desktop control needs Windows (no such item)
+  PASS: …and PowerShell is not asked (calls=0)
+  PASS: not in the quick self-check (Q3) (calls=0)
+--- 5. the permission level ---
+  FAIL: quick: the level is said (Self-check: 0 of 5 checks verified, 5 not verified yet. No open issues are recorded.)
+  PASS: …as a line, not a check (speech output, speech recognition, wake word, language model, tools)
+  FAIL: full control: with the time left (Full self-check: 0 of 5 checks verified, 5 not verified yet. No open issues are recorded.)
+  FAIL: level 0: read only (Full self-check: 0 of 5 checks verified, 5 not verified yet. No open issues are recorded.)
+  FAIL: the level cannot be read: said so, with the reason (Full self-check: 0 of 5 checks verified, 5 not verified yet. No open issues are recorded.)
+--- 6. the whole report ---
+  PASS: no overclaim in the spoken report (Full self-check: 1 of 6 checks verified, 5 not verified yet. No open issues are recorded.)
+  FAIL: the details say what the Chrome and PowerShell checks look at (Open issues: 0 | Not observed by these checks: failures outside tool calls, speech, the wake word, the language model, | the Python services and goal tasks; and a pipeline marked "not verified" has had no outcome this run.)
+
+6 passed, 21 failed

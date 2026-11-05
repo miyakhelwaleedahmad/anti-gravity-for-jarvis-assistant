@@ -34,8 +34,15 @@ export interface ServiceHealth {
   status: ServiceStatus;
   latencyMs?: number;
   detail?: string;
+  /** Redis only: not connected, so the in-memory cache is in use (phase A5b). */
+  fallback?: boolean;
   checkedAt: number;
 }
+
+/** Redis's own check, so tests can stand in for it (phase A5b). Nothing else changes it. */
+export const redisProbeDeps = {
+  load: () => import('../memory/redisCache.js'),
+};
 
 export interface SystemMetrics {
   heapUsedMB: number;
@@ -88,22 +95,23 @@ class HealthManager {
       // The same check self-healing uses (ARCH-02), with a time limit: this
       // waited for ever on a Redis that stopped answering, and read back an
       // earlier probe's value as "round-trip OK" when writes were refused.
-      const { initRedis, probeRedis } = await import('../memory/redisCache.js');
+      const { initRedis, probeRedis } = await redisProbeDeps.load();
       initRedis();
       const p = await probeRedis();
       return {
         name: 'redis',
         status: p.state === 'failed' ? 'degraded' : 'online',
-        ...(p.state === 'fallback' ? {} : { latencyMs: p.latencyMs }),
+        ...(p.state === 'fallback' ? { fallback: true } : { latencyMs: p.latencyMs }),
         detail: p.state === 'failed' ? `cache not working: ${p.detail}` : p.detail,
         checkedAt: Date.now(),
       };
     } catch (err) {
+      // The check itself failed: that is not a working cache (phase A5b).
       return {
         name: 'redis',
-        status: 'online',
+        status: 'degraded',
         latencyMs: Date.now() - start,
-        detail: 'in-memory cache fallback',
+        detail: `the cache check failed: ${err instanceof Error ? err.message : String(err)}`,
         checkedAt: Date.now(),
       };
     }

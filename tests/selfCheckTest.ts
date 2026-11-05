@@ -30,6 +30,8 @@ const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-self-
 for (const d of ['memory', 'data', path.join('data', 'logs'), 'logs']) fs.mkdirSync(path.join(root, d), { recursive: true });
 process.env['JARVIS_WORKSPACE_ROOT'] = root;
 process.env['JARVIS_DATA_ROOT'] = root;
+// The full self-check reads JARVIS's Chrome (phase A5b): never the host's real profile (review B4).
+process.env['JARVIS_CHROME_PROFILE'] = path.join(root, 'no-chrome-profile');
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const { matchDeterministicCommand } = await import('../core/deterministicRoutes.js');
@@ -135,7 +137,8 @@ const tmpStore = issueStore.active().map((i) => i.issueId);
 for (const id of tmpStore) issueStore.resolve(id, { passed: true, evidence: 'open_app ran in 2 s' });
 const replies: string[] = [];
 for (const mode of ['quick', 'full', 'report', 'stuck'] as const) replies.push((await runSelfCheck(mode, { connectedRoles: allRoles, services: async () => [{ name: 'redis', status: 'online' }], goals: () => [], agents: () => ({ running: 0, waiting: 0, agents: [] }), snapshot: undefined } as never)).spoken);
-ok('everything observed working: the reply counts, it does not claim', replies[0] === 'Self-check: 5 of 5 checks verified. No open issues are recorded.', replies[0]);
+// Phase A5b: the permission level is said after the count.
+ok('everything observed working: the reply counts, it does not claim', /^Self-check: 5 of 5 checks verified\. No open issues are recorded\. Permission: [^.]+\.$/.test(replies[0] ?? ''), replies[0]);
 ok('no reply in any mode over-claims', replies.every((t) => !overclaims(t)), replies.join(' | '));
 
 // ── 4. Read-only ─────────────────────────────────────────────────────────────

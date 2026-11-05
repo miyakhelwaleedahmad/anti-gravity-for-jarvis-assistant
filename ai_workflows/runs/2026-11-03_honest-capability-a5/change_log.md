@@ -182,3 +182,65 @@ Base commit: `1cab883`. Owner's Gate 1, 2026-11-03:
 - `control_app open` (`control/appController.ts`) has its own launcher. It still reports success at once and has no off-Windows refusal. It was outside A5d (review D9).
 - A desktop check that times out or cannot run is also "unverifiable", so a real app open can get the "I started…" reply (review D6).
 - "Full suite green" is on Linux. Windows CI runs after a push.
+
+---
+
+# Change Log — sub-phase A5b (self_check: TRA-08, B3)
+
+Base commit: `2602948`. Owner's Gate 1, 2026-11-05:
+- "Approve A5b (Recommended)" (no protected file);
+- Q1: "Not verified + reason (Recommended)";
+- Q2: "Not verified: starts when needed (Recommended)";
+- Q3: "Full self-check only (Recommended)".
+
+## The change
+
+| File | Change |
+|---|---|
+| `core/selfCheck.ts` | The ledger's "tools" item is now "last tool call" (P1): when it worked, "X ran N s ago; not a check of what the tools can do", without "working"; otherwise the ledger's detail. Its state is unchanged, and "why stuck" says the same name (review B2, B6). Redis on its in-memory fallback is NOT_VERIFIED, "Redis is not connected; JARVIS uses its in-memory cache instead" (P2, Q1). The full self-check adds "Chrome for web pages" (P3): running and answering is VERIFIED with the port; installed but not running is NOT_VERIFIED, "it starts when JARVIS opens a page" (Q2); installed but not running with `JARVIS_CHROME_AUTOSTART` off is BLOCKED, "JARVIS will not start it" (review B1); not installed, `JARVIS_CDP_PORT` not answering, or the check failing is FAILING with the reason. It reads `jarvisChrome.running()` and `findChrome()` and starts nothing. The full self-check also adds "PowerShell for desktop control" (P4): on Windows, a version query that answers within 5 s is VERIFIED; no answer within 5 s is NOT_VERIFIED, "it may only be slow to start" (review B3); a failure to start or a non-zero exit is FAILING with the reason. The two checks run at the same time. Off Windows it is BLOCKED, "desktop control needs Windows", and PowerShell is not asked. The query runs with the filtered environment (`childEnv()`). Every self-check says the permission level as a line, not a check (P5): "level 0, read only", "level 1, safe control", "full control, N min left" ("less than 1 min left" under a minute), or "not read" with the reason. The full report's last line says Chrome and PowerShell are checked only for whether they answer. All of these come through `SelfCheckDeps`, so tests can stand in for them. |
+| `monitoring/healthManager.ts` | The Redis probe marks the in-memory fallback (`fallback: true`); its status stays `online`, so the dashboard and the self-healer read it as before (`redisHealthAgreementTest`). A probe that throws is `degraded` with the reason instead of `online`, "in-memory cache fallback". Redis's own check comes through `redisProbeDeps`, so tests can stand in for it. |
+
+## Tests
+
+| File | Change |
+|---|---|
+| `tests/selfCheckA5bTest.ts` (new) | 30 checks, then 38 after review round 1 (39 on Windows, where the real PowerShell query is also checked). Chrome, PowerShell, the platform, Redis and the permission level are stood in for, so the test is the same on Windows and Linux. Covered: the "tools" item; Redis on the fallback, connected, the probe's flag, a probe that throws, and the flag through the real service list; Chrome running, installed only, missing, `JARVIS_CDP_PORT` silent, the check failing, not in the quick check, and the real check with `JARVIS_CHROME_PATH` (missing / present, nothing started); PowerShell answering, not answering, off Windows (not asked), not in the quick check; the permission level at 0, 1 and 2 (minutes left), unreadable, said as a line; no overclaim; the "checked only for whether they answer" line. Added in review round 1: the tools detail without "working" and "why stuck" naming it the same; Chrome with autostart off (stand-in and the real check, on and off); PowerShell slow versus unable to start, and on Windows the real query; "less than 1 min left"; no nested brackets in what is said. |
+| `tests/selfCheckTest.ts` | One check compared the quick reply with an exact string. With P5 the reply ends with the permission sentence, so the check now matches the count and then "Permission: …". It fails on the base code, as it should. After review B4 it points `JARVIS_CHROME_PROFILE` at its temporary folder, so it never reads the host's real Chrome profile. |
+
+## Evidence
+
+| Check | Result | File |
+|---|---|---|
+| Diagnosis probe (`self_check full` on this Linux host, base code) | `[VERIFIED] tools: working (list_capabilities ran)`, `[VERIFIED] service redis: in-memory cache fallback`, no Chrome, PowerShell or permission item | `evidence/a5b_diagnosis_probe.txt` |
+| New test on the base code | 6 passed, **21 failed** (3 more checks need `redisProbeDeps` and were skipped) | `evidence/a5b_old_code_checks.txt` |
+| New test after the change | **30/30** | `evidence/a5b_new_code_checks.txt` |
+| The same probe on the final code (run with `JARVIS_CHROME_AUTOSTART=off`, as the tests are) | `[VERIFIED] last tool call: list_capabilities ran 0 s ago; not a check of what the tools can do`, `[NOT_VERIFIED] service redis: Redis is not connected; JARVIS uses its in-memory cache instead`, `[BLOCKED] Chrome for web pages: not running, and JARVIS_CHROME_AUTOSTART is off, so JARVIS will not start it`, `[BLOCKED] PowerShell for desktop control: desktop control needs Windows …`, "Permission: level 1, safe control" | `evidence/a5b_after_probe.txt` (re-run after review B5) |
+| Typecheck | 0 errors | `evidence/a5b_typecheck.txt` |
+| Mutation check, 19 mutants | **19/19 caught**, tree restored (md5) | `evidence/a5b_mut.py`, `evidence/a5b_mut_run.txt` |
+| First related run (32 tests) | 29 passed, **1 failed**: `selfCheckTest`'s exact-string check (updated as above, then 77/77); 2 environment (`dashboardAccuracyTest`, `dashboardHealthSystemTest`; the runner marks them as expected here: they need Redis, an LLM API and Windows PowerShell) | `evidence/a5b_related_tests.txt` |
+| Related tests after the update | **30 passed, 0 failed**, the same 2 environment | `evidence/a5b_related_tests_r1.txt` |
+| Full suite (the restarted run) | **214 passed, 0 failed**, 1 blocked (no pygame), 9 skipped; the runner exits 1 because of the blocked test | `evidence/a5b_full_suite.txt` |
+| Independent review, round 1 | CHANGES REQUIRED (B1 med; B2–B6 low; B7, B8 info) | `review.md` |
+| Round-1 checks on the round-1 code | 30 passed, **8 failed** | `evidence/a5b_review_r1_old_code_checks.txt` |
+| Test after the round-1 fixes | **38/38** | `evidence/a5b_review_r1_new_code_checks.txt` |
+| After round 1: typecheck; mutation check, 26 mutants (M2, M11 retargeted, new M20–M26); the after-probe; related tests; full suite | typecheck 0 errors; **25/26** at first: M13's line had changed and it was not applied; retargeted and run alone: caught, so **26/26**, tree restored; related **30 passed, 0 failed**, the same 2 environment; full suite **214 passed, 0 failed**, 1 blocked (no pygame), 9 skipped, exit 1 for the blocked test | `evidence/a5b_typecheck.txt`, `a5b_mut_run_r1.txt`, `a5b_mut_run_r1_m13.txt`, `a5b_after_probe.txt`, `a5b_related_tests_r2.txt`, `a5b_full_suite_r1.txt` |
+
+## Deviations from the plan
+
+- `tests/selfCheckTest.ts` was changed (one check, above). It was not in the plan.
+- `redisProbeDeps` (`monitoring/healthManager.ts`) was added so the probe's catch path can be tested. It was not in the plan.
+- A full suite run was stopped and started again: while it ran, the two source files were briefly put back to the base code to check the updated old test. That run's result is not used.
+- After review round 1 (review B9), three changes to the agreed behaviour:
+  1. Chrome installed, not running, with `JARVIS_CHROME_AUTOSTART` off is BLOCKED, "JARVIS will not start it". This refines the owner's Q2 answer ("Not verified: starts when needed") for a case the owner was not asked about, because "starts when needed" would be false there (B1). Confirmed by the owner on 2026-11-05: "Keep \"blocked\" for the autostart-off case, as recommended."
+  2. PowerShell with no answer within 5 s is NOT_VERIFIED, not FAILING as planned (B3).
+  3. The items are named "Chrome for web pages" and "PowerShell for desktop control", not as in the plan (B8).
+- The mutation re-run of M13 finished after the last full suite; it restored the tree (md5), and the reviewer's tests on the final tree pass.
+
+## Known limits (recorded, not changed)
+
+- The "last tool call" item can still be `self_check` itself, which counts as verified. The registry records every tool call; changing that is in the protected `core/toolRegistryV2.ts`.
+- The "service tool_registry" item is still a count of loaded tools.
+- On Windows, the full self-check starts one `powershell.exe` for the version query, which takes up to 5 s. `selfCheckTest`'s four full-mode calls do this on Windows CI too (review B4); no check there depends on the answer. It does not use the persistent PowerShell session that reads windows, so a stuck session there is not seen by this check.
+- `JARVIS_CDP_PORT` set and answering is VERIFIED even when that Chrome is the owner's own, not JARVIS's.
+- A non-zero PowerShell exit puts the whole error message, with the command and line breaks, into the details, and says "did not answer" although PowerShell did answer, with an error (review B8, B10).
+- "Full suite green" is on Linux. Windows CI runs after a push. The PowerShell VERIFIED path has run only with a stand-in here; the real query is checked on Windows only.

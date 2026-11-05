@@ -1,0 +1,48 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=boundaryDoublesTest,childEnvCoverageTest,dashboardAccuracyTest,dashboardHealthSystemTest,dashboardLabelTest,docsHygieneTest,healthLedgerTest,healthStatusTest,honestReadToolsA5aTest,issueStoreTest,jarvisAgentIntegrationTest,kernelOutcomeA5cTest,listeningRecoveryTest,memoryCacheTest,openAppHonestA5dTest,parallelizationTimeoutAuditTest,providerHealthTest,redisHealthAgreementTest,redisReadyRaceTest,repairRunTest,resourceUsageAuditTest,routeGoldenTest,scenarioIntegrationTest,selfCheckA5bTest,selfCheckTest,selfHealingHonestyTest,speechOutcomeHealthTest,speechRequestCorrelationTest,vectorReadinessTest,vectorRebuildStoreTest,vectorSupervisorDashboardTest,voiceRouteMockTest
+
+
+=== JARVIS test suite — 32 file(s) ===
+
+  PASS    boundaryDoublesTest                          418ms
+  PASS    childEnvCoverageTest                         862ms
+  FAIL    dashboardAccuracyTest                        1362ms  (expected here: needs a running Redis and a reachable LLM API)
+  FAIL    dashboardHealthSystemTest                    6307ms  (expected here: needs Windows PowerShell, a reachable LLM API and Redis)
+  PASS    dashboardLabelTest                           774ms
+  PASS    docsHygieneTest                              1446ms
+  PASS    healthLedgerTest                             5046ms
+  PASS    healthStatusTest                             7919ms
+  PASS    honestReadToolsA5aTest                       3430ms
+  PASS    issueStoreTest                               841ms
+  PASS    jarvisAgentIntegrationTest                   4089ms
+  PASS    kernelOutcomeA5cTest                         2423ms
+  PASS    listeningRecoveryTest                        3882ms
+  PASS    memoryCacheTest                              529ms
+  PASS    openAppHonestA5dTest                         5749ms
+  PASS    parallelizationTimeoutAuditTest              1590ms
+  PASS    providerHealthTest                           3771ms
+  PASS    redisHealthAgreementTest                     2640ms
+  PASS    redisReadyRaceTest                           845ms
+  PASS    repairRunTest                                6560ms
+  PASS    resourceUsageAuditTest                       517ms
+  PASS    routeGoldenTest                              1472ms
+  PASS    scenarioIntegrationTest                      44946ms
+  PASS    selfCheckA5bTest                             517ms
+  PASS    selfCheckTest                                1527ms
+  PASS    selfHealingHonestyTest                       502ms
+  PASS    speechOutcomeHealthTest                      2562ms
+  PASS    speechRequestCorrelationTest                 3458ms
+  PASS    vectorReadinessTest                          967ms
+  PASS    vectorRebuildStoreTest                       1847ms
+  PASS    vectorSupervisorDashboardTest                5725ms
+  PASS    voiceRouteMockTest                           1350ms
+
+=== 30 passed · 0 failed · 0 timed out · 0 blocked · 2 environment · 0 skipped ===
+
+Failed for a missing prerequisite, not a defect:
+  - dashboardAccuracyTest (needs a running Redis and a reachable LLM API)
+  - dashboardHealthSystemTest (needs Windows PowerShell, a reachable LLM API and Redis)
+
+No unexpected failures.
+EXIT=0

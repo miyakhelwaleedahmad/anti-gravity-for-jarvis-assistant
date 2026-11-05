@@ -92,3 +92,33 @@ Gate 1 for A5d: **approved** by the owner on 2026-11-03:
 - "Approve A5d (Recommended)", with the protected files `skills/automation/skill.ts` and `core/orchestrator.ts` (the `open_app` route reply only);
 - Q1: "Say it wasn't checked (Recommended)";
 - Q2: "Refuse: needs Windows (Recommended)".
+
+## A5b in detail (self_check: TRA-08, B3)
+
+Diagnosis, checked at `2602948` (a probe of `self_check full` on this Linux host, no Redis and no voice services; `evidence/a5b_diagnosis_probe.txt`):
+- `[VERIFIED] tools: working (list_capabilities ran, 0 s ago)`. The "tools" item is the health ledger's last tool outcome (`monitoring/healthLedger.ts`, pipeline `tool_execution`), so any tool that ran, including `self_check` itself, makes it "working". It is not a check of what tools can do.
+- `[VERIFIED] service redis: in-memory cache fallback`. Redis is not connected, and the probe (`monitoring/healthManager.ts:85-111`) reports `online`, which `core/selfCheck.ts` `serviceItem` turns into VERIFIED. If the probe itself throws, it is also `online`.
+- No item for JARVIS's Chrome (DevTools), PowerShell (desktop control) or the permission level. Off Windows, nothing says that desktop control cannot work.
+- The dashboard and the self-healer agree that the Redis fallback is "online, fallback" (`tests/redisHealthAgreementTest.ts`). A5b keeps that and changes only how `self_check` reads it.
+
+| # | Change | Files |
+|---|---|---|
+| P1 | The ledger's "tools" item is said for what it is: "last tool call: X ran N s ago (not a check of what the tools can do)". Its state is unchanged. | `core/selfCheck.ts` |
+| P2 | Redis on the in-memory fallback is NOT_VERIFIED, "Redis is not connected; JARVIS uses its in-memory cache instead", not VERIFIED (owner Q1). A probe that throws is `degraded` with the reason, not `online`. The dashboard's "online, fallback" is unchanged. | `core/selfCheck.ts`, `monitoring/healthManager.ts` (a `fallback` flag and the catch path) |
+| P3 | Full self-check: a "Chrome (web pages)" item. JARVIS's Chrome running and answering: VERIFIED. Not running but installed: NOT_VERIFIED, "starts when JARVIS opens a page" (owner Q2). Not installed, or `JARVIS_CDP_PORT` set and not answering: FAILING with the reason. Starts nothing. | `core/selfCheck.ts` (reads `control/jarvisChrome.ts`, unchanged) |
+| P4 | Full self-check: a "PowerShell (desktop control)" item. On Windows, PowerShell answers a version query within 5 s: VERIFIED; otherwise FAILING with the reason. Not on Windows: BLOCKED, "desktop control needs Windows". | `core/selfCheck.ts` |
+| P5 | The permission level in every self-check, as a line, not a check: "Permission: level 1, safe control" or "full control, 12 min left". | `core/selfCheck.ts` (reads `control/permissionSession.ts`, unchanged) |
+| T | New `tests/selfCheckA5bTest.ts`, with Chrome, PowerShell, the platform and Redis stood in for, so it is the same on Windows and Linux. Written first; it must fail on the current code. | tests |
+
+No protected file is changed.
+
+Owner choices for A5b:
+- Q1. Redis on its fallback: **NOT_VERIFIED with the reason** (recommended: the fallback works by design, but it is not Redis), or FAILING.
+- Q2. JARVIS's Chrome not running: **NOT_VERIFIED, "starts when needed"** (recommended), or FAILING.
+- Q3. Where the Chrome and PowerShell checks run: **the full self-check only** (recommended: "check yourself" stays fast), or every self-check.
+
+Gate 1 for A5b: **approved** by the owner on 2026-11-05:
+- "Approve A5b (Recommended)" (no protected file);
+- Q1: "Not verified + reason (Recommended)";
+- Q2: "Not verified: starts when needed (Recommended)";
+- Q3: "Full self-check only (Recommended)".
