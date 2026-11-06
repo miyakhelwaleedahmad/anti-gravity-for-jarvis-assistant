@@ -26,12 +26,17 @@ const GIT_QUESTION = /\b(git|commit|commits|branch|uncommitted|repository|repo|d
 // Questions about recent changes in the project (phase A5e review E1, E10, E11): they reached the
 // fallback, which no longer offers a shell. Questions only: "undo my changes" is not one.
 const CHANGES_QUESTION = new RegExp([
-  /\bwhat(?:s| has| have)? changed in (?:my|the|this) (?:project|code|repo|repository|files?)\b/.source,
+  // "change" / "changes" too: speech-to-text gave "what change in my project" on the owner's PC.
+  /\bwhat(?:s| has| have)? chang(?:e|ed|es) in (?:my|the|this) (?:project|code|repo|repository|files?)\b/.source,
   /\bwhat (?:did|have) i changed?\b/.source,
   /\bwhat changes did i make\b/.source,
   /\b(?:show|list|tell)(?: me)? (?:my |the )?(?:recent |latest )?(?:code )?changes\b/.source,
   /\bany changes in (?:my|the|this) (?:project|code|repo|repository)\b/.source,
 ].join('|'));
+// Any request that names the project with a change word (review E15): git_overview, read-only,
+// so the planner can look before it answers ("I do not have access to your project" came from the fallback).
+const PROJECT_WORDS = /\b(?:my|the|this) (?:project|code|repo|repository)\b/;
+const CHANGE_WORDS = /\b(?:chang\w*|new|modif\w*|updat\w*|diff)\b/;
 const BROWSER_QUESTION = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button)\b/;
 const FILE_ACTION = /\b(files?|folders?|directory|rename|move|delete|trash|restore|compare)\b/;
 const GIT_ACTION = /\b(git|commit|commits|branch|branches|push|repo|repository)\b/;
@@ -188,7 +193,7 @@ export function selectPlanningToolNames(input: string): string[] {
   if (DEV_QUESTION.test(clean)) {
     addIfRegistered('dev_status');
   }
-  if (GIT_QUESTION.test(clean) || CHANGES_QUESTION.test(clean)) {
+  if (GIT_QUESTION.test(clean) || CHANGES_QUESTION.test(clean) || (PROJECT_WORDS.test(clean) && CHANGE_WORDS.test(clean))) {
     addIfRegistered('git_overview');
   }
   if (BROWSER_QUESTION.test(clean)) {

@@ -280,3 +280,17 @@ After round 2:
 - related tests 48 passed, 0 failed, 1 blocked (`a5e_related_tests_r4.txt`);
 - the typecheck: `TC=0`.
 - the full suite: 215 passed, 0 failed, 1 blocked (no pygame), 9 skipped; exit 1 for the blocked test (`a5e_full_suite_r3.txt`).
+
+## Round 3 — PASS (the fix for the owner's PC check C)
+
+The reviewer re-ran the new test (46/46) and probed 23 phrases, as Windows and as Linux, with identical results. Confirmed:
+- the first form now accepts "change", "changed" and "changes", including the exact PC phrase;
+- the negatives hold ("what change in the weather", "undo my changes", "what changes should i make to my resume");
+- the test proves the fix: it failed first (43 passed, 3 failed), and M19 is caught.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| E14 | low | The form also matches requests for advice ("what change in the code should i make", "what changes in the project plan"), which are then offered `git_overview` as well | Recorded (read-only) |
+| E15 | low–med | Other natural wordings ("what was changed / got changed in my project", "what are the changes in my project", "what is new in my project") still reached the fallback, which leads to the false "I do not have access to your project" | **Fixed**: a request naming the project with a change word is offered `git_overview`. Tests first (5 wordings, which failed first); M20 |
+| E16 | info | "which files changed in my project" got only `files` | **Fixed** by E15 (in the test) |
+| E17 | info | The change log had no entry for this fix yet | **Fixed** |

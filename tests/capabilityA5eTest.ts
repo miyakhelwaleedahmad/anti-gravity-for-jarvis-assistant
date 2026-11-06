@@ -146,7 +146,11 @@ console.log('--- 5. the fallback (Q2) ---');
   offered = selectPlanningToolNames('run npm test');
   ok('a request to run a command still gets run_command', offered.includes('run_command'), offered.join(', '));
   // Questions about recent changes reached the fallback, and with it run_command (git status); now git_overview (review E1).
-  for (const q of ['what changed in my project', 'what did i change today', 'show me my changes', "what's changed in my project", 'what have i changed', 'what changes did i make', 'show my recent changes', 'any changes in my project']) {
+  for (const q of ['what changed in my project', 'what did i change today', 'show me my changes', "what's changed in my project", 'what have i changed', 'what changes did i make', 'show my recent changes', 'any changes in my project',
+    // As speech-to-text gave it on the owner's PC (2026-11-06): "change", not "changed".
+    'what change in my project', 'what changes in my project', 'thank you for your assistance but what change in my project can you tell me',
+    // Any request naming the project with a change word (review E15): "I do not have access to your project" came from the fallback.
+    'what was changed in my project', 'what got changed in my project', 'what are the changes in my project', 'what is new in my project', 'which files changed in my project']) {
     offered = selectPlanningToolNames(q);
     ok(`"${q}": git_overview, to answer from`, offered.includes('git_overview'), offered.join(', '));
   }

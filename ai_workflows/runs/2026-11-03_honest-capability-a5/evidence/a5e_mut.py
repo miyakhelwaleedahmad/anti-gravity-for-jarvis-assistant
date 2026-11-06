@@ -20,10 +20,13 @@ MUTANTS = [
   ("M14 an unchecked open said as 'Opening' (Q3)", T, [(OR, "          : firstNode.verification?.status === 'unverifiable'\n            ? `I started ${name}", "          : Date.now() < 0\n            ? `I started ${name}")]),
   ("M16 the refusal not worded as a refusal (retried, 'unexpected error')", T, [(REG, "        output: `Refused by safety policy: ${unmet}.`,", "        output: `Not available here: ${unmet}.`,")]),
   # Review round 1 (E1, E7)
-  ("M17 questions about recent changes not given git_overview (E1)", T, [(PL, "  if (GIT_QUESTION.test(clean) || CHANGES_QUESTION.test(clean)) {", "  if (GIT_QUESTION.test(clean)) {")]),
+  ("M17 questions about recent changes not given git_overview (E1)", T, [(PL, "  if (GIT_QUESTION.test(clean) || CHANGES_QUESTION.test(clean) || (PROJECT_WORDS", "  if (GIT_QUESTION.test(clean) || (PROJECT_WORDS")]),
   ("M18 the check moved after the approval step (E7)", T, [
      (REG, "    const unmet = this.unavailableBecause(name);\n    if (unmet) {", "    const unmet = this.unavailableBecause(name);\n    if (Date.now() < 0 && unmet) {"),
      (REG, "    // 3b. Risk engine (docs/upgrade/PERMISSION_MODEL.md): run, ask, or refuse", "    if (unmet) {\n      const { approvalGate } = await import('../security/approvalGate.js');\n      await approvalGate.requestApproval('capability', name, 'HIGH_RISK', unmet, 'text');\n      return { success: false, output: `Refused by safety policy: ${unmet}.`, error: 'RISK_REFUSED', tool: name, durationMs: Date.now() - start };\n    }\n    // 3b. Risk engine (docs/upgrade/PERMISSION_MODEL.md): run, ask, or refuse")]),
+  # The owner's PC check C (2026-11-06)
+  ("M19 the PC phrase 'what change in my project' not understood (both rules back)", T, [(PL, "chang(?:e|ed|es) in (?:my|the|this)", "changed in (?:my|the|this)"), (PL, " || (PROJECT_WORDS.test(clean) && CHANGE_WORDS.test(clean))) {", ") {")]),
+  ("M20 the project + change-word rule removed (review E15)", T, [(PL, " || (PROJECT_WORDS.test(clean) && CHANGE_WORDS.test(clean))) {", ") {")]),
   ("M15 the route fixture's old fallback", "routeGoldenTest", [(PL, "addIfRegistered('list_capabilities', 'web_search', 'get_system_info');", "addIfRegistered('open_app', 'web_search', 'get_system_info', 'run_command');")]),
 ]
 only = os.environ.get("MUT_ONLY")

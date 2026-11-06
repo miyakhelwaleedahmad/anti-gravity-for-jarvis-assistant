@@ -349,3 +349,38 @@ Base commit: `847e04c`. Owner's Gate 1, 2026-11-06:
 - `dryRun` is still offered to the model. Hiding it would change `skills/automation/description.json`, which the skill trust fingerprints.
 - A refusal by the capability check is not in `action_history`, as with permission refusals before it.
 - "Full suite green" is on Linux. Windows CI runs after a push. On Windows the record changes nothing: every tool is available there.
+
+## After the push: the owner's PC checks of `e8be6d2` (2026-11-06) and the fix for check C
+
+Windows CI on `e8be6d2` (run 42198839565) was green in every job. On the owner's PC, `capabilityA5eTest`, `routeGoldenTest`, `windowsToolsTest`, `closeByNameTest` and `toolDiscoverabilityAuditTest` passed (5/5). Then JARVIS was run by voice:
+
+| Check | Result on the PC |
+|---|---|
+| A. Windows tools still work | **Passed.** "ok maximize" → `control_window`, "checked — the window is maximised". "no just minimise" (British spelling) → `control_window`, "checked — the window is minimised". |
+| B. A question is answered in words, not with a shell | **Passed.** "you have full access so" and "do i need everything" were answered in words: no `run_command`, no "Shell metacharacters are blocked". |
+| C. "What changed in my project" | **Failed.** Speech-to-text gave "thank you for your assistance but what change in my project can you tell me" ("change", not "changed"). The rule matched only "changed", so the planner got only the fallback. The model called `list_capabilities` and said "Sir, I do not have access to your project files or code" (false: `git_overview` exists). |
+
+Also in the PC log, outside A5e:
+- JARVIS's own reply was taken as a new command (echo, the known open voice item).
+- "close the notepad" asked for full control mode, the existing permission rule.
+
+The owner chose to fix C before A6. The fix, in `core/planningToolSelection.ts` only (no protected file), with tests first:
+1. The first `CHANGES_QUESTION` form accepts "change", "changed" and "changes".
+2. After the independent review's round 3 (E15), a second rule, because each new wording would otherwise need another pattern. A request that names the project ("my / the / this project, code, repo, repository") together with a change word ("chang…", "new", "modif…", "updat…", "diff") is offered `git_overview`. The tool is read-only, so a broad match costs at most one of the 8 places.
+
+| Check | Result | File |
+|---|---|---|
+| The 3 PC-wording checks on `e8be6d2` | 43 passed, **3 failed** | `evidence/a5e_pc_fix_old_code_checks.txt` |
+| After the first form was widened | **46/46** | `evidence/a5e_pc_fix_new_code_checks.txt` |
+| Mutation (M19 added) | **19/19 caught**, tree restored | `evidence/a5e_mut_run_r3.txt` |
+| Related tests; full suite (first form only) | 48 passed, 0 failed, 1 blocked; **215 passed, 0 failed**, 1 blocked, 9 skipped | `evidence/a5e_pc_fix_related_tests.txt`, `a5e_pc_fix_full_suite.txt` |
+| Independent review, round 3 | PASS (E14 low, E15 low–med, E16, E17 info) | `review.md` |
+| The 5 E15 wordings on the first-form code | 46 passed, **5 failed** | `evidence/a5e_pc_fix_r1_old_code_checks.txt` |
+| After the project + change-word rule | **51/51**; `routeGoldenTest` 441/441, the fixture unchanged | `evidence/a5e_pc_fix_r1_new_code_checks.txt` |
+| Mutation, 20 mutants (M20 added; M17 and M19 retargeted: the new rule caught the PC phrase on its own, so M19 now removes both rules) | **20/20 caught**, tree restored (md5) | `evidence/a5e_mut_run_r5.txt` (and `a5e_mut_run_r4.txt`, `a5e_mut_run_r4b.txt` for the retargeting) |
+| Typecheck; related tests; full suite on the final code | typecheck `TC=0`; related **48 passed, 0 failed**, 1 blocked (no pygame); full suite **215 passed, 0 failed**, 1 blocked (no pygame), 9 skipped, exit 1 for the blocked test | `evidence/a5e_pc_fix_typecheck.txt`, `a5e_pc_fix_related_tests_r1.txt`, `a5e_pc_fix_full_suite_r1.txt` |
+
+Known limits of the fix:
+- The rule also matches requests for advice or plans that name the project, e.g. "what changes in the project plan" or "what change in the code should i make". They are offered `git_overview` as well; for the plan wording it is the only tool, so the fallback is not used (review E14). The tool is read-only.
+- A request naming "the code" with "new", e.g. "type the code into a new file", is offered `git_overview` too. Read-only.
+- Check C has to be run again on the owner's PC after this change is pushed. Until then A5e stays partially verified.
