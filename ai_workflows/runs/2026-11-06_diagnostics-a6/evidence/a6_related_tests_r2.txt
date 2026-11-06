@@ -1,0 +1,45 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=boundaryDoublesTest,browserControlAgentTest,browserObservationTest,capabilityA5eTest,childEnvCoverageTest,closeByNameTest,desktopControlTest,diagnosticsA6Test,docsHygieneTest,errorRecoveryTest,executionTraceTest,filesAndDevToolsTest,finalIntegrationSuiteTest,healthLedgerTest,jarvisChromeTest,kernelOutcomeA5cTest,navigationPolicyTest,pcControlKernelTest,planningTimeoutSpeechTest,requestTraceLogTest,routeGoldenTest,scenarioIntegrationTest,secretSinksTest,selfCheckTest,toolTimeoutTest,verifyAfterActTest,windowsScriptsTest,windowsStateSessionTest,windowsToolsTest
+
+
+=== JARVIS test suite — 29 file(s) ===
+
+  PASS    boundaryDoublesTest                          448ms
+  PASS    browserControlAgentTest                      8930ms
+  PASS    browserObservationTest                       8128ms
+  PASS    capabilityA5eTest                            2748ms
+  PASS    childEnvCoverageTest                         970ms
+  PASS    closeByNameTest                              11801ms
+  PASS    desktopControlTest                           10742ms
+  PASS    diagnosticsA6Test                            1510ms
+  PASS    docsHygieneTest                              1403ms
+  PASS    errorRecoveryTest                            12079ms
+  PASS    executionTraceTest                           541ms
+  PASS    filesAndDevToolsTest                         2958ms
+  SKIP  finalIntegrationSuiteTest                    live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  PASS    healthLedgerTest                             5002ms
+  PASS    jarvisChromeTest                             13542ms
+  PASS    kernelOutcomeA5cTest                         2329ms
+  PASS    navigationPolicyTest                         1772ms
+  PASS    pcControlKernelTest                          834ms
+  PASS    planningTimeoutSpeechTest                    4567ms
+  PASS    requestTraceLogTest                          1962ms
+  PASS    routeGoldenTest                              1414ms
+  PASS    scenarioIntegrationTest                      44855ms
+  PASS    secretSinksTest                              5359ms
+  PASS    selfCheckTest                                1538ms
+  PASS    toolTimeoutTest                              4775ms
+  PASS    verifyAfterActTest                           6382ms
+  SKIP  windowsScriptsTest                           needs PowerShell 7, pwsh (JARVIS_TEST_PWSH). No PowerShell 7 (pwsh) found. Install it (CMD: winget install --id Microsoft.PowerShell --source winget), open a new CMD window and check with: pwsh -v. Or set JARVIS_TEST_PWSH to the full path of pwsh.exe. (not found on this host)
+  PASS    windowsStateSessionTest                      6362ms
+  PASS    windowsToolsTest                             5106ms
+
+=== 27 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 2 skipped ===
+
+Skipped (not run, so not passed):
+  - finalIntegrationSuiteTest: live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  - windowsScriptsTest: needs PowerShell 7, pwsh (JARVIS_TEST_PWSH). No PowerShell 7 (pwsh) found. Install it (CMD: winget install --id Microsoft.PowerShell --source winget), open a new CMD window and check with: pwsh -v. Or set JARVIS_TEST_PWSH to the full path of pwsh.exe.
+
+No unexpected failures.
+EXIT=0

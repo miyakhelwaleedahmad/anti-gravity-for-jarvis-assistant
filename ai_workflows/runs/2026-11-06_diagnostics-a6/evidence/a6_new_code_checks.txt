@@ -1,0 +1,39 @@
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[36m[INFO][0m 12:16:36.134 [JARVIS] [startup] Execution tracing wired: task graph, state changes, security events and tool calls. {}
+
+=== Diagnostics (phase A6) ===
+
+--- 1. the action log line ---
+  PASS: (setup) the stood-in action ran ({"success":true,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":1,"message":"Focused window: \"n)
+  PASS: the line carries the request's trace id (trace_mw4xv9yg_tw1lp2 vs trace_mw4xv9yg_tw1lp2)
+  PASS: …and the owner's request, not the action name (please bring notepad to the front)
+  PASS: it does not claim the effect was checked: verified "pending" ({"timestamp":"2026-11-06T12:16:36.138Z","userCommand":"please bring notepad to the front","traceId":"trace_mw4xv9yg_tw1lp2","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"success","verified":"pending","durationMs":1})
+  PASS: the risk level is the one the kernel computed (level 1, not read-only: "high") (high)
+  PASS: no fixed rollbackAvailable / confirmationRequired (Q2) ({"timestamp":"2026-11-06T12:16:36.138Z","userCommand":"please bring notepad to the front","traceId":"trace_mw4xv9yg_tw1lp2","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"success","verified":"pending","durationMs":1})
+  PASS: outside a request: no trace id, and the action name as the command ({"timestamp":"2026-11-06T12:16:36.139Z","userCommand":"focusApp","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"success","verified":"pending","durationMs":0})
+  PASS: a request with a key: the key is not written (focus notepad, my key is [REDACTED:openai-key] and xxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
+  PASS: …and a long request is cut short (138 chars)
+--- 2. every check that ran, in both logs (Q1) ---
+[36m[INFO][0m 12:16:36.144 [Tool] [trace_mw] tool_call {"tool":"a6_probe_ok","success":true,"durationMs":0,"attempt":0}
+[ToolRegistry] ✓ a6_probe_ok: checked — the probe saw it.
+[36m[INFO][0m 12:16:36.144 [Tool] [trace_mw] verification {"tool":"a6_probe_ok","status":"verified","evidence":"the probe saw it"}
+[36m[INFO][0m 12:16:36.145 [Tool] [trace_mw] tool_call {"tool":"a6_probe_bad","success":true,"durationMs":0,"attempt":0}
+[33m[WARN][0m 12:16:36.145 [Tool] [trace_mw] verification {"tool":"a6_probe_bad","status":"failed","evidence":"nothing changed"}
+[ToolRegistry] ✗ a6_probe_bad reported success, but nothing changed.
+[33m[WARN][0m 12:16:36.149 [Tool] [trace_mw] tool_call {"tool":"a6_probe_bad","success":false,"durationMs":0,"attempt":0,"error":"VERIFICATION_FAILED: nothing changed"}
+[36m[INFO][0m 12:16:36.150 [Tool] [trace_mw] tool_call {"tool":"a6_probe_none","success":true,"durationMs":0,"attempt":0}
+[36m[INFO][0m 12:16:36.150 [Tool] [trace_mw] tool_call {"tool":"a6_probe_unknown","success":true,"durationMs":0,"attempt":0}
+  PASS: (setup) one check passed, one failed (true VERIFICATION_FAILED)
+  PASS: the trace has the passed check, with the request's trace id ({"message":"verification","data":{"tool":"a6_probe_ok","status":"verified","evidence":"the probe saw it"},"correlationId":"trace_mw4xv9yl_1n84ps"})
+  PASS: the trace has the failed check, with its evidence ({"message":"verification","data":{"tool":"a6_probe_bad","status":"failed","evidence":"nothing changed"},"correlationId":"trace_mw4xv9yl_1n84ps"})
+  PASS: the action log has the passed check, with the same trace id ({"timestamp":"2026-11-06T12:16:36.145Z","type":"verification","traceId":"trace_mw4xv9yl_1n84ps","tool":"a6_probe_ok","status":"verified","evidence":"the probe saw it"})
+  PASS: the action log has the failed check, with its evidence: the logs agree after a VERIFICATION_FAILED ({"timestamp":"2026-11-06T12:16:36.145Z","type":"verification","traceId":"trace_mw4xv9yl_1n84ps","tool":"a6_probe_bad","status":"failed","evidence":"nothing changed"})
+  PASS: a call with no check writes no check line
+  PASS: a check that could not be done ("unverifiable") writes no check line either: only checks that ran (Q1) (null)
+--- 3. the test helper's Chrome (TRA-15) ---
+  PASS: the helper says how it ends Chrome (treeKillCommand)
+  PASS: Windows: the whole process tree, by force (["taskkill","/PID","4242","/T","/F"])
+  PASS: elsewhere: the process itself, as before (its children end with it)
+
+19 passed, 0 failed

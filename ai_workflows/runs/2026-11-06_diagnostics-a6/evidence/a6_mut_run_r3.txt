@@ -1,0 +1,37 @@
+M1 no trace id in the action log line [diagnosticsA6Test]: CAUGHT | FAIL: the line carries the request's trace id (undefined vs trace_mw501qye_7c4tby)
+M2 the action name as the command again [diagnosticsA6Test]: CAUGHT | FAIL: …and the owner's request, not the action name (focusApp)
+M3 no 'verified: pending' [diagnosticsA6Test]: CAUGHT | FAIL: it does not claim the effect was checked: verified "pending" ({"timestamp":"2026-11-06T13:17:43.981Z","userCommand":"please bring notepad to the front","traceId":"t
+M4 the fixed risk level again [diagnosticsA6Test]: CAUGHT | FAIL: the risk level is the one the kernel computed (level 1, not read-only: "high") (medium)
+M5 the fixed rollbackAvailable again (Q2) [diagnosticsA6Test]: CAUGHT | FAIL: no fixed rollbackAvailable / confirmationRequired (Q2) ({"timestamp":"2026-11-06T13:17:50.683Z","userCommand":"please bring notepad to the front","traceId":"trace_m
+M6 a long request not cut short [diagnosticsA6Test]: CAUGHT | FAIL: …and a long request is cut short (351 chars)
+M7 a passed check not handed on (Q1) [diagnosticsA6Test]: CAUGHT | FAIL: the trace has the passed check, with the request's trace id
+M8 a failed check not handed on [diagnosticsA6Test]: CAUGHT | FAIL: the trace has the failed check, with its evidence
+M9 the trace does not record the check [diagnosticsA6Test]: CAUGHT | FAIL: the trace has the passed check, with the request's trace id
+M10 the action log does not record the check [diagnosticsA6Test]: CAUGHT | FAIL: the action log has the passed check, with the same trace id
+M11 the check line without the trace id [diagnosticsA6Test]: CAUGHT | FAIL: the action log has the passed check, with the same trace id ({"timestamp":"2026-11-06T13:18:11.267Z","type":"verification","tool":"a6_probe_ok","status":"verified",
+M12 an unverifiable check written as if it ran [diagnosticsA6Test]: CAUGHT | FAIL: a check that could not be done ("unverifiable") writes no check line either: only checks that ran (Q1) ({"timestamp":"2026-11-06T13:18:14.402Z","type":"verification
+M13 Windows: only the parent ended (TRA-15) [diagnosticsA6Test]: CAUGHT | FAIL: Windows: the whole process tree, by force
+M14 Windows: taskkill without the tree [diagnosticsA6Test]: CAUGHT | FAIL: Windows: the whole process tree, by force (["taskkill","/PID","4242","/F"])
+M15 inside an agent: the foreground's trace id again (F1) [diagnosticsA6Test]: CAUGHT | FAIL: inside an agent: the agent's words and its name, not the foreground's trace id (F1) ({"timestamp":"2026-11-06T13:18:23.365Z","userCommand":"BACKGROUND GOAL: tidy wi
+M16 a read says a check is pending (F2) [diagnosticsA6Test]: CAUGHT | FAIL: a read: no "verified: pending" (it is never checked) (F2) ({"timestamp":"2026-11-06T13:18:26.574Z","userCommand":"read my notes","traceId":"trace_mw502sy3_17aqyk","
+M17 every failure 'not allowed' again (F6) [diagnosticsA6Test]: CAUGHT | FAIL: …allowed (permission was given; the action itself failed) (F6) ({"timestamp":"2026-11-06T13:18:29.811Z","userCommand":"bring the calculator to the front","traceId":
+M18 the case-sensitive 'Denied' check again (F6) [diagnosticsA6Test]: CAUGHT | FAIL: a permission refusal: blocked, not allowed (F6) ({"timestamp":"2026-11-06T13:18:32.878Z","userCommand":"focusApp","normalizedIntent":"focusApp","action":"focusApp",
+M19 the helper ignores a failed taskkill (F3) [diagnosticsA6Test]: CAUGHT | FAIL: Windows, taskkill failed: the process is still ended (killed=0)
+M20 the failure line without the request (F3) [diagnosticsA6Test]: CAUGHT | FAIL: a failure line: the trace id, the request, the computed risk level, no "pending" (F3) ({"timestamp":"2026-11-06T13:18:38.954Z","userCommand":"focusApp","normalizedI
+M21 an agent's check line: the foreground's trace id again (F10) [diagnosticsA6Test]: CAUGHT | FAIL: an agent's check line: the agent's name, not the foreground's trace id (F10) ({"timestamp":"2026-11-06T13:18:43.032Z","type":"verification","traceId":"trace_mw5035n
+M22 an agent's check line without the agent's name (F10) [diagnosticsA6Test]: CAUGHT | FAIL: an agent's check line: the agent's name, not the foreground's trace id (F10) ({"timestamp":"2026-11-06T13:18:46.165Z","type":"verification","tool":"control_app","st
+M23 the round-1 rule again: any 'denied' blocked (F11) [diagnosticsA6Test]: CAUGHT | FAIL: "EACCES: permission denied, open 'C:\x'": a failure of an allowed action (F11) (blocked allowed=false EACCES: permission denied, open 'C:\x')
+M24 a permission-level refusal not blocked (F11) [diagnosticsA6Test]: CAUGHT | FAIL: a permission refusal: blocked, not allowed (F6) ({"timestamp":"2026-11-06T13:18:51.488Z","userCommand":"focusApp","normalizedIntent":"focusApp","action":"focusApp",
+M25 a cancel not blocked (F11) [diagnosticsA6Test]: CAUGHT | FAIL: "Action cancelled by user.": blocked, not allowed (F11) (failure allowed=true Action cancelled by user.)
+M26 'not approved' not blocked (F11) [diagnosticsA6Test]: CAUGHT | FAIL: "Not closed: the window "Notes" was not approved.": blocked, not allowed (F11) (failure allowed=true Not closed: the window "Notes" was not approved.)
+M27 outside the approved folders not blocked (F11) [diagnosticsA6Test]: CAUGHT | FAIL: "Access Denied: Path "C:\x" is not allowed outside approved directories for action "read".": blocked, not allowed (F11) (failure allowed=true Access Denied: Path "C
+M28 taskkill on an exited Chrome's id (F12) [diagnosticsA6Test]: CAUGHT | FAIL: Windows, Chrome already exited: no taskkill on its old process id (F12) ([["taskkill","/PID","4242","/T","/F"],["taskkill","/PID","4243","/T","/F"]])
+M29 a Chrome ended by a signal counted as running (F12) [diagnosticsA6Test]: CAUGHT | FAIL: Windows, Chrome already exited: no taskkill on its old process id (F12) ([["taskkill","/PID","4243","/T","/F"]])
+M30 a denied dangerous shortcut not blocked (F15) [diagnosticsA6Test]: CAUGHT | FAIL: "Dangerous shortcut requires explicit confirmation and was denied: alt+f4": blocked, not allowed (F11) (failure allowed=true Dangerous shortcut requires explicit co
+M31 a safety-policy refusal not blocked (F15) [diagnosticsA6Test]: CAUGHT | FAIL: "Blocked by safety policy: JARVIS does not stop or restart the security service "WinDefend".": blocked, not allowed (F11) (failure allowed=true Blocked by safety po
+M32 a critical-process refusal not blocked (F15) [diagnosticsA6Test]: CAUGHT | FAIL: "Execution Blocked: Terminating critical system process "lsass" is forbidden.": blocked, not allowed (F11) (failure allowed=true Execution Blocked: Terminating crit
+M33 any 'cancelled' blocked again (F17) [diagnosticsA6Test]: CAUGHT | FAIL: "Chrome cancelled the download": a failure of an allowed action (F11) (blocked allowed=false Chrome cancelled the download)
+
+33/33 caught
+tree restored (md5): YES
+EXIT=0

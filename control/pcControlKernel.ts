@@ -9,6 +9,8 @@
 import { execa } from 'execa';
 import { permissionSession } from './permissionSession.js';
 import { actionAuditLog } from './actionAuditLog.js';
+import { isPermissionDenial } from './permissionDenial.js';
+import { getAgentPath, getRequestText, getTraceId } from '../core/traceContext.js';
 import { actionQueue } from './actionQueue.js';
 import { appController } from './appController.js';
 import { windowController } from './windowController.js';
@@ -57,6 +59,23 @@ function either(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined {
   return signals.length > 1 ? AbortSignal.any(signals) : signals[0];
 }
 
+/**
+ * The request an action belongs to, for the action log (phase A6, TRA-13): its
+ * trace id and the owner's words, cut short (the log redacts keys). Outside a
+ * request, the action name. Inside a background agent, the agent's words and its
+ * name, without the foreground request's trace id, which is not its own (review F1).
+ */
+function requestFields(actionName: string): { userCommand: string; traceId?: string; agentPath?: string } {
+  const agentPath = getAgentPath();
+  const traceId = agentPath ? undefined : getTraceId();
+  const request = getRequestText()?.trim();
+  return {
+    userCommand: request ? (request.length > 160 ? `${request.slice(0, 157)}...` : request) : actionName,
+    ...(traceId ? { traceId } : {}),
+    ...(agentPath ? { agentPath } : {}),
+  };
+}
+
 export class PcControlKernel {
   private async executeAction(
     actionName: string,
@@ -98,17 +117,18 @@ export class PcControlKernel {
       };
 
       await actionAuditLog.log({
-        userCommand: actionName,
+        ...requestFields(actionName),
         normalizedIntent: actionName,
         action: actionName,
         target: targetName,
         permissionLevel: permLevel,
-        riskLevel: isReadOnly ? 'safe' : 'medium',
+        riskLevel,
         allowed: true,
-        confirmationRequired: false,
         result: 'success',
+        // A change may be checked afterwards: its result is a later `verification` line, and no
+        // such line means it was not checked. A read is never checked (phase A6, review F2).
+        ...(isReadOnly ? {} : { verified: 'pending' as const }),
         durationMs,
-        rollbackAvailable: true
       });
 
       return result;
@@ -127,18 +147,22 @@ export class PcControlKernel {
         error: errMsg
       };
 
+      // JARVIS refused it: a permission level, cancelled by the owner, not approved or
+      // denied, a safety rule, or a path outside the approved folders: blocked, not allowed.
+      // Anything else, a file system "EACCES: permission denied" or Windows "Access is
+      // denied." included, was allowed and failed (review F6, F11, F15).
+      const blocked = isPermissionDenial(errMsg)
+        || /cancelled by user|not approved|was denied|safety policy|^Execution Blocked:|^Access Denied: Path/i.test(errMsg);
       await actionAuditLog.log({
-        userCommand: actionName,
+        ...requestFields(actionName),
         normalizedIntent: actionName,
         action: actionName,
         target: targetName,
         permissionLevel: permLevel,
-        riskLevel: isReadOnly ? 'safe' : 'high',
-        allowed: false,
-        confirmationRequired: false,
-        result: errMsg.includes('cancelled') || errMsg.includes('Denied') ? 'blocked' : 'failure',
+        riskLevel,
+        allowed: !blocked,
+        result: blocked ? 'blocked' : 'failure',
         durationMs,
-        rollbackAvailable: false,
         error: errMsg
       });
 

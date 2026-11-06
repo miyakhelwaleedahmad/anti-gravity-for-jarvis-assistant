@@ -16,14 +16,21 @@
  * Arguments and command text are left out, as for task-graph nodes: they
  * carry paths and the owner's words. security_audit.log keeps its own full
  * (redacted) record.
+ *
+ * Phase A6 (TRA-13): every check of a call's effect that ran (verified or
+ * failed) is a `verification` entry here and a `verification` line in the
+ * action log (data/logs/jarvis-actions.jsonl) with the same trace id. Its
+ * evidence is redacted and cut to 200 characters; it can name what was checked,
+ * such as a window title or a file name.
  */
 
 import { taskGraphEngine } from '../core/taskGraphEngine.js';
-import { getTraceId } from '../core/traceContext.js';
+import { getAgentPath, getTraceId } from '../core/traceContext.js';
 import { agentStateMachine } from '../core/agentStateMachine.js';
 import { toolRegistryV2 } from '../core/toolRegistryV2.js';
 import { securityAuditLogger } from '../security/securityAuditLogger.js';
 import { logger } from './structuredLogger.js';
+import { actionAuditLog } from '../control/actionAuditLog.js';
 
 let wired = false;
 
@@ -107,6 +114,22 @@ export function wireExecutionTracing(): void {
     toolLog.withCorrelation(trace())[c.success ? 'info' : 'warn']('tool_call', {
       tool: c.tool, success: c.success, durationMs: c.durationMs, attempt: c.attemptNumber,
       ...(c.error ? { error: c.error.slice(0, 200) } : {}),
+    });
+  });
+
+  // Every check of an effect that ran, in the trace and in the action log with
+  // the same trace id, so the two agree after a VERIFICATION_FAILED (phase A6, TRA-13).
+  // A check inside an agent carries the agent's name, not the foreground trace id,
+  // as the action line does (review F10).
+  toolRegistryV2.onVerification((v) => {
+    const agentPath = getAgentPath();
+    const traceId = agentPath ? undefined : getTraceId();
+    const evidence = v.evidence.slice(0, 200);
+    toolLog.withCorrelation(trace())[v.status === 'verified' ? 'info' : 'warn']('verification', {
+      tool: v.tool, status: v.status, evidence, ...(agentPath ? { agentPath } : {}),
+    });
+    void actionAuditLog.logVerification({
+      ...(traceId ? { traceId } : {}), ...(agentPath ? { agentPath } : {}), tool: v.tool, status: v.status, evidence,
     });
   });
 

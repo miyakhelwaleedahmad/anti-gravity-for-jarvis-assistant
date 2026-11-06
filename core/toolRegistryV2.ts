@@ -1124,6 +1124,19 @@ export class ToolRegistryV2 {
     this._callListeners.push(fn);
   }
 
+  private _verificationListeners: Array<(check: { tool: string; status: 'verified' | 'failed'; evidence: string }) => void> = [];
+
+  /** Also hand each check of a call's effect that ran (verified or failed) to `fn`: the trace and the action log (phase A6, TRA-13). */
+  onVerification(fn: (check: { tool: string; status: 'verified' | 'failed'; evidence: string }) => void): void {
+    this._verificationListeners.push(fn);
+  }
+
+  private _emitVerification(check: { tool: string; status: 'verified' | 'failed'; evidence: string }): void {
+    for (const fn of this._verificationListeners) {
+      try { fn(check); } catch { /* a listener must not break the call */ }
+    }
+  }
+
   /**
    * The signature and issue the registry recorded for the tool's latest faulty
    * call at or after `since`, so another layer (reflection) names the failure
@@ -1186,10 +1199,14 @@ export class ToolRegistryV2 {
     const verification = await verifyCall(ran.name, args, result.output, ran.verify);
     if (!verification) return result;
     if (verification.status !== 'failed') {
-      if (verification.status === 'verified') console.log(`[ToolRegistry] ✓ ${ran.name}: checked — ${verification.evidence}.`);
+      if (verification.status === 'verified') {
+        console.log(`[ToolRegistry] ✓ ${ran.name}: checked — ${verification.evidence}.`);
+        this._emitVerification({ tool: ran.name, status: 'verified', evidence: redact(verification.evidence) });
+      }
       return { ...result, verification };
     }
     const evidence = redact(verification.evidence);
+    this._emitVerification({ tool: ran.name, status: 'failed', evidence });
     console.warn(`[ToolRegistry] ✗ ${ran.name} reported success, but ${evidence}.`);
     this._pushHistory({
       tool: ran.name, args, success: false, durationMs: 0, error: `VERIFICATION_FAILED: ${evidence}`,

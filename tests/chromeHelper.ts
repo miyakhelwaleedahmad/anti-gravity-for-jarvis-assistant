@@ -96,6 +96,31 @@ export interface RunningChrome {
 const REAL_USER_ENV = Object.fromEntries(['HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'HOMEDRIVE', 'HOMEPATH']
   .map((k) => [k, process.env[k]] as const).filter(([, v]) => v !== undefined));
 
+/**
+ * How to end a test Chrome with all its processes (phase A6, TRA-15). On Windows
+ * `proc.kill()` likely ends the parent only, leaving its child processes running
+ * (Windows CI: "Terminate orphan process … (chrome)"), so the whole tree is ended
+ * with taskkill. Elsewhere the children end with the parent, and `proc.kill()` is used.
+ */
+export function treeKillCommand(pid: number, platform: NodeJS.Platform = process.platform): string[] | undefined {
+  return platform === 'win32' ? ['taskkill', '/PID', String(pid), '/T', '/F'] : undefined;
+}
+
+/**
+ * Ends a test Chrome: its whole tree on Windows, else the process (the platform and runner can be stood in for).
+ * taskkill runs only while that Chrome is still running, so a reused process id is not hit (review F12).
+ */
+export function endChrome(
+  proc: Pick<ChildProcess, 'pid' | 'kill' | 'exitCode' | 'signalCode'>,
+  platform: NodeJS.Platform = process.platform,
+  run: (cmd: string, args: string[]) => { status: number | null } = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', windowsHide: true, timeout: 10_000 }),
+): void {
+  const running = proc.exitCode === null && proc.signalCode === null;
+  const cmd = running && proc.pid !== undefined ? treeKillCommand(proc.pid, platform) : undefined;
+  if (cmd && run(cmd[0]!, cmd.slice(1)).status === 0) return;
+  proc.kill();
+}
+
 /** Headless, a free debugging port, a throwaway profile; resolves once DevTools answers. */
 export async function startChromium(url = 'about:blank', extraArgs: string[] = []): Promise<RunningChrome> {
   const binary = findChromium();
@@ -124,7 +149,7 @@ export async function startChromium(url = 'about:blank', extraArgs: string[] = [
     } catch { /* not up yet */ }
   }
   if (!up) {
-    proc.kill();
+    endChrome(proc);
     throw new Error(`Chrome did not open DevTools on port ${port} within ${Date.now() - started} ms`
       + `${exited !== undefined ? ` (it exited with code ${exited})` : ''}. Chrome said: ${stderr.trim().slice(-600) || '(nothing)'}`);
   }
@@ -132,7 +157,7 @@ export async function startChromium(url = 'about:blank', extraArgs: string[] = [
     port,
     process: proc,
     async stop() {
-      proc.kill();
+      endChrome(proc);
       await new Promise((r) => setTimeout(r, 500));
       try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* still in use */ }
     },

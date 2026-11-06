@@ -1,0 +1,4 @@
+M12 an unverifiable check written as if it ran [diagnosticsA6Test]: CAUGHT | FAIL: a check that could not be done ("unverifiable") writes no check line either: only checks that ran (Q1) ({"timestamp":"2026-11-06T12:16:38.218Z","type":"verification
+
+1/1 caught
+tree restored (md5): YES

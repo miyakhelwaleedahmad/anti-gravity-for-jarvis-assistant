@@ -663,7 +663,7 @@ const { VERIFIERS } = await import('../core/verifiers.js');
 
 // ── 7. A real Chromium ──────────────────────────────────────────────────────
 console.log('\n--- 7. a real headless Chromium ---');
-const { findChromium } = await import('./chromeHelper.js');
+const { findChromium, endChrome } = await import('./chromeHelper.js');
 const binary = findChromium();
 if (!chromeMod) {
   ok('real Chromium: control/jarvisChrome.ts exists', false, 'not on this code');
@@ -713,7 +713,8 @@ if (!chromeMod) {
   } catch (err) {
     ok('real Chromium run', false, (err as Error).message);
   } finally {
-    for (const c of children) { try { c.kill(); } catch { /* gone */ } }
+    // Its whole process tree on Windows (phase A6 review F4, TRA-15).
+    for (const c of children) { try { endChrome(c); } catch { /* gone */ } }
     await new Promise((r) => setTimeout(r, 300));
     try { fs.rmSync(prof, { recursive: true, force: true }); } catch { /* in use */ }
   }

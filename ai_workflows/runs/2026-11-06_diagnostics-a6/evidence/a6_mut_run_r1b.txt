@@ -1,0 +1,6 @@
+M1 no trace id in the action log line [diagnosticsA6Test]: CAUGHT | FAIL: the line carries the request's trace id (undefined vs trace_mw4ypeye_g7v1j0)
+M3 no 'verified: pending' [diagnosticsA6Test]: CAUGHT | FAIL: it does not claim the effect was checked: verified "pending" ({"timestamp":"2026-11-06T12:40:04.534Z","userCommand":"please bring notepad to the front","traceId":"t
+M5 the fixed rollbackAvailable again (Q2) [diagnosticsA6Test]: CAUGHT | FAIL: no fixed rollbackAvailable / confirmationRequired (Q2) ({"timestamp":"2026-11-06T12:40:06.791Z","userCommand":"please bring notepad to the front","traceId":"trace_m
+
+3/3 caught
+tree restored (md5): YES
