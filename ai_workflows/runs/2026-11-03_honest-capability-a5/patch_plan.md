@@ -122,3 +122,34 @@ Gate 1 for A5b: **approved** by the owner on 2026-11-05:
 - Q1: "Not verified + reason (Recommended)";
 - Q2: "Not verified: starts when needed (Recommended)";
 - Q3: "Full self-check only (Recommended)".
+
+## A5e in detail (capability model: TRA-09, plus two issues from the owner's PC log of 2026-11-05)
+
+Diagnosis, checked at `847e04c` (a probe on this Linux host, `evidence/a5e_diagnosis_probe.txt`):
+- **No capability record.** All 79 tools are registered and offered on every OS. On Linux, "maximize the notepad" is offered `control_window`, and "type hello in notepad" is offered `ui_elements`, `ui_action` and `control_keyboard`. Each of these can only work through Windows PowerShell or `win_automate.ps1`. `list_capabilities` has no availability (`control_window`: risk, approval, actions, nothing about where it runs).
+- Windows-only, from the code: `control_window`, `control_keyboard`, `control_mouse` (`win_automate.ps1`); `control_process` (PowerShell `Get-Process` / `Stop-Process`); `get_open_apps`, `get_active_window`, `is_app_open` (the PowerShell window list); `windows_overview`, `ui_elements`, `ui_action`, `screenshot`, `clipboard` (`perception/windowsProbe.ts`, which rejects with "This needs Windows" off Windows). That is 12 tools. Some tools are mixed and stay offered everywhere: `control_app` (open works elsewhere), `control_system`, `get_pc_state`, `get_system_state`, `open_app` (A5d).
+- **The planner's fallback offers a shell.** A request no rule matches gets `open_app, web_search, get_system_info, run_command` (`core/planningToolSelection.ts`, the last lines). On the owner's PC, "you have full access … why you can't" and "language commands can you tell me" got it, and the model ran `run_command` (refused: shell metacharacters). "no minimise" did too, because only the spelling "minimize" is recognised, and the model tried PowerShell through `run_command` (refused: not on the allowlist). The orchestrator handles a planning call with no tools (`core/orchestrator.ts:1275-1278`).
+- **The planner path says "Opening X, sir." for any successful `open_app`** (`core/orchestrator.ts:1628-1631`), also for a dry run or an open that could not be checked. On the owner's PC: "how can you check that notepad is open…" → a 6 ms `open_app` with nothing launched → "Opening Notepad, sir." (A5d review D1).
+
+| # | Change | Files (protected in **bold**) |
+|---|---|---|
+| P1 | A capability record: `requires: ['windows']` in the catalog for the 12 tools above. A small new module says whether a tool's requirements are met here, and why not ("needs Windows; this computer is not running Windows"), with the platform as a stand-in for tests. | **`core/toolCatalog.ts`**, `core/capabilities.ts` (new) |
+| P2 | The planner offers only tools whose requirements are met. On Linux, "maximize the notepad" is not offered `control_window`. | `core/planningToolSelection.ts` |
+| P3 | The registry refuses, before dispatch, a call to a tool whose requirements are not met, with the reason, as a refusal (not a tool fault). This covers callers other than the planner (goals, agents). | **`core/toolRegistryV2.ts`** (`execute`) |
+| P4 | `list_capabilities` shows, per tool, `available` and the reason when it is not. | **`core/toolRegistryV2.ts`** (`describeCapabilities`) |
+| P5 | The planner's fallback offers no shell and no launch: `list_capabilities, web_search, get_system_info`. A question then gets an answer in words. "minimise" / "maximise" are recognised as close/window words. The route fixture is updated for the phrases whose offers change. | `core/planningToolSelection.ts`, `fixtures/route-golden.json` |
+| P6 | The planner path's `open_app` reply follows what happened. Dry run: "I checked that X can be opened, sir; I did not open it." Started but not checkable: "I started X, sir, but I can't check from here that it opened." (as A5d's route). Checked: "Opening X, sir." as before. | **`core/orchestrator.ts`** (the simple-reply `open_app` branch only) |
+| T | New `tests/capabilityA5eTest.ts`, with the platform stood in, so it is the same on Windows and Linux. Written first; it must fail on the current code. | tests |
+
+Not in A5e: hiding `dryRun` from the model would change `skills/automation/description.json`, which the skill trust fingerprints. Live Chrome or PowerShell checks at planning time: Chrome starts on demand, and A2/A5a already say why when it cannot.
+
+Owner choices for A5e:
+- Q1. What a tool can require: **Windows only, from the platform** (recommended: instant, and the 12 tools cannot work elsewhere), or also live checks of Chrome and PowerShell before each plan (slower, and Chrome starts on demand).
+- Q2. The planner's fallback: **no shell and no launch tools** (recommended), or keep `run_command` and `open_app` in it.
+- Q3. The planner path's `open_app` reply (P6): **fix it in A5e** (recommended), or leave it for later.
+
+Gate 1 for A5e: **approved** by the owner on 2026-11-06:
+- "Approve A5e (Recommended)", with the protected files `core/toolCatalog.ts`, `core/toolRegistryV2.ts` (the `execute` check and `describeCapabilities`) and `core/orchestrator.ts` (the simple-reply `open_app` branch only);
+- Q1: "Windows only (Recommended)";
+- Q2: "No shell, no launch (Recommended)";
+- Q3: "Fix it in A5e (Recommended)".

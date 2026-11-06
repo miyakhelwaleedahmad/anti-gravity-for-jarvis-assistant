@@ -29,10 +29,9 @@
     "route": "{\"type\":\"stop\",\"reply\":\"Paused, sir.\"}",
     "normalized": "pause",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": false
   },
@@ -40,10 +39,9 @@
     "route": "{\"type\":\"stop\",\"reply\":\"Resuming, sir.\"}",
     "normalized": "resume",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": false
   },
@@ -51,10 +49,9 @@
     "route": "{\"type\":\"greeting\",\"reply\":\"Hello, sir. How may I assist you today?\"}",
     "normalized": "hello",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -62,10 +59,9 @@
     "route": "null",
     "normalized": "",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": false
   },
@@ -73,10 +69,9 @@
     "route": "{\"type\":\"simple_reply\",\"reply\":\"Anytime, sir.\"}",
     "normalized": "thanks",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -84,10 +79,9 @@
     "route": "{\"type\":\"time\",\"reply\":\"<time>\"}",
     "normalized": "what time is it",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": false
   },
@@ -222,10 +216,9 @@
     "route": "{\"type\":\"what_can_you_do\",\"reply\":\"I am JARVIS, your assistant, sir. I have 79 tools: I can check the state of your PC, work with browser tabs, control your apps and windows, read and write files, run approved terminal commands, read code for you, look things up online, remember facts and search documents, and manage processes and services. Say \\\"list your tools\\\" for each tool and its risk.\"}",
     "normalized": "who are you",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -363,10 +356,9 @@
     "route": "{\"type\":\"continue_work\",\"reply\":\"\"}",
     "normalized": "continue what i was doing",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -374,10 +366,9 @@
     "route": "{\"type\":\"continue_work\",\"reply\":\"\"}",
     "normalized": "what was i doing",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -385,10 +376,9 @@
     "route": "{\"type\":\"simple_reply\",\"reply\":\"Understood, sir. Nothing is waiting for your approval.\"}",
     "normalized": "yes",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -396,10 +386,9 @@
     "route": "null",
     "normalized": "no thanks",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -471,10 +460,7 @@
     "route": "null",
     "normalized": "what changed in my project",
     "tools": [
-      "open_app",
-      "web_search",
-      "get_system_info",
-      "run_command"
+      "git_overview"
     ],
     "heavy": true
   },
@@ -523,10 +509,9 @@
     "route": "{\"type\":\"agent_status\",\"target\":\"remaining\",\"reply\":\"\"}",
     "normalized": "how much work remains",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -716,10 +701,9 @@
     "route": "null",
     "normalized": "tell me a joke",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },
@@ -750,10 +734,9 @@
     "route": "null",
     "normalized": "",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": false
   },
@@ -761,10 +744,9 @@
     "route": "null",
     "normalized": "",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": false
   },
@@ -772,10 +754,9 @@
     "route": "null",
     "normalized": "",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": false
   },
@@ -973,10 +954,9 @@
     "route": "null",
     "normalized": "install the requests package",
     "tools": [
-      "open_app",
+      "list_capabilities",
       "web_search",
-      "get_system_info",
-      "run_command"
+      "get_system_info"
     ],
     "heavy": true
   },

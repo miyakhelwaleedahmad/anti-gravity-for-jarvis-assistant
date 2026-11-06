@@ -1,0 +1,323 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+  PASS: the platform can be stood in for (core/capabilities.ts capabilityHost)
+
+=== Capability model (phase A5e) ===
+
+--- 1. the capability record (Q1) ---
+  PASS: the 12 Windows-only tools require Windows (all 12)
+  PASS: mixed and other tools require nothing (none)
+--- 2. the planner ---
+  PASS: not Windows: "maximize the notepad" is not offered control_window (control_app)
+  PASS: not Windows: "type hello in notepad" gets no Windows-only tool (open_app, control_app)
+  PASS: …and still the tools that can run (open_app) (open_app, control_app)
+  PASS: Windows: "maximize the notepad" is offered control_window, as before (control_app, control_window)
+  PASS: Windows: "type hello in notepad" is offered ui_action and control_keyboard, as before (open_app, control_app, ui_elements, ui_action, control_keyboard)
+--- 3. the registry ---
+[ToolRegistry] ⛔ Not available here: control_window needs Windows, and this computer is not running Windows.
+  PASS: not Windows: control_window is refused, with the reason (RISK_REFUSED: Refused by safety policy: control_window needs Windows, and this computer is not running Windows.)
+  PASS: …before anything ran (at once) (0 ms)
+[ToolRegistry] ⛔ Not available here: control_process needs Windows, and this computer is not running Windows.
+  PASS: not Windows: a call that would ask (control_process kill) is refused without asking (asked=0 Refused by safety policy: control_process needs Windows, and this computer is not running Windows.)
+[ToolRegistry] ⛔ Not available here: get_open_apps needs Windows, and this computer is not running Windows.
+  PASS: not Windows: a Windows-only read tool too (Refused by safety policy: get_open_apps needs Windows, and this computer is not running Windows.)
+  PASS: …and a refusal is not recorded as a tool fault ([])
+  PASS: Windows: the same kind of tool is not refused for its platform ({"success":false,"error":"The open windows could not be read: the window list has not been read yet","spoken":"I can't read the open windows right now, sir."})
+  PASS: not Windows: a tool that needs nothing still runs (platform: linux
+arch: x64
+nodeVersion: v22.23.4
+uptime: 1h 8m
+totalMemGB: 15.71 )
+--- 4. list_capabilities ---
+  PASS: not Windows: control_window is listed as not available, with the reason ({"name":"control_window","summary":"Focuses, moves, resizes, minimises, maximises or closes a window.","risk":[1,2],"approval":"policy","reversible":"partial","external":"none","actions":["focus","minimize","maximize","move","resize","close","close_current"],"available":false,"unavailableBecause":"control_window needs Windows, and this computer is not running Windows"})
+  PASS: …open_app is available ({"name":"open_app","summary":"Opens an allow-listed application or website.","risk":[1,1],"approval":"none","reversible":"yes","external":"none","available":true})
+  PASS: Windows: control_window is available ({"name":"control_window","summary":"Focuses, moves, resizes, minimises, maximises or closes a window.","risk":[1,2],"approval":"policy","reversible":"partial","external":"none","actions":["focus","minimize","maximize","move","resize","close","close_current"],"available":true})
+  PASS: the list_capabilities tool shows it ([
+  {
+    "category": "COMPUTER",
+    "tools": [
+      {
+        "name": "clipboard",
+        "summary": "Reads the clip)
+--- 5. the fallback (Q2) ---
+  PASS: "you have full access up please so why you cant": no shell and no launch (list_capabilities, web_search, get_system_info)
+  PASS: …but the capability list, to answer from (list_capabilities, web_search, get_system_info)
+  PASS: "language commands can you tell me": no shell and no launch (list_capabilities, web_search, get_system_info)
+  PASS: …but the capability list, to answer from (list_capabilities, web_search, get_system_info)
+  PASS: "no minimise" (British spelling): the window tools, not a shell (control_app, control_window)
+  PASS: "maximise the window": control_window (control_app, control_window)
+  PASS: a request to run a command still gets run_command (open_app, control_app, dev, run_command)
+  PASS: "what changed in my project": git_overview, to answer from (git_overview)
+  PASS: "what did i change today": git_overview, to answer from (git_overview)
+  PASS: "show me my changes": git_overview, to answer from (git_overview)
+  PASS: "what's changed in my project": git_overview, to answer from (git_overview)
+  PASS: "what have i changed": git_overview, to answer from (git_overview)
+  PASS: "what changes did i make": git_overview, to answer from (git_overview)
+  PASS: "show my recent changes": git_overview, to answer from (git_overview)
+  PASS: "any changes in my project": git_overview, to answer from (git_overview)
+  PASS: …but not for any "changed" ("what changed in the weather") (get_weather)
+  PASS: "undo my changes": not git_overview (an action, not a question) (list_capabilities, web_search, get_system_info)
+  PASS: "save my changes": not git_overview (an action, not a question) (read_file, write_file, control_file)
+  PASS: "type my changes into notepad": not git_overview (an action, not a question) (open_app, control_app, ui_elements, ui_action, control_keyboard)
+--- 6. the planner path's open_app reply (Q3) ---
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 79 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain, open_app, cancel_current_action, explain_code, control_app, control_browser, control_file, control_keyboard, control_mouse, control_process, control_system, control_window, disable_full_control_session, enable_full_control_session, get_active_window, get_browser_tabs, get_jarvis_service_status, get_open_apps, get_pc_state, get_permission_status, get_system_state, ingest_documents, is_app_open, is_tab_open, deep_search, search_documents, get_weather
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[Orchestrator] 🎯 26 skill(s) loaded into ToolRegistry: 79 tools in total.
+[UnifiedContext] Building context heavy=false depth=fast budget=2400tok [PARALLEL]
+[GoalManager] ✅ Initialized. 0 historical goal(s) found.
+[Orchestrator] 🎯 GoalManager initialized.
+[Memory] Initialized. Short-term: 0 Long-term: 0
+[Redis] Initial connection failed — running without cache.
+[Orchestrator] Processing input [cli]: "how can you check that notepad is open"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] IDLE → PLANNING
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] Building context heavy=true depth=balanced budget=2400tok [PARALLEL]
+[GoalManager] 🎯 Goal created [priority 5]: "goal_1793953476249_sq3pd" — "how can you check that notepad is open"
+[Timing] retrieveForPlanning: 1ms
+[GoalManager] 📌 Goal "goal_1793953476249_sq3pd": in_progress → planning
+[UnifiedContext] parallel=1.2ms total=13.6ms heavy=true depth=balanced tokens=46/2400
+[Timing] buildContext: 14ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 16ms (Estimated Tokens: ~1402)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=1402
+[Timing] LLM returned in 0ms — tokens_used=? prompt_tokens=?
+[Orchestrator] 🔧 LLM requested tools: open_app
+[Orchestrator] 📊 Task graph built: 1 node(s)
+[Reflection] 🔍 PRE-CHECK: Analyzing plan for "how can you check that notepad is open" (1 nodes)
+[Reflection] ✅ PRE-CHECK APPROVED: PRE-CHECK APPROVED: 1 node(s) ready for execution.
+[Orchestrator] 🔍 Pre-check: approved — PRE-CHECK APPROVED: 1 node(s) ready for execution.
+[PlannerIntelligence] ✅ Plan valid (1 nodes)
+[PlannerIntelligence] 📊 Graph analysis: risk=low | avgConf=75% | highRisk=0 | recommendation=proceed
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[TaskGraph] ▶️  Starting graph "graph_1793953476271_ssl2d" — goal: "how can you check that notepad is open"
+[TaskGraph]    Nodes: 1 | Parallel root tasks: 1
+[GoalManager] 📌 Goal "goal_1793953476249_sq3pd": planning → executing
+[TaskGraph] 🔄 Iteration 1: dispatching 1 node(s) in parallel
+[TaskGraph]   → Queuing node "task_1_open_app" (tool: open_app)
+[TaskGraph]   ✅ Node "task_1_open_app" done (6ms)
+[TaskGraph] ✅ Graph "graph_1793953476271_ssl2d" finished with status: completed
+[AgentStateMachine] EXECUTING → OBSERVING
+[Orchestrator] 👁️  Observations collected: Graph "graph_1793953476271_ssl2d": 1/1 done, 0 failed. Status: completed
+[AgentStateMachine] OBSERVING → REFLECTING
+[Orchestrator] ⚡ OPT-3: Skipping full reflection for low-risk successful graph.
+[Orchestrator] Simple tool(s) succeeded. Bypassing LLM synthesis.
+
+🤖 JARVIS: I checked that Notepad can be opened, sir; I did not open it.
+
+[AgentStateMachine] REFLECTING → SPEAKING
+[GoalManager] 📌 Goal "goal_1793953476249_sq3pd": executing → completed
+[GoalManager] ✅ Goal "goal_1793953476249_sq3pd" completed.
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............    14ms  │
+│  LLM Network...............     0ms  │
+│  TokensEstimated.......    1402 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................    44ms  │
+└────────────────────────────────────────────┘
+
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: a dry run: says it checked, and that nothing was opened (I checked that Notepad can be opened, sir; I did not open it.)
+[Orchestrator] Processing input [cli]: "could you bring up the windows settings for me"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] IDLE → PLANNING
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] Building context heavy=true depth=balanced budget=2400tok [PARALLEL]
+[Timing] retrieveForPlanning: 0ms
+[UnifiedContext] parallel=0.1ms total=0.8ms heavy=true depth=balanced tokens=94/2400
+[Timing] buildContext: 1ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 2ms (Estimated Tokens: ~1476)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=1476
+[Timing] LLM returned in 0ms — tokens_used=? prompt_tokens=?
+[Orchestrator] 🔧 LLM requested tools: open_app
+[Orchestrator] 📊 Task graph built: 1 node(s)
+[Reflection] 🔍 PRE-CHECK: Analyzing plan for "could you bring up the windows settings for me" (1 nodes)
+[Reflection] ✅ PRE-CHECK APPROVED: PRE-CHECK APPROVED: 1 node(s) ready for execution.
+[Orchestrator] 🔍 Pre-check: approved — PRE-CHECK APPROVED: 1 node(s) ready for execution.
+[PlannerIntelligence] ✅ Plan valid (1 nodes)
+[PlannerIntelligence] 📊 Graph analysis: risk=low | avgConf=75% | highRisk=0 | recommendation=proceed
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[TaskGraph] ▶️  Starting graph "graph_1793953476544_rgzim" — goal: "could you bring up the windows settings for me"
+[TaskGraph]    Nodes: 1 | Parallel root tasks: 1
+[GoalManager] 🎯 Goal created [priority 5]: "goal_1793953476545_uoj0o" — "could you bring up the windows settings for me"
+[GoalManager] 📌 Goal "goal_1793953476545_uoj0o": in_progress → executing
+[TaskGraph] 🔄 Iteration 1: dispatching 1 node(s) in parallel
+[TaskGraph]   → Queuing node "task_1_open_app" (tool: open_app)
+[open_app] target="settings" resolved="ms-settings:"
+[open_app] platform=win32 command=cmd.exe args=/c,start,,ms-settings:
+[TaskGraph]   ✅ Node "task_1_open_app" done (8ms)
+[TaskGraph] ✅ Graph "graph_1793953476544_rgzim" finished with status: completed
+[AgentStateMachine] EXECUTING → OBSERVING
+[Orchestrator] 👁️  Observations collected: Graph "graph_1793953476544_rgzim": 1/1 done, 0 failed. Status: completed
+[AgentStateMachine] OBSERVING → REFLECTING
+[Orchestrator] ⚡ OPT-3: Skipping full reflection for low-risk successful graph.
+[Orchestrator] Simple tool(s) succeeded. Bypassing LLM synthesis.
+
+🤖 JARVIS: I started settings, sir, but I can't check from here that it opened.
+
+[AgentStateMachine] REFLECTING → SPEAKING
+[GoalManager] 📌 Goal "goal_1793953476545_uoj0o": executing → completed
+[GoalManager] ✅ Goal "goal_1793953476545_uoj0o" completed.
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............     1ms  │
+│  LLM Network...............     0ms  │
+│  TokensEstimated.......    1476 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................    13ms  │
+└────────────────────────────────────────────┘
+
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: started but not checkable: "I started settings, sir, but I can't check from here that it opened." (I started settings, sir, but I can't check from here that it opened.)
+[Orchestrator] Processing input [cli]: "could you get notepad going for me"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] IDLE → PLANNING
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] Building context heavy=true depth=balanced budget=2400tok [PARALLEL]
+[GoalManager] 🎯 Goal created [priority 5]: "goal_1793953476811_0l4ua" — "could you get notepad going for me"
+[Timing] retrieveForPlanning: 0ms
+[GoalManager] 📌 Goal "goal_1793953476811_0l4ua": in_progress → planning
+[UnifiedContext] parallel=0.4ms total=1.1ms heavy=true depth=balanced tokens=140/2400
+[Timing] buildContext: 1ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 2ms (Estimated Tokens: ~1240)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=1240
+[Timing] LLM returned in 0ms — tokens_used=? prompt_tokens=?
+[Orchestrator] 🔧 LLM requested tools: open_app
+[Orchestrator] 📊 Task graph built: 1 node(s)
+[Reflection] 🔍 PRE-CHECK: Analyzing plan for "could you get notepad going for me" (1 nodes)
+[Reflection] ✅ PRE-CHECK APPROVED: PRE-CHECK APPROVED: 1 node(s) ready for execution.
+[Orchestrator] 🔍 Pre-check: approved — PRE-CHECK APPROVED: 1 node(s) ready for execution.
+[PlannerIntelligence] ✅ Plan valid (1 nodes)
+[PlannerIntelligence] 📊 Graph analysis: risk=low | avgConf=75% | highRisk=0 | recommendation=proceed
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[TaskGraph] ▶️  Starting graph "graph_1793953476814_n0bjh" — goal: "could you get notepad going for me"
+[TaskGraph]    Nodes: 1 | Parallel root tasks: 1
+[GoalManager] 📌 Goal "goal_1793953476811_0l4ua": planning → executing
+[TaskGraph] 🔄 Iteration 1: dispatching 1 node(s) in parallel
+[TaskGraph]   → Queuing node "task_1_open_app" (tool: open_app)
+[open_app] target="notepad" resolved="notepad.exe"
+[open_app] platform=win32 command=cmd.exe args=/c,start,,notepad.exe
+[ToolRegistry] ✓ open_app: checked — notepad is running.
+[TaskGraph]   ✅ Node "task_1_open_app" done (7ms)
+[TaskGraph] ✅ Graph "graph_1793953476814_n0bjh" finished with status: completed
+[AgentStateMachine] EXECUTING → OBSERVING
+[Orchestrator] 👁️  Observations collected: Graph "graph_1793953476814_n0bjh": 1/1 done, 0 failed. Status: completed
+[AgentStateMachine] OBSERVING → REFLECTING
+[Orchestrator] ⚡ OPT-3: Skipping full reflection for low-risk successful graph.
+[Orchestrator] Simple tool(s) succeeded. Bypassing LLM synthesis.
+
+🤖 JARVIS: Opening Notepad, sir. I checked: notepad is running.
+
+[AgentStateMachine] REFLECTING → SPEAKING
+[GoalManager] 📌 Goal "goal_1793953476811_0l4ua": executing → completed
+[GoalManager] ✅ Goal "goal_1793953476811_0l4ua" completed.
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............     1ms  │
+│  LLM Network...............     0ms  │
+│  TokensEstimated.......    1240 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................    12ms  │
+└────────────────────────────────────────────┘
+
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: checked: "Opening Notepad, sir." with the check, as before (Opening Notepad, sir. I checked: notepad is running.)
+[Orchestrator] Processing input [cli]: "could you make that window bigger for me"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[AgentStateMachine] IDLE → PLANNING
+[Orchestrator] 🧠 PLANNING — calling LLM...
+[UnifiedContext] Building context heavy=true depth=balanced budget=2400tok [PARALLEL]
+[Timing] retrieveForPlanning: 0ms
+[UnifiedContext] parallel=0.1ms total=0.6ms heavy=true depth=balanced tokens=185/2400
+[Timing] buildContext: 1ms (heavy=true)
+[Orchestrator] 📊 Planning preparation complete in 1ms (Estimated Tokens: ~1331)
+[Timing] LLM call starting — model=qwen-2.5-32b totalTokensEst=1331
+[Timing] LLM returned in 0ms — tokens_used=? prompt_tokens=?
+[Orchestrator] 🔧 LLM requested tools: control_window
+[Orchestrator] 📊 Task graph built: 1 node(s)
+[Reflection] 🔍 PRE-CHECK: Analyzing plan for "could you make that window bigger for me" (1 nodes)
+[Reflection] ✅ PRE-CHECK APPROVED: PRE-CHECK APPROVED: 1 node(s) ready for execution.
+[Orchestrator] 🔍 Pre-check: approved — PRE-CHECK APPROVED: 1 node(s) ready for execution.
+[PlannerIntelligence] ⚠️  Plan valid with 1 warning(s)
+[PlannerIntelligence] 📊 Graph analysis: risk=low | avgConf=75% | highRisk=0 | recommendation=proceed
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[TaskGraph] ▶️  Starting graph "graph_1793953477082_70t97" — goal: "could you make that window bigger for me"
+[TaskGraph]    Nodes: 1 | Parallel root tasks: 1
+[GoalManager] 🎯 Goal created [priority 5]: "goal_1793953477083_lyhhx" — "could you make that window bigger for me"
+[GoalManager] 📌 Goal "goal_1793953477083_lyhhx": in_progress → executing
+[TaskGraph] 🔄 Iteration 1: dispatching 1 node(s) in parallel
+[TaskGraph]   → Queuing node "task_1_control_window" (tool: control_window)
+[ToolRegistry] ⛔ Not available here: control_window needs Windows, and this computer is not running Windows.
+[TaskGraph]   ❌ Node "task_1_control_window" failed [fatal] (attempt 1/1): RISK_REFUSED: Refused by safety policy: control_window needs Windows, and this computer is not running Windows.
+[TaskGraph]   ⛔ Node "task_1_control_window" marked fatal [fatal] — no retry.
+[TaskGraph] ✅ Graph "graph_1793953477082_70t97" finished with status: failed
+[AgentStateMachine] EXECUTING → OBSERVING
+[Orchestrator] 👁️  Observations collected: Graph "graph_1793953477082_70t97": 0/1 done, 1 failed. Status: failed
+[AgentStateMachine] OBSERVING → REFLECTING
+[Reflection] 🔍 Analyzing graph "graph_1793953477082_70t97": 0 done, 1 failed, 0 skipped
+[Reflection] 📋 All tasks failed: 0/1 nodes completed.
+Failure class: context_error
+Repair strategy: abort
+Failed nodes:
+  - control_window [task_1_control_window]: RISK_REFUSED: Refused by safety policy: control_window needs Windows, and this computer is not running Windows.
+[Orchestrator] 💡 Reflection: failure | strategy: abort
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] ⛔ Aborting after 0 repair cycle(s).
+[GoalManager] 🔁 Goal "goal_1793953477083_lyhhx" failed (attempt 1/3). Set to retry status.
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+
+┌────────────────────────────────────────────┐
+│  ⏱  JARVIS Timing Breakdown                 │
+├────────────────────────────────────────────┤
+│  ContextBuild..............     1ms  │
+│  LLM Network...............     0ms  │
+│  TokensEstimated.......    1331 tok  │
+├────────────────────────────────────────────┤
+│  TOTAL........................    10ms  │
+└────────────────────────────────────────────┘
+
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: not Windows, the model calls control_window anyway: refused with the reason (I couldn't do that, sir. control window needs Windows, and this computer is not running Windows.)
+  PASS: …not "an unexpected error", and no error code spoken (I couldn't do that, sir. control window needs Windows, and this computer is not running Windows.)
+
+43 passed, 0 failed

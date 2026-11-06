@@ -281,3 +281,71 @@ CI run 42033994044 (`d9d7820`) failed on the Windows job, and the owner's rule s
 - `scenarioIntegrationTest` (attempt 1): after "Why isn't my application working?", the restart of the crashed api server returned `start_server: false`, while the reply said "I started it again; it answers now". The 3 later checks (stop asked, cancelled, approved) depend on that step. The CI log shows only the last lines, so the reason for `false` is not known. It did not fail again in the re-run.
 - `browserControlAgentTest` (attempt 2): the click on "Show details" returned no verification at all (`undefined`). The log does not show why.
 - Both depend on timing on the Windows runner: real Chrome, and a server restart. They are recorded as open Windows-CI issues for a later phase. Neither is fixed or skipped here.
+
+---
+
+# Change Log — sub-phase A5e (capability model: TRA-09, and two issues from the owner's PC log)
+
+Base commit: `847e04c`. Owner's Gate 1, 2026-11-06:
+- "Approve A5e (Recommended)", with the protected files `core/toolCatalog.ts`, `core/toolRegistryV2.ts` (the `execute` check and `describeCapabilities`) and `core/orchestrator.ts` (the simple-reply `open_app` branch only);
+- Q1: "Windows only (Recommended)";
+- Q2: "No shell, no launch (Recommended)";
+- Q3: "Fix it in A5e (Recommended)".
+
+## The change
+
+| File | Change |
+|---|---|
+| `core/capabilities.ts` (new) | `unmetRequirement(name, requires)`: why a tool cannot run on this computer ("X needs Windows, and this computer is not running Windows"), or nothing. The platform comes through `capabilityHost`, so tests can stand in for it. Only Windows is a requirement (Q1). |
+| `core/toolCatalog.ts` (protected) | `requires: ['windows']` for the 12 tools that work only through Windows PowerShell or `win_automate.ps1`: `control_window`, `control_keyboard`, `control_mouse`, `control_process`, `get_open_apps`, `get_active_window`, `is_app_open`, `windows_overview`, `ui_elements`, `ui_action`, `screenshot`, `clipboard`. Mixed tools (`control_app`, `control_system`, `open_app`, `get_pc_state`, `get_system_state`) have none. |
+| `core/toolRegistryV2.ts` (protected) | `ToolMeta.requires`. `unavailableBecause(name)`. `execute` refuses a tool that cannot run here before the permission and approval checks, so nothing is asked: `RISK_REFUSED`, "Refused by safety policy: X needs Windows, and this computer is not running Windows." The wording is the existing refusal's, so the task graph treats it as final, it is spoken with its reason, and it is not a tool fault. `describeCapabilities` (and so `list_capabilities`) gives each tool `available` and, when it is not, `unavailableBecause`. |
+| `core/planningToolSelection.ts` | Only tools that can run here are offered, and an unavailable one takes no place in the 8. The fallback for a request no rule matches is `list_capabilities, web_search, get_system_info`, with no shell and no launch (Q2). "minimise" / "maximise" count as close/window words. Questions about recent changes in the project are offered `git_overview` (read-only) (review E1, E10, E11). Examples: "what changed in my project" (also "what's" / "whats"), "what did / have i changed", "what changes did i make", "show (me) my recent changes", "any changes in my project". They reached the fallback before and were answered through `run_command` (`git status`), which the fallback no longer offers. A request to act on changes ("undo my changes", "save my changes") is not matched. |
+| `core/orchestrator.ts` (protected; the simple-reply `open_app` branch only) | The planner path's reply follows what happened (Q3). A dry run: "I checked that X can be opened, sir; I did not open it." Started but not checkable: "I started X, sir, but I can't check from here that it opened." Checked: "Opening X, sir." as before, with the check added. |
+
+## Tests
+
+| File | Change |
+|---|---|
+| `tests/capabilityA5eTest.ts` (new) | 30 checks, with the platform stood in, so it is the same on Windows and Linux. Covered: the record (the 12, and mixed tools without one); the planner off Windows and on Windows; the registry's refusal (with the reason, at once, a read tool too, not a tool fault, not on Windows, other tools still run); `list_capabilities` (`available`, the reason, the tool's output); the fallback (no `run_command` or `open_app`, `list_capabilities` offered, "no minimise", "maximise the window", "run npm test" still gets `run_command`); the planner path's `open_app` reply (dry run, not checkable, checked); and, added after the first full suite, a Windows-only tool called by the model anyway off Windows (refused with the reason; not "an unexpected error", no error code spoken). Added after review round 1: a call that would ask for approval (`control_process kill`) is refused off Windows without asking (E7); questions about recent changes get `git_overview`, and "what changed in the weather" does not (E1). 35 checks. Added after review round 2: five more ways of asking about changes, and three requests to act on them that must not get `git_overview` (E10, E11). 43 checks. |
+| `tests/boundary-doubles.json` | An entry for the new test (`installFakeTts`). |
+| `tests/closeByNameTest.ts`, `taskFailureHonestyTest.ts`, `toolDiscoverabilityAuditTest.ts`, `windowsToolsTest.ts`, `routeGoldenTest.ts`, `honestReadToolsA5aTest.ts`, `approvalGateStructuredTest.ts`, `browserRefusalSpokenTest.ts`, `registryRepairHonestyTest.ts`, `riskEngineTest.ts`, `securityBypassTest.ts` | Each checks Windows phrases or Windows-only tools (some with stand-in controllers or a stand-in PowerShell), which A5e does not offer or run off Windows. Each now stands in the platform as Windows (one line, `capabilityHost.platform`), so it tests what it tested before. On Windows nothing changes. |
+| `tests/fixtures/route-golden.json` | Re-recorded with `--record` (the test's own way, "only for an intended change"), with the platform as Windows. The diff is exactly the 18 phrases that reach the fallback ("hello", "pause", "tell me a joke", …): `open_app` and `run_command` out, `list_capabilities` in. Nothing else changed. One of them is "install the requests package". It loses `run_command`, which could not have run `pip install` anyway: `run_command` is gated by `validateDeveloperCommand` (`security/developerCommands.ts`), which allows no `pip` command (review E2). After review E1, one entry changed again: "what changed in my project" is offered `git_overview` instead of the fallback. |
+
+## Evidence
+
+| Check | Result | File |
+|---|---|---|
+| Diagnosis probe (Linux, base code) | "maximize the notepad" offered `control_window`; "type hello in notepad" offered `ui_elements, ui_action, control_keyboard`; the three PC-log questions offered `run_command` and `open_app` (the fallback); `list_capabilities` had no availability | `evidence/a5e_diagnosis_probe.txt` |
+| New test on the base code | 10 passed, **18 failed** (of the first 28 checks) | `evidence/a5e_old_code_checks.txt` |
+| New test after the change | **28/28**, then **30/30** with the refusal checks added later | `evidence/a5e_new_code_checks.txt` |
+| First related batch (39 test files) | 33 passed, **5 failed**, 1 blocked (no pygame): the 5 tests above that check Windows phrases (`closeByNameTest`, `routeGoldenTest`, `taskFailureHonestyTest`, `toolDiscoverabilityAuditTest`, `windowsToolsTest`); stand-in added, fixture re-recorded | `evidence/a5e_related_tests.txt` |
+| Related run 1 (45 tests) | 43 passed, **1 failed**: `honestReadToolsA5aTest` (its stand-in PowerShell plays Windows). Its stand-in was added after the first full suite below (review E6) | `evidence/a5e_related_tests_r1.txt` |
+| First full suite | 209 passed, **6 failed**: `honestReadToolsA5aTest` and 5 approval and security tests whose vehicles are Windows-only tools; stand-ins added. `browserRefusalSpokenTest` also showed that the first refusal wording ("Not available here: …") was retried and then spoken as "an unexpected error … RISK REFUSED …". Test first (failed), then fixed with the existing refusal wording | `evidence/a5e_full_suite.txt` |
+| The new test and the 11 updated tests | **12 passed, 0 failed** | `evidence/a5e_updated_tests.txt` |
+| Typecheck | 0 errors (`TC=0` in the file, after review E8) | `evidence/a5e_typecheck.txt` |
+| Mutation check, 16 mutants | **16/16 caught**, tree restored (md5) | `evidence/a5e_mut.py`, `evidence/a5e_mut_run.txt` |
+| Related tests, final (49 tests) | **48 passed, 0 failed**, 1 blocked (`realTtsHandoffTest`: no pygame here); exit 1 for the blocked test | `evidence/a5e_related_tests_r2.txt` |
+| Full suite, final | **215 passed, 0 failed**, 1 blocked (no pygame), 9 skipped; exit 1 for the blocked test | `evidence/a5e_full_suite_r1.txt` |
+| Independent review, round 1 | CHANGES REQUIRED (E1 med; E2–E7 low; E8, E9 info) | `review.md` |
+| Round-1 checks (E1) on the round-1 code | 32 passed, **3 failed** (the E7 check passed: the refusal already came before any approval, and the check pins that order). The run was not saved as a file (review E13); M17 and M18 in the mutation runs show the same | `a5e_mut_run_r1.txt` |
+| Test after the round-1 fixes | **35/35** | `evidence/a5e_review_r1_new_code_checks.txt` |
+| After round 1: typecheck; mutation check, 18 mutants (new M17, M18); related tests; full suite | typecheck 0 errors; **18/18 caught**, tree restored; related **48 passed, 0 failed**, 1 blocked (no pygame); full suite **215 passed, 0 failed**, 1 blocked (no pygame), 9 skipped, exit 1 for the blocked test | `evidence/a5e_typecheck.txt`, `a5e_mut_run_r1.txt`, `a5e_related_tests_r3.txt`, `a5e_full_suite_r2.txt` |
+
+## Deviations from the plan
+
+- The refusal's wording is "Refused by safety policy: X needs Windows, …", not "Not available here: …". The first wording was not recognised as a refusal by the task graph (`core/taskGraphEngine.ts`, protected, unchanged): it was retried and spoken as "an unexpected error". The existing wording is handled everywhere.
+- 11 older tests got a one-line Windows stand-in. Only `routeGoldenTest`'s fixture was in the plan.
+- A second "minimise"/"maximise" spelling, in the window-word rule, was added and then removed. No test could tell it apart, and the one phrase it would have changed on Windows, "minimise the youtube tab", is better without it: a tab request is not offered `control_window` (TRA-18) (review E4).
+- `GIT_QUESTION`'s companion `CHANGES_QUESTION` (review E1, then widened and narrowed after round 2, E10, E11) was not in the plan.
+
+## Known limits (recorded, not changed)
+
+- Off Windows, the refusal of a Windows-only tool reuses the safety refusal, so later code reads a missing platform as a permission problem (review E3): `core/voiceSummaries.ts` says "the safety policy refused a step"; `core/goalRecovery.ts` classes it as "permission" and blocks a goal with "the step needs a permission the goal does not have"; `core/failureSignature.ts` classes it as "permission" before its own "environment" rule; `core/replyText.ts` says "the safety policy refused it (…)". The reason itself says "needs Windows", and retries stop.
+- The agents' tool loop (`core/agents/behaviors/toolLoop.ts`) still offers Windows-only tools off Windows; the registry refuses them, so a call is wasted, not run (review E5). "The planner" in this phase means the orchestrator's planner.
+- A question about changes that names something else, e.g. "what did i change in the settings", is still offered `git_overview` too (read-only) (review E11). On a request long enough to fill the 8 tools, `git_overview` can push out a later tool (review E12).
+- Off Windows, the spoken "what can you do" / "list your capabilities" replies and `capabilityOverview()` still count every tool, and the `list_capabilities` description does not mention `available` (review E9).
+- Only the platform is checked (Q1). Chrome not running, or PowerShell missing on Windows, still shows when the tool runs (A2, A5a, A5b).
+- Mixed tools stay offered everywhere. Their Windows-only actions fail when run, with the reason (A5c).
+- `dryRun` is still offered to the model. Hiding it would change `skills/automation/description.json`, which the skill trust fingerprints.
+- A refusal by the capability check is not in `action_history`, as with permission refusals before it.
+- "Full suite green" is on Linux. Windows CI runs after a push. On Windows the record changes nothing: every tool is available there.

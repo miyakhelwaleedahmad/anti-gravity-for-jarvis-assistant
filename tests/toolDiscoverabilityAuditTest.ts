@@ -16,6 +16,11 @@ import { toolRegistryV2 } from '../core/toolRegistryV2.js';
 import { registerAllTools } from '../core/tools/index.js';
 import { SkillLoader } from '../core/skillLoader.js';
 import { orchestrator } from '../core/orchestrator.js';
+import { capabilityHost } from '../core/capabilities.js';
+
+// Phase A5e: the phrases are about Windows tools, which the planner offers only on
+// Windows (core/capabilities.ts); stood in as Windows on every OS.
+capabilityHost.platform = () => 'win32';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

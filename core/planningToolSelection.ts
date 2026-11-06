@@ -23,6 +23,15 @@ const CAPABILITY_QUESTION =
 const SYSTEM_QUESTION = /\b(cpu|processor|memory|ram|disk|storage|free space|uptime|ip address|network address)\b/;
 const DEV_QUESTION = /\b(port|ports|localhost|backend|frontend|dev server|server running|servers running)\b/;
 const GIT_QUESTION = /\b(git|commit|commits|branch|uncommitted|repository|repo|diff)\b/;
+// Questions about recent changes in the project (phase A5e review E1, E10, E11): they reached the
+// fallback, which no longer offers a shell. Questions only: "undo my changes" is not one.
+const CHANGES_QUESTION = new RegExp([
+  /\bwhat(?:s| has| have)? changed in (?:my|the|this) (?:project|code|repo|repository|files?)\b/.source,
+  /\bwhat (?:did|have) i changed?\b/.source,
+  /\bwhat changes did i make\b/.source,
+  /\b(?:show|list|tell)(?: me)? (?:my |the )?(?:recent |latest )?(?:code )?changes\b/.source,
+  /\bany changes in (?:my|the|this) (?:project|code|repo|repository)\b/.source,
+].join('|'));
 const BROWSER_QUESTION = /\b(browser|tab|tabs|web ?page|page|website|site|chrome|link|links|form|button)\b/;
 const FILE_ACTION = /\b(files?|folders?|directory|rename|move|delete|trash|restore|compare)\b/;
 const GIT_ACTION = /\b(git|commit|commits|branch|branches|push|repo|repository)\b/;
@@ -71,9 +80,11 @@ export function selectPlanningToolNames(input: string): string[] {
   const clean = normalizeVoiceInput(input).toLowerCase();
   const requested = new Set<string>();
 
+  // Only tools that can run on this computer (phase A5e, TRA-09): a Windows-only
+  // tool is not offered elsewhere, and takes no place in the 8 below.
   const addIfRegistered = (...names: string[]) => {
     for (const name of names) {
-      if (toolRegistryV2.has(name)) requested.add(name);
+      if (toolRegistryV2.has(name) && !toolRegistryV2.unavailableBecause(name)) requested.add(name);
     }
   };
 
@@ -113,7 +124,8 @@ export function selectPlanningToolNames(input: string): string[] {
   if (/\bgithub\b/.test(clean) && /\b(find|search|projects?|repos?|repositor(?:y|ies)|librar(?:y|ies))\b/.test(clean)) {
     addIfRegistered('github_search', 'github_repo');
   }
-  const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimize|maximize)\b/i.test(clean);
+  // "minimise" / "maximise" too (phase A5e: "no minimise" fell through to the fallback).
+  const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimi[sz]e|maximi[sz]e)\b/i.test(clean);
   const isLaunchIntent = !isKillOrClose && /\b(open|launch|start|run|app|application|desktop|whatsapp|youtube|chrome|calculator|vscode|code|notepad|spotify|browser|gmail|github)\b/i.test(clean);
   const isExplicitSearch = /\b(search|lookup|find|internet|online|research)\b/i.test(clean);
 
@@ -176,7 +188,7 @@ export function selectPlanningToolNames(input: string): string[] {
   if (DEV_QUESTION.test(clean)) {
     addIfRegistered('dev_status');
   }
-  if (GIT_QUESTION.test(clean)) {
+  if (GIT_QUESTION.test(clean) || CHANGES_QUESTION.test(clean)) {
     addIfRegistered('git_overview');
   }
   if (BROWSER_QUESTION.test(clean)) {
@@ -255,9 +267,11 @@ export function selectPlanningToolNames(input: string): string[] {
     addIfRegistered('run_command');
   }
 
-  // Default fallback: if no tool selected, provide general utility tools so LLM is never given 0 tools
+  // Nothing matched: tools to answer from, never a shell or a launch (phase A5e,
+  // owner's choice Q2). Offered run_command and open_app, a question such as
+  // "you have full access, so why can't you" was answered with a shell command.
   if (requested.size === 0) {
-    addIfRegistered('open_app', 'web_search', 'get_system_info', 'run_command');
+    addIfRegistered('list_capabilities', 'web_search', 'get_system_info');
   }
 
   return [...requested].slice(0, 8);

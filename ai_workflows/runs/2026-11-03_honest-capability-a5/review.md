@@ -218,3 +218,65 @@ The reviewer confirmed:
 | W4 | low | The fix has not run on Windows; the re-run was on `d9d7820` | **Fixed**: stated; Windows confirmation comes with the next push's CI |
 | W5 | info | The reproduction evidence did not record the edit used | **Fixed**: the edit is in `change_log.md` |
 | W6 | info | No test checks that the real Chrome and PowerShell readers write nothing | Recorded (known limit) |
+
+---
+
+# Review — sub-phase A5e (capability model)
+
+Reviewer: a separate agent session (general-purpose), read-only. Not a human.
+
+## Round 1 — CHANGES REQUIRED
+
+The reviewer re-ran:
+- the new test: 30/30;
+- `routeGoldenTest`: 441/441;
+- the typecheck: 0 errors;
+- `windowsToolsTest`, `securityBypassTest`, `plannerDesktopToolSelectionTest`, `toolDiscoverabilityAuditTest`: 4/4;
+- a probe of the planner's offers per phrase, as Windows and as Linux.
+
+Confirmed:
+- **The 12 tools.** Each is truly Windows-only, none is missing, and the mixed tools are rightly unmarked.
+- **The registry check.** It runs before the permission gate, schema validation, risk engine, rate limit, approval and cache. A nested approval re-enters `execute` and is checked again. No path dispatches a tool without `execute`. Nothing is recorded as a fault. On Windows nothing changes.
+- **The fixture.** Exactly 18 entries changed, only their tools.
+- **P6.** `TaskNode.verification` is set before the reply, the dry-run check covers both the result and the args, and `withCheck` still applies.
+- **Tests.**
+  - The stand-ins are restored.
+  - The 11 older tests only turn the A5e check off. `windowsProbe` and the verifiers still read the real platform.
+- **Records.** The counts match the evidence.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| E1 | med | On Windows, the new fallback took `run_command` (`git status`) away from "what changed in my project" and similar questions, and nothing else answered them | **Fixed**: questions about recent changes in the project are offered `git_overview` (read-only). Tests first; the fixture's one entry re-recorded; M17 |
+| E2 | low | The `pip install` reason cited the wrong gate | **Fixed**: `security/developerCommands.ts` |
+| E3 | low | Reusing the safety refusal makes goal recovery, the failure signature and a reply read a missing platform as a permission problem (off Windows only) | Recorded (known limit) |
+| E4 | low | The removed second spelling was not equivalent for "minimise the youtube tab" on Windows | **Fixed** wording; not offering `control_window` for a tab is the TRA-18 behaviour |
+| E5 | low | The agents' tool loop still offers Windows-only tools off Windows | Recorded (known limit) |
+| E6 | low | Two evidence rows: 39 files, not 38; the `honestReadToolsA5aTest` stand-in came after the first full suite | **Fixed** |
+| E7 | low | The "no approval asked" check only timed the call | **Fixed**: `control_process kill` off Windows, with the approval gate counted, is refused without asking. M18 moves the check after an approval and is caught |
+| E8 | info | The typecheck file had no exit code | **Fixed** (`TC=0`) |
+| E9 | info | Off Windows, the spoken capability replies and `capabilityOverview()` still count every tool | Recorded (later phase) |
+
+## Round 2 — PASS
+
+The reviewer re-ran:
+- the new test: 35/35;
+- `routeGoldenTest`: 441/441;
+- the typecheck: 0 errors;
+- a probe of 24 phrases, as Windows and as Linux.
+
+Every round-1 fix was confirmed in the code, and the fixture against `HEAD` shows 18 entries changed, only their tools. On Windows, only phrases matched by the new rule behave differently.
+
+| ID | Sev. | Finding (short) | Outcome |
+|---|---|---|---|
+| E10 | low | Common ways of asking ("what's changed …", "what have i changed", "what changes did i make", "show my recent changes", "any changes in my project") still reached the fallback; the records said "and similar questions" | **Fixed**: the rule covers them; tests first (5 phrases). Records reworded |
+| E11 | low | `my changes` also matched requests to act ("undo my changes", "save my changes") | **Fixed**: questions only; tests first (3 requests that must not match). "what did i change in the settings" still gets `git_overview` too: recorded |
+| E12 | info | `git_overview` can push out a later tool on a request long enough to fill all 8 | Recorded |
+| E13 | info | The round-1 old-code run of the E1 checks has no evidence file | Recorded; M17 and M18 show the same |
+
+After round 2:
+- the new test: 43/43 (`evidence/a5e_review_r2_new_code_checks.txt`; on the round-2 code, 35 passed and 8 failed, `a5e_review_r2_old_code_checks.txt`);
+- `routeGoldenTest` 441/441, the fixture unchanged;
+- mutation 18/18 caught, tree restored (`a5e_mut_run_r2.txt`);
+- related tests 48 passed, 0 failed, 1 blocked (`a5e_related_tests_r4.txt`);
+- the typecheck: `TC=0`.
+- the full suite: 215 passed, 0 failed, 1 blocked (no pygame), 9 skipped; exit 1 for the blocked test (`a5e_full_suite_r3.txt`).

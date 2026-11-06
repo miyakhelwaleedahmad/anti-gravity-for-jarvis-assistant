@@ -28,6 +28,9 @@ const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-risk-'));
 for (const dir of ['memory', 'data']) fs.mkdirSync(path.join(workspace, dir), { recursive: true });
 process.env['JARVIS_WORKSPACE_ROOT'] = workspace;
 process.env['JARVIS_DATA_ROOT'] = workspace;
+// Phase A5e: these checks use Windows-only tools (with stand-ins), which the registry
+// refuses off Windows (core/capabilities.ts); stood in as Windows on every OS.
+(await import('../core/capabilities.js')).capabilityHost.platform = () => 'win32';
 delete process.env['JARVIS_LEVEL2_POLICY'];
 delete process.env['JARVIS_DEFAULT_PERMISSION_LEVEL'];
 process.chdir(workspace);

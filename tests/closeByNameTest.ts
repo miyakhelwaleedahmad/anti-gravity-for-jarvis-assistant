@@ -33,6 +33,9 @@ const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-close-by-name-')
 for (const dir of ['memory', 'data']) fs.mkdirSync(path.join(workspace, dir), { recursive: true });
 process.env['JARVIS_WORKSPACE_ROOT'] = workspace;
 process.env['JARVIS_DATA_ROOT'] = workspace;
+// Phase A5e: these phrases are about Windows tools, which the planner and the registry
+// offer only on Windows (core/capabilities.ts); stood in as Windows on every OS.
+(await import('../core/capabilities.js')).capabilityHost.platform = () => 'win32';
 
 const { AppController } = await import('../control/appController.js');
 const { WindowController } = await import('../control/windowController.js');

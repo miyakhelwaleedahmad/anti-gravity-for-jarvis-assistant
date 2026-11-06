@@ -1,0 +1,21 @@
+M1 control_window does not require Windows [capabilityA5eTest]: CAUGHT | FAIL: the 12 Windows-only tools require Windows (control_window)
+M2 clipboard does not require Windows [capabilityA5eTest]: CAUGHT | FAIL: the 12 Windows-only tools require Windows (clipboard)
+M3 the requirement is never checked against the platform [capabilityA5eTest]: CAUGHT | FAIL: not Windows: "maximize the notepad" is not offered control_window (control_app, control_window)
+M4 the real platform, not the stand-in [capabilityA5eTest]: CAUGHT | FAIL: Windows: "maximize the notepad" is offered control_window, as before (control_app)
+M5 the planner offers tools that cannot run [capabilityA5eTest]: CAUGHT | FAIL: not Windows: "maximize the notepad" is not offered control_window (control_app, control_window)
+M6 the registry runs tools that cannot run [capabilityA5eTest]: CAUGHT | FAIL: not Windows: control_window is refused, with the reason (The open windows could not be read: no current window list for an action: PowerShell exited with code null/
+M7 the refusal is not final (another error code) [capabilityA5eTest]: CAUGHT | FAIL: not Windows: control_window is refused, with the reason (UNAVAILABLE: Refused by safety policy: control_window needs Windows, and this computer is not running Windo
+M8 list_capabilities says every tool is available [capabilityA5eTest]: CAUGHT | FAIL: not Windows: control_window is listed as not available, with the reason ({"name":"control_window","summary":"Focuses, moves, resizes, minimises, maximises or closes
+M9 list_capabilities drops the reason [capabilityA5eTest]: CAUGHT | FAIL: not Windows: control_window is listed as not available, with the reason ({"name":"control_window","summary":"Focuses, moves, resizes, minimises, maximises or closes
+M10 the old fallback (shell and launch) [capabilityA5eTest]: CAUGHT | FAIL: "you have full access up please so why you cant": no shell and no launch (open_app, web_search, get_system_info, run_command)
+M11 the fallback without the capability list [capabilityA5eTest]: CAUGHT | FAIL: …but the capability list, to answer from (web_search, get_system_info)
+M12 'minimise' not understood [capabilityA5eTest]: CAUGHT | FAIL: "no minimise" (British spelling): the window tools, not a shell (list_capabilities, web_search, get_system_info)
+M13 a dry run said as 'Opening' (Q3) [capabilityA5eTest]: CAUGHT | FAIL: a dry run: says it checked, and that nothing was opened (I started Notepad, sir, but I can't check from here that it opened.)
+M14 an unchecked open said as 'Opening' (Q3) [capabilityA5eTest]: CAUGHT | FAIL: started but not checkable: "I started settings, sir, but I can't check from here that it opened." (Opening settings, sir.)
+M16 the refusal not worded as a refusal (retried, 'unexpected error') [capabilityA5eTest]: CAUGHT | FAIL: …not "an unexpected error", and no error code spoken (I encountered an unexpected error and have been unable to complete the task, sir. RISK REFUSED: Not available 
+M17 questions about recent changes not given git_overview (E1) [capabilityA5eTest]: CAUGHT | FAIL: "what changed in my project": git_overview, to answer from (list_capabilities, web_search, get_system_info)
+M18 the check moved after the approval step (E7) [capabilityA5eTest]: CAUGHT | FAIL: not Windows: a call that would ask (control_process kill) is refused without asking (asked=1 Refused by safety policy: control_process needs Windows, and this compu
+M15 the route fixture's old fallback [routeGoldenTest]: CAUGHT | FAIL: tools offered for "pause" (was list_capabilities,web_search,get_system_info, now open_app,web_search,get_system_info,run_command)
+
+18/18 caught
+tree restored (md5): YES

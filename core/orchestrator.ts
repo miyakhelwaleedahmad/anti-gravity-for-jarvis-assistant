@@ -1626,8 +1626,14 @@ export class JarvisOrchestrator {
       let reply = 'Task completed, sir.';
 
       if (firstNode && firstNode.tool === 'open_app') {
-        const target = String(firstNode.args?.target ?? '');
-        reply = `Opening ${this.formatTargetName(target)}, sir.`;
+        // What happened, not "Opening" for every success (phase A5e, owner Q3; A5d review D1).
+        const name = this.formatTargetName(String(firstNode.args?.target ?? ''));
+        const opened = parseJson(firstNode.result ?? '');
+        reply = opened?.['dryRun'] === true || firstNode.args?.['dryRun'] === true
+          ? `I checked that ${name} can be opened, sir; I did not open it.`
+          : firstNode.verification?.status === 'unverifiable'
+            ? `I started ${name}, sir, but I can't check from here that it opened.`
+            : `Opening ${name}, sir.`;
       } else if (firstNode && firstNode.tool === 'run_command' && firstNode.result) {
         console.log(`[Orchestrator] run_command output:\n${firstNode.result}`);
         reply = describeCommandResult(firstNode.result);

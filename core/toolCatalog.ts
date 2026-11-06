@@ -15,6 +15,10 @@
  */
 
 import type { AgentTool, ActionMeta, RiskTier, ToolMeta } from './toolRegistryV2.js';
+import type { Requirement } from './capabilities.js';
+
+/** Works only through Windows PowerShell or win_automate.ps1 (phase A5e, TRA-09). */
+const WINDOWS: readonly Requirement[] = ['windows'];
 
 const JSON_RESULT = 'JSON: success, action, target, message or error';
 const BROWSER_RESULT = 'JSON: success, action, target, did, check (status, evidence), page, or error';
@@ -40,12 +44,12 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     { format: 'json', description: 'Active window, open apps, Chrome tabs, services, system stats' }),
   get_pc_state: observation('Reads windows, apps, browser and JARVIS service state.',
     { format: 'text', description: 'Snapshot as JSON text' }),
-  get_open_apps: observation('Lists applications with open windows.',
-    { format: 'json', description: 'Array of apps: name, pid, window title' }),
-  get_active_window: observation('Reads the focused window.',
-    { format: 'json', description: 'Title, process name, pid' }),
-  is_app_open: observation('Checks whether an application has an open window.',
-    { format: 'text', description: '"true" or "false"' }),
+  get_open_apps: { ...observation('Lists applications with open windows.',
+    { format: 'json', description: 'Array of apps: name, pid, window title' }), requires: WINDOWS },
+  get_active_window: { ...observation('Reads the focused window.',
+    { format: 'json', description: 'Title, process name, pid' }), requires: WINDOWS },
+  is_app_open: { ...observation('Checks whether an application has an open window.',
+    { format: 'text', description: '"true" or "false"' }), requires: WINDOWS },
   get_jarvis_service_status: observation("Reads which of JARVIS's own services are connected.",
     { format: 'json', description: 'Service name → connected / disconnected' }),
 
@@ -87,7 +91,7 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     },
   ),
   control_window: withActions(
-    { category: 'COMPUTER', reversible: 'partial', external: 'none',
+    { requires: WINDOWS, category: 'COMPUTER', reversible: 'partial', external: 'none',
       effect: 'Focuses, moves, resizes, minimises, maximises or closes a window.',
       output: { format: 'json', description: JSON_RESULT } },
     {
@@ -102,7 +106,7 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     },
   ),
   control_keyboard: withActions(
-    { category: 'COMPUTER', reversible: 'no', external: 'none',
+    { requires: WINDOWS, category: 'COMPUTER', reversible: 'no', external: 'none',
       effect: 'Types text or presses keys in the focused window.',
       output: { format: 'json', description: JSON_RESULT } },
     {
@@ -112,7 +116,7 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
     },
   ),
   control_mouse: withActions(
-    { category: 'COMPUTER', reversible: 'no', external: 'none',
+    { requires: WINDOWS, category: 'COMPUTER', reversible: 'no', external: 'none',
       effect: 'Moves the pointer, clicks, scrolls or drags at screen coordinates.',
       output: { format: 'json', description: JSON_RESULT } },
     {
@@ -327,7 +331,7 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
 
   // ── System ──────────────────────────────────────────────────────────────────
   control_process: withActions(
-    { category: 'SYSTEM', reversible: 'no', external: 'none',
+    { requires: WINDOWS, category: 'SYSTEM', reversible: 'no', external: 'none',
       effect: 'Lists, finds, kills or restarts processes.',
       output: { format: 'json', description: JSON_RESULT } },
     {
@@ -445,12 +449,12 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
   },
 
   // ── Windows (P14) ───────────────────────────────────────────────────────────
-  windows_overview: observation('Reads this Windows PC: graphics cards, displays, audio devices, cameras, installed apps, services, listening ports with their program, windows with their program.',
-    { format: 'json', description: 'section and its entries (at most 80, optionally filtered), count' }),
-  ui_elements: observation('Lists the buttons, fields, menus and texts of a Windows app window, each with a reference; never a password field\'s contents.',
-    { format: 'json', description: 'window {hwnd, title, process}, elements[] (ref, name, type, value, patterns) — the app\'s own text' }, 'COMPUTER'),
+  windows_overview: { ...observation('Reads this Windows PC: graphics cards, displays, audio devices, cameras, installed apps, services, listening ports with their program, windows with their program.',
+    { format: 'json', description: 'section and its entries (at most 80, optionally filtered), count' }), requires: WINDOWS },
+  ui_elements: { ...observation('Lists the buttons, fields, menus and texts of a Windows app window, each with a reference; never a password field\'s contents.',
+    { format: 'json', description: 'window {hwnd, title, process}, elements[] (ref, name, type, value, patterns) — the app\'s own text' }, 'COMPUTER'), requires: WINDOWS },
   ui_action: withActions(
-    { category: 'COMPUTER', reversible: 'partial', external: 'none',
+    { requires: WINDOWS, category: 'COMPUTER', reversible: 'partial', external: 'none',
       effect: 'Presses, fills or focuses an element of a Windows app that JARVIS listed; checks the result.',
       output: { format: 'json', description: 'JSON: success, action, target, did, check (status, evidence), or error' } },
     {
@@ -459,13 +463,13 @@ export const TOOL_CATALOG: Readonly<Record<string, ToolMeta>> = {
       invoke: { risk: 2, reversible: 'partial', effect: 'The element is pressed: a button, a box, a list item or a menu.' },
     },
   ),
-  screenshot: {
+  screenshot: { requires: WINDOWS,
     category: 'COMPUTER', risk: 1, reversible: 'yes', external: 'none',
     effect: 'Saves a picture of the screen or of the window in front in the JARVIS data folder (not sent anywhere).',
     output: { format: 'json', description: 'file, width, height, bytes, check' },
   },
   clipboard: withActions(
-    { category: 'COMPUTER', reversible: 'partial', external: 'none',
+    { requires: WINDOWS, category: 'COMPUTER', reversible: 'partial', external: 'none',
       effect: 'Reads the clipboard\'s text (secrets hidden) or replaces it.',
       output: { format: 'json', description: 'read: text (≤ 2 000 characters, redacted), length; write: length, check' } },
     {

@@ -35,6 +35,7 @@ import { redact, redactDeep } from '../security/redactor.js';
 import { verifyCall, type Verification, type Verifier } from './verifiers.js';
 import { healthLedger, isToolFault, LEDGER_PIPELINES } from '../monitoring/healthLedger.js';
 import { recordFailure } from './issueStore.js';
+import { unmetRequirement, type Requirement } from './capabilities.js';
 import type { FailureSignature } from './failureSignature.js';
 
 /** Execution risk: drives sandboxing, caching and queueing (not permissions). */
@@ -77,6 +78,8 @@ export interface ToolMeta {
   output: { format: 'text' | 'json'; description: string };
   /** Per value of the tool's `action` argument. */
   actions?: Record<string, ActionMeta>;
+  /** What the tool needs to run at all (phase A5e, TRA-09): core/capabilities.ts. */
+  requires?: readonly Requirement[];
 }
 
 export interface CapabilityEntry {
@@ -88,6 +91,9 @@ export interface CapabilityEntry {
   reversible: Reversibility;
   external: ExternalEffect;
   actions?: string[];
+  /** Whether it can run on this computer (phase A5e), and why not. */
+  available: boolean;
+  unavailableBecause?: string;
 }
 
 export interface CapabilityGroup {
@@ -504,6 +510,7 @@ export class ToolRegistryV2 {
       const max = Math.max(...risks) as RiskTier;
       if (filter.maxRisk !== undefined && min > filter.maxRisk) continue;
       const entries = groups.get(meta.category) ?? [];
+      const unmet = unmetRequirement(tool.name, meta.requires);
       entries.push({
         name: tool.name,
         summary: meta.effect,
@@ -512,6 +519,8 @@ export class ToolRegistryV2 {
         reversible: meta.reversible,
         external: meta.external,
         ...(meta.actions ? { actions: Object.keys(meta.actions) } : {}),
+        available: !unmet,
+        ...(unmet ? { unavailableBecause: unmet } : {}),
       });
       groups.set(meta.category, entries);
     }
@@ -521,6 +530,12 @@ export class ToolRegistryV2 {
         category,
         tools: groups.get(category)!.sort((a, b) => a.name.localeCompare(b.name)),
       }));
+  }
+
+  /** Why a registered tool cannot run on this computer, or undefined when it can (phase A5e). */
+  unavailableBecause(name: string): string | undefined {
+    const tool = this.tools.get(name);
+    return tool ? unmetRequirement(name, tool.meta?.requires) : undefined;
   }
 
   /** One line per category with its tools, e.g. for the console. */
@@ -663,6 +678,22 @@ export class ToolRegistryV2 {
         success: false,
         output: `Tool "${name}" is not registered. Available: ${this.names().join(', ')}`,
         error: `Unknown tool: ${name}`,
+        tool: name,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // 1b. Can it run on this computer at all (phase A5e, TRA-09)? Refused before
+    // the approval and permission checks, so nothing is asked for a call that
+    // cannot run. RISK_REFUSED and the usual refusal wording, so it is final
+    // (not retried), spoken with its reason, and not counted as a tool fault.
+    const unmet = this.unavailableBecause(name);
+    if (unmet) {
+      console.log(`[ToolRegistry] ⛔ Not available here: ${unmet}.`);
+      return {
+        success: false,
+        output: `Refused by safety policy: ${unmet}.`,
+        error: 'RISK_REFUSED',
         tool: name,
         durationMs: Date.now() - start,
       };
