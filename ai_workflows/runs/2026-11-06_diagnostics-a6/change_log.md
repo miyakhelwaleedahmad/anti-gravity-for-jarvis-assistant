@@ -74,3 +74,35 @@ Base commit: `82a1df5`. Owner's Gate 1, 2026-11-06:
 - A refusal worded in a way none of the blocked rules know is logged as an allowed `failure` (review F11, F15). The rule matches wordings, so a new refusal needs its wording added.
 - "Execution queue is PAUSED …" is logged as an allowed `failure`: it is a hold, not a refusal (review F18).
 - `Service name "…" rejected by policy: …` (`adminController.ts:27`) is logged as an allowed `failure`. It is closer to bad input than to a refusal, so it was left as it is (review F19).
+
+## After the push: CI and the owner's PC (2026-11-06)
+
+Commit `d2805dc`, pushed with the owner's approval. CI run 42229757312 passed in every job that ran:
+
+| Job | Result |
+|---|---|
+| python-checks | passed |
+| build-and-test (Linux) | passed. The suite ran twice (test step and coverage step), both times **218 passed, 0 failed**, 0 blocked, 8 skipped; `diagnosticsA6Test` and `jarvisChromeTest` passed |
+| windows | passed. **220 passed, 0 failed**, 0 blocked, 6 skipped; `diagnosticsA6Test` and `jarvisChromeTest` passed |
+| live-providers | skipped (needs API keys) |
+
+TRA-15 on Windows CI: the cleanup step printed `Cleaning up orphan processes` and **no** `Terminate orphan process … (chrome)` line. Run 42212811009, before A6, had two (`evidence/a6_ci_orphans_82a1df5.txt`). This is one run, so a rare leak is not ruled out.
+
+`scenarioIntegrationTest` (46.2 s) and `browserControlAgentTest` (14.3 s) passed on Windows in this run. Both stay recorded as unresolved Windows CI timing issues.
+
+On the owner's PC (Windows), at `d2805dc`:
+
+| Check | Result |
+|---|---|
+| `diagnosticsA6Test`, `jarvisChromeTest` | **2 passed, 0 failed** |
+| A failed action, typed "focus notepad" with Notepad closed | **Pass.** One action line: `"userCommand":"focus notepad"`, a `traceId`, `riskLevel` "high", `"allowed":true`, `"result":"failure"`, the error, and no `verified`, `rollbackAvailable` or `confirmationRequired`. Lines written before A6 (10:25 UTC) show the old form: the action name as the command, no trace id, a fixed "medium" and `rollbackAvailable: true` |
+| A checked action, "focus notepad" spoken with Notepad open | **Pass.** An action line with `"result":"success"`, `"verified":"pending"`, then a `verification` line with the same `traceId` (`trace_mw51u9bb_fjh5xi`), `"tool":"control_app"`, `"status":"verified"`, `"evidence":"notepad is in front"`. Notepad came to the front |
+| Test Chrome left running | **0**. After `jarvisChromeTest` passed again, no `chrome.exe` had `jarvis-test-tmp` in its command line. The owner's own Chrome stayed open: the first count by `tasklist` (24 processes before, 23 after) could not tell the two apart. This count was not shown to find a leftover, so Windows CI's cleanup step is the main evidence |
+
+Seen in the same PC logs, not caused by A6 (recorded as open, not changed):
+- With Notepad closed, JARVIS said "I encountered an unexpected error and have been unable to complete the task, sir. No running window found for app "notepad"." The cause is right; "unexpected error" is not.
+- Gemini timed out twice on one request (20 s each; 54.6 s in all).
+- The open follow-up microphone turned speech into requests ("ok thanks", "close jar", "thank you jar"). "close jar" waited too long and was dropped.
+- `Speaking timeout (12000ms) … TTS speaking_end was never received` at startup, after the wake word interrupted the greeting.
+
+Status: A6 is complete in the cloud, passed Windows and Linux CI, and is verified on the owner's PC.

@@ -11,6 +11,29 @@ Rules:
 
 Legend: `[ ]` open · `[~]` in progress · `[x]` done with evidence · `[owner]` needs the owner's PC · `[-]` dropped (reason given)
 
+## Status on 2026-11-06
+
+The item lists below A2 were not ticked one by one when each phase was done; each phase's run records are the source. This table is the current state.
+
+| Phase | Run | Commits | Windows CI | Owner's PC |
+|---|---|---|---|---|
+| A3 routing | `2026-10-31_routing-a3` | `915584c`, records `3111ff6` | green on `915584c`; `3111ff6` failed once in `scenarioIntegrationTest`, passed on the re-run | 4/4 tests passed (2026-11-01); the typed checks in the run's `verification.md` passed. Still open: "open github.com" and the spoken phrases. **Partially verified** |
+| A4 safe targeting | `2026-11-01_safe-tab-targeting-a4` | `2d35a0a` | green on `2d35a0a` | 6/6 tests passed (2026-11-01). The live plan in the run's `verification.md` is still open. **Partially verified** |
+| B4 typed input while busy | `2026-11-02_typed-input-while-busy-b4` | `3ed4baf` | green on `3ed4baf` | 6/6 tests passed (2026-11-02); `typedWhileBusyB4Test` again on 2026-11-03. Live checks still open. **Partially verified** |
+| N-PC10 time questions (from the PC log) | `2026-11-02_time-questions-npc10` | `e08e37a`, `c568b49`, `62f0a99` | red on `e08e37a` (`timeQuestionsNpc10Test` on Windows), green on the test fix `c568b49`; `62f0a99` has no run of its own (pushed with `735c0a2`, green) | 5/5 tests passed (2026-11-02); follow-up wordings fixed in `62f0a99` |
+| A5a read tools | `2026-11-03_honest-capability-a5` | `735c0a2` | green | PC checks open (no result recorded). **Partially verified** |
+| A5c kernel failures | same | `1cab883` | green | PC checks open (no result recorded). **Partially verified** |
+| A5d `open_app` outcome | same | `2602948` | green | 3/3 tests passed (2026-11-05); the live checks were left at the owner's request. **Partially verified** |
+| A5b `self_check` | same | `d9d7820`, test fix `847e04c` | red on `d9d7820` (run 42033994044, both attempts; `selfCheckTest`, fixed test-only in `847e04c`), green on `847e04c` | 2/2 tests passed (2026-11-06). Live checks still open. **Partially verified** |
+| A5e capability model | same | `e8be6d2`, fix `82a1df5` | green on `e8be6d2` (run 42198839565) and on `82a1df5` (run 42212811009) | 5/5 tests passed; checks A and B passed; check C failed on `e8be6d2` and **passed** on `82a1df5` (2026-11-06; "what change in my project" reached `git_overview`). **Verified.** The A5 change log still says A5e is partially verified; that line predates the rerun |
+| A6 diagnostics | `2026-11-06_diagnostics-a6` | `d2805dc` | green (run 42229757312); no orphan Chrome | **Verified** (2026-11-06), see A6 below |
+
+Open across phases (recorded, not fixed):
+- Windows CI timing: `scenarioIntegrationTest` failed on `3111ff6` (run 41471896829, passed on the re-run) and in attempt 1 on `d9d7820`; `browserControlAgentTest` failed in attempt 2 on `d9d7820`. **Unresolved**, although both passed on `d2805dc`.
+- The TTS speaking watchdog reports a reply as not played on long replies, or when `speaking_end` does not arrive (seen again 2026-11-06 at startup).
+- Gemini timeouts: two 20 s timeouts on one request (2026-11-06).
+- A failure with a clear cause is spoken as "I encountered an unexpected error …" (2026-11-06, "No running window found for app "notepad"").
+
 ## Owner decisions
 
 | ID | Question | Answer (2026-10-25) |
@@ -94,8 +117,16 @@ A2 follow-up (run `ai_workflows/runs/2026-10-28_browser-tool-load-and-honest-rep
 - [ ] `open_app` checks the opener's exit and doesn't report "unverifiable" as checked
 
 ### A6. Diagnostics — TRA-13, TRA-15
-- [ ] Action log carries the request id and the verified outcome
-- [ ] Test Chromium's process tree is ended (no orphan Chrome in Windows CI)
+
+Run: `ai_workflows/runs/2026-11-06_diagnostics-a6/` (Gate 1 approved with Q1: a check line for every check that ran; Q2: drop the fixed `rollbackAvailable` and `confirmationRequired`). Commit `d2805dc`.
+
+- [x] Action log carries the request id and the verified outcome: each action line has the trace id (or the agent's name inside a background agent), the owner's words, the computed risk level and `verified: "pending"` for a change; each check that ran adds a `verification` line with the same trace id. A refusal by JARVIS is `blocked`; an OS refusal is an allowed `failure`
+- [x] Test Chromium's process tree is ended (no orphan Chrome in Windows CI): `taskkill /T /F` on Windows, only while that Chrome is running
+- [x] Tests fail first, then pass (`diagnosticsA6Test` 43/43); typecheck; mutation check 33/33; related tests; full suite 216 passed, 0 failed (Linux); agent review, four rounds, APPROVED in round 4
+- [x] Windows CI green on `d2805dc` (run 42229757312: 220 passed, 0 failed); the cleanup step ended no orphan Chrome (two before A6)
+- [x] On the owner's PC, 2026-11-06: the tests passed (2/2); a failed and a checked "focus notepad" wrote the expected lines, the check line with the action's trace id; no test Chrome left running
+
+Phase A6: **complete and verified on the owner's PC.**
 
 ## Track B — phases from Report B (audit checklist)
 
@@ -117,13 +148,14 @@ Phase B1: done with A1, except the item moved to A5.
 - [ ] Unavailable-vs-empty contract tests for read tools (with A5)
 
 ### B4. Diagnostics (Stage 9)
-- [ ] Action log fields (with A6)
+- [x] Action log fields (with A6, `d2805dc`)
 - [ ] An action that ends after the registry timeout is reported as "may have happened", not "failed"
 - [ ] (from the PC, N-PC2) typed input while JARVIS is listening or reflecting does not crash with an illegal state change ("unexpected error")
 - [ ] (from A2 review R3-1) a question a tool asks (close JARVIS's Chrome, A1's app and window questions) is not inside the tool's 15–20 s time budget, or the budget pauses while it waits
 
 ### Voice (from the PC logs; not in either report)
 - [ ] (A2 follow-up F8, PC N-PC1) JARVIS's own reply is not taken as a command (echo seen four times on 2026-10-31)
+- [ ] (PC, 2026-11-06) the open follow-up microphone turned speech into requests ("ok thanks", "close jar", "thank you jar"); whether the owner said them is not known
 
 ### B5. NOT RUN in the audit (needs real hardware)
 - [owner] Real browser crash mid-call, several windows/profiles, pinned tabs
