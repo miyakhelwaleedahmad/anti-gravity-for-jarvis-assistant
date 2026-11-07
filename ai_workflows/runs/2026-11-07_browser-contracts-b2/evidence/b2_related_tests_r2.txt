@@ -1,0 +1,39 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=actionQueueRecoveryTest,browserContractsB2Test,browserControlAgentTest,browserControlTest,browserObservationTest,closeByNameTest,desktopControlTest,diagnosticsA6Test,errorRecoveryTest,honestReadToolsA5aTest,jarvisChromeTest,kernelOutcomeA5cTest,navigationPolicyTest,pcControlKernelTest,riskEngineTest,scenarioIntegrationTest,tabTargetingA4Test,toolTimeoutTest,tabRouteReplyA4Test,verifyAfterActTest,openAppHonestA5dTest,chromeStateSmokeTest,routeGoldenTest,voiceYouTubeIntegrationTest,youtubePlayIntentTest,selfCheckTest,selfCheckA5bTest
+
+
+=== JARVIS test suite — 27 file(s) ===
+
+  PASS    actionQueueRecoveryTest                      1645ms
+  PASS    browserContractsB2Test                       37404ms
+  PASS    browserControlAgentTest                      8712ms
+  PASS    browserControlTest                           471ms
+  PASS    browserObservationTest                       8189ms
+  PASS    chromeStateSmokeTest                         648ms
+  PASS    closeByNameTest                              11629ms
+  PASS    desktopControlTest                           10082ms
+  PASS    diagnosticsA6Test                            2032ms
+  PASS    errorRecoveryTest                            11846ms
+  PASS    honestReadToolsA5aTest                       3309ms
+  PASS    jarvisChromeTest                             13443ms
+  PASS    kernelOutcomeA5cTest                         2575ms
+  PASS    navigationPolicyTest                         1842ms
+  PASS    openAppHonestA5dTest                         5869ms
+  PASS    pcControlKernelTest                          846ms
+  PASS    riskEngineTest                               1508ms
+  PASS    routeGoldenTest                              1363ms
+  PASS    scenarioIntegrationTest                      44786ms
+  PASS    selfCheckA5bTest                             530ms
+  PASS    selfCheckTest                                1294ms
+  PASS    tabRouteReplyA4Test                          3110ms
+  PASS    tabTargetingA4Test                           12754ms
+  PASS    toolTimeoutTest                              4591ms
+  PASS    verifyAfterActTest                           6681ms
+  PASS    voiceYouTubeIntegrationTest                  1432ms
+  PASS    youtubePlayIntentTest                        1267ms
+
+=== 27 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.
+EXIT=0

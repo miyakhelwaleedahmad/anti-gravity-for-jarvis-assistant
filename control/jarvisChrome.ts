@@ -19,7 +19,7 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CdpSession, activateTab, cdpVersion, closeTabById, listPages, openTab } from '../perception/cdpClient.js';
+import { CdpNoAnswerError, CdpSession, activateTab, cdpVersion, closeTabById, listPages, openTab } from '../perception/cdpClient.js';
 import { chromeProfileDir, chromeStartHint, readActivePort } from '../perception/chromeProfile.js';
 import { childEnv } from '../system/childEnv.js';
 
@@ -91,14 +91,24 @@ function launchDetached(binary: string, args: string[]): LaunchedChrome {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** The browser path a DevTools endpoint reports; '' when it answers without one; undefined when nothing answers. */
-async function browserPathAt(port: number): Promise<string | undefined> {
+/**
+ * The browser path a DevTools endpoint reports; '' when it answers without one; undefined when nothing answers.
+ * A Chrome that took the request and did not answer in time is busy, not gone: CdpNoAnswerError is passed on,
+ * so running() and ensure() say so and start no second Chrome (phase B2, review F1).
+ */
+async function answeringBrowserPath(port: number): Promise<string | undefined> {
   try {
     const version = await cdpVersion(port) as { webSocketDebuggerUrl?: string };
     try { return new URL(version.webSocketDebuggerUrl ?? '').pathname; } catch { return ''; }
-  } catch {
+  } catch (err) {
+    if (err instanceof CdpNoAnswerError) throw err;
     return undefined;
   }
+}
+
+/** As answeringBrowserPath, with no answer in time counted as nothing answering (closing Chrome waits for that). */
+async function browserPathAt(port: number): Promise<string | undefined> {
+  return answeringBrowserPath(port).catch(() => undefined);
 }
 
 export class JarvisChrome {
@@ -120,16 +130,19 @@ export class JarvisChrome {
     return chromeProfileDir(this.env, this.platform);
   }
 
-  /** JARVIS's Chrome when it is running (its port and browser path), else undefined. Starts nothing. */
+  /**
+   * JARVIS's Chrome when it is running (its port and browser path), else undefined. Starts nothing.
+   * Throws CdpNoAnswerError when Chrome took the request and did not answer in time (it may be busy).
+   */
   async running(): Promise<RunningChrome | undefined> {
     const fixed = this.fixedPort();
     if (fixed) {
-      const browserPath = await browserPathAt(fixed);
+      const browserPath = await answeringBrowserPath(fixed);
       return browserPath !== undefined ? { port: fixed, browserPath } : undefined;
     }
     const active = readActivePort(this.profileDir());
     if (!active) return undefined;
-    return (await browserPathAt(active.port)) === active.browserPath ? { port: active.port, browserPath: active.browserPath } : undefined;
+    return (await answeringBrowserPath(active.port)) === active.browserPath ? { port: active.port, browserPath: active.browserPath } : undefined;
   }
 
   async runningPort(): Promise<number | undefined> {
@@ -140,7 +153,7 @@ export class JarvisChrome {
   async ensure(): Promise<number> {
     const fixed = this.fixedPort();
     if (fixed) {
-      if ((await browserPathAt(fixed)) !== undefined) return fixed;
+      if ((await answeringBrowserPath(fixed)) !== undefined) return fixed;
       throw new ChromeNotAvailableError(
         `Nothing answers on Chrome's debugging port ${fixed}. JARVIS_CDP_PORT is set, so JARVIS uses only the Chrome you start on that port: `
         + 'start it, or remove JARVIS_CDP_PORT from .env so that JARVIS starts its own Chrome.',
@@ -188,7 +201,11 @@ export class JarvisChrome {
     let exitedAt: number | undefined;
     while (Date.now() < deadline) {
       await sleep(150);
-      const port = await this.runningPort();
+      // A Chrome that is starting may be slow to answer: keep waiting for it (phase B2, review F1).
+      const port = await this.runningPort().catch((err) => {
+        if (err instanceof CdpNoAnswerError) return undefined;
+        throw err;
+      });
       if (port) {
         console.log(`[JarvisChrome] JARVIS's Chrome answers on 127.0.0.1:${port}.`);
         return port;
@@ -227,7 +244,16 @@ export class JarvisChrome {
    */
   async close(chrome: RunningChrome): Promise<boolean> {
     const { port } = chrome;
-    const now = await browserPathAt(port);
+    let now: string | undefined;
+    try {
+      now = await answeringBrowserPath(port);
+    } catch (err) {
+      // Busy, not gone: no close was sent, so it is not reported as closed (phase B2, review F10).
+      if (err instanceof CdpNoAnswerError) {
+        throw new Error(`JARVIS's Chrome is still open: ${err.message.replace(/\.$/, '')}, so it was not asked to close.`);
+      }
+      throw err;
+    }
     if (now === undefined) return true;
     if (now !== chrome.browserPath) throw new Error(`JARVIS's Chrome is not open: port ${port} now answers for another browser, which was not closed.`);
     let session: CdpSession;

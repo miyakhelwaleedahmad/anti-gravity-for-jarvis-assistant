@@ -51,11 +51,31 @@ export class CdpUnavailableError extends Error {
   }
 }
 
+/**
+ * Chrome took the request but did not answer in time (it may be busy): not
+ * "not running" (phase B2, contracts 5 and 6). For a change, Chrome may have
+ * made it already, so the action queue does not send it again
+ * (control/actionQueue.ts): a slow Chrome opened two tabs for one request.
+ */
+export class CdpNoAnswerError extends Error {
+  constructor(timeoutMs: number, change?: string) {
+    const seconds = Math.round(timeoutMs / 100) / 10;
+    super(change
+      ? `Chrome did not answer within ${seconds} s (it may be busy), so JARVIS does not know whether the tab ${change}; it was not tried again.`
+      : `Chrome did not answer within ${seconds} s (it may be busy).`);
+    this.name = 'CdpNoAnswerError';
+  }
+}
+
+/** A request that reached Chrome and got no answer in time, as opposed to one nothing took (refused). */
+const timedOut = (err: unknown): boolean => (err as { name?: string } | null)?.name === 'TimeoutError';
+
 async function getJson<T>(port: number, pathname: string, timeoutMs = 2_000): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`http://${CDP_HOST}:${port}${pathname}`, { signal: AbortSignal.timeout(timeoutMs) });
-  } catch {
+  } catch (err) {
+    if (timedOut(err)) throw new CdpNoAnswerError(timeoutMs);
     throw new CdpUnavailableError(port);
   }
   if (!res.ok) throw new Error(`DevTools ${pathname} answered ${res.status}`);
@@ -75,28 +95,31 @@ export async function listPages(port = cdpPort()): Promise<CdpTarget[]> {
   return (await listTargets(port)).filter((t) => t.type === 'page');
 }
 
-async function tabEndpoint(port: number, pathname: string, method: 'GET' | 'PUT'): Promise<Response> {
+/** A change to a tab; `change` says what Chrome may have done when it does not answer ("opened", "closed"). */
+async function tabEndpoint(port: number, pathname: string, method: 'GET' | 'PUT', change: string): Promise<Response> {
+  const timeoutMs = 3_000;
   try {
-    return await fetch(`http://${CDP_HOST}:${port}${pathname}`, { method, signal: AbortSignal.timeout(3_000) });
-  } catch {
+    return await fetch(`http://${CDP_HOST}:${port}${pathname}`, { method, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    if (timedOut(err)) throw new CdpNoAnswerError(timeoutMs, change);
     throw new CdpUnavailableError(port);
   }
 }
 
 /** Opens a tab. `/json/new` takes PUT (current Chrome answers 405 to GET) and an encoded address. */
 export async function openTab(url: string, port = cdpPort()): Promise<CdpTarget> {
-  const res = await tabEndpoint(port, `/json/new?${encodeURIComponent(url)}`, 'PUT');
+  const res = await tabEndpoint(port, `/json/new?${encodeURIComponent(url)}`, 'PUT', 'opened');
   if (!res.ok) throw new Error(`Chrome did not open a tab (${res.status}).`);
   return (await res.json()) as CdpTarget;
 }
 
 export async function activateTab(id: string, port = cdpPort()): Promise<void> {
-  const res = await tabEndpoint(port, `/json/activate/${encodeURIComponent(id)}`, 'GET');
+  const res = await tabEndpoint(port, `/json/activate/${encodeURIComponent(id)}`, 'GET', 'came to the front');
   if (!res.ok) throw new Error(`Chrome did not bring the tab forward (${res.status}).`);
 }
 
 export async function closeTabById(id: string, port = cdpPort()): Promise<void> {
-  const res = await tabEndpoint(port, `/json/close/${encodeURIComponent(id)}`, 'GET');
+  const res = await tabEndpoint(port, `/json/close/${encodeURIComponent(id)}`, 'GET', 'closed');
   if (!res.ok) throw new Error(`Chrome did not close the tab (${res.status}).`);
 }
 

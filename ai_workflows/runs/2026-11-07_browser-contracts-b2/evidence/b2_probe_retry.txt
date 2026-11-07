@@ -1,0 +1,8 @@
+RETRIED once    | CdpUnavailableError, JARVIS's own Chrome not running | Chrome is not reachable for JARVIS on 127.0.0.1:9333: JARVIS's own Chrome is not running (it starts when JARVI
+FINAL (no retry) | CdpUnavailableError, JARVIS_CDP_PORT set | Chrome is not reachable for JARVIS on 127.0.0.1:9333. JARVIS_CDP_PORT is set, so start your Chrome with --remo
+RETRIED once    | socket closed mid-call | DevTools: the tab closed the connection
+RETRIED once    | socket error mid-call | DevTools: the connection failed
+RETRIED once    | send on a closed socket | The tab connection is closed.
+RETRIED once    | CDP command timeout | Runtime.evaluate took longer than 5000 ms.
+RETRIED once    | page busy | The page did not answer within 5000 ms; it may be busy or frozen.
+FINAL (no retry) | tab tools, Chrome not running | JARVIS's own Chrome is not running, so no tab was changed (it starts when JARVIS opens a page).

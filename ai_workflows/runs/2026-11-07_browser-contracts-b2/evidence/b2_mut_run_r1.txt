@@ -1,0 +1,20 @@
+M1 a tab change that times out is 'not running' again (D1) [browserContractsB2Test]: CAUGHT | FAIL: open a tab, Chrome answers late: the request is sent once (no second tab) (2 request(s))
+M2 a read that times out is 'not running' again (D1) [browserContractsB2Test]: CAUGHT | FAIL: read the tab list, Chrome answers late: "did not answer within 2 s", not "not running" (Chrome is not reachable for JARVIS on 127.0.0.1:46159: JARVIS's own Chrome i
+M3 the queue sends a timed-out tab change again (D2) [browserContractsB2Test]: CAUGHT | FAIL: open a tab, Chrome answers late: the request is sent once (no second tab) (2 request(s))
+M4 the final rule also stops a read's retry [browserContractsB2Test]: CAUGHT | FAIL: …a read is safe to repeat: the action queue still tries it a second time (1 request(s))
+M5 no request ever counts as timed out [browserContractsB2Test]: CAUGHT | FAIL: open a tab, Chrome answers late: the request is sent once (no second tab) (2 request(s))
+M6 every failed request counts as timed out (refused too) [browserContractsB2Test]: CAUGHT | FAIL: nothing listens on the port: still "Chrome is not reachable … not running" (unchanged) (Chrome did not answer within 3 s (it may be busy), so JARVIS does not know w
+M7 opening a tab names the wrong change [browserContractsB2Test]: CAUGHT | FAIL: …and that it does not know whether the tab opened, and did not try again (Chrome did not answer within 3 s (it may be busy), so JARVIS does not know whether the tab
+M8 closing a tab names the wrong change [browserContractsB2Test]: CAUGHT | FAIL: …not "not running"; it does not know whether the tab closed (Chrome did not answer within 3 s (it may be busy), so JARVIS does not know whether the tab opened; it w
+M9 the time in the reply is wrong [browserContractsB2Test]: CAUGHT | FAIL: …JARVIS says Chrome did not answer and may be busy, not that it is not running (Chrome did not answer within 3000 s (it may be busy), so JARVIS does not know whethe
+M10 browser_tab close closes every tab (contract 2) [browserContractsB2Test]: CAUGHT | FAIL: Chrome is still running, with Beta open and Alpha gone (about:blank)
+M11 running() counts a slow Chrome as not running again (F1) [browserContractsB2Test]: CAUGHT | FAIL: open a page, Chrome slow to say it runs: no second Chrome is started (1 start(s); Chrome did not open its debugging port within 3 s. Close any Chrome window that us
+M12 the version check swallows 'did not answer' again (F1) [browserContractsB2Test]: CAUGHT | FAIL: open a page, Chrome slow to say it runs: no second Chrome is started (1 start(s); Chrome did not open its debugging port within 3 s. Close any Chrome window that us
+M13 a slow start: JARVIS stops waiting for its new Chrome (F1) [browserContractsB2Test]: CAUGHT | FAIL: JARVIS starts its Chrome, which is slow to answer at first: JARVIS waits for it and uses it (Chrome did not answer within 2 s (it may be busy).; 1 start(s))
+M14 a busy Chrome makes the read tools throw (F1) [browserContractsB2Test]: CAUGHT | FAIL: the read tools: a failure, not a crash, that says Chrome did not answer, not "not running" (threw: Chrome did not answer within 2 s (it may be busy).)
+M15 JARVIS_CDP_PORT: ensure() says 'nothing answers' for a slow Chrome (F1) [browserContractsB2Test]: CAUGHT | FAIL: JARVIS_CDP_PORT, Chrome slow to answer: open a page says it did not answer, not "nothing answers" (Nothing answers on Chrome's debugging port 36445. JARVIS_CDP_PORT
+M16 JARVIS_CDP_PORT: running() counts a slow Chrome as not running (F1) [browserContractsB2Test]: CAUGHT | FAIL: …and the tab tools say so too (JARVIS's own Chrome is not running, so no tab was changed (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its
+
+16/16 caught
+tree restored (md5): YES
+EXIT=0

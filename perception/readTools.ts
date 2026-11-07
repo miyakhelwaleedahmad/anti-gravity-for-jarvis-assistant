@@ -13,7 +13,7 @@
 
 import { jarvisChrome, type JarvisChrome } from '../control/jarvisChrome.js';
 import { readBrowserState, type BrowserTab } from './browserState.js';
-import { CdpUnavailableError, listPages } from './cdpClient.js';
+import { CdpNoAnswerError, CdpUnavailableError, listPages } from './cdpClient.js';
 import { chromeStartHint } from './chromeProfile.js';
 import { redact } from '../security/redactor.js';
 
@@ -37,7 +37,14 @@ export type LiveTabList = { tabs: Array<{ id: string; title: string; url: string
 
 /** The port of JARVIS's Chrome, or why it cannot be read. Starts nothing (owner, Q1). */
 async function readablePort(chrome: JarvisChrome): Promise<{ port: number } | { failure: string }> {
-  const running = await chrome.running();
+  let running: Awaited<ReturnType<JarvisChrome['running']>>;
+  try {
+    running = await chrome.running();
+  } catch (err) {
+    // Chrome took the request and did not answer in time: busy, not "not running" (phase B2, review F1).
+    if (err instanceof CdpNoAnswerError) return { failure: unreadable(err) };
+    throw err;
+  }
   if (running) return { port: running.port };
   // JARVIS_CDP_PORT set: the owner's Chrome on that port, and JARVIS starts none (review R6).
   const fixed = Number(process.env['JARVIS_CDP_PORT']);
