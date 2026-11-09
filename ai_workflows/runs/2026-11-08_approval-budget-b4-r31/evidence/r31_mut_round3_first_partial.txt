@@ -1,0 +1,21 @@
+# First round-3 mutation run (before the test's bounded waits and watchdog): P6 left a question open for an hour; the test hung and the script's 600 s timeout stopped it. The tree was restored (md5 OK); the orphaned test processes were stopped by hand. Superseded by r31_mut_round3_run.txt.
+P1 S1 the setting read as before (NaN possible) [approvalBudgetR31Test]: CAUGHT | FAIL: S1: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN and ±Infinity give 1500 ms; 2500 and 0 are kept ("abc"→NaN (want 1500), "-5"→-5 (want 1500)
+P2 S1 infinite values accepted [approvalBudgetR31Test]: CAUGHT | FAIL: S1: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN and ±Infinity give 1500 ms; 2500 and 0 are kept ("Infinity"→Infinity (want 1500))
+P3 S1 negative values accepted [approvalBudgetR31Test]: CAUGHT | FAIL: S1: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN and ±Infinity give 1500 ms; 2500 and 0 are kept ("-5"→-5 (want 1500))
+P4 S1 an empty setting taken as 0 [approvalBudgetR31Test]: CAUGHT | FAIL: S1: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN and ±Infinity give 1500 ms; 2500 and 0 are kept (""→0 (want 1500), "  "→0 (want 1500))
+P5 S2 the withdrawal measured on the system clock [approvalBudgetR31Test]: CAUGHT | FAIL: S2: the system clock moves forward an hour after a withdrawal: the next question's typed answers count after at most 1.5 s, its deadline is 30 s + at most 1.5 s (ty
+Traceback (most recent call last):
+  File "/home/user/anti-gravity-for-jarvis-assistant/ai_workflows/runs/2026-11-08_approval-budget-b4-r31/evidence/r31_mut_round3.py", line 29, in <module>
+    r = subprocess.run(["pnpm", "test", "--", f"--only={test}"], capture_output=True, text=True, timeout=600,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 1209, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/subprocess.py", line 2116, in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+  File "/usr/lib/python3.11/subprocess.py", line 1253, in _check_timeout
+    raise TimeoutExpired(
+subprocess.TimeoutExpired: Command '['pnpm', 'test', '--', '--only=approvalBudgetR31Test']' timed out after 600 seconds

@@ -34,6 +34,7 @@ import {
 import { redact } from './redactor.js';
 import { currentTaskNode } from '../core/taskContext.js';
 import { getRequestSource, getRequestText } from '../core/traceContext.js';
+import { currentToolCall, whileOwnerAnswers } from '../core/toolExecutionSandbox.js';
 
 /**
  * How long a typed approval waits for an answer: 30 s, or the owner's
@@ -82,7 +83,20 @@ const HISTORY_LIMIT = 50;
  * answers only this long after it appears: it can turn up while the user is
  * answering something else, and a late "yes" meant for that must not approve it.
  */
-const ANSWER_GRACE_MS = Number(process.env['JARVIS_APPROVAL_GRACE_MS'] ?? 1500);
+const DEFAULT_ANSWER_GRACE_MS = 1500;
+/** The largest grace accepted: far below Node's timer limit (about 24.8 days) once added to a deadline (review T2). */
+const MAX_ANSWER_GRACE_MS = 60_000;
+/**
+ * JARVIS_APPROVAL_GRACE_MS: a finite number of ms from 0 to 60 000. Missing,
+ * empty, not a number, negative, infinite or above 60 000: 1500 ms. A NaN used
+ * to reach every question's deadline and deny it within 1 ms (review S1); a
+ * huge value overflowed the deadline's timer and did the same (review T2).
+ */
+export function approvalGraceMs(value: string | undefined): number {
+  const v = value === undefined || value.trim() === '' ? NaN : Number(value);
+  return Number.isFinite(v) && v >= 0 && v <= MAX_ANSWER_GRACE_MS ? v : DEFAULT_ANSWER_GRACE_MS;
+}
+const ANSWER_GRACE_MS = approvalGraceMs(process.env['JARVIS_APPROVAL_GRACE_MS']);
 /**
  * Lines already waiting in the console when the gate starts reading it were
  * typed before the request was shown; they arrive within this time and are
@@ -101,11 +115,27 @@ interface Pending {
   consoleFrom: number;
   expiresAt: number;
   toldVoiceCannot?: boolean;
-  settle: (answer: string | null) => void;
+  settle: (answer: Answer) => void;
 }
+
+/** The request was withdrawn because the call that asked it was stopped (B4 R3-1). */
+const CANCELLED = Symbol('cancelled');
+/** An answer: what was typed or heard, null when the time ran out, or CANCELLED. */
+type Answer = string | null | typeof CANCELLED;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Resolves when `promise` settles or `signal` aborts, whichever is first. */
+function settledOrAborted(promise: Promise<unknown>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return promise.then(() => undefined, () => undefined);
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const done = () => { signal.removeEventListener('abort', done); resolve(); };
+    signal.addEventListener('abort', done, { once: true });
+    promise.then(done, done);
+  });
 }
 
 function words(text: string): string {
@@ -117,6 +147,8 @@ export class ApprovalGate {
   private speech?: { ttsStartedMs: number; ttsEndedMs: number };
 
   private pending: Pending | null = null;
+  /** When a request on display was last withdrawn (its call was stopped), on the monotonic clock. */
+  private withdrawnAt = Number.NEGATIVE_INFINITY;
   private turn: Promise<void> = Promise.resolve();
   private consoleAttached = false;
   private history: ApprovalDecision[] = [];
@@ -176,16 +208,33 @@ export class ApprovalGate {
       console.log(`[ApprovalGate] "${request.action}" was asked inside the approved ${approvedCall.tool} call but is not what was approved — asking.`);
     }
 
-    // One request on display at a time: parallel steps wait their turn.
-    const previous = this.turn;
-    let release!: () => void;
-    this.turn = new Promise<void>((r) => { release = r; });
-    await previous;
-    try {
-      return await this.ask(request, seconds);
-    } finally {
-      release();
-    }
+    // Asked inside a tool call (core/toolExecutionSandbox.ts): its time budget
+    // is paused while the owner answers, and a call that is stopped is not
+    // asked, or its question is withdrawn as a denial (B4 R3-1).
+    const call = currentToolCall();
+    if (call?.signal.aborted) return this.cancelled(request);
+    return whileOwnerAnswers(async () => {
+      // One request on display at a time: parallel steps wait their turn.
+      const previous = this.turn;
+      let release!: () => void;
+      this.turn = new Promise<void>((r) => { release = r; });
+      try {
+        await settledOrAborted(previous, call?.signal);
+        if (call?.signal.aborted) return this.cancelled(request);
+        return await this.ask(request, seconds, call?.signal);
+      } finally {
+        // The turn passes on only once the request before this one is done,
+        // also when this one stopped waiting early (cancelled).
+        void previous.then(release, release);
+      }
+    });
+  }
+
+  /** A request whose call was stopped before or while it was asked: denied, never asked again. */
+  private cancelled(request: ApprovalRequest): false {
+    console.log('  Cancelled: the action was stopped, so it was not approved.\n');
+    this.record(request, { approved: false, by: 'cancelled' });
+    return false;
   }
 
   /** A line typed while a request is displayed. True when it was taken as the answer. */
@@ -258,7 +307,7 @@ export class ApprovalGate {
     return this.history.slice(-limit);
   }
 
-  private async ask(request: ApprovalRequest, timeoutSecs?: number): Promise<boolean> {
+  private async ask(request: ApprovalRequest, timeoutSecs?: number, signal?: AbortSignal): Promise<boolean> {
     const voice = request.source === 'voice';
     const seconds = timeoutSecs ?? (voice && !request.strong ? VOICE_TIMEOUT_SECONDS : typedApprovalSeconds());
     securityAuditLogger.approvalRequest(request);
@@ -267,10 +316,11 @@ export class ApprovalGate {
     let raw: string;
     try {
       raw = voice
-        ? await this._voiceOrTextPromptWithTimeout(request, seconds * 1000)
-        : await this._promptWithTimeout('  Your decision: ', seconds * 1000, request);
+        ? await this._voiceOrTextPromptWithTimeout(request, seconds * 1000, signal)
+        : await this._promptWithTimeout('  Your decision: ', seconds * 1000, request, signal);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      if (message === 'APPROVAL_CANCELLED') return this.cancelled(request);
       if (message === 'APPROVAL_UNAVAILABLE') {
         console.warn('\n  No console or voice to answer on - action DENIED.\n');
         this.record(request, { approved: false, by: 'unavailable' });
@@ -289,6 +339,8 @@ export class ApprovalGate {
     const approved = spoken
       ? voiceMayApprove(request) && classifyVoiceAnswer(answer) === 'approve'
       : isConsoleApproval(answer, request);
+    // A yes that arrives just as its call is stopped approves nothing (B4 R3-1).
+    if (approved && signal?.aborted) return this.cancelled(request);
     console.log(approved ? '  Approved by user.\n' : '  Denied by user input.\n');
     this.record(request, { approved, by: spoken ? 'voice' : 'console', answer });
     return approved;
@@ -322,50 +374,72 @@ export class ApprovalGate {
   }
 
   /** Make `request` the one on display; answers settle it, the clock denies it. */
-  private openPending(request: ApprovalRequest, channels: { console: boolean; voice: boolean }) {
-    let resolve!: (answer: string | null) => void;
-    const answer = new Promise<string | null>((r) => { resolve = r; });
+  private openPending(request: ApprovalRequest, channels: { console: boolean; voice: boolean }, signal?: AbortSignal) {
+    let resolve!: (answer: Answer) => void;
+    const answer = new Promise<Answer>((r) => { resolve = r; });
     let timer: NodeJS.Timeout | undefined;
     let settled = false;
-    const grace = request.goalId ? ANSWER_GRACE_MS : 0;
+    const now = Date.now();
+    // A request shown just after another was withdrawn: a "yes" typed for the
+    // withdrawn one must not approve it (review F2). Typed answers count from
+    // ANSWER_GRACE_MS after the withdrawal, and the deadline moves by as much.
+    // Measured on the monotonic clock and held to 0..ANSWER_GRACE_MS: a change
+    // of the system time cannot lengthen it (review S2).
+    const afterWithdrawal = Math.min(ANSWER_GRACE_MS, Math.max(0, this.withdrawnAt + ANSWER_GRACE_MS - performance.now()));
+    const grace = Math.max(request.goalId ? ANSWER_GRACE_MS : 0, afterWithdrawal);
+    // The call that asked was stopped: the request is withdrawn at once (B4 R3-1).
+    const onAbort = () => pending.settle(CANCELLED);
     const pending: Pending = {
       request,
       ...channels,
       listeningFrom: Number.POSITIVE_INFINITY,
-      consoleFrom: Date.now() + grace,
+      consoleFrom: now + grace,
       expiresAt: Number.POSITIVE_INFINITY,
       settle: (value) => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
-        if (this.pending === pending) this.pending = null;
+        signal?.removeEventListener('abort', onAbort);
+        if (this.pending === pending) {
+          this.pending = null;
+          if (value === CANCELLED) this.withdrawnAt = performance.now();
+        }
         resolve(value);
       },
     };
     this.pending = pending;
+    if (signal?.aborted) pending.settle(CANCELLED);
+    else signal?.addEventListener('abort', onAbort, { once: true });
     return {
       answer,
       settle: pending.settle,
       isSettled: () => settled,
       startClock: (timeoutMs: number, listeningFrom = Date.now()) => {
         pending.listeningFrom = listeningFrom;
-        pending.expiresAt = listeningFrom + timeoutMs;
+        pending.expiresAt = listeningFrom + timeoutMs + afterWithdrawal;
         timer = setTimeout(() => pending.settle(null), Math.max(0, pending.expiresAt - Date.now()));
       },
     };
   }
 
   /** A typed answer: through the CLI loop when it owns stdin, else one line read here. */
-  private async _promptWithTimeout(prompt: string, timeoutMs: number, request?: ApprovalRequest): Promise<string> {
+  private async _promptWithTimeout(prompt: string, timeoutMs: number, request?: ApprovalRequest, signal?: AbortSignal): Promise<string> {
     if (this.consoleAttached && request) {
-      const pending = this.openPending(request, { console: true, voice: false });
-      pending.startClock(timeoutMs);
+      const pending = this.openPending(request, { console: true, voice: false }, signal);
+      if (!pending.isSettled()) pending.startClock(timeoutMs);
       const answer = await pending.answer;
+      if (answer === CANCELLED) throw new Error('APPROVAL_CANCELLED');
       if (answer === null) throw new Error('APPROVAL_TIMEOUT');
       return answer;
     }
     if (!process.stdin.isTTY) throw new Error('APPROVAL_UNAVAILABLE');
-    const line = await this.readLine(prompt, timeoutMs).promise;
+    const reading = this.readLine(prompt, timeoutMs);
+    // The call that asked was stopped: stop reading (B4 R3-1).
+    const stopReading = () => reading.close();
+    signal?.addEventListener('abort', stopReading, { once: true });
+    const line = await reading.promise;
+    signal?.removeEventListener('abort', stopReading);
+    if (signal?.aborted) throw new Error('APPROVAL_CANCELLED');
     if (line === null) throw new Error('APPROVAL_TIMEOUT');
     return line;
   }
@@ -416,10 +490,11 @@ export class ApprovalGate {
    * once; spoken ones only after JARVIS has finished asking, so that its own
    * "say approve or confirm" cannot approve anything.
    */
-  private async _voiceOrTextPromptWithTimeout(request: ApprovalRequest, timeoutMs: number): Promise<string> {
+  private async _voiceOrTextPromptWithTimeout(request: ApprovalRequest, timeoutMs: number, signal?: AbortSignal): Promise<string> {
     const { nodeBridge } = await import('../bridge/nodeBridge.js');
     this.speech = nodeBridge;
-    const pending = this.openPending(request, { console: this.consoleAttached, voice: true });
+    // A stopped call settles it (CANCELLED), which also ends the wait for speech below.
+    const pending = this.openPending(request, { console: this.consoleAttached, voice: true }, signal);
     // Without the CLI loop, read a typed answer here as before.
     const typed = !this.consoleAttached && process.stdin.isTTY
       ? this.readLine('  Your decision: ', SPEECH_MAX_MS + timeoutMs)
@@ -428,7 +503,8 @@ export class ApprovalGate {
 
     const askedAt = Date.now();
     const queuedBehind = nodeBridge.ttsStartedMs > nodeBridge.ttsEndedMs; // already speaking
-    nodeBridge.speakToClients(spokenApprovalRequest(request), { allowRepeat: true });
+    // A request already withdrawn (its call stopped while the bridge loaded) is not said (review F7).
+    if (!pending.isSettled()) nodeBridge.speakToClients(spokenApprovalRequest(request), { allowRepeat: true });
 
     // Wait until JARVIS has finished saying it, or nothing is saying it.
     // Never start listening while it is saying anything at all.
@@ -453,6 +529,7 @@ export class ApprovalGate {
 
     const answer = await pending.answer;
     typed?.close();
+    if (answer === CANCELLED) throw new Error('APPROVAL_CANCELLED');
     if (answer === null) throw new Error('APPROVAL_TIMEOUT');
     return answer;
   }

@@ -55,8 +55,8 @@ export interface ApprovalDecision {
   target: string;
   risk: number;
   approved: boolean;
-  /** Who or what decided: an answer, the approved call it belongs to, or the clock. */
-  by: 'console' | 'voice' | 'scope' | 'timeout' | 'unavailable';
+  /** Who or what decided: an answer, the approved call it belongs to, the clock, or the call being stopped. */
+  by: 'console' | 'voice' | 'scope' | 'timeout' | 'unavailable' | 'cancelled';
   /** The answer as given (redacted, at most 40 characters). */
   answer?: string;
   /** For `by: 'scope'`: the request whose approval covered this one. */

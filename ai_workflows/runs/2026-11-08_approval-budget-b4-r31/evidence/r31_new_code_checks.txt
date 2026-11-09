@@ -1,0 +1,506 @@
+
+=== Approval wait outside the tool budget (B4 R3-1) ===
+
+--- 1. An answer inside the window, after the budget ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82q7r8_abf4)
+-----------------------------------------------------------------
+  ACTION:           Close one-1800
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing one-1800
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: "yes" at 1.8 s, after the 1.5 s budget: the action runs once, as a success (acted 1: Closed the fake thing one-1800.)
+  PASS: …the budget did not run out while the owner was answering (aborted at answer: false)
+  PASS: …the decision is the owner's typed yes ("console")
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82q98d_sgqa)
+-----------------------------------------------------------------
+  ACTION:           Close one-2400
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing one-2400
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: "yes" at 2.4 s, after the budget and its 0.5 s grace (JARVIS used to report TIMEOUT): the action runs once, as a success (acted 1: Closed the fake thing one-2400.)
+  PASS: …the budget did not run out while the owner was answering (aborted at answer: false)
+  PASS: …the decision is the owner's typed yes ("console")
+
+--- 2. "close the browser", answered after 1.8 s ---
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[PermissionSession] 🚀 Full Control active. Session: ps_mw82qbsk_bgu4u | Duration: 5 min | Expires: 5:01:01 PM | Source: cli
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qbuf_zamx)
+-----------------------------------------------------------------
+  ACTION:           Close JARVIS's Chrome
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close JARVIS's Chrome (1 tab: "about:blank")? Your own Chrome stays open.
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+[ToolRegistry] ✓ control_browser: checked — nothing answers on JARVIS's Chrome's port 35557 any more.
+[PermissionSession] 🛡️ Full Control disabled. Reason: test. Session: ps_mw82qbsk_bgu4u
+  PASS: the owner's yes after 1.8 s closes JARVIS's Chrome: Browser.close sent once (1 close request(s), 1 question(s))
+  PASS: …reported as closed, not "the request had already ended" ({
+  "success": true,
+  "action": "closeBrowser",
+  "target": "JARVIS Chrome",
+  "permissionLevel": 2,
+  "durationMs": 1949,
+  "message": "Cl)
+
+--- 3. Expired, missing and duplicate answers ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qdc6_oxhf)
+-----------------------------------------------------------------
+  ACTION:           Close expired
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing expired
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 10 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+
+  Approval timeout - action DENIED by default.
+
+  PASS: no answer before the gate's deadline (10 s): denied, never acted (10003 ms: The fake thing expired was not closed: not approved.)
+  PASS: …the call waited for the gate's deadline, not the 1.5 s budget (no TIMEOUT while asking) (10003 ms)
+  PASS: …a "yes" after the deadline approves nothing
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82ql7l_b0y7)
+-----------------------------------------------------------------
+  ACTION:           Close missing
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing missing
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+
+  No console or voice to answer on - action DENIED.
+
+  PASS: no way to answer: denied, never acted (unavailable: The fake thing missing was not closed: not approved.)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82ql7m_4icx)
+-----------------------------------------------------------------
+  ACTION:           Close twice
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing twice
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: "yes" twice: the action runs once; the second answer is not taken (acted 1)
+
+--- 4. Cancellation ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qllw_xxh0)
+-----------------------------------------------------------------
+  ACTION:           Close cancelled
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing cancelled
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  PASS: cancelled while its question is open: the question is withdrawn at once (the pending request removed) (1 ms (0))
+  Cancelled: the action was stopped, so it was not approved.
+
+  PASS: …recorded as cancelled, a denial ("cancelled")
+  PASS: …the call ends promptly with the refusal, never acted (2 ms: The fake thing cancelled was not closed: not approved.)
+  PASS: …a "yes" typed afterwards approves nothing (no stale approval)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qlxd_fbwq)
+-----------------------------------------------------------------
+  ACTION:           Close after-cancel
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing after-cancel
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Denied by user input.
+
+  PASS: …the gate's turn is released: the next question is shown at once (11 ms)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qlxo_je4q)
+-----------------------------------------------------------------
+  ACTION:           Close same-instant
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing same-instant
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Cancelled: the action was stopped, so it was not approved.
+
+  PASS: a yes and the cancellation in the same instant: recorded as cancelled, never acted (cancelled: The fake thing same-instant was not closed: not approved.)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qmy3_argm)
+-----------------------------------------------------------------
+  ACTION:           Close no-resume
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing no-resume
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Cancelled: the action was stopped, so it was not approved.
+
+[ToolSandbox] ⚠️ "no-resume" did not stop after its signal; its slot stays taken until it ends.
+  PASS: cancelled with budget left: the budget is not resumed (the call ends as cancelled, not as over its budget) (Error: TIMEOUT: Tool "no-resume" was cancelled and did not stop within 1 s; JARVIS stopped waiting for it.)
+  Cancelled: the action was stopped, so it was not approved.
+
+  PASS: cancelled before it asks: the owner is not asked, recorded as cancelled, never acted (cancelled: The fake thing cancel-before was not closed: not approved.)
+  Cancelled: the action was stopped, so it was not approved.
+
+[ToolSandbox] "budget-gone" finished after its 1500 ms budget.
+  PASS: the budget used up before the question: the owner is not asked, never acted (0 shown, cancelled: The fake thing budget-gone was not closed: not approved.)
+
+--- 5. Only the remaining budget after the answer ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qqe3_it6a)
+-----------------------------------------------------------------
+  ACTION:           Close fits
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing fits
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: 0.6 s + a 2 s question + 0.6 s: fits the 1.5 s budget, acted once (Closed the fake thing fits.)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qsv3_bwgn)
+-----------------------------------------------------------------
+  ACTION:           Close over
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing over
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: after the answer, only the 0.9 s that was left: the budget ends 0.9 s after it (±0.15 s) (899 ms after the answer)
+  PASS: …never the full 1.5 s again, and never during the question (aborted at answer: false)
+  PASS: …the tool stopped by its budget, not acted (Error: the fake thing over was stopped by its budget before it acted.)
+  PASS: a tool that asks nothing: its budget ends at 1.5 s, as before (±0.15 s) (1501 ms)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qw9j_dl2g)
+-----------------------------------------------------------------
+  ACTION:           Close parallel-a
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing parallel-a
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: two calls at once: the one without a question keeps its 1.5 s budget while the other's question is open (1502 ms, A acted 1)
+
+--- 5b. A question waiting its turn, and two questions in one call ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qxfk_nbb8)
+-----------------------------------------------------------------
+  ACTION:           Close turn-a
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing turn-a
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qxfu_pg5o)
+-----------------------------------------------------------------
+  ACTION:           Close turn-b
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing turn-b
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: a question waiting its turn behind another: its call's budget is paused meanwhile, and both act once (A Closed the fake thing turn-a. | B Closed the fake thing turn-b.)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qz81_50cf)
+-----------------------------------------------------------------
+  ACTION:           Close wait-a
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing wait-a
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Cancelled: the action was stopped, so it was not approved.
+
+  PASS: …its question box is never shown (0 line(s))
+  PASS: …a third question asked meanwhile still waits for the one on display (true)
+  PASS: cancelled while waiting its turn: it stops waiting at once, recorded as cancelled, never acted (0 ms: The fake thing wait-b was not closed: not approved.)
+  PASS: …the question on display is still the other call's
+  Approved by user.
+
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82qzgq_2r23)
+-----------------------------------------------------------------
+  ACTION:           Close wait-c
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the fake thing wait-c
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  PASS: …after it is answered, the next question is the third call's, never the cancelled one's ({"id":"apr_mw82qzgq_2r23","action":"Close wait-c","why":"This action requires ex)
+  Denied by user input.
+
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82r0mf_j7cc)
+-----------------------------------------------------------------
+  ACTION:           Close the first thing
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the first fake thing
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82r0mf_bvux)
+-----------------------------------------------------------------
+  ACTION:           Close the second thing
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the second fake thing
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: two questions open in one call: the budget stays paused until the last is answered (both done; aborted at second: false)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82r1y7_mit4)
+-----------------------------------------------------------------
+  ACTION:           Close the first one
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the first one of two
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82r31d_e6v5)
+-----------------------------------------------------------------
+  ACTION:           Close the second one
+  WHY:              This action requires explicit human confirmation.
+  TARGET:           Close the second one of two
+  EXPECTED EFFECT:  This action requires explicit human confirmation.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: two questions one after the other: each deducts only running time; 0.7 s is left after the second (±0.15 s) (701 ms after the second answer)
+
+--- 6. The registry's approval and a nested question (unchanged) ---
+[ToolRegistry] ⚠️  High-risk tool "test_r31_registry_asks" declares no requiredLevel — dispatch-layer authorization is not enforced for it; it relies entirely on its own controller checks.
+[PermissionSession] 🚀 Full Control active. Session: ps_mw82r4cv_d57va | Duration: 5 min | Expires: 5:01:38 PM | Source: cli
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82r4cw_149u)
+-----------------------------------------------------------------
+  ACTION:           test_r31_registry_asks
+  WHY:              test_r31_registry_asks is risk 3 in its metadata
+  TARGET:           {}
+  EXPECTED EFFECT:  Does a test thing.
+  RISK:             Level 3 — high
+  REVERSIBILITY:    No
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 30 s. Voice cannot approve this one.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+[PermissionSession] 🛡️ Full Control disabled. Reason: test. Session: ps_mw82r4cv_d57va
+  PASS: the registry's own approval, answered after 1.8 s: asked before the run, the tool runs once with its budget untouched (1 run(s): did it)
+[ApprovalGate] "test_nested close" is part of the approved test_nested call — not asking again.
+  PASS: a nested question the registry's approval covers: not asked again, answered by scope, acted once (scope)
+
+--- 7. A spoken question, cancelled while JARVIS is asking ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mw82r68e_xa9g)
+-----------------------------------------------------------------
+  ACTION:           test_spoken close
+  WHY:              test
+  TARGET:           the spoken thing
+  EXPECTED EFFECT:  test
+  RISK:             Level 2 — moderate
+  REVERSIBILITY:    Not stated
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 20 s.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Cancelled: the action was stopped, so it was not approved.
+
+[ApprovalGate] "approve" heard with no approval pending — it approves nothing.
+  PASS: cancelled while JARVIS is saying the question: the voice wait stops and the call ends at once (92 ms: not approved)
+  PASS: …recorded as cancelled; a spoken "approve" afterwards approves nothing (cancelled, heard false)
+
+40 passed, 0 failed
+EXIT=0

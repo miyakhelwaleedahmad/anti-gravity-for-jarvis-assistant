@@ -1,0 +1,12 @@
+P1 S1 the setting read as before (NaN possible) [approvalBudgetR31Test]: CAUGHT | FAIL: S1: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN and ±Infinity give 1500 ms; 2500 and 0 are kept ("abc"→NaN (want 1500), "-5"→-5 (want 1500)
+P2 S1 infinite values accepted [approvalBudgetR31Test]: CAUGHT | FAIL: S1: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN and ±Infinity give 1500 ms; 2500 and 0 are kept ("Infinity"→Infinity (want 1500))
+P3 S1 negative values accepted [approvalBudgetR31Test]: CAUGHT | FAIL: S1: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN and ±Infinity give 1500 ms; 2500 and 0 are kept ("-5"→-5 (want 1500))
+P4 S1 an empty setting taken as 0 [approvalBudgetR31Test]: CAUGHT | FAIL: S1: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN and ±Infinity give 1500 ms; 2500 and 0 are kept (""→0 (want 1500), "  "→0 (want 1500))
+P5 S2 the withdrawal measured on the system clock [approvalBudgetR31Test]: CAUGHT | FAIL: S2: the system clock moves forward an hour after a withdrawal: the next question's typed answers count after at most 1.5 s, its deadline is 30 s + at most 1.5 s (ty
+P6 S2 no upper limit on the grace [approvalBudgetR31Test]: CAUGHT | FAIL: S2: even a clock that goes back cannot lengthen the grace beyond 1.5 s (typed answers, deadline) (typed in 3601489.2231445312 ms, deadline in 3631489.2231445312 ms)
+P7 S2 no lower limit on the grace [approvalBudgetR31Test]: CAUGHT | FAIL: "yes" at 1.8 s, after the 1.5 s budget: the action runs once, as a success (acted 0: The fake thing one-1800 was not closed: not approved.)
+
+7/7 caught
+tree restored (md5): YES
+exit=0
+jarvis-r31 folders left: 0

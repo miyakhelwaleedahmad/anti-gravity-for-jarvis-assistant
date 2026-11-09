@@ -1,0 +1,12 @@
+Q1 T1 the F5 questions start inside the withdrawal grace again (test fault): CAUGHT | 2 failing check(s); first: FAIL: F5: the system clock moves back 10 s before a question: the owner's typed yes approves it (approved undefined, by undefined)
+Q2 T2 no upper limit on the setting: CAUGHT | 4 failing check(s); first: FAIL: S1/T2: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN, ±Infinity and anything above 60 000 give 1500 ms; 0, 2500 and exactly 60 000 are kept ("60001"→60001 (want 1500), "1e
+Q3 T2 exactly 60 000 rejected (off by one): CAUGHT | 2 failing check(s); first: FAIL: S1/T2: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN, ±Infinity and anything above 60 000 give 1500 ms; 0, 2500 and exactly 60 000 are kept ("60000"→1500 (want 60000))
+Q4 T2 the limit set at Node's timer maximum: CAUGHT | 4 failing check(s); first: FAIL: S1/T2: JARVIS_APPROVAL_GRACE_MS: missing, empty, non-numeric, negative, NaN, ±Infinity and anything above 60 000 give 1500 ms; 0, 2500 and exactly 60 000 are kept ("60001"→60001 (want 1500), "1e
+Q5 T5 the shell's setting is not removed (shell has JARVIS_APPROVAL_GRACE_MS=5000): CAUGHT | 15 failing check(s); first: FAIL: F2: the deadline moves by the same grace (the 30 s window is not shortened) (34999.524658203125 ms after the withdrawal)
+
+5/5 caught
+tree restored (md5): YES
+exit=0
+jarvis-r31 folders left: 0
+security/approvalGate.ts: OK
+tests/approvalBudgetR31Test.ts: OK

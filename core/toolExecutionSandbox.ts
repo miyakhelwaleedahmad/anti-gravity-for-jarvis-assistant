@@ -31,6 +31,7 @@
  *   const output = await sandbox.run(tool, args, externalSignal);
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import * as fs from 'fs';
 import * as path from 'path';
 import { dataRoot } from './workspaceRoot.js';
@@ -71,6 +72,90 @@ function stopGraceMs(): number {
   return Number.isFinite(v) && v >= 0 ? v : 5_000;
 }
 
+// ─── The running call, for a question asked inside it (B4 R3-1) ───────────────
+
+/**
+ * The tool call the current code runs inside. A question the tool asks the
+ * owner (security/approvalGate.ts) is not part of its time budget: the budget
+ * is paused while the owner answers and resumes with exactly the time that was
+ * left. AsyncLocalStorage, as security/approvalScope.ts: it follows the call
+ * through the skill, the kernel, the action queue and the controller.
+ */
+export interface ToolCallBudget {
+  /** The call's signal: aborted by its budget or by its caller. */
+  readonly signal: AbortSignal;
+  /** True once the tool's run has finished; work it left behind is no longer part of the call. */
+  readonly ended: boolean;
+  /** Stops the budget clock (counted: the clock restarts after the last open question). */
+  pause(): void;
+  /** Restarts it with the time that was left; nothing after the call ended or was stopped. */
+  resume(): void;
+}
+
+const callScope = new AsyncLocalStorage<ToolCallBudget>();
+
+/**
+ * The sandboxed tool call this code runs inside, if any. Background work a
+ * tool started keeps its AsyncLocalStorage context after the call ends; it is
+ * then no longer part of that call (review F3).
+ */
+export function currentToolCall(): ToolCallBudget | undefined {
+  const call = callScope.getStore();
+  return call && !call.ended ? call : undefined;
+}
+
+/** Runs `fn` with the current call's budget paused (waiting for the owner is not execution time). */
+export async function whileOwnerAnswers<T>(fn: () => Promise<T>): Promise<T> {
+  const call = currentToolCall();
+  if (!call) return fn();
+  call.pause();
+  try {
+    return await fn();
+  } finally {
+    call.resume();
+  }
+}
+
+/**
+ * The budget clock of one call: `budget` ms of running time, not counting
+ * paused time. Time used before a pause is deducted; a resume gets exactly
+ * what was left, never the full budget again. Measured with the monotonic
+ * clock: a change of the system time does not move it (review F5).
+ */
+function budgetClock(budget: number, onTimeUp: () => void, signal: AbortSignal) {
+  let deadline = performance.now() + budget;
+  let remaining = budget;
+  let pauses = 0;
+  let ended = false;
+  let timeUp = false;
+  const fire = () => { timer = undefined; timeUp = true; onTimeUp(); };
+  let timer: NodeJS.Timeout | undefined = setTimeout(fire, budget);
+  return {
+    pause(): void {
+      if (ended || timeUp) return;
+      if (pauses++ === 0) {
+        remaining = Math.min(budget, Math.max(0, deadline - performance.now()));
+        if (timer) { clearTimeout(timer); timer = undefined; }
+        // Nothing left (the timer had not fired yet, e.g. a blocked event
+        // loop): the budget ends now, so the owner is not asked (review F8).
+        if (remaining === 0) fire();
+      }
+    },
+    resume(): void {
+      if (ended || timeUp || pauses === 0) return;
+      if (--pauses > 0) return;
+      // A call stopped (cancelled) while paused gets no new budget.
+      if (signal.aborted) return;
+      deadline = performance.now() + remaining;
+      timer = setTimeout(fire, remaining);
+    },
+    end(): void {
+      ended = true;
+      if (timer) { clearTimeout(timer); timer = undefined; }
+    },
+  };
+}
+
 // ─── Sandbox ──────────────────────────────────────────────────────────────────
 
 export class ToolExecutionSandbox {
@@ -109,11 +194,12 @@ export class ToolExecutionSandbox {
     const ac = new AbortController();
     const budget = budgetMs(risk);
     let overBudget = false;
-    const budgetTimer = setTimeout(() => { overBudget = true; ac.abort(); }, budget);
+    // Paused while the owner answers a question the tool asks (B4 R3-1).
+    const clock = budgetClock(budget, () => { overBudget = true; ac.abort(); }, ac.signal);
 
     if (externalSignal) {
       if (externalSignal.aborted) {
-        clearTimeout(budgetTimer);
+        clock.end();
         this._activeCounts[risk]--;
         return `Error: Tool "${tool.name}" aborted before sandbox execution.`;
       }
@@ -122,11 +208,19 @@ export class ToolExecutionSandbox {
 
     // The slot is held until the tool has really finished, also when the
     // caller stopped waiting for it below.
+    let ended = false;
+    const call: ToolCallBudget = {
+      signal: ac.signal,
+      get ended() { return ended; },
+      pause: () => clock.pause(),
+      resume: () => clock.resume(),
+    };
     const execution = Promise.resolve()
-      .then(() => tool.execute(args, ac.signal))
+      .then(() => callScope.run(call, () => tool.execute(args, ac.signal)))
       .then((output) => ({ output }), (err: unknown) => ({ output: `Error: ${err instanceof Error ? err.message : String(err)}` }));
     void execution.then(({ output }) => {
-      clearTimeout(budgetTimer);
+      ended = true;
+      clock.end();
       this._activeCounts[risk]--;
       if (risk === 'high') {
         this._writeAuditLog({

@@ -17,6 +17,12 @@
       ],
       "reason": "wraps execute only to record which tools the specialists call, then calls the real execute"
     },
+    "tests/approvalBudgetR31Test.ts": {
+      "replaces": [
+        "speakToClients"
+      ],
+      "reason": "speakToClients sets playback times so that a spoken approval question is still being said when its call is cancelled (§7, the voice wait must end at once), records what would be said (§8, a withdrawn question is not said) and sets playback times taken after a system clock change (§9); the real bridge-to-tts.py path is tested by realTtsHandoffTest"
+    },
     "tests/approvalGateStructuredTest.ts": {
       "replaces": [
         "installFakeTts",

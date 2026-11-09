@@ -300,7 +300,7 @@ Lessons come only from evidence: a task that failed and then worked (what change
 | `JARVIS_GOAL_MAX_CONCURRENT` | 2 | jobs at once across goals |
 | `JARVIS_GOAL_RETRY_BASE_MS` / `_MAX_MS` | 30 000 / 1 800 000 | retry backoff |
 | `JARVIS_GOAL_RETENTION_DAYS` | 7 | before finished goals move to the archive |
-| `JARVIS_APPROVAL_GRACE_MS` | 1500 | typed answers to a goal's approval count after this |
+| `JARVIS_APPROVAL_GRACE_MS` | 1500 | typed answers to a goal's approval count after this; also, a question shown within this time after another was withdrawn (its call stopped) takes typed answers only this long after the withdrawal, and its deadline moves by as much. A finite number of ms from 0 to 60 000; missing, empty, non-numeric, negative, infinite or larger values give 1500 |
 | `JARVIS_BACKUP_INTERVAL_HOURS` | 6 | `0` turns scheduled backups off |
 | `YOUTUBE_API_KEY` | — | YouTube's own most-popular chart |
 | `SERPER_API_KEY` | — (existing) | web, news and video search |
