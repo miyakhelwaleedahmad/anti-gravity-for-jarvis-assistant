@@ -1,0 +1,115 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=adminControlTest,agentRuntimeTest,agentSpecialistsTest,approvalBudgetR31Test,approvalGateStructuredTest,backgroundResearchTest,boundaryDoublesTest,browserContractsB2Test,browserControlAgentTest,browserObservationTest,browserRefusalSpokenTest,capabilityA5eTest,childEnvTest,claudeProviderTest,closeAppRouteTest,closeByNameTest,codeRepairTest,commandObfuscationTest,controlCenterTest,dangerousCommandMatchTest,dataRootIsolationTest,desktopControlTest,deterministicCommandRouteTest,diagnosticsA6Test,dispatchAuthzTest,docsHygieneTest,duplicateEventsTest,errorHandlingAuditTest,errorRecoveryTest,executionDispatchAuditTest,executionTraceTest,fallbackPolicyTest,fallbackToolStrategyTest,filesAndDevToolsTest,finalIntegrationSuiteTest,fullSystemIntegrationTest,goalApprovalTest,goalLearningTest,goalLifecycleTest,goalRecoveryTest,goalServiceTest,healthLedgerTest,healthStatusTest,honestActionReplyTest,honestReadToolsA5aTest,issueStoreTest,jarvisAgentIntegrationTest,jarvisChromeTest,kernelOutcomeA5cTest,lateOutcomeB4Test,memoryForgetTest,nestedApprovalTest,noGroqForLocalCommandsTest,pcControlKernelTest,plannerDecisionAuditTest,plannerDesktopToolSelectionTest,planningPerformanceTest,planningTimeoutSpeechTest,policyOwnershipTest,projectScriptPolicyTest,promptInjectionFlowTest,registryRepairHonestyTest,repairRunTest,requestTraceLogTest,retryPolicyTest,riskEngineTest,secondBrainIntegrationTest,secretFileTest,secretSinksTest,securityBypassTest,selfCheckTest,serverExitRaceTest,sevenAgentTest,shutdownStepsTest,simpleNoGoalTest,skillImportTimeoutTest,skillTrustTest,startupRegistrationTest,supersededRequestTest,systemControlSafetyTest,systemObservationTest,systemStateRouteTest,tabTargetingA4Test,taskFailureHonestyTest,taskGraphRepairTest,toolDiscoverabilityAuditTest,toolExecutionPipelineVerificationTest,toolGapAndReplanGuardTest,toolNameListsTest,toolPerformanceBenchmarkTest,toolRegistryMetadataTest,toolRegistryOptimizationTest,toolTimeoutTest,verifyAfterActTest,voiceApprovalTest,voiceRouteMockTest,voiceYouTubeIntegrationTest,windowsToolsTest,worldStateTest,youtubePlayIntentTest
+
+
+=== JARVIS test suite — 100 file(s) ===
+
+  PASS    adminControlTest                             661ms
+  PASS    agentRuntimeTest                             2956ms
+  PASS    agentSpecialistsTest                         1769ms
+  PASS    approvalBudgetR31Test                        70869ms
+  PASS    approvalGateStructuredTest                   11776ms
+  PASS    backgroundResearchTest                       1441ms
+  PASS    boundaryDoublesTest                          449ms
+  PASS    browserContractsB2Test                       38354ms
+  PASS    browserControlAgentTest                      8890ms
+  PASS    browserObservationTest                       8255ms
+  PASS    browserRefusalSpokenTest                     1788ms
+  PASS    capabilityA5eTest                            2470ms
+  PASS    childEnvTest                                 1627ms
+  PASS    claudeProviderTest                           1231ms
+  PASS    closeAppRouteTest                            1424ms
+  PASS    closeByNameTest                              11649ms
+  PASS    codeRepairTest                               9296ms
+  PASS    commandObfuscationTest                       745ms
+  PASS    controlCenterTest                            651ms
+  PASS    dangerousCommandMatchTest                    559ms
+  PASS    dataRootIsolationTest                        892ms
+  PASS    desktopControlTest                           10226ms
+  PASS    deterministicCommandRouteTest                1407ms
+  PASS    diagnosticsA6Test                            2063ms
+  PASS    dispatchAuthzTest                            1513ms
+  PASS    docsHygieneTest                              1518ms
+  PASS    duplicateEventsTest                          440ms
+  PASS    errorHandlingAuditTest                       1211ms
+  PASS    errorRecoveryTest                            11861ms
+  PASS    executionDispatchAuditTest                   3258ms
+  PASS    executionTraceTest                           572ms
+  PASS    fallbackPolicyTest                           1522ms
+  PASS    fallbackToolStrategyTest                     1301ms
+  PASS    filesAndDevToolsTest                         2976ms
+  SKIP  finalIntegrationSuiteTest                    live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  PASS    fullSystemIntegrationTest                    1371ms
+  PASS    goalApprovalTest                             633ms
+  PASS    goalLearningTest                             709ms
+  PASS    goalLifecycleTest                            489ms
+  PASS    goalRecoveryTest                             499ms
+  PASS    goalServiceTest                              1392ms
+  PASS    healthLedgerTest                             4951ms
+  PASS    healthStatusTest                             7662ms
+  PASS    honestActionReplyTest                        3456ms
+  PASS    honestReadToolsA5aTest                       3421ms
+  PASS    issueStoreTest                               750ms
+  PASS    jarvisAgentIntegrationTest                   3923ms
+  PASS    jarvisChromeTest                             13243ms
+  PASS    kernelOutcomeA5cTest                         2450ms
+  PASS    lateOutcomeB4Test                            42090ms
+  PASS    memoryForgetTest                             1283ms
+  PASS    nestedApprovalTest                           517ms
+  PASS    noGroqForLocalCommandsTest                   1426ms
+  PASS    pcControlKernelTest                          774ms
+  PASS    plannerDecisionAuditTest                     1201ms
+  PASS    plannerDesktopToolSelectionTest              1583ms
+  PASS    planningPerformanceTest                      1254ms
+  PASS    planningTimeoutSpeechTest                    4398ms
+  PASS    policyOwnershipTest                          631ms
+  PASS    projectScriptPolicyTest                      1581ms
+  PASS    promptInjectionFlowTest                      1412ms
+  PASS    registryRepairHonestyTest                    1505ms
+  PASS    repairRunTest                                6391ms
+  PASS    requestTraceLogTest                          1790ms
+  PASS    retryPolicyTest                              3476ms
+  PASS    riskEngineTest                               1705ms
+  PASS    secondBrainIntegrationTest                   1758ms
+  PASS    secretFileTest                               1303ms
+  PASS    secretSinksTest                              5092ms
+  PASS    securityBypassTest                           1888ms
+  PASS    selfCheckTest                                1476ms
+  PASS    serverExitRaceTest                           2740ms
+  PASS    sevenAgentTest                               1717ms
+  PASS    shutdownStepsTest                            1416ms
+  PASS    simpleNoGoalTest                             1268ms
+  PASS    skillImportTimeoutTest                       1534ms
+  PASS    skillTrustTest                               642ms
+  PASS    startupRegistrationTest                      1192ms
+  PASS    supersededRequestTest                        4213ms
+  PASS    systemControlSafetyTest                      553ms
+  PASS    systemObservationTest                        3011ms
+  PASS    systemStateRouteTest                         1341ms
+  PASS    tabTargetingA4Test                           12760ms
+  PASS    taskFailureHonestyTest                       1647ms
+  PASS    taskGraphRepairTest                          707ms
+  PASS    toolDiscoverabilityAuditTest                 1291ms
+  PASS    toolExecutionPipelineVerificationTest        1286ms
+  PASS    toolGapAndReplanGuardTest                    1147ms
+  PASS    toolNameListsTest                            1240ms
+  PASS    toolPerformanceBenchmarkTest                 1362ms
+  PASS    toolRegistryMetadataTest                     1367ms
+  PASS    toolRegistryOptimizationTest                 1259ms
+  PASS    toolTimeoutTest                              4645ms
+  PASS    verifyAfterActTest                           6505ms
+  PASS    voiceApprovalTest                            38857ms
+  PASS    voiceRouteMockTest                           1448ms
+  PASS    voiceYouTubeIntegrationTest                  1476ms
+  PASS    windowsToolsTest                             5015ms
+  PASS    worldStateTest                               9697ms
+  PASS    youtubePlayIntentTest                        1289ms
+
+=== 99 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 1 skipped ===
+
+Skipped (not run, so not passed):
+  - finalIntegrationSuiteTest: live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+
+No unexpected failures.
+EXIT=0

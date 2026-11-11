@@ -16,6 +16,7 @@
 import { EventEmitter } from 'events';
 import { isPermissionDenial } from '../control/permissionDenial.js';
 import { runInTaskNode } from './taskContext.js';
+import { isOutcomeUnknown } from './outcomeUnknown.js';
 import type { ApprovalDecision } from '../security/approvalRequest.js';
 import type { Verification } from './verifiers.js';
 
@@ -543,6 +544,8 @@ export class TaskGraphEngine extends EventEmitter {
         // The action reported success but its effect is not there: repeating
         // it blind is not a repair. First, whatever words the evidence uses.
         errLower.startsWith('verification_failed')                        ? 'fatal'
+        // It may have happened (B4): never run again by itself.
+        : isOutcomeUnknown(errMsg)                                         ? 'fatal'
         : errLower.includes('abort') || errLower.includes('cancelled')    ? 'abort'
         : errLower.includes('timeout') || errLower.includes('timed out')   ? 'timeout'
         // Refused by JARVIS's permission levels, or by a tool's policy (allow-list,

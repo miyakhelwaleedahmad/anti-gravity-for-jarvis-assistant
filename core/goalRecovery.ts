@@ -20,6 +20,7 @@
 
 import type { FailureClass, GoalTask, GoalTaskStatus } from './goalLifecycle.js';
 import { failureSignature, withErrorName, type FailureSignature } from './failureSignature.js';
+import { isOutcomeUnknown } from './outcomeUnknown.js';
 
 export interface FailureInfo {
   /** Set when the caller already knows the class. */
@@ -60,6 +61,9 @@ export function classifyFailure(f: FailureInfo): FailureClass {
   if (f.class) return f.class;
   if (f.approval || f.code === 'APPROVAL_DENIED') return 'approval';
   const text = `${f.code ?? ''} ${f.message}`;
+  // An action that may have happened (B4): before the budget and transient
+  // patterns ("ran past its 15 s budget", TIMEOUT), which would schedule it again.
+  if (isOutcomeUnknown(text)) return 'outcome_unknown';
   for (const [re, cls] of PATTERNS) if (re.test(text)) return cls;
   return 'unrecoverable';
 }
@@ -119,6 +123,16 @@ function decide({ task, failure, cls, toolCalls, now, retry = DEFAULT_RETRY }: D
   const actedOutside = task.sideEffects === 'possible' && toolCalls !== 0;
   const msg = failure.message.slice(0, 200);
   const retryAt = (attempt: number, mult = 1) => now + backoffMs(attempt, retry) * mult;
+
+  // It may have happened (B4): never scheduled again, whatever the task says
+  // about side effects; the owner checks first. Also by its text, whatever
+  // class a caller passed.
+  if (cls === 'outcome_unknown' || isOutcomeUnknown(`${failure.code ?? ''} ${failure.message}`)) {
+    return {
+      taskStatus: 'needs_review', goal: 'block', countsAsAttempt: false,
+      action: 'needs review: JARVIS stopped waiting for it or stopped it part way, so it may have acted; check before it runs again',
+    };
+  }
 
   switch (cls) {
     case 'approval':

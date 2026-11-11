@@ -37,6 +37,8 @@ import * as path from 'path';
 import { dataRoot } from './workspaceRoot.js';
 import { fileURLToPath } from 'url';
 import { redact, redactDeep } from '../security/redactor.js';
+import { actionAuditLog } from '../control/actionAuditLog.js';
+import { OUTCOME_UNKNOWN_MARK, captureCallOrigin, secondsText } from './outcomeUnknown.js';
 import type { AgentTool, RiskLevel } from './toolRegistryV2.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -65,6 +67,12 @@ function budgetMs(risk: RiskLevel): number {
   const v = Number(process.env[`JARVIS_TOOL_BUDGET_${risk.toUpperCase()}_MS`]);
   return Number.isFinite(v) && v > 0 ? v : TIMEOUT_BUDGETS[risk];
 }
+
+/**
+ * How long JARVIS waits for the `outcome_unknown` line to be written before it
+ * reports the unknown outcome anyway (B4): an audit write never holds a call.
+ */
+const OUTCOME_LOG_WAIT_MS = 2_000;
 
 /** How long a stopped tool gets to finish before the call ends without it. */
 function stopGraceMs(): number {
@@ -179,6 +187,9 @@ export class ToolExecutionSandbox {
     args: Record<string, unknown>,
     externalSignal?: AbortSignal,
   ): Promise<string> {
+    // Who this call belongs to, taken now and never changed: a result that
+    // comes after JARVIS stopped waiting keeps this call and request (B4).
+    const origin = captureCallOrigin(tool.name);
     const risk = tool.riskLevel;
     const limit = CONCURRENCY_LIMITS[risk];
 
@@ -209,6 +220,12 @@ export class ToolExecutionSandbox {
     // The slot is held until the tool has really finished, also when the
     // caller stopped waiting for it below.
     let ended = false;
+    /** Set once JARVIS stopped waiting: settles when the `outcome_unknown` line is written, failed or overdue (B4). */
+    let stoppedWaiting: Promise<void> | undefined;
+    /** The `outcome_unknown` write itself, without the 2 s limit: a `late_result` line waits for it (B4). */
+    let outcomeWritten: Promise<unknown> | undefined;
+    /** The unknown-outcome result, once JARVIS stopped waiting: from then on the call's only result (B4). */
+    let gaveUpOutput: string | undefined;
     const call: ToolCallBudget = {
       signal: ac.signal,
       get ended() { return ended; },
@@ -219,8 +236,23 @@ export class ToolExecutionSandbox {
       .then(() => callScope.run(call, () => tool.execute(args, ac.signal)))
       .then((output) => ({ output }), (err: unknown) => ({ output: `Error: ${err instanceof Error ? err.message : String(err)}` }));
     void execution.then(({ output }) => {
+      const endedAt = new Date();
       ended = true;
       clock.end();
+      if (stoppedWaiting) {
+        // It ended after JARVIS stopped waiting: a later line for the same call,
+        // after the `outcome_unknown` line, which is never rewritten (B4). It
+        // waits for that write itself, also when it took longer than the 2 s
+        // the result waited for.
+        void Promise.all([stoppedWaiting, outcomeWritten]).then(() => actionAuditLog.logLateResult({
+          ...origin,
+          tool: tool.name,
+          completedAt: endedAt.toISOString(),
+          durationMs: endedAt.getTime() - sandboxStart,
+          result: output.toLowerCase().startsWith('error:') ? 'failure' : 'success',
+          detail: redact(output),
+        })).catch(() => undefined);
+      }
       this._activeCounts[risk]--;
       if (risk === 'high') {
         this._writeAuditLog({
@@ -237,22 +269,42 @@ export class ToolExecutionSandbox {
     // Once the signal is aborted (budget or caller), the tool has a short time
     // to stop — the process tools stop their whole process tree. A tool that
     // ignores the signal no longer holds the registry's queue and every later
-    // risky action behind it (REL-01): the call ends as a timeout.
+    // risky action behind it (REL-01). It may still finish, so its outcome is
+    // unknown (B4): said so, logged, and never repeated.
     const gaveUp = new Promise<{ output: string; stuck: true }>((resolve) => {
       const onAbort = () => {
-        const t = setTimeout(() => resolve({
-          output: `Error: TIMEOUT: Tool "${tool.name}" ${overBudget ? `ran past its ${Math.round(budget / 1000)} s budget` : 'was cancelled'} and did not stop within ${Math.round(stopGraceMs() / 1000)} s; JARVIS stopped waiting for it.`,
-          stuck: true,
-        }), stopGraceMs());
+        const t = setTimeout(() => {
+          const waitedMs = Date.now() - sandboxStart;
+          gaveUpOutput = `Error: ${OUTCOME_UNKNOWN_MARK}: Tool "${tool.name}" ${overBudget ? `ran past its ${Math.round(budget / 1000)} s budget` : 'was cancelled'} and did not stop within ${Math.round(stopGraceMs() / 1000)} s; JARVIS stopped waiting for it after ${secondsText(waitedMs)}. It may still finish.`;
+          // The record first, then the result. A write that fails or does not
+          // finish in time is reported on its own; the outcome stays unknown and
+          // nothing is run again because of it.
+          const written = actionAuditLog.logOutcomeUnknown({
+            ...origin, tool: tool.name, waitedMs, reason: overBudget ? 'budget' : 'cancelled',
+          }).catch(() => false);
+          outcomeWritten = written;
+          let overdue: NodeJS.Timeout | undefined;
+          const late = new Promise<'overdue'>((r) => { overdue = setTimeout(() => r('overdue'), OUTCOME_LOG_WAIT_MS); });
+          stoppedWaiting = Promise.race([written, late]).then((ok) => {
+            if (overdue) clearTimeout(overdue);
+            if (ok !== true) {
+              console.error(`[ToolSandbox] ⚠️ The action log did not record that JARVIS stopped waiting for "${tool.name}" (call ${origin.callId}): ${ok === 'overdue' ? `the write did not finish within ${OUTCOME_LOG_WAIT_MS} ms` : 'the write failed'}. The outcome is still unknown.`);
+            }
+          });
+          void stoppedWaiting.then(() => resolve({ output: gaveUpOutput!, stuck: true }));
+        }, stopGraceMs());
         void execution.then(() => clearTimeout(t));
       };
       if (ac.signal.aborted) onAbort(); else ac.signal.addEventListener('abort', onAbort, { once: true });
     });
 
     const settled = await Promise.race([execution, gaveUp]);
-    if ('stuck' in settled) {
+    // Once JARVIS has stopped waiting, that is the result, even when the tool
+    // ends while the record is written (its `late_result` line follows) (B4).
+    if ('stuck' in settled || gaveUpOutput !== undefined) {
+      if (stoppedWaiting) await stoppedWaiting;
       console.warn(`[ToolSandbox] ⚠️ "${tool.name}" did not stop after its signal; its slot stays taken until it ends.`);
-      return settled.output;
+      return gaveUpOutput ?? settled.output;
     }
     if (overBudget && !settled.output.toLowerCase().startsWith('error:')) {
       // It finished, but only after its budget: the result is real, and late.

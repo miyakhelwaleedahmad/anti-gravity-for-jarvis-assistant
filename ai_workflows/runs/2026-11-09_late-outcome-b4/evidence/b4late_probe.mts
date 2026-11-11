@@ -1,0 +1,27 @@
+import * as fs from 'fs'; import * as os from 'os'; import * as path from 'path';
+const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'late-probe-'));
+for (const d of ['memory', 'data']) fs.mkdirSync(path.join(ws, d), { recursive: true });
+process.env.JARVIS_WORKSPACE_ROOT = ws; process.env.JARVIS_DATA_ROOT = ws;
+process.env.JARVIS_TOOL_BUDGET_HIGH_MS = '300'; process.env.JARVIS_TOOL_STOP_GRACE_MS = '200';
+const repo = process.argv[2];
+const { toolExecutionSandbox: sandbox } = await import(`${repo}/core/toolExecutionSandbox.ts`);
+const { reflectionEngine } = await import(`${repo}/core/reflectionEngine.ts`);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let acted = 0;
+// A tool that ignores its signal and finishes its action after 1 s.
+const tool: any = { name: 'slow_action', riskLevel: 'high', async execute() { await sleep(1000); acted++; return 'Done the slow action.'; } };
+const t0 = Date.now();
+const out = await sandbox.run(tool, {});
+console.log(`A. sandbox returned after ${Date.now() - t0} ms: ${out}`);
+console.log(`   acted at return: ${acted}`);
+await sleep(1200);
+console.log(`   acted 1.2 s later: ${acted}`);
+const re: any = reflectionEngine;
+const node: any = { id: 'n1', tool: 'slow_action', error: out, retryCount: 1, maxRetries: 0 };
+const cls = re.classifyFailure ? re.classifyFailure(node) : undefined;
+console.log('B. classification:', JSON.stringify(cls));
+console.log('C. spoken (network_error):', re.buildFailureVoiceMessage('do the slow action', 'network_error', [node]));
+const admin: any = { id: 'n2', tool: 'control_system', error: 'TIMEOUT: The command was cancelled and stopped (exit null).', retryCount: 1, maxRetries: 0 };
+console.log('D. spoken for a stopped admin command:', re.buildFailureVoiceMessage('run the command', 'network_error', [admin]));
+fs.rmSync(ws, { recursive: true, force: true });
+process.exit(0);

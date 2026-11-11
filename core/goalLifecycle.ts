@@ -161,11 +161,12 @@ export function canTransitionTask(from: GoalTaskStatus, to: GoalTaskStatus): boo
  *   evidence        contradictory or too little evidence → retry with what was learnt, then review
  *   budget          the goal's budget is used up → waiting (permanent) or blocked
  *   interrupted     JARVIS stopped during the task
+ *   outcome_unknown JARVIS stopped waiting for an action, or stopped it part way: it may have acted → needs review, never retried (B4)
  *   unrecoverable   anything a retry would not fix → failed
  */
 export type FailureClass =
   | 'transient' | 'invalid_plan' | 'dependency' | 'permission' | 'approval'
-  | 'evidence' | 'budget' | 'interrupted' | 'unrecoverable';
+  | 'evidence' | 'budget' | 'interrupted' | 'outcome_unknown' | 'unrecoverable';
 
 export interface TaskFailure {
   at: number;

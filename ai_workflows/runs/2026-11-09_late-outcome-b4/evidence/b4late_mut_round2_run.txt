@@ -1,0 +1,15 @@
+K3 the identity is not frozen: CAUGHT | 1 failing; first: FAIL: 4.1 (K3) the call identity is frozen: changing it has no effect ({"callId":"call_mw9ky4wt_fb2cb24b","traceId":"trace_mw9ky4wt_5y9cir","userCommand":"a frozen reques
+K8 late_result not ordered after outcome_unknown: CAUGHT | 1 failing; first: FAIL: 4.3 (K8) …and its `late_result` line comes after the `outcome_unknown` line (outcome_unknown at 19, late_result at 18)
+K11 a tool ending during the audit wait turns the result into its real result: CAUGHT | 2 failing; first: FAIL: 4.2 (K11) the tool ends while the timeout line is being written: the result is still the unknown outcome (Did the slow thing b4_slow_race.)
+K16 the registry retries a thrown unknown outcome: CAUGHT | 1 failing; first: FAIL: 4.4 (K16) a thrown unknown outcome: one attempt, no retry, no fallback, reported as the unknown outcome (main 3, fallback 1: the fallback ran)
+K19 no outcome_unknown override (pattern kept): CAUGHT | 1 failing; first: FAIL: 4.5 (K19) an unknown step among two failed reads with retries left: class `outcome_unknown`, strategy abort (never re-run) (network_error / retry_with_delay: undefi
+
+5/5 caught
+tree restored (md5): YES
+exit=0
+jarvis-b4late folders left: 0
+core/toolExecutionSandbox.ts: OK
+core/outcomeUnknown.ts: OK
+core/toolRegistryV2.ts: OK
+core/reflectionEngine.ts: OK
+test processes left: 0

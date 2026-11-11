@@ -5,7 +5,8 @@
  * strict human-in-the-loop validation (Level 3).
  */
 
-import { runProcess, stoppedReason } from '../system/processRunner.js';
+import { runProcess, type RunResult } from '../system/processRunner.js';
+import { OUTCOME_UNKNOWN_MARK, secondsText } from '../core/outcomeUnknown.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { obfuscationReason, obfuscationRefusal, readableCommand } from '../security/commandObfuscation.js';
@@ -39,14 +40,29 @@ function checkNotSecurityService(name: string): void {
 }
 
 /**
+ * The error for a stopped admin command, or '' when it ran to the end (B4).
+ * A command that started and was stopped may have done part of its work: its
+ * outcome is unknown, and it says how long it ran (`runProcess` returns only
+ * once the process has exited, so the stop is confirmed). A command whose
+ * signal was already aborted never started: a definite failure, worded so the
+ * action queue does not run it again ("was stopped", control/actionQueue.ts).
+ */
+export function stoppedCommandError(r: RunResult, elapsedMs: number, what = 'The command'): string {
+  if (!r.cancelled && !r.timedOut) return '';
+  if (r.started === false) return `${what} was not started: the request was stopped before it began.`;
+  return `${OUTCOME_UNKNOWN_MARK}: ${what} was stopped after ${secondsText(elapsedMs)}; part of it may already have run.`;
+}
+
+/**
  * Runs an admin command that the caller's signal can stop, with its whole
  * process tree (REL-01). A stopped command is an error, never a success, and
  * the action queue does not retry it (it may have done part of its work).
  */
 async function runStoppable(what: string, file: string, args: string[], signal?: AbortSignal): Promise<{ stdout: string; stderr: string }> {
+  const t0 = performance.now();
   const r = await runProcess(file, args, { signal });
-  const stopped = stoppedReason(r, what);
-  if (stopped) throw new Error(`TIMEOUT: ${stopped}`);
+  const stopped = stoppedCommandError(r, performance.now() - t0, what);
+  if (stopped) throw new Error(stopped);
   return r;
 }
 

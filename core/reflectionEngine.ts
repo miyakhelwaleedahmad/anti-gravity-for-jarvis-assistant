@@ -30,6 +30,7 @@ import { verificationFailedReply } from './verifiers.js';
 import { isBrowserRefusal } from '../control/appMatch.js';
 import { isSkillStillLoading } from './skillLoader.js';
 import { failureSignature, type FailureSignature } from './failureSignature.js';
+import { OUTCOME_UNKNOWN_MARK, isOutcomeUnknown } from './outcomeUnknown.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ export type FailureClass =
   | 'network_error'   // TIMEOUT, connection refused, rate limit
   | 'context_error'   // Missing required context (file not found, permission denied)
   | 'abort_error'     // Execution was interrupted by user
+  | 'outcome_unknown' // JARVIS stopped waiting, or stopped a command part way: it may have happened (B4)
   | 'unknown';
 
 export type RepairStrategy =
@@ -104,6 +106,10 @@ interface FailurePattern {
 }
 
 const FAILURE_PATTERNS: FailurePattern[] = [
+  // An action that may have happened (B4): before the network TIMEOUT below,
+  // and never retried.
+  { pattern: OUTCOME_UNKNOWN_MARK,   class: 'outcome_unknown', strategy: 'abort' },
+
   // Network / timeout
   { pattern: /TIMEOUT/i,             class: 'network_error', strategy: 'retry_with_delay' },
   { pattern: /ECONNREFUSED/i,        class: 'network_error', strategy: 'retry_with_delay' },
@@ -529,6 +535,13 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     let dominantClass = this.getDominantClass(classifications);
     let dominantStrategy = this.getDominantStrategy(classifications, dominantClass);
     let llmContext = '';
+    // A step that may have happened decides the outcome (B4): it is never
+    // retried or re-planned, and the owner is told it may still finish.
+    const unknownOutcome = failedNodes.find(n => isOutcomeUnknown(n.error));
+    if (unknownOutcome) {
+      dominantClass = 'outcome_unknown';
+      dominantStrategy = 'abort';
+    }
 
     // If ALL retries exhausted for all failed nodes, force abort. Steps that
     // change something have no retries, so one failure exhausts them; a call
@@ -587,7 +600,8 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
       failureSignatures,
       shouldSpeak: effectiveStrategy === 'abort',
       voiceMessage: effectiveStrategy === 'abort'
-        ? this.refusalVoiceMessage(failedNodes) ?? this.buildFailureVoiceMessage(graph.goal, dominantClass, failedNodes)
+        ? (unknownOutcome ? this.outcomeUnknownVoiceMessage(graph, unknownOutcome) : undefined)
+          ?? this.refusalVoiceMessage(failedNodes) ?? this.buildFailureVoiceMessage(graph.goal, dominantClass, failedNodes)
         : undefined,
     });
 
@@ -759,12 +773,32 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
   }
 
   /**
+   * An action that may have happened (B4), in the owner's words: a command
+   * stopped part way, or a tool JARVIS stopped waiting for. One step is named
+   * by the owner's request; a step of several by its tool and action.
+   */
+  private outcomeUnknownVoiceMessage(graph: TaskGraph, node: TaskNode): string {
+    const text = node.error ?? '';
+    const after = text.slice(text.indexOf(OUTCOME_UNKNOWN_MARK) + OUTCOME_UNKNOWN_MARK.length).replace(/^:\s*/, '');
+    const stopped = /^(.+?) was stopped after (\d+ seconds?); part of it may already have run/.exec(after);
+    if (stopped) return `${stopped[1]} was stopped after ${stopped[2]}, sir. Part of it may already have run, so please check before trying again.`;
+    const waited = /stopped waiting for it after (\d+ seconds?)/.exec(after);
+    // A replan appends an internal "[SYSTEM NOTE: …]" to the goal (core/orchestrator.ts): never said.
+    const request = graph.goal.replace(/\n\n\[SYSTEM NOTE:[\s\S]*$/, '').trim();
+    const action = graph.nodes.size <= 1
+      ? `"${request}"`
+      : `the ${node.tool}${typeof node.args?.['action'] === 'string' ? ` ${node.args['action']}` : ''} step`;
+    return `I stopped waiting for ${action}${waited ? ` after ${waited[1]}` : ''}, sir. It may still finish, so check before asking me to try again.`;
+  }
+
+  /**
    * Spoken when the task is abandoned. The old wording promised a retry or "an
    * alternative approach" that never came; this says it stopped, and why when
    * the reason is short enough to say.
    */
   private buildFailureVoiceMessage(goal: string, failureClass: FailureClass, failedNodes: TaskNode[] = []): string {
     const messages: Record<FailureClass, string> = {
+      outcome_unknown: `I stopped waiting for that, sir. It may still finish, so check before asking me to try again.`,
       network_error:  `I couldn't reach a service I needed, sir.`,
       plan_error:     `I couldn't work out how to do that, sir.`,
       tool_error:     `One of my tools failed, sir.`,

@@ -25,6 +25,7 @@ import { getChromeState } from '../perception/chromeState.js';
 import { getWindowsState } from '../perception/windowsState.js';
 import { getJarvisServiceState } from '../perception/jarvisServiceState.js';
 import { childEnv } from '../system/childEnv.js';
+import { isOutcomeUnknown } from '../core/outcomeUnknown.js';
 
 export interface KernelResult {
   success: boolean;
@@ -90,6 +91,9 @@ export class PcControlKernel {
     options: { passThrough?: boolean } = {},
   ): Promise<KernelResult> {
     const t0 = performance.now();
+    // The request this action belongs to, taken now: the trace id is replaced by
+    // the next request, and an action can end after its request (B4).
+    const origin = requestFields(actionName);
     const permLevel = permissionSession.getCurrentLevel();
     const riskLevel = isReadOnly ? 'safe' : (permLevel === 2 ? 'medium' : 'high');
     
@@ -117,7 +121,7 @@ export class PcControlKernel {
       };
 
       await actionAuditLog.log({
-        ...requestFields(actionName),
+        ...origin,
         normalizedIntent: actionName,
         action: actionName,
         target: targetName,
@@ -154,14 +158,15 @@ export class PcControlKernel {
       const blocked = isPermissionDenial(errMsg)
         || /cancelled by user|not approved|was denied|safety policy|^Execution Blocked:|^Access Denied: Path/i.test(errMsg);
       await actionAuditLog.log({
-        ...requestFields(actionName),
+        ...origin,
         normalizedIntent: actionName,
         action: actionName,
         target: targetName,
         permissionLevel: permLevel,
         riskLevel,
         allowed: !blocked,
-        result: blocked ? 'blocked' : 'failure',
+        // Stopped part way: part of it may have run (B4).
+        result: blocked ? 'blocked' : isOutcomeUnknown(errMsg) ? 'unknown' : 'failure',
         durationMs,
         error: errMsg
       });

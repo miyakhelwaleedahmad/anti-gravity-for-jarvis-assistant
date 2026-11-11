@@ -26,8 +26,11 @@ export interface AuditLogEntry {
   permissionLevel: number;
   riskLevel: 'safe' | 'medium' | 'high' | 'blocked';
   allowed: boolean;
-  /** "success" means the controller returned; whether it had the effect is checked afterwards. */
-  result: 'success' | 'failure' | 'blocked';
+  /**
+   * "success" means the controller returned; whether it had the effect is checked afterwards.
+   * "unknown": it was stopped part way, so part of it may have run (B4).
+   */
+  result: 'success' | 'failure' | 'blocked' | 'unknown';
   /** On a success: the effect check is still to come, in a later `verification` line (phase A6). */
   verified?: 'pending';
   durationMs: number;
@@ -42,6 +45,35 @@ export interface VerificationLogEntry {
   tool: string;
   status: 'verified' | 'failed';
   evidence: string;
+}
+
+/** Who a call belongs to, captured when it started (core/outcomeUnknown.ts). */
+interface CallIdentity {
+  callId: string;
+  traceId?: string;
+  agentPath?: string;
+  userCommand: string;
+}
+
+/** JARVIS stopped waiting for a tool that may still finish (B4): the outcome is unknown. */
+export interface OutcomeUnknownLogEntry extends CallIdentity {
+  tool: string;
+  /** Wall-clock time from the call's start until JARVIS stopped waiting. */
+  waitedMs: number;
+  /** Why it was stopped: its time budget ran out, or its caller cancelled it. */
+  reason: 'budget' | 'cancelled';
+}
+
+/** A tool JARVIS had stopped waiting for has ended (B4): the same call, a later line. */
+export interface LateResultLogEntry extends CallIdentity {
+  tool: string;
+  /** When the tool really ended (ISO time). */
+  completedAt: string;
+  /** From the call's start until the tool ended. */
+  durationMs: number;
+  result: 'success' | 'failure';
+  /** The tool's result, cut short. */
+  detail: string;
 }
 
 export class ActionAuditLog {
@@ -71,11 +103,27 @@ export class ActionAuditLog {
     await this.append({ timestamp: new Date().toISOString(), type: 'verification', ...entry });
   }
 
-  private async append(entry: object): Promise<void> {
+  /**
+   * An `outcome_unknown` line: JARVIS stopped waiting for the call (B4). Never
+   * rewritten. True once it is written; false when the write failed (reported).
+   */
+  public async logOutcomeUnknown(entry: OutcomeUnknownLogEntry): Promise<boolean> {
+    return this.append({ timestamp: new Date().toISOString(), type: 'outcome_unknown', ...entry });
+  }
+
+  /** A `late_result` line: the same call, ended after JARVIS stopped waiting (B4). */
+  public async logLateResult(entry: LateResultLogEntry): Promise<void> {
+    await this.append({ timestamp: new Date().toISOString(), type: 'late_result', ...entry, detail: entry.detail.slice(0, 200) });
+  }
+
+  /** True once the line is written; false when the write failed (reported here). */
+  private async append(entry: object): Promise<boolean> {
     try {
       await fs.promises.appendFile(this.logPath, JSON.stringify(redactDeep(entry)) + '\n', 'utf-8');
+      return true;
     } catch (err) {
       console.error('[ActionAuditLog] Failed to write to audit log:', err);
+      return false;
     }
   }
 }

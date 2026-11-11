@@ -37,6 +37,7 @@ import { healthLedger, isToolFault, LEDGER_PIPELINES } from '../monitoring/healt
 import { recordFailure } from './issueStore.js';
 import { unmetRequirement, type Requirement } from './capabilities.js';
 import type { FailureSignature } from './failureSignature.js';
+import { isOutcomeUnknown } from './outcomeUnknown.js';
 
 /** Execution risk: drives sandboxing, caching and queueing (not permissions). */
 export type RiskLevel = 'low' | 'medium' | 'high';
@@ -972,7 +973,9 @@ export class ToolRegistryV2 {
           this._recordMetric(toolName, !isError, durationMs, isError ? output : undefined);
           this._pushHistory({ tool: toolName, args, success: !isError, durationMs, error: isError ? output : undefined, attemptNumber, timestamp: Date.now() });
 
-          if (!isError || i === chain.length - 1) {
+          // It may have happened (B4): returned at once, never repeated by a
+          // retry or a fallback tool.
+          if (!isError || i === chain.length - 1 || isOutcomeUnknown(output)) {
             return {
               success: !isError,
               output,
@@ -991,6 +994,13 @@ export class ToolRegistryV2 {
           const errMsg = err instanceof Error ? err.message : String(err);
           const durationMs = Date.now() - attemptStart;
           lastErr = errMsg;
+
+          // It may have happened (B4): no retry and no fallback tool.
+          if (isOutcomeUnknown(errMsg)) {
+            this._recordMetric(toolName, false, durationMs, errMsg);
+            this._pushHistory({ tool: toolName, args, success: false, durationMs, error: errMsg, attemptNumber, timestamp: Date.now() }, err);
+            return { success: false, output: errMsg, error: errMsg, tool: toolName, durationMs: Date.now() - startTime, attemptNumber };
+          }
 
           // Phase 5: skip retry on timeout/abort if policy says so
           const isTimeout = errMsg.includes('AbortError') || errMsg.includes('aborted') || errMsg.includes('timeout');

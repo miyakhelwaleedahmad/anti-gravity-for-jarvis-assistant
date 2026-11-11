@@ -39,6 +39,8 @@ export interface RunResult {
   cancelled: boolean;
   /** Stopped because `timeoutMs` ran out. */
   timedOut: boolean;
+  /** False only when the signal was already aborted, so no process was started (B4). */
+  started?: boolean;
 }
 
 const isWindows = process.platform === 'win32';
@@ -57,7 +59,7 @@ export async function killTree(pid: number | undefined): Promise<void> {
 
 export async function runProcess(file: string, args: string[], opts: RunOptions = {}): Promise<RunResult> {
   if (opts.signal?.aborted) {
-    return { stdout: '', stderr: '', exitCode: undefined, cancelled: true, timedOut: false };
+    return { stdout: '', stderr: '', exitCode: undefined, cancelled: true, timedOut: false, started: false };
   }
   const child = execa(file, args, {
     reject: false,
@@ -87,6 +89,7 @@ export async function runProcess(file: string, args: string[], opts: RunOptions 
       exitCode: r.exitCode,
       cancelled,
       timedOut,
+      started: true,
     };
   } finally {
     if (timer) clearTimeout(timer);
