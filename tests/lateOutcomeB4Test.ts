@@ -563,7 +563,7 @@ try {
     // V5: the failure message keeps its own comment.
     const src = fs.readFileSync(path.join(repo, 'core', 'reflectionEngine.ts'), 'utf8');
     ok('5.5 (V5) the comment "Spoken when the task is abandoned" sits directly above buildFailureVoiceMessage',
-      /Spoken when the task is abandoned[^/]*\*\/\n\s*private buildFailureVoiceMessage\(/.test(src) && !/\*\/\n\s*\/\*\*\n\s*\* An action that may have happened/.test(src));
+      /Spoken when the task is abandoned[^/]*\*\/\r?\n\s*private buildFailureVoiceMessage\(/.test(src) && !/\*\/\r?\n\s*\/\*\*\r?\n\s*\* An action that may have happened/.test(src));
   }
 } catch (err) {
   ok('the test ran to the end', false, String((err as Error)?.stack ?? err).slice(0, 500));

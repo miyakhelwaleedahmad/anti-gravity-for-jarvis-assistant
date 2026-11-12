@@ -86,13 +86,40 @@ Full suite, the nine skipped tests:
 | `windowControlTest` | needs the Windows window manager |
 | `windowsScriptsTest` | needs PowerShell 7 (`pwsh`) |
 
-## Windows-only checks: NOT VERIFIED
+## Windows-only checks: VERIFIED on the owner's PC (2026-11-12)
 
-| Check | Status |
+Pushed as `2170458` with the owner's approval. On the owner's Windows 10 PC (build 19045), at `2170458`:
+- TEMP and TMP were set to `%USERPROFILE%\.jarvis-test-tmp`;
+- the test was run directly: `node node_modules\tsx\dist\cli.mjs tests\lateOutcomeB4Test.ts … < nul`.
+
+| Check | Status | Result on the owner's PC |
+|---|---|---|
+| 2.5: a real `cmd.exe` command stopped by the action queue's 10 s timer gives "after 10 seconds" or "after 11 seconds", and the spoken sentence | **VERIFIED** | `PASS` (2 checks): "The command was stopped after 10 seconds; part of it may already have run."; said as "The command was stopped after 10 seconds, sir. Part of it may already have run, so please check before trying again." |
+| 4.6: a real `cmd.exe` command cancelled after about 2 s gives "after 2 seconds" or "after 3 seconds" | **VERIFIED** | `PASS`: 2172 ms, "The command was stopped after 2 seconds; …" |
+| Whole test on the real code | **VERIFIED** | **54 passed, 0 failed** (51 plus the 3 Windows-only checks) |
+| K25: the fixed-10-seconds mutant is caught by 4.6 | **VERIFIED** | The fault was applied to `control/adminController.ts` (`git diff --stat`: 1 file, 1+/1−). Result: `FAIL: 4.6 … (2308 ms: … stopped after 10 seconds; …)`, **53 passed, 1 failed**. Then restored with `git checkout -- control\adminController.ts`; `git status` showed no tracked change |
+
+## Windows CI on `2170458`: one test-only failure, fixed
+
+| Job | Result |
 |---|---|
-| 2.5: a real `cmd.exe` command stopped by the action queue's 10 s timer gives "after 10 seconds" or "after 11 seconds", and the spoken sentence | **NOT VERIFIED** (Windows CI, after a push) |
-| 4.6: a real `cmd.exe` command cancelled after about 2 s gives "after 2 seconds" or "after 3 seconds" | **NOT VERIFIED** (Windows CI, after a push) |
-| K25: the fixed-10-seconds mutant is caught by 4.6 | **NOT VERIFIED** (a one-time mutant run on the owner's PC; not done, at the owner's instruction) |
+| Linux (run 43174861848, two test runs) | **221 passed, 0 failed**, 8 skipped, both times; `lateOutcomeB4Test` PASS |
+| Windows (job 131036536425) | **222 passed, 1 failed**, 6 skipped. `lateOutcomeB4Test`: 53 passed, 1 failed: `FAIL: 5.5 (V5) the comment "Spoken when the task is abandoned" sits directly above buildFailureVoiceMessage`. Every other B4 check passed there, 2.5 and 4.6 included |
+
+**Cause:** check 5.5 reads `core/reflectionEngine.ts` as text and its patterns expected Unix line endings (`\n`). GitHub's Windows runner checks files out with Windows line endings (`\r\n`), so the pattern found no match. On the owner's PC the check passed, because that checkout uses Unix line endings. The second, "must not match" pattern of 5.5 had the same `\n`, so on Windows line endings it could never match. The production code was correct; only the test's text check was wrong.
+
+**Fix (test only, owner's approval):** in `tests/lateOutcomeB4Test.ts`, check 5.5, the three `\n` in its two patterns became `\r?\n`. Nothing else changed.
+
+**Verification.** Check 5.5's expressions were taken from the old test (`2170458`) and the new one, and run on `core/reflectionEngine.ts` with Unix (LF) and Windows (CRLF) line endings:
+
+| Source | Old 5.5 | New 5.5 |
+|---|---|---|
+| LF, correct | PASS | PASS |
+| CRLF, correct | **FAIL** (the CI failure, reproduced) | **PASS** |
+| LF / CRLF, V5m (an extra comment inserted) | FAIL / FAIL | FAIL / FAIL (caught) |
+| LF / CRLF, the original V5 defect (two stacked comments) | FAIL / FAIL | FAIL / FAIL (caught) |
+
+The full B4 test then gave **51 passed, 0 failed**. Typecheck TC=0; `git diff --check` clean. The fix needs a push and a new Windows CI run to show green on Windows CI.
 
 ## Deviations from the plan
 
@@ -111,4 +138,8 @@ Full suite, the nine skipped tests:
 
 ## Open from R3-1
 
-R3-1 (`ai_workflows/runs/2026-11-08_approval-budget-b4-r31/`) remains open. On the owner's PC, `approvalBudgetR31Test` stopped at the runner's 120 s limit, with no check failing, and its live checks have not been run.
+R3-1 (`ai_workflows/runs/2026-11-08_approval-budget-b4-r31/`) remains open:
+- On the owner's PC, `approvalBudgetR31Test` first stopped at the runner's 120 s limit, with no check failing.
+- With a 600 s limit it took about 150 s and failed 2 checks in §2 ("close the browser" end to end: no question was asked within the test's 1.5 s budget).
+- Run directly (2026-11-12), it passed **78/78**.
+- Its §2 timing on a slow PC, its runtime against the 120 s limit, and its live checks are still open.

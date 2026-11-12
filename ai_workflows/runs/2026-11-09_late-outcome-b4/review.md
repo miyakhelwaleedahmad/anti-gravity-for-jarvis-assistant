@@ -65,6 +65,8 @@ None of the four produced an unhandled error.
 | I2 | If the `outcome_unknown` write fails, the `late_result` line is still written without the line it normally follows. The failure is reported on its own, and the outcome stays unknown |
 | I3 | The definite never-started text is classed as an ordinary failure, where it was a network error before. Nothing ran, and no B4 safeguard depends on it |
 
-## Still not verified
+## After both reviews (2026-11-12)
 
-The Windows-only checks 2.5 and 4.6, and the K25 mutant on Windows, are **NOT VERIFIED** (see `change_log.md`). R3-1 remains open.
+- **Windows checks:** 2.5, 4.6 and the K25 mutant are **VERIFIED on the owner's Windows PC** at `2170458`. On the real code, 54 passed, 0 failed. With the K25 fault, 4.6 failed ("after 10 seconds" at 2308 ms), and the file was then restored.
+- **Windows CI on `2170458`:** one check failed, 5.5, because its source-text patterns expected Unix line endings and GitHub's Windows runner uses Windows line endings. This was a test-only defect, not covered by either review. It is fixed with the owner's approval: `\n` became `\r?\n` in check 5.5. Verified with LF and CRLF copies and with the V5m and original-V5 faults (`change_log.md`). A new Windows CI run is still to come after a push.
+- R3-1 remains open.
