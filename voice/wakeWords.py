@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import queue
 import threading
@@ -104,25 +105,98 @@ class AudioCaptureThread(threading.Thread):
         super().__init__(daemon=True, name="AudioCapture")
         self._audio_queue = audio_queue
         self._stop_event  = threading.Event()
-        self.is_listening = True
+        self._listening   = True
+        # Voice echo (N-PC1): pauses so far, and when capture last went from
+        # paused to listening (time.monotonic()). See _recorded_across_pause.
+        self._pause_count = 0
+        self._resumed_at  = 0.0
         self.recognizer   = sr.Recognizer()
         self.recognizer.energy_threshold = ENERGY_THRESHOLD
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.pause_threshold  = PAUSE_THRESHOLD
         self.mic = None
 
+    @property
+    def is_listening(self) -> bool:
+        return self._listening
+
+    @is_listening.setter
+    def is_listening(self, on: bool) -> None:
+        # Every resume sets this (the bridge's resume, context_active), so the
+        # moment capture comes back is recorded here, in one place.
+        if on and not self._listening:
+            self._resumed_at = time.monotonic()
+        self._listening = on
+
     def stop(self) -> None:
         self._stop_event.set()
         self.force_pause()
 
     def force_pause(self):
-        log.debug("Forcing audio capture to pause and release microphone...")
+        # A pause cannot stop a recording that listen() has already begun:
+        # self.mic.stream is SpeechRecognition's MicrophoneStream wrapper, which
+        # has only read() and close(). The stop_stream() call that was here
+        # raised AttributeError, hidden by its except, so JARVIS's reply kept
+        # being recorded (owner's PC, SpeechRecognition 3.16.0). Stopping the
+        # PyAudio stream from this thread while listen() reads it is not safe.
+        # Instead the pause is counted, and the recording is dropped when
+        # listen() returns (_recorded_across_pause).
+        # Listening stops before the pause is counted, and the capture loop
+        # notes the count before it checks is_listening: a pause between the
+        # loop's check and listen() is then either seen by the check or counted
+        # (review finding 2).
+        log.debug("Pausing audio capture; a recording in progress will be dropped.")
         self.is_listening = False
+        self._pause_count += 1
+
+    def _speech_began(self, audio: Any, returned_at: float) -> Optional[float]:
+        """
+        When the speech in a recording began (time.monotonic()), worked out
+        from how SpeechRecognition's listen() builds it (_listen, 3.16/3.17),
+        in buffers of mic.CHUNK samples: up to non_speaking_duration of quiet
+        before the speech, counting the buffer that crossed the energy
+        threshold; the speech; then listen() returns after pause_threshold of
+        quiet and keeps non_speaking_duration of it. A phrase cut off by
+        phrase_time_limit has no quiet wait at the end. None if the length of
+        the recording cannot be read.
+        """
         try:
-            if self.mic is not None and getattr(self.mic, 'stream', None) is not None:
-                self.mic.stream.stop_stream()
+            rate = float(audio.sample_rate)
+            seconds = len(audio.frame_data) / (rate * float(audio.sample_width))
         except Exception:
-            pass
+            return None
+        quiet = float(getattr(self.recognizer, "non_speaking_duration", 0.5) or 0.0)
+        pause = float(getattr(self.recognizer, "pause_threshold", PAUSE_THRESHOLD) or 0.0)
+        chunk = getattr(self.mic, "CHUNK", None)
+        if chunk and rate > 0:
+            per_buffer = float(chunk) / rate
+            quiet_buffers = math.ceil(quiet / per_buffer)
+            before = (quiet_buffers - 1) * per_buffer
+            after = quiet_buffers * per_buffer
+            waited = (math.ceil(pause / per_buffer) + 1) * per_buffer
+        else:
+            before, after, waited = quiet, quiet, pause
+        if PHRASE_TIME_LIMIT and seconds >= PHRASE_TIME_LIMIT:
+            return returned_at - seconds + before
+        return returned_at - waited - (seconds - before - after)
+
+    def _recorded_across_pause(self, audio: Any, pauses_before: int, returned_at: float) -> bool:
+        """
+        Whether this recording overlaps a pause (voice echo, N-PC1): a pause
+        came while listen() was recording, and the speech in it began before
+        capture was resumed. The bridge resumes about 0.15 s after JARVIS stops
+        talking, before listen() ends the phrase (PAUSE_THRESHOLD of silence),
+        so the check cannot rely on is_listening alone. Speech that began after
+        the resume, in the same listen() call, is the owner's and is kept.
+        """
+        if self._pause_count == pauses_before:
+            return False
+        if not self._listening:
+            return True
+        began = self._speech_began(audio, returned_at)
+        if began is None:
+            return True   # length unknown: drop rather than risk sending JARVIS's own words
+        return began < self._resumed_at
 
     def run(self) -> None:
         log.info("AudioCaptureThread started.")
@@ -143,14 +217,21 @@ class AudioCaptureThread(threading.Thread):
                         self._first_run = False
 
                     # Inner loop: stay connected to mic while listening
-                    while self.is_listening and not self._stop_event.is_set():
+                    while True:
+                        # Noted before the check (see force_pause).
+                        pauses_before = self._pause_count
+                        if not self.is_listening or self._stop_event.is_set():
+                            break
                         try:
                             audio = self.recognizer.listen(
                                 source,
                                 timeout=LISTEN_TIMEOUT,
                                 phrase_time_limit=PHRASE_TIME_LIMIT,
                             )
-                            if self.is_listening:
+                            returned_at = time.monotonic()
+                            if self._recorded_across_pause(audio, pauses_before, returned_at):
+                                log.info("Dropped a phrase recorded while capture was paused (JARVIS speaking, or the mic handed to STT).")
+                            elif self.is_listening:
                                 self._audio_queue.put_nowait(audio)
                                 log.debug("Audio chunk captured → queued for recognition.")
                         except sr.WaitTimeoutError:

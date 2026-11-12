@@ -165,5 +165,7 @@ jobs:
         run: python tests/python/test_stt_calibration_cap.py
       - name: Follow-ups after a reply are heard or logged (BUG-3)
         run: python tests/python/test_wakeword_followup.py
+      - name: A pause drops JARVIS's own reply from the wake-word mic (voice echo N-PC1)
+        run: python tests/python/test_wakeword_pause_drops_echo.py
       - name: STT energy gate looks at frames, not the whole clip (VOICE-009)
         run: python tests/python/test_stt_vad_gate.py
