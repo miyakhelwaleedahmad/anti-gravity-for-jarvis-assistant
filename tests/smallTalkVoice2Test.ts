@@ -252,6 +252,6 @@ console.log("\n--- 7. jarvis.ts's busy branch, run with stand-ins ---");
 
 agentStateMachine.reset();
 process.chdir(repoRoot);
-fs.rmSync(workspace, { recursive: true, force: true });
+try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* Windows: still in use */ }
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 process.exit(failed > 0 ? 1 : 0);
