@@ -92,8 +92,14 @@ const written = await toolRegistryV2.execute('write_file', { filePath: 'notes.tx
 ok('write_file is checked: verified', written.success && written.verification?.status === 'verified', written.verification?.evidence);
 plans = [[{ name: 'write_file', args: { filePath: 'todo.txt', content: 'call mum' } }]];
 spoken.length = 0;
-await orchestrator.process('write call mum into todo.txt', 'cli');
-ok('the reply says it was checked', /I checked: todo\.txt holds the 8 characters written/.test(spoken.join(' ')), spoken.join(' | '));
+// The check is shown in the console and not read out (owner's decision, 2026-11-14).
+const consoleLines: string[] = [];
+const realLog = console.log;
+console.log = (...a: unknown[]) => { consoleLines.push(a.map(String).join(' ')); realLog(...a); };
+try { await orchestrator.process('write call mum into todo.txt', 'cli'); } finally { console.log = realLog; }
+ok('the spoken reply does not read out the check, and the console still shows it',
+  !/I checked:/.test(spoken.join(' ')) && consoleLines.some((l) => /todo\.txt holds the 8 characters written/.test(l)),
+  `spoken: ${spoken.join(' | ')}`);
 const todo = path.join(workspace, 'todo.txt');
 ok('and the file is really there', fs.existsSync(todo) && fs.readFileSync(todo, 'utf8') === 'call mum');
 

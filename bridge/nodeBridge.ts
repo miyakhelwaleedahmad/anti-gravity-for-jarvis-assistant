@@ -576,6 +576,8 @@ export class NodeBridge {
       // Phase 4: record when TTS playback actually began for barge-in detection
       this.ttsStartedMs = Date.now();
       conversationBus.speakingStarted();
+      // The SPEAKING watchdog counts from now: synthesis time is not speech.
+      agentStateMachine.notePlaybackStarted();
       this._bridgeEvents.emit("speaking_start", payload);
       return;
     }

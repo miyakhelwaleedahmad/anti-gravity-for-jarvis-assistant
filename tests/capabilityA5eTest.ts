@@ -206,10 +206,17 @@ console.log('--- 6. the planner path\'s open_app reply (Q3) ---');
   const tool = toolRegistryV2.get('open_app') as any;
   const savedVerify = tool.verify;
   tool.verify = async () => ({ status: 'verified', evidence: 'notepad is running' });
+  // The check is shown in the console and not read out (owner's decision, 2026-11-14).
+  const consoleLines: string[] = [];
+  const realLog = console.log;
   try {
+    console.log = (...a: unknown[]) => { consoleLines.push(a.map(String).join(' ')); realLog(...a); };
     said = await say('could you get notepad going for me', [{ name: 'open_app', args: { target: 'notepad' } }]);
-  } finally { tool.verify = savedVerify; }
-  ok('checked: "Opening Notepad, sir." with the check, as before', /^Opening notepad, sir\./i.test(said) && /notepad is running/.test(said), said);
+  } finally { console.log = realLog; tool.verify = savedVerify; }
+  ok('checked: "Opening Notepad, sir." is said without the check, and the console still shows it',
+    /^Opening notepad, sir\./i.test(said) && !/notepad is running|I checked:/i.test(said)
+      && consoleLines.some((l) => /notepad is running/.test(l)),
+    said);
 
   // The model calls a Windows-only tool anyway (it is not offered off Windows):
   // a refusal with the reason, run once, not "an unexpected error" (review of the first suite run).

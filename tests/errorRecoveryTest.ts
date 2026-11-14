@@ -175,8 +175,16 @@ try {
     && newPid !== holder && await answers(port) && /I stopped the old dev server/.test(out.said) && !FAILURE_PHRASE.test(out.said), `${holder} → ${newPid}: ${out.said}`);
 
   console.log('\n--- 3. A tab that is not open ---');
-  out = await ask('read the about page of my app', [{ name: 'browser_read_page', args: { tab: `127.0.0.1:${port}/about` } }]);
-  ok('the address is opened in a new tab, then read', /I opened http:\/\/127\.0\.0\.1:\d+\/about in a new tab first/.test(out.said)
+  // Addresses are said as their host; the full address stays in the console (owner's decision, 2026-11-14).
+  const consoleLines: string[] = [];
+  const realLog = console.log;
+  console.log = (...a: unknown[]) => { consoleLines.push(a.map(String).join(' ')); realLog(...a); };
+  try {
+    out = await ask('read the about page of my app', [{ name: 'browser_read_page', args: { tab: `127.0.0.1:${port}/about` } }]);
+  } finally { console.log = realLog; }
+  ok('the address is opened in a new tab, then read', /I opened 127\.0\.0\.1 in a new tab first/.test(out.said) && !/http:\/\//.test(out.said)
+    && !out.said.includes(`:${port}`)
+    && consoleLines.some((l) => l.includes(`http://127.0.0.1:${port}/about`))
     && (await listPages(chrome.port)).some((p) => p.url === `http://127.0.0.1:${port}/about`)
     && out.calls.some((c) => c.tool === 'browser_read_page' && c.success) && !FAILURE_PHRASE.test(out.said), out.said);
 
@@ -194,13 +202,20 @@ try {
   const tool = toolRegistryV2.get('browser_page_structure') as any;
   const real = tool.execute;
   tool.execute = async () => `Error: No open tab matches "127.0.0.1:${port}/flaky".`;
+  // The address is said as its host; the full address stays in the console (owner's decision, 2026-11-14).
+  const flakyConsole: string[] = [];
+  const flakyRealLog = console.log;
+  console.log = (...a: unknown[]) => { flakyConsole.push(a.map(String).join(' ')); flakyRealLog(...a); };
   try {
     out = await ask('read the flaky page', [{ name: 'browser_page_structure', args: { tab: `127.0.0.1:${port}/flaky` } }]);
   } finally {
+    console.log = flakyRealLog;
     tool.execute = real;
   }
   const flakyTabs = (await listPages(chrome.port)).filter((p) => p.url === `http://127.0.0.1:${port}/flaky`).length;
-  ok('two repairs, then an honest stop', flakyTabs === 2 && /I repaired it 2 times, sir, but the step still fails: no tab shows 127\.0\.0\.1:\d+\/flaky/.test(out.said),
+  ok('two repairs, then an honest stop', flakyTabs === 2 && /I repaired it 2 times, sir, but the step still fails: no tab shows 127\.0\.0\.1\./.test(out.said)
+    && !out.said.includes(`:${port}`) && !out.said.includes('/flaky')
+    && flakyConsole.some((l) => l.includes(`127.0.0.1:${port}/flaky`)),
     `${flakyTabs} tabs: ${out.said}`);
   ok('each repair went through the registry', out.calls.filter((c) => c.tool === 'browser_tab' && (c.args as any).action === 'new').length === 2,
     out.calls.map((c) => c.tool).join(' '));

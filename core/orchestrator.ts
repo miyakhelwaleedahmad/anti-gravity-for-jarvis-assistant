@@ -1656,9 +1656,10 @@ export class JarvisOrchestrator {
         }
       }
 
-      reply = withCheck(reply, firstNode?.verification);
-      console.log(`\n🤖 JARVIS: ${reply}\n`);
-      await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
+      // What was checked is shown and remembered, not read out (owner, 2026-11-14).
+      const checked = withCheck(reply, firstNode?.verification);
+      console.log(`\n🤖 JARVIS: ${checked}\n`);
+      await agentMemory.addConversationMessage('assistant', checked, FROM_TOOLS);
       this.speak(reply);
       return;
     }
@@ -1685,12 +1686,13 @@ export class JarvisOrchestrator {
       );
       if (looksNatural) {
         console.log('[Orchestrator] OPT-SYNTH-2: Short natural output — bypassing synthesis LLM.');
-        const reply = withCheck(singleResult, completedNodes[0].verification);
-        console.log(`\n🤖 JARVIS: ${reply}\n`);
-        await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
+        // What was checked is shown and remembered, not read out (owner, 2026-11-14).
+        const checked = withCheck(singleResult, completedNodes[0].verification);
+        console.log(`\n🤖 JARVIS: ${checked}\n`);
+        await agentMemory.addConversationMessage('assistant', checked, FROM_TOOLS);
         // speak() calls safeTransitionToSpeaking() internally — do NOT also
         // call transition(SPEAKING) here or we get a double-transition crash.
-        this.speak(reply);
+        this.speak(singleResult);
         return;
       }
     }
@@ -2166,6 +2168,28 @@ export class JarvisOrchestrator {
 
     // 1. <think> blocks, list and heading markers, **bold** (BUG-13: a list is read as sentences)
     let cleanText = stripMarkdown(text);
+
+    // 1b. A web address is said as its site ("https://www.youtube.com/watch?v=…"
+    // → "youtube.com"), not read out character by character (owner's PC,
+    // 2026-11-14). Done before the underscore rule below, which would split
+    // "search_query" in the middle of an address.
+    cleanText = cleanText.replace(/\b(?:https?:\/\/|www\.)[^\s<>"']+/gi, (address) => {
+      const tail = /[.,!?;:)\]]+$/.exec(address)?.[0] ?? '';
+      const host = address.slice(0, address.length - tail.length)
+        .replace(/^https?:\/\//i, '').split(/[/?#]/)[0]!.replace(/:\d+$/, '').replace(/^www\./i, '').toLowerCase();
+      return host ? `${host}${tail}` : address;
+    });
+    // Without a scheme, an address is shortened only when a port or a path
+    // follows the host ("127.0.0.1:34759/about" → "127.0.0.1"), so "github.com"
+    // and "notes.txt" stay as they are. Not inside a file path, an e-mail address
+    // or a longer word (the lookbehind).
+    cleanText = cleanText.replace(
+      /(?<![\w./\\@:-])(localhost|\d{1,3}(?:\.\d{1,3}){3}|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})((?::\d{1,5})?(?:[/?#][^\s<>"']*)?)/gi,
+      (address: string, host: string, rest: string) => {
+        const tail = /[.,!?;:)\]]+$/.exec(rest)?.[0] ?? '';
+        if (!rest.slice(0, rest.length - tail.length)) return address;
+        return `${host.replace(/^www\./i, '').toLowerCase()}${tail}`;
+      });
 
     // 2. Remove markdown formatting characters for clean spoken output
     cleanText = cleanText

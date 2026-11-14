@@ -42,8 +42,17 @@ const MAX_SPEAKING_WATCHDOG_MS = 120_000;
  * speak 2.5–3 words a second) plus 1 s for synthesis.
  */
 export function estimateSpeechMs(text: string): number {
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  return 1_000 + words * 400;
+  // An ordinary word is 0.4 s. A web address, a long number or any other long
+  // token is read out piece by piece, so it counts by its length, 0.15 s a
+  // character (owner's PC, 2026-11-14: "https://www.youtube.com/" counted as
+  // one 0.4 s word, and the reply was cut while it was being read).
+  let ms = 1_000;
+  for (const raw of text.trim().split(/\s+/).filter(Boolean)) {
+    const token = raw.replace(/^[("'[]+|[)"'\].,!?;:]+$/g, '');
+    const ordinary = token.length <= 12 && (/^[\p{L}'-]+$/u.test(token) || /^\d{1,3}$/.test(token));
+    ms += ordinary || !token ? 400 : Math.max(400, token.length * 150);
+  }
+  return ms;
 }
 
 // Derived from the model request's own retries (PERF-03, config/llmTiming.ts).
@@ -256,6 +265,23 @@ export class AgentStateMachine extends EventEmitter {
     this._pendingSpeechMs = Math.min(this._pendingSpeechMs + extra, MAX_SPEAKING_WATCHDOG_MS);
     if (this._state === AgentState.SPEAKING && this._speakingWatchdog !== null) {
       console.log(`[AgentStateMachine] TTS delayed (${reason}, +${extra} ms); SPEAKING watchdog extended to ${this.speakingWatchdogMs()} ms.`);
+      this._armSpeakingWatchdog();
+    }
+  }
+
+  /**
+   * Playback really started (speaking_start). The watchdog was armed when the
+   * text was sent, so synthesis time used up the allowance meant for speech
+   * (owner's PC, 2026-11-14: synthesis took 4 s and the reply was cut at
+   * 12 s). The running deadline restarts from now with the same allowance:
+   * the one timer is re-armed, never a second one added. Until playback
+   * starts, the deadline set when the text was sent still catches a TTS that
+   * never plays; after it, the new one catches a missing speaking_end. Only
+   * while SPEAKING with the watchdog running: a speaking_start that arrives
+   * after a stop or an interruption changes nothing.
+   */
+  notePlaybackStarted(): void {
+    if (this._state === AgentState.SPEAKING && this._speakingWatchdog !== null) {
       this._armSpeakingWatchdog();
     }
   }
