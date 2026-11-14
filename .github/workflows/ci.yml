@@ -16,14 +16,14 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # No `version:` here. package.json's "packageManager" field is the single
-      # source of truth; pnpm/action-setup@v4 refuses to run when both are set
+      # source of truth; pnpm/action-setup (v4 and v6) refuses to run when both are set
       # ("Multiple versions of pnpm specified"), which failed CI run 36520392513.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -33,7 +33,7 @@ jobs:
 
       # For realTtsHandoffTest: the real voice/tts.py (pygame on SDL's silent
       # "dummy" driver) behind the real bridge (VOICE-007 / TEST-102).
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install pygame and websockets for the real tts.py test
@@ -58,7 +58,7 @@ jobs:
           JARVIS_TEST_PYTHON: python
         run: npx --yes c8@10.1.3 --reporter=text-summary --reporter=lcov --exclude=tests/** --exclude=node_modules/** --exclude=dist/** node node_modules/tsx/dist/cli.mjs tests/runAll.ts --ci
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
@@ -71,15 +71,15 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install pygame and websockets for the real tts.py test
@@ -105,9 +105,9 @@ jobs:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -119,9 +119,9 @@ jobs:
   python-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
