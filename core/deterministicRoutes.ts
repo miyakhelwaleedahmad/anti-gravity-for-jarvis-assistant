@@ -22,6 +22,29 @@ import { isEnableFullControlPhrase } from './fullControlPhrase.js';
 
 export interface DeterministicRoute { type: string; target?: string; reply: string; specialist?: string; value?: string }
 
+// Voice #2 (owner's PC, 2026-11-06): in the follow-up window "ok thanks" and
+// "thank you jar" went to the LLM planner as new requests, and "close jar"
+// waited behind them. Thanks with a filler word or the wake word at the end
+// are small talk; "jar" counts only here, where it can only be "Jarvis".
+const THANKS = /^(?:(?:ok|okay|cool|alright) )?(?:thanks|thank you)(?: (?:jarvis|jar))?$/;
+// JARVIS has no voice command that closes itself; this is said, nothing is done.
+const CLOSE_JARVIS = /^close (?:jarvis|jar)$/;
+const CLOSE_JARVIS_REPLY = "I can't close myself by voice, sir. Close my window or press Ctrl+C.";
+
+/** Routes that only say something: nothing to do, nothing to wait for. */
+const SMALL_TALK_ROUTES = new Set(['simple_reply', 'greeting']);
+
+/**
+ * What a voice command heard while JARVIS is busy with a request does (Voice #2).
+ * Small talk is ignored: run at once, it would cancel the request in progress
+ * (orchestrator.process() aborts it), as "thank you" did. Other fast routes run
+ * at once as before ("stop", "cancel", ...). Anything else waits in the queue.
+ */
+export function voiceWhileBusy(route: DeterministicRoute | null): 'ignore' | 'run' | 'queue' {
+  if (!route) return 'queue';
+  return SMALL_TALK_ROUTES.has(route.type) ? 'ignore' : 'run';
+}
+
 const CAPABILITY_LIST_PHRASES = new Set([
   'list your tools', 'list your capabilities', 'list all your tools', 'show your tools',
   'what tools do you have', 'which tools do you have',
@@ -320,6 +343,12 @@ export function matchDeterministicCommand(input: string, continueOfferOpen = fal
   };
   if (clean in simplePhrases) {
     return { type: 'simple_reply', reply: simplePhrases[clean] };
+  }
+  if (THANKS.test(clean)) {
+    return { type: 'simple_reply', reply: 'Anytime, sir.' };
+  }
+  if (CLOSE_JARVIS.test(clean)) {
+    return { type: 'simple_reply', reply: CLOSE_JARVIS_REPLY };
   }
 
   const greetings = ['hello', 'hi', 'hey', 'are you there', 'jarvis hello', 'jarvis hi'];

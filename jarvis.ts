@@ -32,6 +32,7 @@ import { conversationBus } from './core/conversationBus.js';
 import { agentStateMachine, AgentState, speechStartMovesState, tryTransition } from './core/agentStateMachine.js';
 import { endListening as endListeningSession } from './core/listenSession.js';
 import { evaluateEcho }    from './core/voiceEchoFilter.js';
+import { voiceWhileBusy }  from './core/deterministicRoutes.js';
 import { mergePendingVoiceContinuation, shouldUseContinuationContext, accumulateContinuationFragment } from './core/voiceContinuation.js';
 import { queuedCommandMaxAgeMs, DROPPED_COMMAND_NOTICE, followUpSeconds, visionEnabled } from './core/voiceSettings.js';
 
@@ -682,8 +683,17 @@ async function startJarvis() {
       if (BUSY_STATES.includes(nextState)) {
         // Check if this is a safe deterministic command (open YouTube, stop, etc.)
         const route = orchestrator.matchDeterministicCommand(text);
+        const whileBusy = voiceWhileBusy(route);
 
-        if (route) {
+        // Voice #2: small talk ("ok thanks") is not run now: orchestrator.process()
+        // would cancel the request in progress. Nothing is said.
+        if (whileBusy === 'ignore') {
+          console.log(`[JARVIS] Small talk while ${nextState} ignored; the request in progress continues: "${text}"`);
+          sttJsLog('STT_SMALL_TALK_IGNORED_BUSY', text, `state=${nextState}`);
+          return;
+        }
+
+        if (whileBusy === 'run') {
           console.log(`[JARVIS] Voice input received during ${nextState}; using safe arbitration path.`);
           console.log(`[JARVIS] 🧠 Routing to Orchestrator (arbitrated): "${text}"`);
           orchestrator.process(text, 'voice').catch(err => {

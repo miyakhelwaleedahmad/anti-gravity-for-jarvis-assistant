@@ -270,6 +270,13 @@
         "installFakeTts"
       ],
       "reason": "uses tests/fakeTts.ts: the real orchestrator.speak() and state machine run; only tts.py is replaced, by a stand-in that reports playback"
+    },
+    "tests/smallTalkVoice2Test.ts": {
+      "replaces": [
+        "installFakeTts",
+        "sendToRole"
+      ],
+      "reason": "Uses tests/fakeTts.ts: the real orchestrator.process(), fast route and state machine run; only tts.py is replaced by a stand-in that reports playback. sendToRole records the commands sent to tts.py (to show close jarvis sends no stop), then calls the fake's own sendToRole."
     }
   }
 }
