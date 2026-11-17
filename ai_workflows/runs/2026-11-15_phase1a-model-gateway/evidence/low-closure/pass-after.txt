@@ -1,0 +1,56 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=errorClassificationTest,memoryTrustTest,identityAliasTest,claudePrimaryTargetsTest,gapReviewFixesTest,claudePrimaryStrictTest,independentQaTest,strictModelIdentityTest,lineageInheritanceTest,verificationInconclusiveTest,modelRoutingTest,llmClientBehaviourTest,claudeProviderTest,providerHealthTest,llmCancellationTest,foregroundPriorityTest,modelRoleRoutingTest,modelRouteCorrectionsTest,modelRouteRound3Test,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest,qaModelFailureTest,reviewRound3FixesTest,strictHelperRoutingTest,finalReviewFixesTest,agentSpecialistsTest,sevenAgentTest,agentRuntimeTest,jarvisAgentIntegrationTest,codeRepairTest,backgroundResearchTest,selfHealingHonestyTest,replyGoldenTest,goalAgentIntegrationTest,goalApprovalTest,goalCreationTest,goalLearningTest,goalLifecycleAuditTest,goalLifecycleTest,goalManagerInitTest,goalRecoveryTest,goalRuntimeMigrationTest,goalRuntimeTest,goalServiceTest
+
+
+=== JARVIS test suite — 45 file(s) ===
+
+  PASS    agentRuntimeTest                             2944ms
+  PASS    agentSpecialistsTest                         1289ms
+  PASS    backgroundResearchTest                       1422ms
+  PASS    claudePrimaryStrictTest                      828ms
+  PASS    claudePrimaryTargetsTest                     838ms
+  PASS    claudeProviderTest                           1428ms
+  PASS    codeRepairTest                               9694ms
+  PASS    errorClassificationTest                      1489ms
+  PASS    finalReviewFixesTest                         1480ms
+  PASS    foregroundPriorityTest                       1311ms
+  PASS    gapReviewFixesTest                           1422ms
+  PASS    goalAgentIntegrationTest                     3730ms
+  PASS    goalApprovalTest                             590ms
+  PASS    goalCreationTest                             2908ms
+  PASS    goalLearningTest                             666ms
+  PASS    goalLifecycleAuditTest                       422ms
+  PASS    goalLifecycleTest                            537ms
+  PASS    goalManagerInitTest                          450ms
+  PASS    goalRecoveryTest                             432ms
+  PASS    goalRuntimeMigrationTest                     461ms
+  PASS    goalRuntimeTest                              2261ms
+  PASS    goalServiceTest                              1475ms
+  PASS    identityAliasTest                            2268ms
+  PASS    independentQaTest                            1434ms
+  PASS    jarvisAgentIntegrationTest                   3844ms
+  PASS    lineageInheritanceTest                       1415ms
+  PASS    llmCancellationTest                          2267ms
+  PASS    llmClientBehaviourTest                       1275ms
+  PASS    memoryTrustTest                              906ms
+  PASS    modelRoleRoutingTest                         9873ms
+  PASS    modelRouteCorrectionsTest                    5609ms
+  PASS    modelRouteRound3Test                         2136ms
+  PASS    modelRoutingTest                             836ms
+  PASS    providerCapabilitiesTest                     652ms
+  PASS    providerHealthTest                           3777ms
+  PASS    providerIsolationTest                        1403ms
+  PASS    qaModelFailureTest                           1817ms
+  PASS    replyGoldenTest                              1445ms
+  PASS    reviewRound3FixesTest                        3930ms
+  PASS    selfHealingHonestyTest                       467ms
+  PASS    sevenAgentTest                               1781ms
+  PASS    strictHelperRoutingTest                      1489ms
+  PASS    strictModelIdentityTest                      857ms
+  PASS    usageLedgerTest                              1420ms
+  PASS    verificationInconclusiveTest                 1543ms
+
+=== 45 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

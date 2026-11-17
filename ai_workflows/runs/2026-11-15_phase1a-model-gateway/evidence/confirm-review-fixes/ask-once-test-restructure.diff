@@ -1,0 +1,70 @@
+--- /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/askOnce.v1.ts	2026-11-17 11:27:41.205395656 +0000
++++ tests/saveRelationAskOnceTest.ts	2026-11-17 11:27:41.228545167 +0000
+@@ -11,6 +11,36 @@
+ import * as fs from 'fs';
+ import * as os from 'os';
+ import * as path from 'path';
++import { spawnSync } from 'child_process';
++import { fileURLToPath } from 'url';
++
++// Each answer runs in its own process, so one case's approval state cannot affect the next.
++const MODE = process.argv[2] as 'no' | 'timeout' | 'yes' | undefined;
++if (!MODE) {
++  const here = fileURLToPath(import.meta.url);
++  const tsx = path.join(path.dirname(here), '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
++  let passed = 0;
++  let failed = 0;
++  const ok = (label: string, condition: boolean, detail = ''): void => {
++    if (condition) { console.log(`  PASS: ${label}${detail ? ` (${detail})` : ''}`); passed++; }
++    else { console.error(`  FAIL: ${label}${detail ? ` (${detail})` : ''}`); failed++; }
++  };
++  const run = (mode: string): { asked: string[]; stored: string[] } | undefined => {
++    const r = spawnSync(process.execPath, [tsx, here, mode], { encoding: 'utf8', timeout: 120_000 });
++    const line = `${r.stdout}`.split('\n').find((l) => l.startsWith('RESULT '));
++    if (!line) console.error(`${r.stdout}${r.stderr}`.slice(-1500));
++    return line ? JSON.parse(line.slice(7)) : undefined;
++  };
++  console.log('\n=== The owner is asked once (M-3) ===\n');
++  const no = run('no');
++  ok('"no": asked once, nothing stored', no?.asked.length === 1 && no.stored.length === 0, `asked ${no?.asked.length}; stored ${no?.stored.length}`);
++  const none = run('timeout');
++  ok('no answer: asked once, nothing stored', none?.asked.length === 1 && none.stored.length === 0, `asked ${none?.asked.length}; stored ${none?.stored.length}`);
++  const yes = run('yes');
++  ok('"yes": asked once, stored once (control)', yes?.asked.length === 1 && yes.stored.length === 1, `asked ${yes?.asked.length}; stored ${yes?.stored.length}`);
++  console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
++  process.exit(failed > 0 ? 1 : 0);
++}
+ 
+ const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-save-ask-once-'));
+ for (const dir of ['memory', 'data']) fs.mkdirSync(path.join(workspace, dir), { recursive: true });
+@@ -48,13 +78,6 @@
+ registerAllTools();
+ await memoryManager.init();
+ 
+-let passed = 0;
+-let failed = 0;
+-function ok(label: string, condition: boolean, detail = ''): void {
+-  if (condition) { console.log(`  PASS: ${label}${detail ? ` (${detail})` : ''}`); passed++; }
+-  else { console.error(`  FAIL: ${label}${detail ? ` (${detail})` : ''}`); failed++; }
+-}
+-
+ let script: Array<{ name: string; args: Record<string, unknown> }> = [];
+ modelRouter.chat = async (req: any) => {
+   if (req.tools && script.length) {
+@@ -80,14 +103,6 @@
+   return { asked: [...asked], stored: [...stored] };
+ }
+ 
+-console.log('\n=== The owner is asked once (M-3) ===\n');
+-const no = await ask('no');
+-ok('"no": asked once, nothing stored', no.asked.length === 1 && no.stored.length === 0, `asked ${no.asked.length}; stored ${no.stored.length}`);
+-const none = await ask('timeout');
+-ok('no answer: asked once, nothing stored', none.asked.length === 1 && none.stored.length === 0, `asked ${none.asked.length}; stored ${none.stored.length}`);
+-const yes = await ask('yes');
+-ok('"yes": asked once, stored once (control)', yes.asked.length === 1 && yes.stored.length === 1, `asked ${yes.asked.length}; stored ${yes.stored.length}`);
+-
+-console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
+-if (failed > 0) process.exit(1);
++const result = await ask(MODE);
++console.log(`RESULT ${JSON.stringify(result)}`);
+ process.exit(0);

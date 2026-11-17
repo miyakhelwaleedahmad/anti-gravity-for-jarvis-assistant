@@ -199,7 +199,8 @@ export function completionSpeech(result: RootResult, verification?: Verification
   const who = SPEAKER[result.specialist.role] ?? 'The agents';
   switch (result.status) {
     case 'COMPLETED': {
-      const checked = verification?.verdict === 'issues' ? ' The Verification Agent found problems with it; they are listed there.' : '';
+      const checked = verification?.verdict === 'issues' ? ' The Verification Agent found problems with it; they are listed there.'
+        : verification?.verdict === 'inconclusive' ? ' The Verification Agent could not check everything; it needs your review.' : '';
       return `Sir, the ${who} has finished. ${firstSentences(result.answer)} The full report is in the console.${checked}`;
     }
     case 'CANCELLED':
@@ -289,14 +290,18 @@ export function verificationReport(v: Verification | undefined, ran: boolean): s
   if (!ran) return [];
   if (!v) return ['', 'Verification: not verified (the check did not finish).'];
   return ['', `Verification: ${v.verdict} (${v.checks.filter((c) => c.ok).length}/${v.checks.length} checks passed, by ${v.checkedBy})`,
-    ...v.checks.filter((c) => !c.ok).map((c) => `  ✗ ${c.name}: ${c.note}`)];
+    ...v.checks.filter((c) => !c.ok).map((c) => `  ${c.inconclusive ? '?' : '✗'} ${c.name}: ${c.note}`)];
 }
 
-export async function promoteToMemory(result: RootResult, request: string, verification?: Verification): Promise<number> {
+export async function promoteToMemory(result: RootResult, request: string, verification?: Verification, verificationRequired: boolean = shouldVerify(result)): Promise<number> {
   if (result.status !== 'COMPLETED' || process.env['JARVIS_AGENT_MEMORY'] === '0') return 0;
-  // A result the verifier found problems with is not kept as fact.
-  if (verification?.verdict === 'issues') {
-    console.log('[Agents] Not stored in long-term memory: the Verification agent found issues.');
+  // Unverified information never becomes trusted long-term memory (owner, 2026-11-16 L2, 2026-11-17 L-5):
+  // a result is kept only when the Verification agent verified it. Anything else stays in the task archive.
+  if (verification?.verdict !== 'verified') {
+    const why = verification ? `the verification was ${verification.verdict}, not verified`
+      : verificationRequired ? 'it needed verification and the check did not finish'
+      : 'it was not verified (verification is off, or this agent\'s results are not verified)';
+    console.log(`[Agents] Not stored in long-term memory: ${why}. The full result is in the task archive (data/agents/${result.rootTaskId}.json).`);
     return 0;
   }
   let stored = 0;
@@ -443,7 +448,7 @@ export const delegateTaskTool: AgentTool = {
       const check = shouldVerify(result);
       const verification = check ? await verifyRootResult(result, task) : undefined;
       console.log(`\n${[resultReport(result), ...verificationReport(verification, check)].join('\n')}\n`);
-      const stored = await promoteToMemory(result, task, verification);
+      const stored = await promoteToMemory(result, task, verification, check);
       if (stored) console.log(`[Agents] Kept ${stored} item(s) from this task in long-term memory.`);
       const speech = completionSpeech(result, verification);
       if (speech) await speak(speech);

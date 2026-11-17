@@ -177,9 +177,18 @@ export class AgentGoalExecutor implements GoalTaskExecutor {
     if (r.status === 'TIMED_OUT') return { ok: false, result, usage, failure: { code: 'TIMED_OUT', message: 'the agents ran out of time' } };
     if (r.status !== 'COMPLETED') {
       const err = r.specialist?.error;
-      return { ok: false, result, usage, failure: { message: err?.message ?? (r.answer || 'the agent could not finish'), ...(err?.code ? { code: err.code } : {}) } };
+      // A used-up tool budget is its own condition, not a model failure (owner, 2026-11-16).
+      const goalCode = (c: { code: string; budget?: string }) => (c.code === 'BUDGET_EXCEEDED' && c.budget === 'toolCalls' ? 'TOOL_BUDGET_EXHAUSTED' : c.code);
+      const code = err ? goalCode(err) : undefined;
+      // Every distinct cause is passed on (review LR-2).
+      const causes = [...new Set((err?.causes ?? []).map(goalCode))];
+      return { ok: false, result, usage, failure: { message: err?.message ?? (r.answer || 'the agent could not finish'), ...(code ? { code } : {}), ...(causes.length > 1 ? { causes } : {}) } };
     }
     if (!result.summary) return { ok: false, result, usage, failure: { class: 'evidence', message: 'the agent finished without a result' } };
+    // A step that tried to keep a fact did not keep it, whatever its text says (owner, 2026-11-17, L-3):
+    // save_relation stores nothing inside a goal.
+    const notStored = memoryNotStored(r.limitations, task.specialist, task.description);
+    if (notStored) return { ok: false, result, usage, failure: { class: 'inconclusive', code: 'MEMORY_NOT_STORED', message: notStored } };
 
     if (this.opts.verify !== false) {
       const { shouldVerify, verifyRootResult } = await import('./agents/jarvisAgents.js');
@@ -188,6 +197,10 @@ export class AgentGoalExecutor implements GoalTaskExecutor {
         result.verification = v ? { verdict: v.verdict, note: v.checks.filter((c) => !c.ok).map((c) => c.note).join('; ').slice(0, 300) } : { verdict: 'not verified', note: 'the check did not finish' };
         if (v?.verdict === 'issues') {
           return { ok: false, result, usage, failure: { class: 'evidence', message: `the Verification agent found issues: ${result.verification.note}` } };
+        }
+        // A check that did not happen, or a verification that did not finish: the owner reviews it (D-1).
+        if (!v || v.verdict === 'inconclusive') {
+          return { ok: false, result, usage, failure: { code: 'VERIFICATION_INCONCLUSIVE', message: `the Verification agent could not check everything: ${result.verification.note || 'the check did not finish'}` } };
         }
       }
     }
@@ -198,16 +211,47 @@ export class AgentGoalExecutor implements GoalTaskExecutor {
     try {
       const dir = this.opts.manager?.archiveDir() ?? path.join(dataRoot(getWorkspaceRoot()), 'data', 'agents');
       const body = JSON.parse(fs.readFileSync(path.join(dir, `${rootTaskId}.json`), 'utf8')) as {
-        status: string; result?: RootResult; workspace?: { findings?: { text: string }[] };
+        status: string; result?: RootResult; workspace?: { findings?: { text: string }[] }; request?: string; agents?: { role?: string }[];
       };
       const findings = (body.result?.findings ?? body.workspace?.findings ?? []).map((f) => f.text).slice(0, 5);
+      // A step that did not keep its fact is not taken back as done (review L-2); it runs again and says so.
+      const memoryStep = (body.agents ?? []).some((a) => a.role === 'memory_agent');
+      const notStored = memoryNotStored(body.result?.limitations ?? [], memoryStep ? 'memory_agent' : '', body.request ?? '');
       return {
         status: body.status,
-        ...(body.status === 'COMPLETED' && body.result ? { result: taskResultFrom({ ...body.result, specialist: { role: 'archived' } }, [], 'archive') } : {}),
+        ...(body.status === 'COMPLETED' && body.result && !notStored ? { result: taskResultFrom({ ...body.result, specialist: { role: 'archived' } }, [], 'archive') } : {}),
         findings,
       };
     } catch {
       return undefined;
     }
   }
+}
+
+/** "Remember what …", "note which …": reading what is remembered, not keeping something (final review L-7). */
+const RECALL_STEP = /^\s*(?:please\s+)?(?:remember|note|recall)\s+(?:what|which|whether|how|if|when|where|who|why)\b/i;
+/** A step that starts by asking to keep something; "save time" is not one. */
+const KEEP_STEP = /^\s*(?:please\s+)?(?:remember|note|keep in mind|don'?t forget|memori[sz]e|record|make a note|store|save|add)\b(?!\s+time\b)/i;
+/** "Keep, store, save, add, record or put … in memory"; "update the profile / preferences / memory". */
+const IN_MEMORY_STEP = /\b(?:keep|store|save|add|record|put)\b[^.?!]*\b(?:in|to|into)\s+(?:long-term\s+)?memory\b/i;
+const PROFILE_STEP = /^\s*(?:please\s+)?update\b[^.?!]*\b(?:profile|preferences?|memory)\b/i;
+
+/** A goal step asked to keep a fact (English phrasing; final review L-7). */
+function isRememberStep(description: string): boolean {
+  if (RECALL_STEP.test(description)) return false;
+  return KEEP_STEP.test(description) || IN_MEMORY_STEP.test(description) || PROFILE_STEP.test(description);
+}
+
+/**
+ * Why a goal step did not keep a fact (owner, 2026-11-17, L-3; review L-1, L-2):
+ * save_relation's own failure (only its entry, not any text that mentions it),
+ * or a Memory-agent step asked to keep one, since nothing is stored inside a goal.
+ */
+function memoryNotStored(limitations: readonly string[], specialist: string, description: string): string | undefined {
+  const failed = limitations.find((l) => /^Tool refused or failed: save_relation:/.test(l));
+  if (failed) return `the fact was not stored in long-term memory: ${failed.replace(/^Tool refused or failed:\s*/, '').slice(0, 200)}`;
+  if (specialist === 'memory_agent' && isRememberStep(description)) {
+    return 'the fact was not stored in long-term memory: inside a goal nothing is stored there; tell me the fact yourself to keep it';
+  }
+  return undefined;
 }

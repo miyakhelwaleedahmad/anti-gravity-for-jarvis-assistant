@@ -166,7 +166,11 @@ export function canTransitionTask(from: GoalTaskStatus, to: GoalTaskStatus): boo
  */
 export type FailureClass =
   | 'transient' | 'invalid_plan' | 'dependency' | 'permission' | 'approval'
-  | 'evidence' | 'budget' | 'interrupted' | 'outcome_unknown' | 'unrecoverable';
+  | 'evidence' | 'budget' | 'interrupted' | 'outcome_unknown' | 'unrecoverable'
+  // A setting must change (the provider did not confirm the configured model): blocked, not retried.
+  | 'configuration'
+  // A verification check did not happen: the owner reviews it (owner, 2026-11-16, D-1).
+  | 'inconclusive';
 
 export interface TaskFailure {
   at: number;

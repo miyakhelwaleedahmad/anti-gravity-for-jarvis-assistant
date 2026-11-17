@@ -1,0 +1,48 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=saveRelationLowFixesTest,saveRelationRepliesTest,saveRelationTimeBudgetTest,saveRelationAskOnceTest,saveRelationConfirmReviewTest,saveRelationConfirmTest,saveRelationProvenanceTest,boundaryDoublesTest,unverifiedMemoryTest,memoryTrustTest,mixedFailureCausesTest,secretSinksTest,verifyAfterActTest,executionDispatchAuditTest,sevenAgentTest,jarvisAgentIntegrationTest,goalRuntimeTest,goalAgentIntegrationTest,goalRecoveryTest,toolDiscoverabilityAuditTest,plannerDecisionAuditTest,fullSystemIntegrationTest,adminControlTest,approvalBudgetR31Test,approvalGateStructuredTest,approvalPathsTest,nestedApprovalTest,lateOutcomeB4Test,kernelOutcomeA5cTest,registryRepairHonestyTest,toolRegistryMetadataTest,toolRegistryOptimizationTest,goalApprovalTest,voiceApprovalTest,errorClassificationTest,lowReviewFixesTest,memoryForgetTest
+
+
+=== JARVIS test suite — 37 file(s) ===
+
+  PASS    adminControlTest                             598ms
+  PASS    approvalBudgetR31Test                        70499ms
+  PASS    approvalGateStructuredTest                   11614ms
+  PASS    approvalPathsTest                            423ms
+  PASS    boundaryDoublesTest                          451ms
+  PASS    errorClassificationTest                      1415ms
+  PASS    executionDispatchAuditTest                   3763ms
+  PASS    fullSystemIntegrationTest                    1437ms
+  PASS    goalAgentIntegrationTest                     2477ms
+  PASS    goalApprovalTest                             596ms
+  PASS    goalRecoveryTest                             434ms
+  PASS    goalRuntimeTest                              2374ms
+  PASS    jarvisAgentIntegrationTest                   3835ms
+  PASS    kernelOutcomeA5cTest                         2432ms
+  PASS    lateOutcomeB4Test                            42190ms
+  PASS    lowReviewFixesTest                           1415ms
+  PASS    memoryForgetTest                             1240ms
+  PASS    memoryTrustTest                              878ms
+  PASS    mixedFailureCausesTest                       1248ms
+  PASS    nestedApprovalTest                           532ms
+  PASS    plannerDecisionAuditTest                     1271ms
+  PASS    registryRepairHonestyTest                    1477ms
+  PASS    saveRelationAskOnceTest                      4860ms
+  PASS    saveRelationConfirmReviewTest                1459ms
+  PASS    saveRelationConfirmTest                      1467ms
+  PASS    saveRelationLowFixesTest                     1437ms
+  PASS    saveRelationProvenanceTest                   1338ms
+  PASS    saveRelationRepliesTest                      5710ms
+  PASS    saveRelationTimeBudgetTest                   30116ms
+  PASS    secretSinksTest                              5292ms
+  PASS    sevenAgentTest                               1859ms
+  PASS    toolDiscoverabilityAuditTest                 1218ms
+  PASS    toolRegistryMetadataTest                     1524ms
+  PASS    toolRegistryOptimizationTest                 1197ms
+  PASS    unverifiedMemoryTest                         984ms
+  PASS    verifyAfterActTest                           6386ms
+  PASS    voiceApprovalTest                            38614ms
+
+=== 37 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

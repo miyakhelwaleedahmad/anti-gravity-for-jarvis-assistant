@@ -93,6 +93,9 @@ data/agents/
 # Issue records and failure occurrences (core/issueStore.ts) — runtime data, never commit.
 data/repairs/
 
+# Model usage records (bridge/usageLedger.ts) — runtime data, never commit.
+data/usage/
+
 # Live runtime state is written ONLY under data/runtime/, which is ignored.
 #
 # data/goals.json, memory/taskHistory.json, memory/userMemory.json and

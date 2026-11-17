@@ -23,9 +23,19 @@ import type { AgentOutcome, Conflict, Finding, Source } from '../types.js';
 
 export const EVIDENCE_WORKER_ROLE = 'evidence_check_worker';
 
-export type Verdict = 'verified' | 'issues' | 'unverified';
+/**
+ * inconclusive: a check could not run (e.g. the source re-read); the result
+ * needs review and is never "verified" (owner, 2026-11-16).
+ */
+export type Verdict = 'verified' | 'issues' | 'unverified' | 'inconclusive';
 
-export interface VerificationCheck { name: string; ok: boolean; note: string }
+export interface VerificationCheck {
+  name: string;
+  ok: boolean;
+  note: string;
+  /** The check could not run: not passed, and not a defect found. */
+  inconclusive?: boolean;
+}
 
 export interface Verification {
   verdict: Verdict;
@@ -90,7 +100,8 @@ export function checkResult(input: VerificationInput): VerificationCheck[] {
 export function verdictOf(checks: VerificationCheck[]): Verdict {
   const finished = checks.find((c) => c.name === 'finished');
   if (finished && !finished.ok) return 'unverified';
-  return checks.every((c) => c.ok) ? 'verified' : 'issues';
+  if (checks.some((c) => !c.ok && !c.inconclusive)) return 'issues';
+  return checks.some((c) => c.inconclusive) ? 'inconclusive' : 'verified';
 }
 
 /** "github.com/owner/name" → "owner/name". */
@@ -120,10 +131,12 @@ export const evidenceCheckWorker: AgentBehavior = {
     const repoInfo = (body['repository'] ?? body) as Record<string, unknown>;
     const licence = typeof repoInfo['license'] === 'string' ? repoInfo['license'] : null;
     const licenceOk = !claimed || !licence || claimed.toLowerCase() === licence.toLowerCase();
+    // The answer states a licence and the source states none: it cannot be confirmed (not a match).
+    const licenceKnown = !claimed || !!licence;
     return {
-      summary: `${repo} exists${licence ? `, licence ${licence}` : ''}${claimed ? (licenceOk ? '; matches the answer' : `; the answer says ${claimed}`) : ''}`,
+      summary: `${repo} exists${licence ? `, licence ${licence}` : ''}${claimed ? (!licenceKnown ? `; it states no licence, so the answer's licence (${claimed}) could not be confirmed` : licenceOk ? '; matches the answer' : `; the answer says ${claimed}`) : ''}`,
       confidence: 0.9,
-      data: { reachable: true, licence, claimed: claimed ?? null, licenceOk },
+      data: { reachable: true, licence, claimed: claimed ?? null, licenceOk, licenceKnown },
     };
   },
 };
@@ -136,27 +149,38 @@ export async function verifyBehaviorRun(ctx: AgentContext): Promise<AgentOutcome
 
   // Re-read one cited GitHub source, when this agent may create the worker.
   const repo = input.sources.map((s) => repoOf(s.url)).find(Boolean);
-  if (repo && ctx.agent.permissions.canSpawn) {
+  if (repo && !ctx.agent.permissions.canSpawn) {
+    // A cited source was due for a re-read that this agent cannot do: not a pass (owner, 2026-11-16).
+    checks.push({ name: 'source re-read', ok: false, inconclusive: true, note: `not checked: ${repo} was not re-read (this agent may not create the Evidence Check Worker)` });
+  } else if (repo) {
     try {
       const h = await ctx.spawn({
         childRole: EVIDENCE_WORKER_ROLE, reason: 'independent re-read of a cited source',
         childTask: { description: `Re-read ${repo} and compare it with the answer`, input: { repo, ...(statedLicence(input.answer, repo) ? { licence: statedLicence(input.answer, repo) } : {}) } },
       });
       const [r] = await ctx.wait([h]);
-      const d = (r?.data ?? {}) as { reachable?: boolean; licenceOk?: boolean };
-      if (r?.status !== 'COMPLETED' || !d.reachable) checks.push({ name: 'source re-read', ok: true, note: `not checked: ${r?.summary ?? 'the worker did not finish'}` });
+      const d = (r?.data ?? {}) as { reachable?: boolean; licenceOk?: boolean; licenceKnown?: boolean };
+      if (r?.status !== 'COMPLETED' || !d.reachable) {
+        // The re-read did not happen: inconclusive, with the full reason (never counted as passed).
+        const why = r?.summary || r?.error?.message || 'the worker did not finish';
+        checks.push({ name: 'source re-read', ok: false, inconclusive: true, note: `not checked: ${why}${r?.error?.message && !why.includes(r.error.message) ? ` (${r.error.message})` : ''}` });
+      } else if (d.licenceKnown === false) checks.push({ name: 'source re-read', ok: false, inconclusive: true, note: r.summary });
       else checks.push({ name: 'source re-read', ok: d.licenceOk !== false, note: r.summary });
     } catch (err) {
-      checks.push({ name: 'source re-read', ok: true, note: `not checked: ${(err as Error).message.slice(0, 120)}` });
+      checks.push({ name: 'source re-read', ok: false, inconclusive: true, note: `not checked: ${(err as Error).message}` });
     }
   }
 
   const verdict = verdictOf(checks);
-  const issues = checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.note}`);
+  const issues = checks.filter((c) => !c.ok && !c.inconclusive).map((c) => `${c.name}: ${c.note}`);
+  const unchecked = checks.filter((c) => c.inconclusive).map((c) => `${c.name}: ${c.note}`);
   const verification: Verification = { verdict, checks, issues, checkedBy: ctx.agent.agentId, at: Date.now() };
-  ctx.addFinding({ text: `Verification: ${verdict}${issues.length ? ` — ${issues.join('; ')}` : ''}`, confidence: 0.9, tags: ['verification'], data: { verdict } });
+  const listed = [...issues, ...unchecked];
+  ctx.addFinding({ text: `Verification: ${verdict}${listed.length ? ` — ${listed.join('; ')}` : ''}`, confidence: 0.9, tags: ['verification'], data: { verdict } });
   return {
-    summary: verdict === 'verified' ? `Verified: ${checks.length} checks passed.` : verdict === 'unverified' ? `Not verified: ${issues.join('; ')}` : `Issues found: ${issues.join('; ')}`,
+    summary: verdict === 'verified' ? `Verified: ${checks.length} checks passed.`
+      : verdict === 'inconclusive' ? `Not fully verified; needs review: ${unchecked.join('; ')}`
+      : verdict === 'unverified' ? `Not verified: ${issues.join('; ')}` : `Issues found: ${issues.join('; ')}`,
     confidence: 0.9,
     data: { verification },
   };

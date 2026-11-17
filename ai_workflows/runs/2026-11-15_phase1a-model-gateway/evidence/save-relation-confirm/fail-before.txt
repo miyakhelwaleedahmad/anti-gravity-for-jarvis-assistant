@@ -1,0 +1,46 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+
+=== save_relation stores only what the owner confirms ===
+
+--- The owner is asked, with the exact fact; only "yes" stores ---
+  FAIL: an answer chosen between two named things: the owner is asked, showing the exact fact ([])
+  FAIL: …"no": nothing stored, and the tool says so (1 stored; Saved relation: (fast-tool)-[IS_BETTER_THAN]->(slow-tool) in long-term memory.)
+  PASS: …"yes": stored once (1 stored; Saved relation: (fast-tool)-[IS_BETTER_THAN]->(slow-tool) in long-term memory.)
+  FAIL: M-1: a claim hidden in the relation is shown and asked, not stored without "yes" ([])
+  FAIL: M-1: a number in the relation is shown and asked ([])
+  FAIL: M-2: non-Latin names are asked, not stored without "yes" ([])
+  FAIL: M-2: an Urdu name is asked, not stored without "yes" ([])
+  FAIL: M-2: two-letter names are asked, not stored without "yes" ([])
+  FAIL: the owner's own "remember that …": asked, and stored on "yes" (1 stored)
+  PASS: …no false refusal of the owner's own fact in other words (review L-2) (1 stored; Saved relation: (User)-[LIKES]->(Lahore, Pakistan) in long-term memory.)
+
+--- A delegated Memory task (path 3) ---
+  FAIL: a fact in the planner's task text is asked, naming the agent, and not stored on "no" ([])
+  PASS: …stored on "yes" (1 stored)
+
+--- Inside a goal: nothing stored, nobody asked ---
+  PASS: a goal task's save_relation stores nothing and does not ask (0 stored; asked 0; Error: save_relation refused - inside the goal "Find the best library and remember it" facts come from other agents' res)
+
+--- Unchanged ---
+  PASS: no request in flight: stored without asking (1 stored; asked 0)
+  PASS: a credential is refused without asking (Error: save_relation refused - I don't store passwords, keys or tokens, sir.)
+
+--- L-3. A "remember" goal step that stored nothing ---
+[GoalManager] ✅ Initialized. 0 historical goal(s) found.
+[GoalManager] 📌 Goal "tgoal_mwkl3wb4_1t349": planning → ready (planned 1 task(s) (model))
+[GoalManager] 🎯 temporary goal created [priority 5]: "tgoal_mwkl3wb4_1t349" — "Remember that fast-tool is the best library"
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 1 ms
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+[GoalManager] 📌 Goal "tgoal_mwkl3wb4_1t349": executing → completed (success criteria met: every task completed with a result: 1 task(s) completed)
+  PASS: (setup) nothing was stored and nobody was asked (0 stored; asked 0)
+  FAIL: the goal is not completed as if the fact were kept (completed)
+  FAIL: the step needs the owner's review (completed)
+  FAIL: …and says the fact was not stored (undefined: )
+
+=== Results: 7 passed, 12 failed ===
+exit=1

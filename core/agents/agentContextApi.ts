@@ -78,6 +78,15 @@ export interface AgentContext {
   callTool(name: string, args: Record<string, unknown>): Promise<ToolResult>;
   /** A model call through modelRouter, counted against the budget. */
   llm(request: Omit<ILLMRequest, 'signal'>): Promise<ILLMResponse>;
+  /**
+   * The role whose configured strict model route this agent's model calls use:
+   * its own, or the nearest specialist above it that has one (a coding_agent or
+   * qa_agent with its own setting). Decided from who spawned whom, never from
+   * task input (owner, 2026-11-16). Undefined: no strict route.
+   */
+  strictRouteRole?(): string | undefined;
+  /** This agent's role and those of the agents above it, up to its specialist (not JARVIS), from the registry. */
+  lineageRoles?(): string[];
   /** Throws if the task was cancelled or timed out. */
   checkpoint(): void;
 

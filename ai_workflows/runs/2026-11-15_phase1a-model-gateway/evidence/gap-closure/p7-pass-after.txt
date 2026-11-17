@@ -1,0 +1,20 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=verificationInconclusiveTest,sevenAgentTest,jarvisAgentIntegrationTest,goalAgentIntegrationTest,selfHealingHonestyTest,backgroundResearchTest,replyGoldenTest,agentSpecialistsTest,agentRuntimeTest
+
+
+=== JARVIS test suite — 9 file(s) ===
+
+  PASS    agentRuntimeTest                             2892ms
+  PASS    agentSpecialistsTest                         1317ms
+  PASS    backgroundResearchTest                       1773ms
+  PASS    goalAgentIntegrationTest                     2763ms
+  PASS    jarvisAgentIntegrationTest                   4112ms
+  PASS    replyGoldenTest                              1329ms
+  PASS    selfHealingHonestyTest                       581ms
+  PASS    sevenAgentTest                               1707ms
+  PASS    verificationInconclusiveTest                 1450ms
+
+=== 9 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

@@ -1,0 +1,16 @@
+--- /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/src-before/saveRelationProvenanceTest.ts	2026-11-17 11:03:40.058397267 +0000
++++ tests/saveRelationProvenanceTest.ts	2026-11-17 11:04:56.997068396 +0000
+@@ -37,6 +37,13 @@
+ const stored: string[] = [];
+ (memoryManager as unknown as { rememberFact: (fact: string, source?: string) => Promise<void> }).rememberFact = async (fact: string, source?: string) => { stored.push(`${source}: ${fact}`); };
+ 
++// Setup added 2026-11-17 for the owner's decision "Ask me to confirm": save_relation now asks the owner.
++// This stand-in owner confirms only the two facts the owner said in this test and answers no to the rest.
++// No assertion below was changed.
++const { approvalGate } = await import('../security/approvalGate.js');
++const OWNER_SAID = ['"User HAS_EXAM_ON Friday at nine"', '"User PREFERS dark theme"'];
++(approvalGate as unknown as { requestApproval: (...a: unknown[]) => Promise<boolean> }).requestApproval = async (_a: unknown, command?: unknown) => OWNER_SAID.includes(String(command ?? ''));
++
+ const { modelRouter } = await import('../bridge/modelRouter.js');
+ const { registerAllTools } = await import('../core/tools/index.js');
+ const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');

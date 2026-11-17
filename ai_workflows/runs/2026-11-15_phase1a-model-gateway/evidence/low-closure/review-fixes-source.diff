@@ -1,0 +1,115 @@
+--- modelCategories.ts	2026-11-17 05:03:57.090627883 +0000
++++ /home/user/anti-gravity-for-jarvis-assistant/bridge/modelCategories.ts	2026-11-17 04:50:52.936501352 +0000
+@@ -230,22 +230,30 @@
+ 
+ /**
+  * The key two model names are compared by: one model under several names has
+- * one key (owner, 2026-11-16, R2). Lower case; without a "models/" prefix or
+- * a gateway "vendor/" prefix, a ":variant" suffix (":free"), a date stamp
+- * ("-20261101", "-2026-11-01", "@20261101") or a "-NNN" version ("-001").
++ * one key (owner, 2026-11-16, R2; review L-1). Lower case; without a
++ * "models/" prefix, a gateway "vendor/" prefix, a Bedrock "vendor." or
++ * "region.vendor." prefix (letters only), a ":variant" suffix (":free",
++ * ":0"), a date stamp ("-20261101", "-2026-11-01", "@20261101"), a "-NNN"
++ * version ("-001") or a "-vN" version after a number ("…-5-5-v1"); a dot
++ * between digits is a dash ("5.5" = "5-5").
+  * Folding more names together only makes more pairs "the same" (fail closed).
+  */
+ export function identityKey(model: string): string {
+   let k = model.trim().toLowerCase().replace(/^models\//, '');
+   k = k.slice(k.lastIndexOf('/') + 1);
+   k = k.replace(/:[^:]*$/, '');
+-  k = k.replace(/(?:@|-)\d{8}$/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '').replace(/-\d{3}$/, '');
++  k = k.replace(/^(?:[a-z][a-z-]*\.)+/, '');
++  k = k.replace(/(\d)\.(?=\d)/g, '$1-');
++  for (let before = ''; before !== k;) {
++    before = k;
++    k = k.replace(/(?:@|-)\d{8}$/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '').replace(/-\d{3}$/, '').replace(/(?<=\d)-v\d+$/, '');
++  }
+   return k;
+ }
+ 
+-/** A name whose target model changes over time ("gemini-flash-latest", "latest"): its identity is not known. */
++/** A name whose target model changes over time ("gemini-flash-latest", "latest", Ollama's "llama3:latest"): its identity is not known. */
+ export function isFloatingAlias(model: string): boolean {
+-  return /(?:^|[-_.])latest$/i.test(identityKey(model));
++  return /(?:^|[-_.:@/])latest$/i.test(model.trim()) || /(?:^|[-_.])latest$/i.test(identityKey(model));
+ }
+ 
+ /**
+--- common.ts	2026-11-17 05:03:46.485212060 +0000
++++ /home/user/anti-gravity-for-jarvis-assistant/core/agents/behaviors/common.ts	2026-11-17 04:50:52.931598980 +0000
+@@ -68,6 +68,22 @@
+   }
+ }
+ 
++/** Carried codes, most specific first: the provider did not confirm the model, a budget ran out, the model did not answer. */
++const FAILURE_ORDER = ['MODEL_IDENTITY_UNCONFIRMED', 'BUDGET_EXCEEDED', 'MODEL_UNAVAILABLE'] as const;
++
++/**
++ * Of several workers' failures, the most specific condition to record on their
++ * parent (review L-4, M1), with the budget that ran out; undefined when none
++ * carries one of these codes.
++ */
++export function mostSpecificFailure(errors: ReadonlyArray<{ code?: string; budget?: 'llmCalls' | 'toolCalls' | 'tokens' } | undefined>): { code: string; budget?: 'llmCalls' | 'toolCalls' | 'tokens' } | undefined {
++  for (const code of FAILURE_ORDER) {
++    const e = errors.find((x) => x?.code === code);
++    if (e) return { code, ...(e.budget ? { budget: e.budget } : {}) };
++  }
++  return undefined;
++}
++
+ /** The required model did not give a usable answer: the task ends FAILED with this, never answered by rules. */
+ export function modelUnavailable(message: string, cause?: unknown): Error {
+   const e = new Error(message, cause === undefined ? undefined : { cause });
+--- research.ts	2026-11-17 05:03:46.485432233 +0000
++++ /home/user/anti-gravity-for-jarvis-assistant/core/agents/behaviors/research.ts	2026-11-17 04:50:52.935237443 +0000
+@@ -24,7 +24,7 @@
+ import { SpawnRejectedError } from '../agentContextApi.js';
+ import type { AgentOutcome, ChildResult } from '../types.js';
+ import {
+-  askJson, callJson, clamp01, keywords, PropagatedFailure, strictRouteRole, languageFit, licenseScore, mean, monthsSince, relevance, untrusted,
++  askJson, callJson, clamp01, keywords, mostSpecificFailure, PropagatedFailure, strictRouteRole, languageFit, licenseScore, mean, monthsSince, relevance, untrusted,
+ } from './common.js';
+ import { currentEventsResearch, isCurrentEvents } from './news.js';
+ 
+@@ -86,9 +86,9 @@
+     || (r.error?.code === 'BUDGET_EXCEEDED' && r.error.budget !== 'toolCalls');
+   const failed = results.map((r, i) => ({ r, name: handles[i]?.name ?? r.agentId })).filter(({ r }) => modelFailure(r));
+   if (!failed.length) return;
+-  // The parent is recorded as the same condition as the (first) worker: its code and budget are kept.
+-  const first = failed[0]!.r.error!;
+-  throw new PropagatedFailure(failed.map(({ r, name }) => `${name}: ${r.error?.message ?? 'its model did not answer'}`).join('; '), first.code, first.budget);
++  // The parent is recorded as the most specific of its workers' conditions, with the budget that ran out (L-4).
++  const carried = mostSpecificFailure(failed.map(({ r }) => r.error)) ?? { code: 'MODEL_UNAVAILABLE' };
++  throw new PropagatedFailure(failed.map(({ r, name }) => `${name}: ${r.error?.message ?? 'its model did not answer'}`).join('; '), carried.code, carried.budget);
+ }
+ 
+ /** Waits for children; one failed child (not a dependency, budget or model stop) is retried once. */
+--- toolLoop.ts	2026-11-17 05:03:46.485572428 +0000
++++ /home/user/anti-gravity-for-jarvis-assistant/core/agents/behaviors/toolLoop.ts	2026-11-17 04:50:52.936126392 +0000
+@@ -23,7 +23,7 @@
+ import type { AgentContext, ChildHandle } from '../agentContextApi.js';
+ import { BudgetExceededError, SpawnRejectedError } from '../agentContextApi.js';
+ import { parseEntry } from '../permissions.js';
+-import { agentModel, strictRouteRole, UNTRUSTED_RULE, untrusted } from './common.js';
++import { agentModel, mostSpecificFailure, PropagatedFailure, strictRouteRole, UNTRUSTED_RULE, untrusted } from './common.js';
+ import { modelRouter } from '../../../bridge/modelRouter.js';
+ import { identityKey, isFloatingAlias, qaIndependenceRequired } from '../../../bridge/modelCategories.js';
+ 
+@@ -296,9 +296,13 @@
+                 return by === 'keyword_rules' ? 'answered by keyword rules, not its model' : by === 'model_incomplete' ? 'its model did not finish' : 'not answered by its model';
+               };
+               const list = [...unchecked.map((r) => `${r.agentId} (${r.role}): ${why(r)}`), ...(ownByModel ? [] : ['a part it did itself: its model did not finish'])].join('; ');
+-              const e = new Error(ctx.agent.role === 'qa_agent'
++              const message = ctx.agent.role === 'qa_agent'
+                 ? `QA could not check every part: ${list}`
+-                : `The ${ctx.agent.role} agent could not complete every part with its configured model: ${list}`);
++                : `The ${ctx.agent.role} agent could not complete every part with its configured model: ${list}`;
++              // A helper's own condition (identity not confirmed, a budget, its model down) is kept on the parent (review M1).
++              const carried = mostSpecificFailure(unchecked.map((r) => r.error));
++              if (carried) throw new PropagatedFailure(message, carried.code, carried.budget);
++              const e = new Error(message);
+               e.name = 'ModelUnavailableError';
+               throw e;
+             }

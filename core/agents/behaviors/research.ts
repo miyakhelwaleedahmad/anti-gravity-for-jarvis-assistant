@@ -24,7 +24,7 @@ import type { AgentContext, ChildHandle } from '../agentContextApi.js';
 import { SpawnRejectedError } from '../agentContextApi.js';
 import type { AgentOutcome, ChildResult } from '../types.js';
 import {
-  askJson, callJson, clamp01, keywords, languageFit, licenseScore, mean, monthsSince, relevance, untrusted,
+  askJson, callJson, clamp01, keywords, mostSpecificFailure, PropagatedFailure, strictRouteRole, languageFit, licenseScore, mean, monthsSince, relevance, untrusted,
 } from './common.js';
 import { currentEventsResearch, isCurrentEvents } from './news.js';
 
@@ -72,13 +72,33 @@ function short(fullName: string): string {
   return fullName.split('/').pop() ?? fullName;
 }
 
-/** Waits for children; one failed child (not a dependency or budget stop) is retried once. */
+/**
+ * On a strict route (a configured coding_agent and the workers under it), a
+ * child whose required model did not answer fails this agent too, with the
+ * child's name and reason: its part was not done by that model (owner, 2026-11-16).
+ */
+function failOnModelFailure(ctx: AgentContext, handles: ChildHandle[], results: ChildResult[]): void {
+  if (!strictRouteRole(ctx)) return;
+  // The model did not answer, did not confirm its identity, or its model-call
+  // budget (calls or tokens) ran out. A used-up TOOL budget is not a model
+  // failure: it stays a limitation, as for any other agent (review R3).
+  const modelFailure = (r: ChildResult) => r.error?.code === 'MODEL_UNAVAILABLE' || r.error?.code === 'MODEL_IDENTITY_UNCONFIRMED'
+    || (r.error?.code === 'BUDGET_EXCEEDED' && r.error.budget !== 'toolCalls');
+  const failed = results.map((r, i) => ({ r, name: handles[i]?.name ?? r.agentId })).filter(({ r }) => modelFailure(r));
+  if (!failed.length) return;
+  // The parent is recorded as the most specific of its workers' conditions, with the budget that ran out (L-4).
+  const carried = mostSpecificFailure(failed.map(({ r }) => r.error)) ?? { code: 'MODEL_UNAVAILABLE' };
+  throw new PropagatedFailure(failed.map(({ r, name }) => `${name}: ${r.error?.message ?? 'its model did not answer'}`).join('; '), carried.code, carried.budget);
+}
+
+/** Waits for children; one failed child (not a dependency, budget or model stop) is retried once. */
 async function waitWithRetry(ctx: AgentContext, handles: ChildHandle[]): Promise<{ results: ChildResult[]; notes: string[] }> {
   const results = await ctx.wait(handles);
   const notes: string[] = [];
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
-    if (r.status !== 'FAILED' || ['DEPENDENCY_FAILED', 'BUDGET_EXCEEDED'].includes(r.error?.code ?? '')) continue;
+    // A worker whose required model failed is not asked again (strict route: one attempt, owner 2026-11-16).
+    if (r.status !== 'FAILED' || ['DEPENDENCY_FAILED', 'BUDGET_EXCEEDED', 'MODEL_UNAVAILABLE', 'MODEL_IDENTITY_UNCONFIRMED'].includes(r.error?.code ?? '')) continue;
     try {
       const again = await ctx.retry(handles[i]);
       const [r2] = await ctx.wait([again]);
@@ -243,6 +263,7 @@ export const repoCodeAnalysisWorker: AgentBehavior = {
         }
       }
       const { results, notes } = await waitWithRetry(ctx, handles);
+      failOnModelFailure(ctx, handles, results);
       limitations.push(...notes);
       for (const res of results) {
         const repo = String(res.data?.['repo'] ?? '');
@@ -333,6 +354,7 @@ export const githubResearchAgent: AgentBehavior = {
         reason: 'ranking needs the discovered repositories, so it waits for the discovery worker',
       });
       const { results, notes } = await waitWithRetry(ctx, [discovery, analysis]);
+      failOnModelFailure(ctx, [discovery, analysis], results);
       limitations.push(...notes);
       const [rd, ra] = results;
       if (rd.status !== 'COMPLETED') limitations.push(`Discovery ${rd.status.toLowerCase()}: ${rd.error?.message ?? ''}`);

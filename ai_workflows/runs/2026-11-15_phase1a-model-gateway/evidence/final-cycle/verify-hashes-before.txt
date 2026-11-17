@@ -1,0 +1,2 @@
+e525966ecf3902ac56690e3c24f92555f84c1b8b6ff77cea928bb5a87a0d00f8  core/agents/behaviors/verify.ts
+7d23ad0178baada9b283461ef3daa924a5e1eb1fcb567f4af6b9a784d2110644  core/goalVerifier.ts

@@ -1,0 +1,134 @@
+
+> antigravityforjarvisassistant@1.0.0 test /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909
+> tsx tests/runAll.ts -- --only=lineageInheritanceTest,strictModelIdentityTest,independentQaTest,verificationInconclusiveTest
+
+
+=== JARVIS test suite — 4 file(s) ===
+
+  FAIL    independentQaTest                            1799ms
+  FAIL    lineageInheritanceTest                       1597ms
+  FAIL    strictModelIdentityTest                      805ms
+  FAIL    verificationInconclusiveTest                 1321ms
+
+=== 0 passed · 4 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - independentQaTest: TypeError: r.qaIndependence is not a function
+        FAIL: QA and coding both on the default model: QA is FAILED (COMPLETED )
+        FAIL: …"independent QA unavailable … human review required"
+        FAIL: …recorded as a model failure (MODEL_UNAVAILABLE) (undefined)
+        FAIL: …and no model was asked (default:undefined)
+        FAIL: QA has its own setting (so required) on the same model name, other case and provider: FAILED (COMPLETED )
+        FAIL: …and no model was asked (default:undefined)
+        FAIL: …labelled independent, with the model QA really used
+        FAIL: QA's reply reports coding's model: FAILED (COMPLETED )
+        FAIL: QA's reply reports no model: FAILED (unknown identity is not independence) (COMPLETED )
+        FAIL: …labelled, never "independent"
+        FAIL: QA's role text does not claim independence (Independently checks results, evidence and code changes: runs checks and tests, reviews diffs, reports defects. It cannot approve actions or change anything.)
+        …
+      --- Not required: QA runs, never labelled independent ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 1 ms
+        PASS: explicitly not required: QA COMPLETED on the shared model (COMPLETED )
+        FAIL: …labelled, never "independent"
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        PASS: unset and QA without its own setting: QA runs as before (COMPLETED )
+        PASS: …and is not labelled independent
+        FAIL: QA's role text does not claim independence (Independently checks results, evidence and code changes: runs checks and tests, reviews diffs, reports defects. It cannot approve actions or change anything.)
+      --- N2. Every model an agent can be answered by ---
+      /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/independentQaTest.ts:157
+        const a = r.qaIndependence({ JARVIS_MODEL_AGENT_QA_AGENT: 'openai:gpt-4o-mini' });
+                    ^
+      TypeError: r.qaIndependence is not a function
+          at <anonymous> (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/independentQaTest.ts:157:15)
+      Node.js v22.23.4
+  - lineageInheritanceTest: === Results: 5 passed, 12 failed ===
+        FAIL: the coding agent's own model call used the coding model (default:undefined,default:undefined)
+        FAIL: the deep-analysis worker (a grandchild) used the coding model (default:undefined,default:undefined)
+        FAIL: the default/planning model was never asked (default:undefined,default:undefined)
+        FAIL: the coding model fails: the task is FAILED, not answered by rules (COMPLETED )
+        FAIL: …with the provider's reason
+        FAIL: …and the default model was never asked (default:undefined,default:undefined)
+        FAIL: the deep-analysis worker's model fails: the coding task is FAILED (COMPLETED )
+        FAIL: …naming the worker and the reason
+        FAIL: …the failed worker was not retried (one model call) (default:undefined,default:undefined)
+        FAIL: …and the default model was never asked (default:undefined,default:undefined)
+        FAIL: an unusable answer from the coding model: FAILED, not answered by rules (COMPLETED )
+        FAIL: a helper of a specialist without a strict setting, given inheritModelRoute=qa_agent, is not moved onto QA's model (COMPLETED  calls=default:undefined)
+        …
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        FAIL: an unusable answer from the coding model: FAILED, not answered by rules (COMPLETED )
+      --- Unchanged: a coding agent without its own setting ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        PASS: the research flow runs on the default model (COMPLETED default:undefined,default:undefined)
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms, failed
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms, failed
+        PASS: with the default model down it still answers by rules (unchanged) (COMPLETED )
+      --- N1. Task input never moves an agent onto another agent's model ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        FAIL: a helper of a specialist without a strict setting, given inheritModelRoute=qa_agent, is not moved onto QA's model (COMPLETED  calls=default:undefined)
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        PASS: a root task given inheritModelRoute=coding_agent is not moved onto the coding model (default:undefined)
+      === Results: 5 passed, 12 failed ===
+  - strictModelIdentityTest: FAIL: …the wrong model ends it with StrictRouteError (Error: Provider 'primary' does not support streaming.)
+        FAIL: strict: a 429 is not answered by the fast model (from lite; gemini-3.5-flash,gemini-3.5-flash-lite)
+        FAIL: strict during a cooldown: the requested model is sent, not the fast model (gemini-3.5-flash-lite)
+        FAIL: …and the reported model is returned (undefined)
+        FAIL: strict: a cached reply of a non-strict call (made by the fast model) is not returned (cached from lite)
+        FAIL: strict: no server-side fallbacks requested ({"f":"default","b":["server-side-fallback-2026-07-01"]})
+        FAIL: …the model the API reports is returned (undefined)
+        FAIL: …and the alias's canonical id is known (undefined)
+        FAIL: strict reply without a reported model: StrictRouteError (fails closed) (answered)
+        FAIL: …and the provider was told to send exactly that model (undefined)
+        FAIL: strict reply reporting another model: StrictRouteError naming both (answered)
+        FAIL: a strict agent route (coding_agent) without a reported model fails closed too (answered)
+        FAIL: …no other provider asked (primary)
+        FAIL: a non-strict route is unchanged: no identity needed (primary answered)
+        FAIL: openai:<x> on a strict route, where openai would send another model: refused before sending (openai answered)
+        FAIL: …the wrong model ends it with StrictRouteError (Error: Provider 'primary' does not support streaming.)
+        …
+      [LLM usage] exact Model-X review: ? in / ? out tokens, 0 ms
+        PASS: a matching report (case, "models/" prefix) is accepted (exact answered)
+      [LLM usage] claude claude-sonnet-5-5 review: ? in / ? out tokens, 0 ms
+        PASS: Claude: the alias answered by its canonical dated id is accepted (claude answered)
+      [LLM usage] primary own planning: ? in / ? out tokens, 0 ms
+        FAIL: a strict agent route (coding_agent) without a reported model fails closed too (answered)
+        FAIL: …no other provider asked (primary)
+      [LLM usage] primary own planning: ? in / ? out tokens, 0 ms
+        FAIL: a non-strict route is unchanged: no identity needed (primary answered)
+        PASS: …and its provider is not told exactModel (undefined)
+      [LLM usage] openai other-model review: ? in / ? out tokens, 0 ms
+        FAIL: openai:<x> on a strict route, where openai would send another model: refused before sending (openai answered)
+        PASS: strict routed stream: no text shown before the identity is confirmed
+      === Results: 8 passed, 15 failed ===
+        FAIL: …the wrong model ends it with StrictRouteError (Error: Provider 'primary' does not support streaming.)
+  - verificationInconclusiveTest: === Results: 6 passed, 12 failed ===
+        FAIL: re-read could not run: never "verified" (verified)
+        FAIL: …the verdict is "inconclusive" (verified)
+        FAIL: …the re-read check is not counted as passed ({"name":"source re-read","ok":true,"note":"not checked: could not re-read acme/fast-tool: GitHub API answered 503 Service Unavailable for repos/acme/fast-tool (request id gh-0123456789abcdef-0123456789abcdef-0123456789abcdef-0123456789abcdef)"})
+        FAIL: …the summary does not say "Verified" (Verified: 8 checks passed.)
+        FAIL: …an inconclusive verification needs review, never met
+        FAIL: …an unverified result needs review, never met
+        FAIL: …a result recorded as "not verified" needs review, never met
+        FAIL: the re-read worker cannot be created: inconclusive, never verified (verified undefined)
+        FAIL: …with the reason kept (which source, and why it was not re-read)
+        FAIL: the re-read worker does not complete: inconclusive, never verified (verified {"name":"source re-read","ok":true,"note":"not checked: Evidence Check Worker failed: the GitHub tool crashed while reading acme/fast-tool"})
+        FAIL: the source states no licence but the answer states one: inconclusive, not a match (verified {"name":"source re-read","ok":true,"note":"acme/fast-tool exists; matches the answer"})
+        FAIL: the spoken completion says an inconclusive result needs review (Sir, the Research Agent has finished. fast-tool is the best fit. The full report is in the console.)
+        …
+        FAIL: …the summary does not say "Verified" (Verified: 8 checks passed.)
+        PASS: …the original error is kept in full (not checked: could not re-read acme/fast-tool: GitHub API answered 503 Service Unavailable for repos/acme/fast-tool (request id gh-0123456789abcdef-0123456789abcdef-0123456789abcdef-0123456789abcdef))
+        PASS: goal criterion "verified": a verified result is met
+        PASS: …a result with issues is unmet
+        FAIL: …an inconclusive verification needs review, never met
+        FAIL: …an unverified result needs review, never met
+        FAIL: …a result recorded as "not verified" needs review, never met
+      --- Final review L4 additions ---
+        FAIL: the re-read worker cannot be created: inconclusive, never verified (verified undefined)
+        FAIL: …with the reason kept (which source, and why it was not re-read)
+        FAIL: the re-read worker does not complete: inconclusive, never verified (verified {"name":"source re-read","ok":true,"note":"not checked: Evidence Check Worker failed: the GitHub tool crashed while reading acme/fast-tool"})
+        PASS: …with the worker's error kept (not checked: Evidence Check Worker failed: the GitHub tool crashed while reading acme/fast-tool)
+        FAIL: the source states no licence but the answer states one: inconclusive, not a match (verified {"name":"source re-read","ok":true,"note":"acme/fast-tool exists; matches the answer"})
+        FAIL: the spoken completion says an inconclusive result needs review (Sir, the Research Agent has finished. fast-tool is the best fit. The full report is in the console.)
+      === Results: 6 passed, 12 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

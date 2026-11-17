@@ -1,0 +1,73 @@
+
+> antigravityforjarvisassistant@1.0.0 test /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909
+> tsx tests/runAll.ts -- --only=errorClassificationTest,memoryTrustTest,identityAliasTest,claudePrimaryTargetsTest
+
+
+=== JARVIS test suite — 4 file(s) ===
+
+  FAIL    claudePrimaryTargetsTest                     752ms
+  FAIL    errorClassificationTest                      1253ms
+  FAIL    identityAliasTest                            1133ms
+  FAIL    memoryTrustTest                              799ms
+
+=== 0 passed · 4 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - claudePrimaryTargetsTest: TypeError: r.possibleTargets is not a function
+        …
+      === Claude as primary: listed models are the models sent ===
+        PASS: (setup) Claude is the primary provider (anthropic)
+      /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/claudePrimaryTargetsTest.ts:46
+      const targets = r.possibleTargets('coding_agent');
+                        ^
+      TypeError: r.possibleTargets is not a function
+          at <anonymous> (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/claudePrimaryTargetsTest.ts:46:19)
+      Node.js v22.23.4
+  - errorClassificationTest: at <anonymous> (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/errorClassificationTest.ts:114:15)
+        FAIL: a strict reply without a reported model: task code MODEL_IDENTITY_UNCONFIRMED (COMPLETED undefined)
+        …
+      [ToolRegistry] ✅ Registered 53 tool(s) into registry.
+      [ToolRegistry] 53 built-in tools registered; skills load next.
+      [ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, b
+      === Four failure conditions stay distinct ===
+      --- MODEL_IDENTITY_UNCONFIRMED ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        FAIL: a strict reply without a reported model: task code MODEL_IDENTITY_UNCONFIRMED (COMPLETED undefined)
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+      /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/core/goalRecovery.ts:61
+        if (f.class) return f.class;
+              ^
+      TypeError: Cannot read properties of undefined (reading 'class')
+          at classifyFailure (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/core/goalRecovery.ts:61:9)
+          at <anonymous> (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/errorClassificationTest.ts:114:15)
+      Node.js v22.23.4
+  - identityAliasTest: TypeError: r.qaIndependence is not a function
+        …
+      [GraphMemory] Neo4j disabled.
+      [windowsState] OPT-PS-1: Persistent PowerShell session started.
+      [windowsState] PS spawn error: spawn powershell ENOENT
+      === Model identity: aliases, bounded look-ups, helpers ===
+      --- R2. Aliases of one model ---
+      /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/identityAliasTest.ts:71
+        const pair = (coding: string, qa: string) => within(r.qaIndependence({ JARVIS_MODEL_AGENT_CODING_AGENT: `p1:${coding}`, JARVIS_MODEL_AGENT_QA_AGENT: `p2:${qa}` }, { resolve: true } as never), 4000);
+                                                              ^
+      TypeError: r.qaIndependence is not a function
+          at pair (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/identityAliasTest.ts:71:57)
+          at same (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/identityAliasTest.ts:72:81)
+          at <anonymous> (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/identityAliasTest.ts:73:9)
+      Node.js v22.23.4
+  - memoryTrustTest: === Results: 3 passed, 3 failed ===
+        FAIL: verification inconclusive: not stored
+        FAIL: result unverified: not stored
+        FAIL: verification needed but it did not finish: not stored
+        …
+      === Only verified results become long-term memory ===
+        PASS: verified research result: stored
+      [Agents] Not stored in long-term memory: the Verification agent found issues.
+        PASS: verifier found issues: not stored
+        FAIL: verification inconclusive: not stored
+        FAIL: result unverified: not stored
+        FAIL: verification needed but it did not finish: not stored
+        PASS: a result that did not need verification: stored as before
+      === Results: 3 passed, 3 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

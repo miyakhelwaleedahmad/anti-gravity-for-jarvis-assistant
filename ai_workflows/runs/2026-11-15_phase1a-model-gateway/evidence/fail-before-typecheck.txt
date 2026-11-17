@@ -1,0 +1,7 @@
+
+> antigravityforjarvisassistant@1.0.0 typecheck /home/user/anti-gravity-for-jarvis-assistant
+> tsc --noEmit
+
+tests/usageLedgerTest.ts(34,35): error TS2307: Cannot find module '../bridge/usageLedger.js' or its corresponding type declarations.
+ ELIFECYCLE  Command failed with exit code 2.
+exit 2

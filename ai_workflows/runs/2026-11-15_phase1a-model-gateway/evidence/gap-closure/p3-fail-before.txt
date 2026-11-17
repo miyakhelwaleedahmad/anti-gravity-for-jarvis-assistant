@@ -1,0 +1,44 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=strictModelIdentityTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    strictModelIdentityTest                      810ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - strictModelIdentityTest: === Results: 9 passed, 14 failed ===
+        FAIL: strict: a 429 is not answered by the fast model (from lite; gemini-3.5-flash,gemini-3.5-flash-lite)
+        FAIL: strict during a cooldown: the requested model is sent, not the fast model (gemini-3.5-flash-lite)
+        FAIL: …and the reported model is returned (undefined)
+        FAIL: strict: a cached reply of a non-strict call (made by the fast model) is not returned (cached from lite)
+        FAIL: strict: no server-side fallbacks requested ({"f":"default","b":["server-side-fallback-2026-07-01"]})
+        FAIL: …the model the API reports is returned (undefined)
+        FAIL: …and the alias's canonical id is known (undefined)
+        FAIL: strict reply without a reported model: StrictRouteError (fails closed) (answered)
+        FAIL: …and the provider was told to send exactly that model (undefined)
+        FAIL: strict reply reporting another model: StrictRouteError naming both (answered)
+        FAIL: a strict agent route (coding_agent) without a reported model fails closed too (answered)
+        FAIL: openai:<x> on a strict route, where openai would send another model: refused before sending (openai answered)
+        FAIL: strict routed stream: no text shown before the identity is confirmed (unconfirmed text)
+        FAIL: …the wrong model ends it with StrictRouteError ((no error))
+        …
+        PASS: a matching report (case, "models/" prefix) is accepted (exact answered)
+      [LLM usage] claude claude-sonnet-5-5 review: ? in / ? out tokens, 1 ms
+        PASS: Claude: the alias answered by its canonical dated id is accepted (claude answered)
+      [LLM usage] silent code-model planning: ? in / ? out tokens, 0 ms
+        FAIL: a strict agent route (coding_agent) without a reported model fails closed too (answered)
+        PASS: …no other provider asked (silent)
+      [LLM usage] silent plan-model planning: ? in / ? out tokens, 0 ms
+        PASS: a non-strict route is unchanged: no identity needed (silent answered)
+        PASS: …and its provider is not told exactModel (undefined)
+      [LLM usage] openai other-model review: ? in / ? out tokens, 1 ms
+        FAIL: openai:<x> on a strict route, where openai would send another model: refused before sending (openai answered)
+      [LLM usage] streamer model-x review: ? in / ? out tokens, 0 ms, streamed
+        FAIL: strict routed stream: no text shown before the identity is confirmed (unconfirmed text)
+        FAIL: …the wrong model ends it with StrictRouteError ((no error))
+      === Results: 9 passed, 14 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

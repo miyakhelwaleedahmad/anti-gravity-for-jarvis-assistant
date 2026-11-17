@@ -1,0 +1,39 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=mixedFailureCausesTest,unverifiedMemoryTest,memoryTrustTest,lowReviewFixesTest,errorClassificationTest,identityAliasTest,claudePrimaryTargetsTest,independentQaTest,gapReviewFixesTest,lineageInheritanceTest,strictModelIdentityTest,verificationInconclusiveTest,goalRecoveryTest,goalRuntimeTest,goalAgentIntegrationTest,agentRuntimeTest,sevenAgentTest,strictHelperRoutingTest,qaModelFailureTest,finalReviewFixesTest,reviewRound3FixesTest,modelRouteRound3Test,modelRouteCorrectionsTest,modelRoleRoutingTest,claudePrimaryStrictTest,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest
+
+
+=== JARVIS test suite — 28 file(s) ===
+
+  PASS    agentRuntimeTest                             3095ms
+  PASS    claudePrimaryStrictTest                      813ms
+  PASS    claudePrimaryTargetsTest                     790ms
+  PASS    errorClassificationTest                      1358ms
+  PASS    finalReviewFixesTest                         1271ms
+  PASS    gapReviewFixesTest                           1285ms
+  PASS    goalAgentIntegrationTest                     2571ms
+  PASS    goalRecoveryTest                             442ms
+  PASS    goalRuntimeTest                              2291ms
+  PASS    identityAliasTest                            2285ms
+  PASS    independentQaTest                            1216ms
+  PASS    lineageInheritanceTest                       1239ms
+  PASS    lowReviewFixesTest                           1450ms
+  PASS    memoryTrustTest                              924ms
+  PASS    mixedFailureCausesTest                       1375ms
+  PASS    modelRoleRoutingTest                         9799ms
+  PASS    modelRouteCorrectionsTest                    5451ms
+  PASS    modelRouteRound3Test                         2192ms
+  PASS    providerCapabilitiesTest                     745ms
+  PASS    providerIsolationTest                        1396ms
+  PASS    qaModelFailureTest                           1614ms
+  PASS    reviewRound3FixesTest                        3936ms
+  PASS    sevenAgentTest                               1677ms
+  PASS    strictHelperRoutingTest                      1253ms
+  PASS    strictModelIdentityTest                      779ms
+  PASS    unverifiedMemoryTest                         988ms
+  PASS    usageLedgerTest                              1423ms
+  PASS    verificationInconclusiveTest                 1425ms
+
+=== 28 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

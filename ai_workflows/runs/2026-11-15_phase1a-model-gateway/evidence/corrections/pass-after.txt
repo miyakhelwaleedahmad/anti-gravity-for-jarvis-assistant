@@ -1,0 +1,16 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=modelRouteCorrectionsTest,modelRoleRoutingTest,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest
+
+
+=== JARVIS test suite — 5 file(s) ===
+
+  PASS    modelRoleRoutingTest                         9803ms
+  PASS    modelRouteCorrectionsTest                    5677ms
+  PASS    providerCapabilitiesTest                     826ms
+  PASS    providerIsolationTest                        1310ms
+  PASS    usageLedgerTest                              1409ms
+
+=== 5 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

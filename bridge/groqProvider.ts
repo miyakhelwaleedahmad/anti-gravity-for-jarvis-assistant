@@ -15,7 +15,7 @@
  */
 
 import { llmConfig } from "../config/llmconfig.js";
-import type { ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall } from "./llmTypes.js";
+import type { ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall, ProviderCapabilities } from "./llmTypes.js";
 import { AdaptiveLruCache } from "../core/adaptiveRamManager.js";
 import { llmStatus } from "./llmStatus.js";
 import { pipelineRegistry, LLM_PIPELINE } from "../self_healing/pipelineRegistry.js";
@@ -137,7 +137,20 @@ function describeFetchError(err: Error): string {
 
 // ─── GroqProvider ─────────────────────────────────────────────────────────────
 
+/** Rate-limit and cache state of one client (Phase 1A, MM-1A-03). */
+interface ClientState {
+  isCircuitBroken: boolean;
+  circuitBreakerResetTime: number;
+  consecutive429s: number;
+  modelCooldownUntil: Map<string, number>;
+  responseCache: AdaptiveLruCache<string, ILLMResponse>;
+  inFlight: Map<string, { promise: Promise<ILLMResponse>; controller: AbortController; waiting: number }>;
+}
+
 export class GroqProvider implements ILLMProvider {
+  // The default client's state. It stays on the class, as before, so every
+  // default client shares it and resetting it here resets them (the tests do).
+  // A client made with { isolatedState: true } keeps its own (ClientState).
   private static isCircuitBroken = false;
   private static circuitBreakerResetTime = 0;
   private static consecutive429s = 0;
@@ -149,24 +162,25 @@ export class GroqProvider implements ILLMProvider {
    */
   private static modelCooldownUntil = new Map<string, number>();
 
-  private static coolingDown(model: string): boolean {
-    const until = GroqProvider.modelCooldownUntil.get(model);
+  private coolingDown(model: string): boolean {
+    const until = this.state.modelCooldownUntil.get(model);
     if (until === undefined) return false;
-    if (Date.now() >= until) { GroqProvider.modelCooldownUntil.delete(model); return false; }
+    if (Date.now() >= until) { this.state.modelCooldownUntil.delete(model); return false; }
     return true;
   }
 
-  private static noteLongRateLimit(model: string, detail: string): void {
+  private noteLongRateLimit(model: string, detail: string): void {
     const delay = parseRetryDelayMs(detail);
     if (delay !== undefined && delay > 60_000) {
-      GroqProvider.modelCooldownUntil.set(model, Date.now() + delay);
+      this.state.modelCooldownUntil.set(model, Date.now() + delay);
       console.warn(`${TAG()} ${model} is rate-limited for ${Math.round(delay / 60_000)} min; using ${llmConfig.fastModel} until then.`);
     }
   }
 
   /** The model to start with: the requested one, unless it is cooling down. */
-  private static startModel(requested: string, fastModel: string): string {
-    return GroqProvider.coolingDown(requested) && !GroqProvider.coolingDown(fastModel) ? fastModel : requested;
+  private startModel(requested: string, fastModel: string, exact = false): string {
+    if (exact) return requested;   // a strict route: never another model (owner, 2026-11-16)
+    return this.coolingDown(requested) && !this.coolingDown(fastModel) ? fastModel : requested;
   }
 
   // Phase 7: Response cache — identical planning calls reuse the last result for 60s
@@ -181,10 +195,51 @@ export class GroqProvider implements ILLMProvider {
    */
   private static inFlight = new Map<string, { promise: Promise<ILLMResponse>; controller: AbortController; waiting: number }>();
 
+  /** The class fields above as one state object: reads and writes go to the fields themselves. */
+  private static readonly sharedState: ClientState = {
+    get isCircuitBroken() { return GroqProvider.isCircuitBroken; },
+    set isCircuitBroken(v: boolean) { GroqProvider.isCircuitBroken = v; },
+    get circuitBreakerResetTime() { return GroqProvider.circuitBreakerResetTime; },
+    set circuitBreakerResetTime(v: number) { GroqProvider.circuitBreakerResetTime = v; },
+    get consecutive429s() { return GroqProvider.consecutive429s; },
+    set consecutive429s(v: number) { GroqProvider.consecutive429s = v; },
+    get modelCooldownUntil() { return GroqProvider.modelCooldownUntil; },
+    get responseCache() { return GroqProvider.responseCache; },
+    get inFlight() { return GroqProvider.inFlight; },
+  };
+
+  private readonly state: ClientState;
+
+  /**
+   * @param opts.isolatedState  this client keeps its own breaker, model
+   *   cooldowns, response cache and in-flight calls, so a second provider
+   *   served by this class (Phase 1B) is never stopped by the first one's
+   *   rate limits. Default: the shared state, exactly as before.
+   */
+  constructor(opts: { isolatedState?: boolean } = {}) {
+    this.state = opts.isolatedState
+      ? {
+          isCircuitBroken: false, circuitBreakerResetTime: 0, consecutive429s: 0, modelCooldownUntil: new Map(),
+          responseCache: new AdaptiveLruCache<string, ILLMResponse>(64, 60_000, 'groq-resp-isolated'), inFlight: new Map(),
+        }
+      : GroqProvider.sharedState;
+  }
+
+  /** What this client passes through (bridge/llmTypes.ts). Images are untested here, so not claimed. */
+  capabilities(): ProviderCapabilities {
+    return {
+      streaming: true, toolCalling: true, structuredOutput: false, imageInput: false, audioInput: false,
+      audioOutput: false, webSearch: false, reportsUsage: true, reportsStreamUsage: false,
+      cancellation: true, ownBreaker: true,
+    };
+  }
+
   // Phase 7: Stable hash key for request dedup/cache
   private static hashRequest(req: ILLMRequest): string {
     const key = JSON.stringify({
       model: req.model ?? llmConfig.model,
+      // A strict request never gets the cached reply of a non-strict one (which may come from the fast model).
+      exact: req.exactModel === true,
       // Previously `.slice(0, 200)`: two different requests sharing a 200-char
       // prefix collided in the cache and the second received the first's
       // response (JARVIS-010). Hashing the full content costs microseconds
@@ -196,28 +251,28 @@ export class GroqProvider implements ILLMProvider {
   }
 
   private checkCircuit(): void {
-    if (GroqProvider.isCircuitBroken) {
-      if (Date.now() > GroqProvider.circuitBreakerResetTime) {
-        GroqProvider.isCircuitBroken = false;
-        GroqProvider.consecutive429s = 0;
+    if (this.state.isCircuitBroken) {
+      if (Date.now() > this.state.circuitBreakerResetTime) {
+        this.state.isCircuitBroken = false;
+        this.state.consecutive429s = 0;
         console.log(`${TAG()} 🔌 Circuit breaker reset. Retrying cloud model...`);
       } else {
-        const remainingSec = Math.ceil((GroqProvider.circuitBreakerResetTime - Date.now()) / 1000);
+        const remainingSec = Math.ceil((this.state.circuitBreakerResetTime - Date.now()) / 1000);
         throw new Error(`${PROVIDER_LABEL()} API rate-limited (circuit broken, retrying in ${remainingSec}s)`);
       }
     }
   }
 
   private handle429Success(): void {
-    GroqProvider.consecutive429s = 0;
-    GroqProvider.isCircuitBroken = false;
+    this.state.consecutive429s = 0;
+    this.state.isCircuitBroken = false;
   }
 
   private handle429Failure(): void {
-    GroqProvider.consecutive429s++;
-    if (GroqProvider.consecutive429s >= 2) {
-      GroqProvider.isCircuitBroken = true;
-      GroqProvider.circuitBreakerResetTime = Date.now() + 60000; // Break for 60 seconds
+    this.state.consecutive429s++;
+    if (this.state.consecutive429s >= 2) {
+      this.state.isCircuitBroken = true;
+      this.state.circuitBreakerResetTime = Date.now() + 60000; // Break for 60 seconds
       console.warn(`${TAG()} 🔌 Circuit broken due to repeated 429s. Cloud requests suspended for 60s.`);
     }
   }
@@ -227,14 +282,14 @@ export class GroqProvider implements ILLMProvider {
 
     // Phase 7: Check response cache for non-streaming identical requests
     const cacheKey = GroqProvider.hashRequest(request);
-    const cached = GroqProvider.responseCache.get(cacheKey);
+    const cached = this.state.responseCache.get(cacheKey);
     if (cached && !request.signal?.aborted) {
       console.log(`${TAG()} ⚡ Cache hit (${cacheKey}) — skipping API call`);
       return cached;
     }
 
     // Phase 7: In-flight dedup — if an identical request is already pending, await it
-    const existing = GroqProvider.inFlight.get(cacheKey);
+    const existing = this.state.inFlight.get(cacheKey);
     if (existing) {
       console.log(`${TAG()} 🔄 Deduped in-flight request (${cacheKey})`);
       return GroqProvider.follow(existing, request.signal);
@@ -243,10 +298,10 @@ export class GroqProvider implements ILLMProvider {
     const shared = { controller: new AbortController(), waiting: 0, promise: undefined as unknown as Promise<ILLMResponse> };
     shared.promise = this._chatInternal({ ...request, signal: shared.controller.signal }, cacheKey);
     shared.promise.then(() => noteOk(), (err) => noteFail(err));
-    GroqProvider.inFlight.set(cacheKey, shared);
+    this.state.inFlight.set(cacheKey, shared);
     // `.finally()` would return a second promise that rejects with nobody
     // listening — an unhandled rejection on every failed call.
-    const clear = () => { if (GroqProvider.inFlight.get(cacheKey) === shared) GroqProvider.inFlight.delete(cacheKey); };
+    const clear = () => { if (this.state.inFlight.get(cacheKey) === shared) this.state.inFlight.delete(cacheKey); };
     shared.promise.then(clear, clear);
     return GroqProvider.follow(shared, request.signal);
   }
@@ -310,7 +365,7 @@ export class GroqProvider implements ILLMProvider {
     const MAX_ATTEMPTS = LLM_MAX_ATTEMPTS;
     let lastError: Error | null = null;
     const fastModel = sanitizeModel(llmConfig.fastModel);
-    let currentModel = GroqProvider.startModel(sanitizeModel(request.model || llmConfig.model), fastModel);
+    let currentModel = this.startModel(sanitizeModel(request.model || llmConfig.model), fastModel, request.exactModel === true);
     let usedFastModelFor429 = false;
     // Phase 7: Cap planning tokens at 1024 to reduce queue time
     const maxTokens = request.max_tokens ?? Math.min(llmConfig.maxTokens ?? 4096, 1024);
@@ -337,8 +392,8 @@ export class GroqProvider implements ILLMProvider {
         this.handle429Failure();
         const detail = await readErrorText(response);
         lastError = new LLMHttpError(429, `${PROVIDER_LABEL()} rate-limited (429): ${detail}`);
-        GroqProvider.noteLongRateLimit(currentModel, detail);
-        if (usedFastModelFor429 || currentModel === fastModel) throw lastError;
+        this.noteLongRateLimit(currentModel, detail);
+        if (request.exactModel || usedFastModelFor429 || currentModel === fastModel) throw lastError;
         console.warn(`${TAG()} Rate limited (429) on ${currentModel}; trying the fast model ${fastModel} once. ${detail}`);
         currentModel = fastModel;
         usedFastModelFor429 = true;
@@ -388,7 +443,7 @@ export class GroqProvider implements ILLMProvider {
         }));
         console.log(`${TAG()} 🔧 Model called ${toolCalls.length} tool(s): ${toolCalls.map(t => t.function.name).join(", ")}`);
         // Don't cache tool_call responses — they contain live call IDs
-        return { content: "", tool_calls: toolCalls, usage };
+        return { content: "", tool_calls: toolCalls, usage, ...(typeof data?.model === "string" && data.model ? { model: data.model } : {}) };
       }
 
       const content = message.content ?? "";
@@ -403,9 +458,10 @@ export class GroqProvider implements ILLMProvider {
         continue;
       }
 
-      const result: ILLMResponse = { content, usage };
+      // The model the server reports it used (never the requested one copied over).
+      const result: ILLMResponse = { content, usage, ...(typeof data?.model === "string" && data.model ? { model: data.model } : {}) };
       // Phase 7: Cache successful text responses for 60s
-      if (content) GroqProvider.responseCache.set(cacheKey, result);
+      if (content) this.state.responseCache.set(cacheKey, result);
       return result;
     }
 
@@ -426,7 +482,7 @@ export class GroqProvider implements ILLMProvider {
     this.checkCircuit();
 
     const fastModel = sanitizeModel(llmConfig.fastModel);
-    let currentModel = GroqProvider.startModel(sanitizeModel(request.model || llmConfig.model), fastModel);
+    let currentModel = this.startModel(sanitizeModel(request.model || llmConfig.model), fastModel, request.exactModel === true);
     let usedFastModelFor429 = false;
 
     const MAX_ATTEMPTS = LLM_MAX_ATTEMPTS;
@@ -452,8 +508,8 @@ export class GroqProvider implements ILLMProvider {
         this.handle429Failure();
         const detail = await readErrorText(res);
         lastError = new LLMHttpError(429, `${PROVIDER_LABEL()} rate-limited (429): ${detail}`);
-        GroqProvider.noteLongRateLimit(currentModel, detail);
-        if (usedFastModelFor429 || currentModel === fastModel) throw lastError;
+        this.noteLongRateLimit(currentModel, detail);
+        if (request.exactModel || usedFastModelFor429 || currentModel === fastModel) throw lastError;
         console.warn(`${TAG()} Streaming rate limited (429) on ${currentModel}; trying the fast model ${fastModel} once.`);
         currentModel = fastModel;
         usedFastModelFor429 = true;

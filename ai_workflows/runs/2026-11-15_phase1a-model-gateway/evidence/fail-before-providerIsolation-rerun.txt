@@ -1,0 +1,41 @@
+production code unchanged: yes
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=providerIsolationTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    providerIsolationTest                        860ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - providerIsolationTest: === Results: 9 passed, 10 failed ===
+        FAIL: B still sends and is answered (Gemini API rate-limited (circuit broken, retrying in 60s))
+        FAIL: the default client is not affected by A (Gemini API rate-limited (circuit broken, retrying in 60s))
+        FAIL: isolated clients do not share a response cache (Gemini API rate-limited (circuit broken, retrying in 60s))
+        FAIL: after two rate limits the provider is skipped (3 call(s) to it)
+        FAIL: after the open period one trial call goes through (4 call(s))
+        FAIL: …and a rate limit on the trial opens it again (5 call(s))
+        FAIL: the third call within a minute is not sent to the limited provider (3 call(s))
+        FAIL: …and is answered by failover (0 call(s))
+        FAIL: asked for explicitly, it is refused rather than sent
+        FAIL: …and the refusal reads as a rate limit, not an outage
+        …
+      [LLM usage] paced (default model) unspecified: ? in / ? out tokens, 0 ms
+      [LLM usage] paced (default model) unspecified: ? in / ? out tokens, 0 ms
+      [LLM usage] paced (default model) unspecified: ? in / ? out tokens, 0 ms
+        FAIL: the third call within a minute is not sent to the limited provider (3 call(s))
+        FAIL: …and is answered by failover (0 call(s))
+      [LLM usage] paced (default model) unspecified: ? in / ? out tokens, 0 ms
+        FAIL: asked for explicitly, it is refused rather than sent
+        FAIL: …and the refusal reads as a rate limit, not an outage
+      [LLM usage] unlimited (default model) unspecified: ? in / ? out tokens, 0 ms
+      [LLM usage] unlimited (default model) unspecified: ? in / ? out tokens, 0 ms
+      [LLM usage] unlimited (default model) unspecified: ? in / ? out tokens, 0 ms
+      [LLM usage] unlimited (default model) unspecified: ? in / ? out tokens, 0 ms
+      [LLM usage] unlimited (default model) unspecified: ? in / ? out tokens, 0 ms
+        PASS: without a setting there is no limit (5 call(s))
+      === Results: 9 passed, 10 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

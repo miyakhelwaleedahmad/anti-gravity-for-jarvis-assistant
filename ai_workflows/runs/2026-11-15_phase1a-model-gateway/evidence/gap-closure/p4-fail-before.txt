@@ -1,0 +1,41 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=independentQaTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    independentQaTest                            1441ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - independentQaTest: TypeError: r.qaIndependence is not a function
+        FAIL: QA and coding both on the default model: QA is FAILED (COMPLETED )
+        FAIL: …"independent QA unavailable … human review required"
+        FAIL: …recorded as a model failure (MODEL_UNAVAILABLE) (undefined)
+        FAIL: …and no model was asked (default:qa_agent)
+        FAIL: QA has its own setting (so required) on the same model name, other case and provider: FAILED (COMPLETED )
+        FAIL: …and no model was asked (qastrong:qa_agent)
+        FAIL: …labelled independent, with the model QA really used
+        FAIL: QA's reply reports coding's model: FAILED (COMPLETED )
+        FAIL: QA's reply reports no model: FAILED (unknown identity is not independence) (COMPLETED )
+        FAIL: …labelled, never "independent"
+        FAIL: QA's role text does not claim independence (Independently checks results, evidence and code changes: runs checks and tests, reviews diffs, reports defects. It cannot approve actions or change anything.)
+        …
+      --- Not required: QA runs, never labelled independent ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        PASS: explicitly not required: QA COMPLETED on the shared model (COMPLETED )
+        FAIL: …labelled, never "independent"
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        PASS: unset and QA without its own setting: QA runs as before (COMPLETED )
+        PASS: …and is not labelled independent
+        FAIL: QA's role text does not claim independence (Independently checks results, evidence and code changes: runs checks and tests, reviews diffs, reports defects. It cannot approve actions or change anything.)
+      --- N2. Every model an agent can be answered by ---
+      /home/user/anti-gravity-for-jarvis-assistant/tests/independentQaTest.ts:157
+        const a = r.qaIndependence({ JARVIS_MODEL_AGENT_QA_AGENT: 'openai:gpt-4o-mini' });
+                    ^
+      TypeError: r.qaIndependence is not a function
+          at <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/independentQaTest.ts:157:15)
+      Node.js v22.23.4
+ ELIFECYCLE  Test failed. See above for more details.

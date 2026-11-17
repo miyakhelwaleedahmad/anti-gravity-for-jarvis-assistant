@@ -335,7 +335,14 @@ export interface ChildResult {
   data?: Record<string, unknown>;
   /** True when a budget, timeout or cancellation cut the work short. */
   truncated?: boolean;
-  error?: { code: string; message: string };
+  /**
+   * code: AGENT_ERROR, MODEL_UNAVAILABLE, MODEL_IDENTITY_UNCONFIRMED,
+   * BUDGET_EXCEEDED, … budget: which budget ran out, with BUDGET_EXCEEDED
+   * ("toolCalls" is a tool budget, never a model failure; owner, 2026-11-16).
+   * causes: every distinct cause when the parts of a split request failed for
+   * more than one (review LR-2); code is the one recovery acts on first.
+   */
+  error?: { code: string; message: string; budget?: 'llmCalls' | 'toolCalls' | 'tokens'; causes?: { code: string; budget?: 'llmCalls' | 'toolCalls' | 'tokens' }[] };
   usage: ResourceUsage;
   durationMs: number;
 }

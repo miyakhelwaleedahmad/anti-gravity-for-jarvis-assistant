@@ -1,0 +1,17 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTest,openAppSmokeTest,latencySmokeTest,deterministicCommandRouteTest
+
+
+=== JARVIS test suite — 6 file(s) ===
+
+  PASS    deterministicCommandRouteTest                1303ms
+  PASS    interruptGatingTest                          369ms
+  PASS    latencySmokeTest                             1034ms
+  PASS    nodeBridgeSingletonTest                      449ms
+  PASS    openAppSmokeTest                             418ms
+  PASS    voiceRouteMockTest                           1319ms
+
+=== 6 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

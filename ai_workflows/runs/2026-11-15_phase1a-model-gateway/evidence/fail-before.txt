@@ -1,0 +1,130 @@
+production code unchanged: yes
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=modelRoleRoutingTest,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest
+
+
+=== JARVIS test suite — 4 file(s) ===
+
+  FAIL    modelRoleRoutingTest                         9826ms
+  FAIL    providerCapabilitiesTest                     761ms
+  FAIL    providerIsolationTest                        718ms
+  FAIL    usageLedgerTest                              1365ms
+
+=== 0 passed · 4 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - modelRoleRoutingTest: === Results: 13 passed, 19 failed ===
+        FAIL: chat(planning) reaches the configured provider (primary)
+        FAIL: …with the configured model (own-model)
+        FAIL: …and the usage record says so ({"category":"planning","provider":"primary","model":"own-model","latencyMs":0,"ok":true,"fallbackUsed":false,"streamed":false,"promptTokens":3,"completionTokens":2,"at":"2026-11-15T07:56:03.060Z"})
+        FAIL: streamChat(conversation) streams from a named provider (primary streamed / primary:own-model)
+        FAIL: …recorded as streamed by that provider ({"category":"conversation","provider":"primary","model":"own-model","latencyMs":0,"ok":true,"fallbackUsed":false,"streamed":true,"promptTokens":null,"completionTokens":null,"at":"2026-11-15T07:56:03.061Z"})
+        FAIL: a non-strict route that fails is answered by the default provider ( / primary)
+        FAIL: …with the request's own model
+        FAIL: …recorded as a fallback ({"category":"conversation","provider":"primary","model":"own-model","latencyMs":0,"ok":true,"fallbackUsed":false,"streamed":false,"promptTokens":3,"completionTokens":2,"at":"2026-11-15T07:56:03.061Z"})
+        FAIL: a strict route (review) fails as itself (answered)
+        FAIL: …the default provider is never asked (primary)
+        FAIL: a bare model name keeps the default provider and sends that model (primary:own-model)
+        FAIL: an explicit token cap is applied (undefined)
+        FAIL: coding_agent's call reaches its own route (default:undefined:undefined,default:undefined:undefined)
+        FAIL: qa_agent's call reaches its own route (default:undefined:undefined,default:undefined:undefined)
+        FAIL: neither reaches the default provider (default,default)
+        FAIL: the usage records carry the agent's role ([null,null])
+        FAIL: agentIndependence() exists
+        FAIL: …and it reached the configured planning provider and model (default:qwen-2.5-32b)
+        FAIL: a background call to the provider the conversation uses has not been sent yet (shared)
+        …
+      --- 7. A background call waits only for a provider the conversation uses ---
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+        FAIL: a background call to the provider the conversation uses has not been sent yet (shared)
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: …and is sent once the conversation ends
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: a background call to a provider the conversation does not use is not held (1 ms)
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: a foreground call is never held (0 ms)
+      === Results: 13 passed, 19 failed ===
+  - providerCapabilitiesTest: FAIL: …with the reason
+        FAIL: Claude adapter declares every capability
+        FAIL: …image input is false (the adapter does not translate images yet)
+        FAIL: …it streams, calls tools and has no breaker of its own
+        FAIL: Gemini/Groq client declares every capability
+        FAIL: …with its own breaker and no image input claimed
+        FAIL: OpenAI-compatible fallback declares every capability
+        FAIL: …and does not claim streaming (it has no streamChat)
+        FAIL: no adapter claims web search, structured output or audio (none implements them)
+        FAIL: a provider without image input is not called (1 call(s))
+        FAIL: …and the request fails with the reason (answered)
+        FAIL: failover skips it and reaches a provider that takes images (textOnly answered)
+        FAIL: refused before sending (answered)
+        FAIL: …a request without tools still goes
+        FAIL: an image request to Claude is refused before the API is called (answered: sent [{"role":"user","content":"What is in this picture?"}])
+        FAIL: …with the reason
+        …
+        PASS: a text request still goes to the first provider (textOnly answered)
+      --- 3. Nothing declared, nothing enforced ---
+      [LLM usage] plain (default model) unspecified: ? in / ? out tokens, 0 ms
+      [LLM usage] plain (default model) unspecified: ? in / ? out tokens, 0 ms
+        PASS: a provider without capabilities() still gets images and tools (unknown is not "no") (2 call(s))
+      --- 4. Tools to a provider without tool calling ---
+      [LLM usage] noTools (default model) unspecified: ? in / ? out tokens, 0 ms
+        FAIL: refused before sending (answered)
+      [LLM usage] noTools (default model) unspecified: ? in / ? out tokens, 0 ms
+      --- 5. The real Claude adapter is never handed an image ---
+        FAIL: …a request without tools still goes
+      [LLM usage] anthropic claude-opus-5-5 coding: 1 in / 1 out tokens, 1 ms
+      === Results: 2 passed, 15 failed ===
+        FAIL: an image request to Claude is refused before the API is called (answered: sent [{"role":"user","content":"What is in this picture?"}])
+        FAIL: …with the reason
+  - providerIsolationTest: Error: Gemini API rate-limited (circuit broken, retrying in 60s)
+        FAIL: B still sends and is answered (Gemini API rate-limited (circuit broken, retrying in 60s))
+        FAIL: the default client is not affected by A (Gemini API rate-limited (circuit broken, retrying in 60s))
+        …
+      === One provider's rate limits do not stop another (Phase 1A) ===
+      --- 1. Isolated clients ---
+      [LLM:gemini] Rate limited (429) on gemini-3.5-flash; trying the fast model gemini-3.5-flash-lite once. quota exceeded
+      [LLM:gemini] 🔌 Circuit broken due to repeated 429s. Cloud requests suspended for 60s.
+        PASS: A's breaker opened after its two rate limits (0 request(s))
+        FAIL: B still sends and is answered (Gemini API rate-limited (circuit broken, retrying in 60s))
+        FAIL: the default client is not affected by A (Gemini API rate-limited (circuit broken, retrying in 60s))
+      /home/user/anti-gravity-for-jarvis-assistant/bridge/groqProvider.ts:206
+              throw new Error(`${PROVIDER_LABEL()} API rate-limited (circuit broken, retrying in ${remainingSec}s)`);
+                    ^
+      Error: Gemini API rate-limited (circuit broken, retrying in 60s)
+          at GroqProvider.checkCircuit (/home/user/anti-gravity-for-jarvis-assistant/bridge/groqProvider.ts:206:15)
+          at GroqProvider.chat (/home/user/anti-gravity-for-jarvis-assistant/bridge/groqProvider.ts:226:16)
+          at <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/providerIsolationTest.ts:96:11)
+      Node.js v22.23.4
+  - usageLedgerTest: === Results: 7 passed, 9 failed ===
+        FAIL: the ledger module exists
+        FAIL: one line was written (0 line(s) at /tmp/jarvis-usage-ledger-5rNJBY/data/usage/model_usage.jsonl)
+        FAIL: it is the usage record
+        FAIL: a new process on the same data root sees the earlier record ({"n":0,"summary":{}})
+        FAIL: …and counts it in the summary ({})
+        FAIL: the failed call is recorded
+        FAIL: UsageLedger can be given a size limit for this test (bridge/usageLedger.ts not found)
+        FAIL: malformed lines can be checked (bridge/usageLedger.ts not found)
+        FAIL: an unwritable ledger can be checked (bridge/usageLedger.ts not found)
+        …
+        FAIL: the failed call is recorded
+        FAIL: UsageLedger can be given a size limit for this test (bridge/usageLedger.ts not found)
+        FAIL: malformed lines can be checked (bridge/usageLedger.ts not found)
+        PASS: in memory too
+      --- 4. Rotation ---
+      --- 5. Malformed lines ---
+      --- 6. Turned off ---
+      [LLM usage] stub m-off planning: 7 in / 3 out tokens, 0 ms
+        PASS: JARVIS_USAGE_LEDGER=off writes nothing (0 → 0)
+        PASS: …the call is still recorded in memory
+      --- 7. A ledger that cannot be written ---
+        FAIL: an unwritable ledger can be checked (bridge/usageLedger.ts not found)
+      [LLM usage] stub m-blocked planning: 7 in / 3 out tokens, 0 ms
+        PASS: the model call still succeeds (secret reply about x)
+      === Results: 7 passed, 9 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

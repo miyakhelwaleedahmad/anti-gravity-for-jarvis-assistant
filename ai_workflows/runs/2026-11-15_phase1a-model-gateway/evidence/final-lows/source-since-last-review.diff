@@ -1,0 +1,225 @@
+--- reviewed/core/tools/memoryTool.ts
++++ final/core/tools/memoryTool.ts
+@@ -12,7 +12,8 @@
+ import { relationFact } from '../verifiers.js';
+ import { approvalGate } from '../../security/approvalGate.js';
+ import { buildApprovalRequest, voiceApprovalMaxRisk } from '../../security/approvalRequest.js';
+-import { getAgentIds, getAgentPath, getGoalContext, getRequestSource, getRequestText } from '../traceContext.js';
++import { getAgentIds, getAgentPath, getGoalContext, getRequestSource, getRequestText, getTraceId } from '../traceContext.js';
++import { stripMarkdown } from '../spokenText.js';
+ 
+ /**
+  * What the owner is shown must be what is stored (review M-1): the console
+@@ -25,15 +26,53 @@
+ /** Seconds the owner has to answer: inside the registry's 25 s limit for a low-risk call (review M-2). */
+ const ANSWER_SECONDS = 20;
+ 
+-/** Why a fact cannot be shown to the owner exactly as it would be stored; undefined when it can. */
++/**
++ * Characters the question would not show: line breaks, control and format
++ * characters, default-ignorable ones (variation selectors, Hangul fillers),
++ * and the blank Braille pattern (final review L-2). An emoji's own U+FE0F is
++ * allowed.
++ */
++const HIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]/u;
++
++/** Why a fact cannot be shown to the owner exactly as it would be stored; undefined when it can. Short: the reply quotes it. */
+ export function unshownFact(parts: string[], fact: string): string | undefined {
+-  if (parts.some((p) => /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(p))) return 'it contains a line break, a control character or an invisible character, which the question would not show';
+-  if (/\s{2,}/.test(fact)) return 'it contains a run of spaces, which the question would fold';
+-  if (fact.length > MAX_SHOWN_FACT) return `it is ${fact.length} characters long and the question shows only ${MAX_SHOWN_FACT}; keep it shorter`;
++  if (parts.some((p) => HIDDEN.test(p.replace(/(\p{Extended_Pictographic})\uFE0F/gu, '$1')))) return 'the fact has a line break, a control or an invisible character';
++  if (/\s{2,}/.test(fact)) return 'the fact has a run of spaces';
++  if (fact.length > MAX_SHOWN_FACT) return `the fact is ${fact.length} characters; keep it under ${MAX_SHOWN_FACT}`;
+   return undefined;
+ }
+ 
+ /**
++ * The owner's answer for a fact, kept for the task (an agent's root task) or
++ * the owner's request it was asked in (final review L-5, L-6): a "no" is not
++ * asked again, a "yes" is not asked again and the fact is stored once, and a
++ * store that failed after a "yes" is tried again without asking. Kept an hour
++ * at most, and for the latest 500 facts.
++ */
++const answers = new Map<string, { yes: boolean; stored: boolean; at: number }>();
++const ANSWER_KEPT_MS = 60 * 60_000;
++function answerKey(fact: string): string {
++  return `${getAgentIds()?.rootTaskId ?? getTraceId() ?? getRequestText()}\u0000${fact}`;
++}
++function keptAnswer(key: string): { yes: boolean; stored: boolean; at: number } | undefined {
++  const now = Date.now();
++  for (const [k, v] of answers) if (now - v.at > ANSWER_KEPT_MS) answers.delete(k);
++  return answers.get(key);
++}
++function keepAnswer(key: string, value: { yes: boolean; stored: boolean }): void {
++  answers.delete(key);
++  answers.set(key, { ...value, at: Date.now() });
++  while (answers.size > 500) answers.delete(answers.keys().next().value!);
++}
++
++/** The owner did not approve: reported as the registry reports its own denials (APPROVAL_DENIED; final review L-4). */
++const NOT_CONFIRMED = JSON.stringify({
++  success: false,
++  error: 'APPROVAL_DENIED',
++  message: 'save_relation cancelled by user - the fact was not confirmed, so nothing was stored.',
++});
++
++/**
+  * Unverified information never enters trusted long-term memory (owner,
+  * 2026-11-17, L-5; LR2_L5_PLAN.md §10): save_relation stores what the owner
+  * confirms. Inside a goal nothing is stored and nobody is asked: a goal's
+@@ -59,8 +98,10 @@
+   const request = getRequestText();
+   if (request === undefined) return true;
+   const source = getRequestSource() ?? 'cli';
+-  // By voice, a fact longer than what is spoken cannot be approved by voice: it needs a typed answer (review M-1).
+-  const risk = source === 'voice' && fact.length > MAX_SPOKEN_FACT ? Math.min(4, voiceApprovalMaxRisk() + 1) : 1;
++  // By voice, a fact that is not spoken exactly as stored (too long, or markdown that speech drops)
++  // cannot be approved by voice: it needs a typed answer (review M-1, final review L-1).
++  const unspoken = fact.length > MAX_SPOKEN_FACT || stripMarkdown(fact) !== fact;
++  const risk = source === 'voice' && unspoken ? Math.min(4, voiceApprovalMaxRisk() + 1) : 1;
+   const agent = getAgentPath();
+   const agentIds = getAgentIds();
+   // A full request names the tool and the asking agent, as the registry's own questions do (review L-3).
+@@ -71,7 +112,8 @@
+     request,
+     effect: 'Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.',
+     risk,
+-    reversible: 'yes',
++    // forget_memory removes the fact, not a graph edge (final review L-9; toolCatalog: partial).
++    reversible: 'partial',
+     source,
+     ...(agent ? { agent } : {}),
+     ...(agentIds ? { agentIds } : {}),
+@@ -122,21 +164,33 @@
+ 
+     if (signal?.aborted) throw new Error('ABORTED');
+     const fact = relationFact(args);
++    // A credential split across the parts (final review L-3).
++    if (hasSecret(fact)) return "Error: save_relation refused - I don't store passwords, keys or tokens, sir.";
+     // Refused by policy: the same call fails the same way, so it is not asked again (review M-1).
+     const unshown = unshownFact([entity1, relation, entity2], fact);
+     if (unshown) return `Error: save_relation refused by memory policy - ${unshown}; nothing was stored.`;
+-    // The owner's "no", or no answer, is final (review M-3): "cancelled by user", as the registry's own denial,
+-    // is not retried by the task graph or the repair step. The fact is not quoted, so its words cannot match
+-    // another repair rule ("JSON", "timeout", …).
+-    if (!(await ownerConfirms(fact))) return 'Error: save_relation cancelled by user - the fact was not confirmed, so nothing was stored.';
+-    // A "yes" that came after the call was stopped (its time limit, or its caller) stores nothing (review M-2).
+-    if (signal?.aborted) return 'Error: save_relation stopped by memory policy - your answer came after this call was stopped, so nothing was stored. Ask me again.';
++
++    // With no request in flight (code calling the registry) nothing is asked or kept, as before.
++    const key = getRequestText() === undefined ? undefined : answerKey(fact);
++    const kept = key === undefined ? { yes: true, stored: false, at: 0 } : keptAnswer(key);
++    if (kept?.stored) return `Already kept in long-term memory: "${fact}". Not stored again.`;
++    // The owner's "no", or no answer, is final (review M-3, final review L-4, L-5): reported as the owner's
++    // denial, which the task graph and the repair step do not retry, and not asked again in this task.
++    if (kept && !kept.yes) return NOT_CONFIRMED;
++    if (!kept) {
++      const yes = await ownerConfirms(fact);
++      // A request stopped while it was asked stores nothing, whatever the answer (review M-2, final review L-4).
++      if (signal?.aborted) return 'Error: save_relation stopped by memory policy - this request was stopped before your answer counted, so nothing was stored. Ask me again.';
++      keepAnswer(key!, { yes, stored: false });
++      if (!yes) return NOT_CONFIRMED;
++    }
+ 
+     try {
+       // Also a long-term fact: search_memory reads facts, not the graph, and
+       // with graph memory off (the default) the graph write does nothing — the
+       // relation was reported saved and could never be recalled.
+       await memoryManager.rememberFact(fact, 'relation', 6);
++      if (key !== undefined) keepAnswer(key, { yes: true, stored: true });
+       await graphMemory.saveRelation(entity1, relation, entity2);
+       const where = graphMemory.isAvailable() ? 'long-term memory and the graph' : 'long-term memory';
+       return `Saved relation: (${entity1})-[${relation.toUpperCase()}]->(${entity2}) in ${where}.`;
+--- reviewed/core/goalExecutor.ts
++++ final/core/goalExecutor.ts
+@@ -29,7 +29,6 @@
+ import type { ExecOutcome, ExecRequest, GoalTaskExecutor, PreviousRun } from './goalRuntime.js';
+ import type { AgentManager, RootResult } from './agents/agentManager.js';
+ import { A2AServer, InProcessA2AClient, userMessage } from './agents/a2a.js';
+-import { factToRemember } from './agents/behaviors/memory.js';
+ import type { A2ATask, ResourceUsage } from './agents/types.js';
+ 
+ const ZERO: ResourceUsage = { llmCalls: 0, toolCalls: 0, tokens: 0 };
+@@ -229,9 +228,18 @@
+   }
+ }
+ 
+-/** A goal step asked to keep a fact: "remember that …", or keep, store, save or add … in memory. */
++/** "Remember what …", "note which …": reading what is remembered, not keeping something (final review L-7). */
++const RECALL_STEP = /^\s*(?:please\s+)?(?:remember|note|recall)\s+(?:what|which|whether|how|if|when|where|who|why)\b/i;
++/** A step that starts by asking to keep something; "save time" is not one. */
++const KEEP_STEP = /^\s*(?:please\s+)?(?:remember|note|keep in mind|don'?t forget|memori[sz]e|record|make a note|store|save|add)\b(?!\s+time\b)/i;
++/** "Keep, store, save, add, record or put … in memory"; "update the profile / preferences / memory". */
++const IN_MEMORY_STEP = /\b(?:keep|store|save|add|record|put)\b[^.?!]*\b(?:in|to|into)\s+(?:long-term\s+)?memory\b/i;
++const PROFILE_STEP = /^\s*(?:please\s+)?update\b[^.?!]*\b(?:profile|preferences?|memory)\b/i;
++
++/** A goal step asked to keep a fact (English phrasing; final review L-7). */
+ function isRememberStep(description: string): boolean {
+-  return !!factToRemember(description) || /\b(keep|store|save|add)\b[^.?!]*\b(in|to|into)\s+(long-term\s+)?memory\b/i.test(description);
++  if (RECALL_STEP.test(description)) return false;
++  return KEEP_STEP.test(description) || IN_MEMORY_STEP.test(description) || PROFILE_STEP.test(description);
+ }
+ 
+ /**
+--- reviewed/.env.example
++++ final/.env.example
+@@ -142,13 +142,22 @@
+ #     result a later step builds on is marked "not verified" when it was not
+ #     verified. save_relation keeps only what you confirm: during a request
+ #     (yours, or an agent's task) it shows you the fact, naming the agent that
+-#     asks, and stores it only on "yes", given within 20 seconds; a "no" or no
+-#     answer is final. The question does not count against the tool's time
+-#     limit, and a request that is stopped withdraws it. A fact longer than 150 characters, or with a line
+-#     break, an invisible character or a run of spaces, is refused without
+-#     asking. By voice, a fact longer than about 56 characters needs a typed
+-#     answer. Inside a goal nothing is stored and nobody is asked; a goal step
+-#     that tried to keep a fact, or was asked to, waits for your review.
++#     asks, and stores it only on "yes", given within 20 seconds. Within that
++#     request or task you are asked once per fact: a "no" or no answer is not
++#     asked again, a "yes" stores the fact once, and a store that failed is
++#     tried again without asking. The question does not count against the
++#     tool's time limit, and a request that is stopped withdraws it and stores
++#     nothing. Refused without asking: a fact longer than 150 characters; one
++#     with a line break, a control character, a run of spaces, or a character
++#     the screen does not show (format and default-ignorable characters, the
++#     blank Braille pattern; an emoji's own variation selector is allowed);
++#     and a password, key or token, also when split across the parts. By
++#     voice, a fact longer than about 56 characters, or with markdown that
++#     speech leaves out, needs a typed answer. Inside a goal nothing is stored
++#     and nobody is asked; a goal step that tried to keep a fact, or was asked
++#     to in English words (remember, store, save, record, memorize, make a
++#     note, keep … in memory, update the profile), waits for your review.
++#     forget_memory removes a kept fact, not a graph-memory edge.
+ #   - A split request whose parts failed for different reasons keeps every
+ #     cause; recovery acts on the identity failure first, then a model that
+ #     did not answer, and waits for budget only when every part ran out of
+--- reviewed/tests/saveRelationAskOnceTest.ts
++++ final/tests/saveRelationAskOnceTest.ts
+@@ -5,7 +5,8 @@
+  * orchestrator, the owner is asked once whether to keep a fact. A "no" or no
+  * answer is final: the task graph does not ask the same question again.
+  * "Yes" stores it once. Based on the reviewer's probe r4.
+- * Stand-in memory store, planner model, speaker and owner; no network.
++ * Stand-in memory store, planner model and owner; the real speech path (no
++ * client is connected, so nothing is spoken); no network.
+  */
+ 
+ import * as fs from 'fs';
+@@ -74,7 +75,6 @@
+ const { registerAllTools } = await import('../core/tools/index.js');
+ const { orchestrator } = await import('../core/orchestrator.js');
+ { const { worldState } = await import('../core/worldState.js'); (worldState as any).refresh = async () => {}; }
+-const { installFakeTts } = await import('./fakeTts.js');
+ registerAllTools();
+ await memoryManager.init();
+ 
+@@ -87,8 +87,6 @@
+   return { content: '{"failureClass":"unknown","repairStrategy":"abort","context":""}' } as any;
+ };
+ modelRouter.streamChat = async function* () { yield 'Done, sir.'; } as any;
+-const spoken: string[] = [];
+-installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, spoken, true);
+ 
+ async function ask(answer: 'no' | 'timeout' | 'yes') {
+   mode = answer;

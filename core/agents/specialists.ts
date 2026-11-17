@@ -107,7 +107,7 @@ const verificationSpecialist: AgentBehavior = {
   run(ctx) {
     return ctx.input['verify']
       ? verifyBehaviorRun(ctx)
-      : loop('You are the Verification, Security & Reliability Agent: you check other agents\' results and the project\'s tests independently and report defects; you never change anything.', QA_RULES, 'test_runner_worker').run(ctx);
+      : loop('You are the Verification, Security & Reliability Agent: you check other agents\' results and the project\'s tests separately and report defects; you never change anything.', QA_RULES, 'test_runner_worker').run(ctx);
   },
 };
 
@@ -168,7 +168,7 @@ export const SPECIALIST_ROLES: AgentRoleDefinition[] = [
   }),
   specialist({
     role: 'qa_agent', name: 'Verification, Security & Reliability Agent',
-    description: 'Independently checks results, evidence and code changes: runs checks and tests, reviews diffs, reports defects. '
+    description: 'Checks results, evidence and code changes separately: runs checks and tests, reviews diffs, reports defects. '
       + 'It cannot approve actions or change anything.',
     capabilities: ['verification', 'testing', 'qa', 'diagnosis', 'security_review'],
     supportedTaskTypes: ['verify', 'run_tests', 'diagnose', 'review'],

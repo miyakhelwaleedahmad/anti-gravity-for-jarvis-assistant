@@ -644,7 +644,9 @@ export class GoalRuntime extends EventEmitter {
     return [
       `Goal: ${g.objective ?? g.description}`,
       g.constraints?.length ? `Constraints: ${g.constraints.join('; ')}` : '',
-      deps.length ? `Results it builds on:\n${deps.map((d) => `- ${d.title}: ${d.result!.summary.slice(0, 400)}`).join('\n')}` : '',
+      // A result that was not verified is marked, so it is not stored as a fact (owner, 2026-11-17, L-5b).
+      // The label comes first, so cutting the context never cuts it (review L-B).
+      deps.length ? `Results it builds on:\n${deps.map((d) => `- ${d.title}${d.result!.verification?.verdict === 'verified' ? '' : ' (not verified; do not store it as a fact)'}: ${d.result!.summary.slice(0, 400)}`).join('\n')}` : '',
       t.checkpoint?.partial?.length ? `An earlier attempt found (not verified; check before relying on it):\n${t.checkpoint.partial.slice(0, 5).map((p) => `- ${p}`).join('\n')}` : '',
       advice.length ? `Change from the last attempt: ${advice.join('; ')}` : '',
       lessons.length ? `Lessons from earlier goals: ${lessons.map((l) => l.text).join('; ')}` : '',

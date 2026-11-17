@@ -34,13 +34,28 @@ export interface FailureInfo {
   tool?: string;
   /** The thrown value, when there was one: its stack gives the source location. */
   error?: unknown;
+  /** Every distinct cause, when parts of the work failed for more than one (review LR-2); code leads. */
+  causes?: string[];
 }
+
+/**
+ * Codes that name a condition of their own (owner, 2026-11-16): each maps to
+ * one class, before the message patterns, and is part of the failure's
+ * signature, so the four never match each other.
+ */
+const CODE_CLASS: Readonly<Record<string, FailureClass>> = {
+  MODEL_UNAVAILABLE: 'dependency',
+  MODEL_IDENTITY_UNCONFIRMED: 'configuration',
+  TOOL_BUDGET_EXHAUSTED: 'budget',
+  VERIFICATION_INCONCLUSIVE: 'inconclusive',
+};
 
 /** The shared signature (core/failureSignature.ts) of a goal-task failure. */
 export function goalFailureSignature(f: FailureInfo): FailureSignature {
+  const others = (f.causes ?? []).filter((c) => c !== f.code).sort();
   return failureSignature({
     component: f.tool ? `tool:${f.tool}` : 'goal_task',
-    message: withErrorName(f.message, f.error),
+    message: `${f.code && CODE_CLASS[f.code] ? `${f.code}${others.length ? ` (+${others.join('+')})` : ''}: ` : ''}${withErrorName(f.message, f.error)}`,
     ...(f.tool ? { tool: f.tool } : {}),
     ...(f.code ? { code: f.code } : {}),
   });
@@ -64,6 +79,10 @@ export function classifyFailure(f: FailureInfo): FailureClass {
   // An action that may have happened (B4): before the budget and transient
   // patterns ("ran past its 15 s budget", TIMEOUT), which would schedule it again.
   if (isOutcomeUnknown(text)) return 'outcome_unknown';
+  // Several causes: a model cause decides the class, never a budget next to it (review LR-2).
+  const modelCause = f.causes?.includes('MODEL_IDENTITY_UNCONFIRMED') ? 'MODEL_IDENTITY_UNCONFIRMED' : f.causes?.includes('MODEL_UNAVAILABLE') ? 'MODEL_UNAVAILABLE' : undefined;
+  if (modelCause) return CODE_CLASS[modelCause]!;
+  if (f.code && CODE_CLASS[f.code]) return CODE_CLASS[f.code]!;
   for (const [re, cls] of PATTERNS) if (re.test(text)) return cls;
   return 'unrecoverable';
 }
@@ -115,8 +134,18 @@ export interface DecideInput {
 
 /** Bounded, explicit recovery for one failed attempt, with the failure's signature. */
 export function decideRecovery(input: DecideInput): RecoveryDecision {
-  return { ...decide(input), signature: goalFailureSignature(input.failure) };
+  const d = decide(input);
+  // The other causes stay on the record, so what recovery acts on never hides them (review LR-2).
+  const also = (input.failure.causes ?? []).filter((c) => c !== input.failure.code).map((c) => CAUSE_TEXT[c] ?? c);
+  return { ...d, ...(also.length ? { action: `${d.action}; also: ${also.join('; ')}` } : {}), signature: goalFailureSignature(input.failure) };
 }
+
+const CAUSE_TEXT: Readonly<Record<string, string>> = {
+  MODEL_UNAVAILABLE: 'a part\'s model did not answer',
+  MODEL_IDENTITY_UNCONFIRMED: 'the provider did not confirm the configured model',
+  TOOL_BUDGET_EXHAUSTED: 'the agents\' tool budget ran out (JARVIS_AGENT_BUDGET_TOOL_CALLS)',
+  BUDGET_EXCEEDED: 'an agent\'s model-call budget ran out',
+};
 
 function decide({ task, failure, cls, toolCalls, now, retry = DEFAULT_RETRY }: DecideInput): RecoveryDecision {
   const attemptsLeft = task.attempts < task.maxAttempts;
@@ -167,6 +196,17 @@ function decide({ task, failure, cls, toolCalls, now, retry = DEFAULT_RETRY }: D
         };
       }
       return { taskStatus: 'ready', goal: 'continue', countsAsAttempt: false, action: 'will run again (it was interrupted and changes nothing outside JARVIS)' };
+    case 'configuration':
+      return {
+        taskStatus: 'blocked', goal: 'block', countsAsAttempt: false,
+        action: `blocked: ${msg}; check the model setting (the provider did not confirm the configured model)`,
+        advice: 'the configured model could not be confirmed; the owner must correct the model setting',
+      };
+    case 'inconclusive':
+      return {
+        taskStatus: 'needs_review', goal: 'block', goalWaitingFor: 'review', countsAsAttempt: false,
+        action: `needs review: ${msg}`,
+      };
     case 'invalid_plan':
       return {
         taskStatus: 'failed', goal: 'replan', countsAsAttempt: true,

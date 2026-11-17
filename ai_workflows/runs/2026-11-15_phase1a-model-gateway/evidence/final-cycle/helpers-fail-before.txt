@@ -1,0 +1,41 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=strictHelperRoutingTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    strictHelperRoutingTest                      1357ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - strictHelperRoutingTest: === Results: 11 passed, 11 failed ===
+        FAIL: every helper asked the configured coding model (default:code_analysis_worker,default:code_analysis_worker)
+        FAIL: …and never the planning/default model (default:code_analysis_worker,default:code_analysis_worker)
+        FAIL: the parent coding task is FAILED, not COMPLETED (COMPLETED )
+        FAIL: …the default/planning model was never asked (default:code_analysis_worker,default:code_analysis_worker)
+        FAIL: …and the error names the failed helpers
+        FAIL: the parent coding task is FAILED (COMPLETED )
+        FAIL: QA helpers asked QA's configured model (default:test_runner_worker,default:test_runner_worker)
+        FAIL: …never the default model (default:test_runner_worker,default:test_runner_worker)
+        FAIL: QA with a failing configured model and helpers is FAILED (COMPLETED )
+        FAIL: …the default model was never asked (default:test_runner_worker,default:test_runner_worker)
+        FAIL: a helper call that inherits a configured coding route goes to the coding model (a:own)
+        …
+        FAIL: …never the default model (default:test_runner_worker,default:test_runner_worker)
+        PASS: QA is COMPLETED, answered by its model (COMPLETED )
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        FAIL: QA with a failing configured model and helpers is FAILED (COMPLETED )
+        FAIL: …the default model was never asked (default:test_runner_worker,default:test_runner_worker)
+        PASS: …no keyword-rule tool ran
+      --- 6. The router honours an inherited route only when it is configured and strict ---
+      [LLM usage] a own planning: ? in / ? out tokens, 0 ms
+        FAIL: a helper call that inherits a configured coding route goes to the coding model (a:own)
+      [LLM usage] a own planning: ? in / ? out tokens, 0 ms
+        PASS: an inherited route that is not strict is ignored (the helper's own route) (a:own)
+      [LLM usage] a own planning: ? in / ? out tokens, 1 ms
+        PASS: with nothing configured, the inherited name changes nothing (a:own)
+      === Results: 11 passed, 11 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

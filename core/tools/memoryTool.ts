@@ -10,6 +10,116 @@ import { graphMemory } from '../../memory/graphMemory.js';
 import { factOrigin, memoryManager } from '../../memory/memoryManager.js';
 import { hasSecret } from '../../security/redactor.js';
 import { relationFact } from '../verifiers.js';
+import { approvalGate } from '../../security/approvalGate.js';
+import { buildApprovalRequest, voiceApprovalMaxRisk } from '../../security/approvalRequest.js';
+import { getAgentIds, getAgentPath, getGoalContext, getRequestSource, getRequestText, getTraceId } from '../traceContext.js';
+import { stripMarkdown } from '../spokenText.js';
+
+/**
+ * What the owner is shown must be what is stored (review M-1): the console
+ * shows a question's target up to 160 characters on one line, and voice says
+ * about 60. Longer facts, or facts whose text the screen would fold or hide,
+ * are not asked about at all.
+ */
+const MAX_SHOWN_FACT = 150;
+const MAX_SPOKEN_FACT = 56;
+/** Seconds the owner has to answer: inside the registry's 25 s limit for a low-risk call (review M-2). */
+const ANSWER_SECONDS = 20;
+
+/**
+ * Characters the question would not show: line breaks, control and format
+ * characters, default-ignorable ones (variation selectors, Hangul fillers),
+ * and the blank Braille pattern (final review L-2). An emoji's own U+FE0F is
+ * allowed.
+ */
+const HIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]/u;
+
+/** Why a fact cannot be shown to the owner exactly as it would be stored; undefined when it can. Short: the reply quotes it. */
+export function unshownFact(parts: string[], fact: string): string | undefined {
+  if (parts.some((p) => HIDDEN.test(p.replace(/(\p{Extended_Pictographic})\uFE0F/gu, '$1')))) return 'the fact has a line break, a control or an invisible character';
+  if (/\s{2,}/.test(fact)) return 'the fact has a run of spaces';
+  if (fact.length > MAX_SHOWN_FACT) return `the fact is ${fact.length} characters; keep it under ${MAX_SHOWN_FACT}`;
+  return undefined;
+}
+
+/**
+ * The owner's answer for a fact, kept for the task (an agent's root task) or
+ * the owner's request it was asked in (final review L-5, L-6): a "no" is not
+ * asked again, a "yes" is not asked again and the fact is stored once, and a
+ * store that failed after a "yes" is tried again without asking. Kept an hour
+ * at most, and for the latest 500 facts.
+ */
+const answers = new Map<string, { yes: boolean; stored: boolean; at: number }>();
+const ANSWER_KEPT_MS = 60 * 60_000;
+function answerKey(fact: string): string {
+  return `${getAgentIds()?.rootTaskId ?? getTraceId() ?? getRequestText()}\u0000${fact}`;
+}
+function keptAnswer(key: string): { yes: boolean; stored: boolean; at: number } | undefined {
+  const now = Date.now();
+  for (const [k, v] of answers) if (now - v.at > ANSWER_KEPT_MS) answers.delete(k);
+  return answers.get(key);
+}
+function keepAnswer(key: string, value: { yes: boolean; stored: boolean }): void {
+  answers.delete(key);
+  answers.set(key, { ...value, at: Date.now() });
+  while (answers.size > 500) answers.delete(answers.keys().next().value!);
+}
+
+/** The owner did not approve: reported as the registry reports its own denials (APPROVAL_DENIED; final review L-4). */
+const NOT_CONFIRMED = JSON.stringify({
+  success: false,
+  error: 'APPROVAL_DENIED',
+  message: 'save_relation cancelled by user - the fact was not confirmed, so nothing was stored.',
+});
+
+/**
+ * Unverified information never enters trusted long-term memory (owner,
+ * 2026-11-17, L-5; LR2_L5_PLAN.md §10): save_relation stores what the owner
+ * confirms. Inside a goal nothing is stored and nobody is asked: a goal's
+ * facts come from other agents' results, which are not verified, and the goal
+ * runs while the owner may be away. Undefined: the call may go on to ask.
+ */
+export function relationRefusedInGoal(): string | undefined {
+  const goal = getGoalContext();
+  return goal
+    ? `inside the goal "${goal.title.slice(0, 80)}" facts come from other agents' results, which are not verified, so nothing was stored `
+      + '(the result stays in the goal\'s record). Say the fact yourself to keep it'
+    : undefined;
+}
+
+/**
+ * During a request (the owner's, or an agent's root task), the owner confirms
+ * the exact fact, relation included, before it is kept: a fact the model chose,
+ * took from an agent's result, a page or a document is never stored on its own
+ * (review M-1, M-2). With no request in flight (code calling the registry) it
+ * is not asked. False: not confirmed.
+ */
+async function ownerConfirms(fact: string): Promise<boolean> {
+  const request = getRequestText();
+  if (request === undefined) return true;
+  const source = getRequestSource() ?? 'cli';
+  // By voice, a fact that is not spoken exactly as stored (too long, or markdown that speech drops)
+  // cannot be approved by voice: it needs a typed answer (review M-1, final review L-1).
+  const unspoken = fact.length > MAX_SPOKEN_FACT || stripMarkdown(fact) !== fact;
+  const risk = source === 'voice' && unspoken ? Math.min(4, voiceApprovalMaxRisk() + 1) : 1;
+  const agent = getAgentPath();
+  const agentIds = getAgentIds();
+  // A full request names the tool and the asking agent, as the registry's own questions do (review L-3).
+  const question = buildApprovalRequest({
+    tool: 'save_relation',
+    title: 'Keep in long-term memory',
+    target: `"${fact}"`,
+    request,
+    effect: 'Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.',
+    risk,
+    // forget_memory removes the fact, not a graph edge (final review L-9; toolCatalog: partial).
+    reversible: 'partial',
+    source,
+    ...(agent ? { agent } : {}),
+    ...(agentIds ? { agentIds } : {}),
+  });
+  return approvalGate.requestApproval(question, '', undefined, undefined, ANSWER_SECONDS);
+}
 
 // ─── Save Graph Relation ──────────────────────────────────────────────────────
 
@@ -18,6 +128,7 @@ export const saveRelationTool: AgentTool = {
   description:
     'Use to save long-term semantic relationships between entities into graph memory (e.g., User, WORKS_ON, EcommerceApp). DO NOT use for temporary task state or web searching. Required parameters: entity1 (subject), relation (uppercase relationship), and entity2 (object). Returns confirmation string.',
   riskLevel: 'low',
+  asksOwner: true,
   inputSchema: {
     entity1: {
       type: 'string',
@@ -48,14 +159,38 @@ export const saveRelationTool: AgentTool = {
     if ([entity1, relation, entity2].some(hasSecret)) {
       return "Error: save_relation refused - I don't store passwords, keys or tokens, sir.";
     }
+    const inGoal = relationRefusedInGoal();
+    if (inGoal) return `Error: save_relation refused - ${inGoal}.`;
 
     if (signal?.aborted) throw new Error('ABORTED');
+    const fact = relationFact(args);
+    // A credential split across the parts (final review L-3).
+    if (hasSecret(fact)) return "Error: save_relation refused - I don't store passwords, keys or tokens, sir.";
+    // Refused by policy: the same call fails the same way, so it is not asked again (review M-1).
+    const unshown = unshownFact([entity1, relation, entity2], fact);
+    if (unshown) return `Error: save_relation refused by memory policy - ${unshown}; nothing was stored.`;
+
+    // With no request in flight (code calling the registry) nothing is asked or kept, as before.
+    const key = getRequestText() === undefined ? undefined : answerKey(fact);
+    const kept = key === undefined ? { yes: true, stored: false, at: 0 } : keptAnswer(key);
+    if (kept?.stored) return `Already kept in long-term memory: "${fact}". Not stored again.`;
+    // The owner's "no", or no answer, is final (review M-3, final review L-4, L-5): reported as the owner's
+    // denial, which the task graph and the repair step do not retry, and not asked again in this task.
+    if (kept && !kept.yes) return NOT_CONFIRMED;
+    if (!kept) {
+      const yes = await ownerConfirms(fact);
+      // A request stopped while it was asked stores nothing, whatever the answer (review M-2, final review L-4).
+      if (signal?.aborted) return 'Error: save_relation stopped by memory policy - this request was stopped before your answer counted, so nothing was stored. Ask me again.';
+      keepAnswer(key!, { yes, stored: false });
+      if (!yes) return NOT_CONFIRMED;
+    }
 
     try {
       // Also a long-term fact: search_memory reads facts, not the graph, and
       // with graph memory off (the default) the graph write does nothing — the
       // relation was reported saved and could never be recalled.
-      await memoryManager.rememberFact(relationFact(args), 'relation', 6);
+      await memoryManager.rememberFact(fact, 'relation', 6);
+      if (key !== undefined) keepAnswer(key, { yes: true, stored: true });
       await graphMemory.saveRelation(entity1, relation, entity2);
       const where = graphMemory.isAvailable() ? 'long-term memory and the graph' : 'long-term memory';
       return `Saved relation: (${entity1})-[${relation.toUpperCase()}]->(${entity2}) in ${where}.`;

@@ -1,0 +1,36 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=verificationInconclusiveTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    verificationInconclusiveTest                 1283ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - verificationInconclusiveTest: FAIL: …an unverified result needs review, never met
+        FAIL: re-read could not run: never "verified" (verified)
+        FAIL: …the verdict is "inconclusive" (verified)
+        FAIL: …the re-read check is not counted as passed ({"name":"source re-read","ok":true,"note":"not checked: could not re-read acme/fast-tool: GitHub API answered 503 Service Unavailable for repos/acme/fast-tool (request id gh-0123456789abcdef-0123456789abcdef-0123456789abcdef-0123456789abcdef)"})
+        FAIL: …the summary does not say "Verified" (Verified: 8 checks passed.)
+        FAIL: …an inconclusive verification needs review, never met
+        FAIL: …an unverified result needs review, never met
+        …
+      [ToolRegistry] 53 built-in tools registered; skills load next.
+      [ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, b
+      === A verification step that could not run is not a pass ===
+        PASS: re-read succeeds and matches: verified ({"name":"source re-read","ok":true,"note":"acme/fast-tool exists, licence MIT; matches the answer"})
+        PASS: re-read contradicts the answer: issues (unchanged) ({"name":"source re-read","ok":false,"note":"acme/fast-tool exists, licence MIT; the answer says GPL-3.0"})
+        FAIL: re-read could not run: never "verified" (verified)
+        FAIL: …the verdict is "inconclusive" (verified)
+        FAIL: …the re-read check is not counted as passed ({"name":"source re-read","ok":true,"note":"not checked: could not re-read acme/fast-tool: GitHub API answered 503 Service Unavailable for repos/acme/fast-tool (request id gh-0123456789abcdef-0123456789abcdef-0123456789abcdef-0123456789abcdef)"})
+        FAIL: …the summary does not say "Verified" (Verified: 8 checks passed.)
+        PASS: …the original error is kept in full (not checked: could not re-read acme/fast-tool: GitHub API answered 503 Service Unavailable for repos/acme/fast-tool (request id gh-0123456789abcdef-0123456789abcdef-0123456789abcdef-0123456789abcdef))
+        PASS: goal criterion "verified": a verified result is met
+        PASS: …a result with issues is unmet
+      === Results: 5 passed, 6 failed ===
+        FAIL: …an inconclusive verification needs review, never met
+        FAIL: …an unverified result needs review, never met
+ ELIFECYCLE  Test failed. See above for more details.

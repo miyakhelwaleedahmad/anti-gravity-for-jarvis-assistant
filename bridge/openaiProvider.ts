@@ -16,7 +16,7 @@
  */
 
 import axios, { type AxiosInstance } from 'axios';
-import type { ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall } from './llmTypes.js';
+import type { ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall, ProviderCapabilities } from './llmTypes.js';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env['JARVIS_LLM_TIMEOUT_MS'] ?? 10_000);
 
@@ -37,6 +37,15 @@ export class OpenAICompatibleProvider implements ILLMProvider {
   isConfigured(): boolean {
     if (this.apiKey.trim()) return true;
     return this.baseURL !== 'https://api.openai.com/v1';
+  }
+
+  /** What this adapter passes through (bridge/llmTypes.ts): chat only, no stream, no images. */
+  capabilities(): ProviderCapabilities {
+    return {
+      streaming: false, toolCalling: true, structuredOutput: false, imageInput: false, audioInput: false,
+      audioOutput: false, webSearch: false, reportsUsage: true, reportsStreamUsage: false,
+      cancellation: true, ownBreaker: false,
+    };
   }
 
   private getClient(): AxiosInstance {
@@ -84,6 +93,8 @@ export class OpenAICompatibleProvider implements ILLMProvider {
 
     return {
       content: message.content ?? '',
+      // The model the endpoint reports it used (never the configured one copied over).
+      ...(typeof res.data?.model === 'string' && res.data.model ? { model: res.data.model } : {}),
       ...(toolCalls ? { tool_calls: toolCalls } : {}),
       ...(res.data?.usage
         ? {

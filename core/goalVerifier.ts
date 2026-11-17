@@ -92,10 +92,15 @@ export async function verifyCriteria(input: {
       case 'verified': {
         const checked = results.filter((r) => r.verification);
         const issues = checked.filter((r) => r.verification!.verdict === 'issues');
+        // Anything but "verified" or "issues" (inconclusive, unverified, not verified) is not a pass: it waits for review (owner, 2026-11-16).
+        const open = checked.filter((r) => r.verification!.verdict !== 'verified' && r.verification!.verdict !== 'issues');
         check = {
-          id: c.id, description: c.description, met: checked.length > 0 && !issues.length,
+          id: c.id, description: c.description,
+          ...(!checked.length || issues.length ? { met: false } : open.length ? {} : { met: true }),
           evidence: !checked.length ? 'no result was checked by the Verification agent'
-            : issues.length ? `the Verification agent found issues in ${issues.length} result(s)` : `${checked.length} result(s) verified`,
+            : issues.length ? `the Verification agent found issues in ${issues.length} result(s)`
+            : open.length ? `${open.length} result(s) not fully verified (${[...new Set(open.map((r) => r.verification!.verdict))].join(', ')}); waiting for your review`
+            : `${checked.length} result(s) verified`,
         };
         break;
       }

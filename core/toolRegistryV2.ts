@@ -145,6 +145,13 @@ export interface AgentTool {
   description: string;
   riskLevel: RiskLevel;
   /**
+   * The tool may ask the owner a question while it runs (approvalGate): it runs
+   * under the sandbox's pausable call budget even when its risk is low, so the
+   * question does not count against its time, and a stopped call withdraws it
+   * (review INDEPENDENT_REVIEW_SAVE_RELATION_CONFIRM.md M-2).
+   */
+  asksOwner?: boolean;
+  /**
    * Minimum permission level required to dispatch this tool (JARVIS-005).
    *
    * Enforced by `execute()` before any dispatch, as defence in depth — the
@@ -957,7 +964,7 @@ export class ToolRegistryV2 {
         try {
           // Phase 5: route through sandbox for medium/high risk tools
           let output: string;
-          if (currentTool.riskLevel === 'low') {
+          if (currentTool.riskLevel === 'low' && !currentTool.asksOwner) {
             output = await this._executeRaw(currentTool, args, externalSignal);
           } else {
             output = await toolExecutionSandbox.run(currentTool, args, externalSignal);

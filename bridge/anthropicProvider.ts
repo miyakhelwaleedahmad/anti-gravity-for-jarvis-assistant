@@ -31,7 +31,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { ILLMMessage, ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall } from './llmTypes.js';
+import type { ILLMMessage, ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall, ProviderCapabilities } from './llmTypes.js';
 import { llmStatus } from './llmStatus.js';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -108,6 +108,8 @@ export function fromAnthropicMessage(msg: Anthropic.Beta.BetaMessage): ILLMRespo
     content: text.join(''),
     ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
     usage: { promptTokens: input, completionTokens: output, totalTokens: input !== null && output !== null ? input + output : null },
+    // The model the API reports it used (a server-side fallback would show here).
+    ...(typeof msg.model === 'string' && msg.model ? { model: msg.model } : {}),
   };
 }
 
@@ -124,6 +126,8 @@ function describe(err: unknown): Error {
 export class AnthropicProvider implements ILLMProvider {
   private client: Anthropic | null = null;
   private checked = new Map<string, Promise<void>>();
+  /** The id the model list returned for each model name looked up (an alias's dated id). */
+  private canonical = new Map<string, string>();
   /** Token counts of the last finished stream (modelRouter records them). */
   lastStreamUsage: ILLMResponse['usage'] | null = null;
 
@@ -131,6 +135,20 @@ export class AnthropicProvider implements ILLMProvider {
 
   isConfigured(): boolean {
     return !!this.env['ANTHROPIC_API_KEY']?.trim() || !!this.factory;
+  }
+
+  /**
+   * What this adapter passes through today (bridge/llmTypes.ts). Images are
+   * not translated (textOf keeps text parts only), so image input is declared
+   * absent and the router refuses such a request instead of letting the
+   * image be dropped.
+   */
+  capabilities(): ProviderCapabilities {
+    return {
+      streaming: true, toolCalling: true, structuredOutput: false, imageInput: false, audioInput: false,
+      audioOutput: false, webSearch: false, reportsUsage: true, reportsStreamUsage: true,
+      cancellation: true, ownBreaker: false,
+    };
   }
 
   private api(): Anthropic {
@@ -144,7 +162,10 @@ export class AnthropicProvider implements ILLMProvider {
   validateModel(model: string): Promise<void> {
     let p = this.checked.get(model);
     if (!p) {
-      p = this.api().models.retrieve(model).then(() => undefined, (err) => {
+      p = this.api().models.retrieve(model).then((info) => {
+        const id = (info as { id?: unknown } | undefined)?.id;
+        if (typeof id === 'string' && id) this.canonical.set(model, id);
+      }, (err) => {
         this.checked.delete(model);
         throw err instanceof Anthropic.NotFoundError
           ? new Error(`The model "${model}" is not available to this Anthropic key; set another in JARVIS_MODEL_<CATEGORY>.`)
@@ -155,6 +176,16 @@ export class AnthropicProvider implements ILLMProvider {
     return p;
   }
 
+  /**
+   * The ids this provider treats as `requested`: the name itself and the id
+   * the model list returned for it (looked up before the first call). The
+   * router compares the model a reply reports against these on a strict route.
+   */
+  modelIdentities(requested: string): string[] {
+    const canonical = this.canonical.get(requested);
+    return canonical && canonical !== requested ? [requested, canonical] : [requested];
+  }
+
   /** The Messages API request for a JARVIS request (the same for chat and stream). */
   private async params(request: ILLMRequest) {
     const model = request.model;
@@ -162,7 +193,8 @@ export class AnthropicProvider implements ILLMProvider {
     await this.validateModel(model);
     const { system, messages } = toAnthropicMessages(request.messages, request.tool_choice === 'required');
     const tools = toAnthropicTools(request.tools);
-    const fallbacks = (this.env['JARVIS_ANTHROPIC_FALLBACKS'] ?? '').trim().toLowerCase() !== 'off';
+    // A strict route needs exactly this model: no server-side fallback models (owner, 2026-11-16).
+    const fallbacks = !request.exactModel && (this.env['JARVIS_ANTHROPIC_FALLBACKS'] ?? '').trim().toLowerCase() !== 'off';
     return {
       model,
       max_tokens: request.max_tokens ?? 16_000,

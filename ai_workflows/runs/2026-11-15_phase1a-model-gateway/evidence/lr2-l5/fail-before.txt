@@ -1,0 +1,109 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=mixedFailureCausesTest,unverifiedMemoryTest
+
+
+=== JARVIS test suite — 2 file(s) ===
+
+  FAIL    mixedFailureCausesTest                       3453ms
+  FAIL    unverifiedMemoryTest                         973ms
+
+=== 0 passed · 2 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - mixedFailureCausesTest: FAIL: the signature includes the causes, in any order (sig-8ec14dbf472a sig-8ec14dbf472a sig-8ec14dbf472a)
+        FAIL: QA: one part out of tool calls, one answered by rules (model down): not TOOL_BUDGET_EXHAUSTED (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+        FAIL: …recorded as the model not answering (MODEL_UNAVAILABLE, dependency) (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+        FAIL: …recovery does not wait for budget and does not give the budget as the reason (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+        FAIL: …both causes are kept in the goal failure
+        FAIL: …and in the agent task's error ({"code":"BUDGET_EXCEEDED"})
+        FAIL: …the recovery action still names the tool budget (waiting: the goal's budget is used up)
+        FAIL: strict QA: one helper out of tool calls, one helper's model down: MODEL_UNAVAILABLE, never waits for budget (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+        FAIL: …both causes kept
+        FAIL: …the tool budget is still recorded
+        FAIL: failureCauses and leadingCause exist
+        FAIL: classifyFailure never gives "budget" when a model cause is among the causes (budget)
+        FAIL: the signature includes the causes, in any order (sig-8ec14dbf472a sig-8ec14dbf472a sig-8ec14dbf472a)
+        …
+        PASS: the same mix in the other order: the same code and causes (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+      [LLM usage] qaprov qa-model planning: ? in / ? out tokens, 0 ms
+      [LLM usage] qaprov qa-model planning: ? in / ? out tokens, 0 ms, failed
+        FAIL: strict QA: one helper out of tool calls, one helper's model down: MODEL_UNAVAILABLE, never waits for budget (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+        FAIL: …both causes kept
+      --- Identity mixed with anything: blocked ---
+      [LLM usage] qaprov qa-model planning: ? in / ? out tokens, 0 ms
+      [LLM usage] qaprov qa-model planning: ? in / ? out tokens, 0 ms
+        PASS: strict QA: tool budget and identity: MODEL_IDENTITY_UNCONFIRMED, blocked (MODEL_IDENTITY_UNCONFIRMED [] → configuration → blocked/block: blocked: QA could not check every part: test_runner_worker-1 (test_runner_worker): failed — The toolCalls budget is used up (task task-5aa60)
+      --- The cause rules themselves ---
+      === Results: 5 passed, 12 failed ===
+        FAIL: …the tool budget is still recorded
+        FAIL: failureCauses and leadingCause exist
+        FAIL: classifyFailure never gives "budget" when a model cause is among the causes (budget)
+        FAIL: the signature includes the causes, in any order (sig-8ec14dbf472a sig-8ec14dbf472a sig-8ec14dbf472a)
+  - unverifiedMemoryTest: === Results: 7 passed, 10 failed ===
+        FAIL: research_agent result, verification off: not stored (2 stored)
+        FAIL: data_agent result, verification off: not stored (2 stored)
+        FAIL: coding_agent result, verification off: not stored (2 stored)
+        FAIL: …the same through the default arguments (2 stored)
+        FAIL: …the console says it was not stored and points to the task archive
+        FAIL: browser_agent result, no verification: not stored (2 stored)
+        FAIL: pc_agent result, no verification: not stored (2 stored)
+        FAIL: memory_agent result, no verification: not stored (2 stored)
+        FAIL: qa_agent result, no verification: not stored (2 stored)
+        FAIL: an unverified result it builds on is marked not verified (- unchecked step: the unchecked claim)
+        …
+        PASS: verdict "issues": not stored
+        PASS: verdict "inconclusive": not stored
+        PASS: verdict "unverified": not stored
+      --- L-5b. Goal context marks results that were not verified ---
+      [GoalManager] ✅ Initialized. 0 historical goal(s) found.
+      [GoalManager] 📌 Goal "tgoal_mwkjn5ek_16kjp": planning → ready (planned 3 task(s) (model))
+      [GoalManager] 🎯 temporary goal created [priority 5]: "tgoal_mwkjn5ek_16kjp" — "Find and remember"
+      [GoalManager] 📌 Goal "tgoal_mwkjn5ek_16kjp": executing → completed (success criteria met: every task completed with a result: 3 task(s) completed)
+        PASS: (setup) the dependent task got both results (Goal: Find and remember
+      Results it builds on:
+      - unchecked step: the unchecked claim
+      - checked step: the checked claim)
+        FAIL: an unverified result it builds on is marked not verified (- unchecked step: the unchecked claim)
+        PASS: a verified result is not marked (- checked step: the checked claim)
+      === Results: 7 passed, 10 failed ===
+ ELIFECYCLE  Test failed. See above for more details.
+== mixedFailureCausesTest
+  PASS: both parts out of tool calls: TOOL_BUDGET_EXHAUSTED, waits for budget (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  PASS: both parts' model down: MODEL_UNAVAILABLE, retried later (MODEL_UNAVAILABLE [] → dependency → retry/continue: retry at 2026-11-17T10:23:43.520Z: something it needs is unavailable (QA could not check every part: test_runner_worker-1 (test_runner_worke)
+  FAIL: QA: one part out of tool calls, one answered by rules (model down): not TOOL_BUDGET_EXHAUSTED (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: …recorded as the model not answering (MODEL_UNAVAILABLE, dependency) (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: …recovery does not wait for budget and does not give the budget as the reason (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: …both causes are kept in the goal failure
+  FAIL: …and in the agent task's error ({"code":"BUDGET_EXCEEDED"})
+  FAIL: …the recovery action still names the tool budget (waiting: the goal's budget is used up)
+  PASS: …its signature differs from the pure tool-budget and the pure model-down signatures (sig-9a8161c3e35b / sig-3dd6ae33cbf4 / sig-cbe99a79dae0)
+  PASS: the same mix in the other order: the same code and causes (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: strict QA: one helper out of tool calls, one helper's model down: MODEL_UNAVAILABLE, never waits for budget (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: …both causes kept
+  PASS: strict QA: tool budget and identity: MODEL_IDENTITY_UNCONFIRMED, blocked (MODEL_IDENTITY_UNCONFIRMED [] → configuration → blocked/block: blocked: QA could not check every part: test_runner_worker-1 (test_runner_worker): failed — The toolCalls budget is used up (task task-a857d)
+  FAIL: …the tool budget is still recorded
+  FAIL: failureCauses and leadingCause exist
+  FAIL: classifyFailure never gives "budget" when a model cause is among the causes (budget)
+  FAIL: the signature includes the causes, in any order (sig-8ec14dbf472a sig-8ec14dbf472a sig-8ec14dbf472a)
+=== Results: 5 passed, 12 failed ===
+== unverifiedMemoryTest
+  FAIL: research_agent result, verification off: not stored (2 stored)
+  FAIL: data_agent result, verification off: not stored (2 stored)
+  FAIL: coding_agent result, verification off: not stored (2 stored)
+  FAIL: …the same through the default arguments (2 stored)
+  FAIL: …the console says it was not stored and points to the task archive
+  FAIL: browser_agent result, no verification: not stored (2 stored)
+  FAIL: pc_agent result, no verification: not stored (2 stored)
+  FAIL: memory_agent result, no verification: not stored (2 stored)
+  FAIL: qa_agent result, no verification: not stored (2 stored)
+  PASS: a verified research result: stored (control)
+  PASS: a verified result of any agent: stored
+  PASS: verdict "issues": not stored
+  PASS: verdict "inconclusive": not stored
+  PASS: verdict "unverified": not stored
+  PASS: (setup) the dependent task got both results (Goal: Find and remember
+Results it builds on:
+  FAIL: an unverified result it builds on is marked not verified (- unchecked step: the unchecked claim)
+  PASS: a verified result is not marked (- checked step: the checked claim)
+=== Results: 7 passed, 10 failed ===

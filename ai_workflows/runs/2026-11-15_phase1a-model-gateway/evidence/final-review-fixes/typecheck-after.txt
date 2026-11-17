@@ -1,0 +1,4 @@
+
+> antigravityforjarvisassistant@1.0.0 typecheck /home/user/anti-gravity-for-jarvis-assistant
+> tsc --noEmit
+

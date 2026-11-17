@@ -1,0 +1,315 @@
+
+> antigravityforjarvisassistant@1.0.0 test /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909
+> tsx tests/runAll.ts -- --only=modelRoleRoutingTest,modelRouteCorrectionsTest,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest,qaModelFailureTest,modelRouteRound3Test,reviewRound3FixesTest,strictHelperRoutingTest
+
+
+=== JARVIS test suite — 9 file(s) ===
+
+  FAIL    modelRoleRoutingTest                         10039ms
+  FAIL    modelRouteCorrectionsTest                    7336ms
+  FAIL    modelRouteRound3Test                         799ms
+  FAIL    providerCapabilitiesTest                     725ms
+  FAIL    providerIsolationTest                        1360ms
+  FAIL    qaModelFailureTest                           6375ms
+  FAIL    reviewRound3FixesTest                        6745ms
+  FAIL    strictHelperRoutingTest                      1334ms
+  FAIL    usageLedgerTest                              1362ms
+
+=== 0 passed · 9 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - modelRoleRoutingTest: === Results: 13 passed, 22 failed ===
+        FAIL: chat(planning) reaches the configured provider (primary)
+        FAIL: …with the configured model (own-model)
+        FAIL: …and the usage record says so ({"category":"planning","provider":"primary","model":"own-model","latencyMs":0,"ok":true,"fallbackUsed":false,"streamed":false,"promptTokens":3,"completionTokens":2,"at":"2026-11-15T16:20:07.534Z"})
+        FAIL: streamChat(conversation) streams from a named provider (primary streamed / primary:own-model)
+        FAIL: …recorded as streamed by that provider ({"category":"conversation","provider":"primary","model":"own-model","latencyMs":0,"ok":true,"fallbackUsed":false,"streamed":true,"promptTokens":null,"completionTokens":null,"at":"2026-11-15T16:20:07.534Z"})
+        FAIL: a non-strict route that fails is answered by the default provider ( / primary)
+        FAIL: …with the request's own model
+        FAIL: …recorded as a fallback ({"category":"conversation","provider":"primary","model":"own-model","latencyMs":0,"ok":true,"fallbackUsed":false,"streamed":false,"promptTokens":3,"completionTokens":2,"at":"2026-11-15T16:20:07.534Z"})
+        FAIL: a strict route (review) fails as itself (answered)
+        FAIL: …the default provider is never asked (primary)
+        FAIL: the routed call is pending at its provider (primary)
+        FAIL: cancelling it during the call ends it as an AbortError (answered)
+        FAIL: …and no fallback model answers it (primary)
+        FAIL: a bare model name keeps the default provider and sends that model (primary:own-model)
+        FAIL: an explicit token cap is applied (undefined)
+        FAIL: coding_agent's call reaches its own route (default:undefined:undefined,default:undefined:undefined)
+        FAIL: qa_agent's call reaches its own route (default:undefined:undefined,default:undefined:undefined)
+        FAIL: neither reaches the default provider (default,default)
+        FAIL: the usage records carry the agent's role ([null,null])
+        FAIL: agentIndependence() exists
+        FAIL: …and it reached the configured planning provider and model (default:qwen-2.5-32b)
+        FAIL: a background call to the provider the conversation uses has not been sent yet (shared)
+        …
+      --- 7. A background call waits only for a provider the conversation uses ---
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+        FAIL: a background call to the provider the conversation uses has not been sent yet (shared)
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: …and is sent once the conversation ends
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: a background call to a provider the conversation does not use is not held (0 ms)
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: a foreground call is never held (0 ms)
+      === Results: 13 passed, 22 failed ===
+  - modelRouteCorrectionsTest: === Results: 11 passed, 33 failed ===
+        FAIL: after the conversation, the configured provider answers (its time limit did not run during the wait) (a answered)
+        FAIL: …and the default provider was not asked (a:chat)
+        FAIL: a provider that does not answer in time is stopped at the limit (0 ms)
+        FAIL: …with a clear strict-route error that says it timed out (answered)
+        FAIL: …and no other provider answers (a:chat)
+        FAIL: a wait longer than JARVIS_MODEL_QUEUE_WAIT_MS ends with a clear error (answered by a answered)
+        FAIL: …soon after the limit, not after the full yield (3003 ms)
+        FAIL: …sent to no provider, and not answered by the default model (a:chat)
+        FAIL: after the yield limit the configured provider gets the call (PERF-02 unchanged) (a answered, 300 ms)
+        FAIL: a foreground call during a conversation is answered at once by its route (1 ms)
+        FAIL: a bare-model review route fails as itself (StrictRouteError) (answered by b answered)
+        FAIL: …the original reason is kept
+        FAIL: …no other provider is asked (a:chat,b:chat)
+        FAIL: …the primary was asked with the configured model (a:own)
+        FAIL: code repair (categoryChat) with a bare coding model: no failover to another provider (answered by b answered)
+        FAIL: a failing configured qa_agent route fails as itself (answered by coding-default answered)
+        FAIL: …and is never answered by the default (coding) model (coding-default:chat)
+        FAIL: a failing configured coding_agent route fails as itself (answered by coding-default answered)
+        FAIL: …and is never answered by the default (coding) model (coding-default:chat)
+        FAIL: goalVerifier with a failing configured review model does not report the criterion met ({"met":true,"reason":"looks fine"})
+        FAIL: …and no other provider was asked (primary:chat,openai:chat)
+        FAIL: …and the error says every eligible provider failed (b is down (503))
+        FAIL: a provider registered under two names is asked once (a:chat,a:chat,b:chat → b answered)
+        FAIL: named route then default chain: each provider once, order kept (a:chat,b:chat)
+        FAIL: a routed stream that fails does not ask the same provider again (stream or chat) (a:stream,a:chat,b:chat)
+        FAIL: the routed call is pending at its provider (a:chat)
+        FAIL: cancelling it ends the call as an AbortError (answered by a answered)
+        FAIL: …and no fallback model answers it (a:chat)
+        FAIL: default stream: a provider without image input is not asked to stream an image (textOnly:stream)
+        FAIL: …the image request is answered by a provider that takes images (textOnly streamed)
+        FAIL: agentIndependence: QA set to the default provider and model that coding uses is not independent (missing)
+        FAIL: …a different provider is independent
+        FAIL: observedAgentIndependence() exists
+        …
+        FAIL: the routed call is pending at its provider (a:chat)
+        FAIL: cancelling it ends the call as an AbortError (answered by a answered)
+        FAIL: …and no fallback model answers it (a:chat)
+      --- Capability refusals on the stream paths ---
+      [LLM usage] textOnly (default model) unspecified: ? in / ? out tokens, 1 ms, streamed
+        FAIL: default stream: a provider without image input is not asked to stream an image (textOnly:stream)
+        FAIL: …the image request is answered by a provider that takes images (textOnly streamed)
+      [LLM usage] a (default model) conversation: ? in / ? out tokens, 0 ms, streamed
+        PASS: routed stream: the configured provider without image input is not asked (a:stream)
+        PASS: …the non-strict conversation route falls back to a provider that may take it (a streamed)
+      --- M4. Independence compares the models really used ---
+        FAIL: agentIndependence: QA set to the default provider and model that coding uses is not independent (missing)
+        FAIL: …a different provider is independent
+        FAIL: observedAgentIndependence() exists
+      === Results: 11 passed, 33 failed ===
+  - modelRouteRound3Test: Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/bridge/
+        …
+      Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/bridge/providerGuard.js' imported from /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests
+          at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+          at moduleResolve (node:internal/modules/esm/resolve:865:10)
+          at defaultResolve (node:internal/modules/esm/resolve:989:11)
+          at nextResolve (node:internal/modules/esm/hooks:748:28)
+          at resolveBase (file:///home/user/anti-gravity-for-jarvis-assistant/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs?1794759624395:2:3744)
+          at async resolveDirectory (file:///home/user/anti-gravity-for-jarvis-assistant/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs?1794759624395:2:4237)
+          at async resolve (file:///home/user/anti-gravity-for-jarvis-assistant/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs?1794759624395:2:5355)
+          at async nextResolve (node:internal/modules/esm/hooks:748:22)
+          at async Hooks.resolve (node:internal/modules/esm/hooks:240:24)
+          at async handleMessage (node:internal/modules/esm/worker:199:18) {
+        code: 'ERR_MODULE_NOT_FOUND',
+        url: 'file:///tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/bridge/providerGuard.js'
+      }
+      Node.js v22.23.4
+  - providerCapabilitiesTest: === Results: 2 passed, 15 failed ===
+        FAIL: Claude adapter declares every capability
+        FAIL: …image input is false (the adapter does not translate images yet)
+        FAIL: …it streams, calls tools and has no breaker of its own
+        FAIL: Gemini/Groq client declares every capability
+        FAIL: …with its own breaker and no image input claimed
+        FAIL: OpenAI-compatible fallback declares every capability
+        FAIL: …and does not claim streaming (it has no streamChat)
+        FAIL: no adapter claims web search, structured output or audio (none implements them)
+        FAIL: a provider without image input is not called (1 call(s))
+        FAIL: …and the request fails with the reason (answered)
+        FAIL: failover skips it and reaches a provider that takes images (textOnly answered)
+        FAIL: refused before sending (answered)
+        FAIL: …a request without tools still goes
+        FAIL: an image request to Claude is refused before the API is called (answered: sent [{"role":"user","content":"What is in this picture?"}])
+        FAIL: …with the reason
+        …
+        PASS: a text request still goes to the first provider (textOnly answered)
+      --- 3. Nothing declared, nothing enforced ---
+      [LLM usage] plain (default model) unspecified: ? in / ? out tokens, 0 ms
+      [LLM usage] plain (default model) unspecified: ? in / ? out tokens, 0 ms
+        PASS: a provider without capabilities() still gets images and tools (unknown is not "no") (2 call(s))
+      --- 4. Tools to a provider without tool calling ---
+      [LLM usage] noTools (default model) unspecified: ? in / ? out tokens, 0 ms
+        FAIL: refused before sending (answered)
+      [LLM usage] noTools (default model) unspecified: ? in / ? out tokens, 0 ms
+        FAIL: …a request without tools still goes
+      --- 5. The real Claude adapter is never handed an image ---
+      [LLM usage] anthropic claude-opus-5-5 coding: 1 in / 1 out tokens, 0 ms
+        FAIL: an image request to Claude is refused before the API is called (answered: sent [{"role":"user","content":"What is in this picture?"}])
+        FAIL: …with the reason
+      === Results: 2 passed, 15 failed ===
+  - providerIsolationTest: Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/bridge/
+        FAIL: B still sends and is answered (Gemini API rate-limited (circuit broken, retrying in 60s))
+        FAIL: the default client is not affected by A (Gemini API rate-limited (circuit broken, retrying in 60s))
+        FAIL: isolated clients do not share a response cache (Gemini API rate-limited (circuit broken, retrying in 60s))
+        FAIL: after two rate limits the provider is skipped (3 call(s) to it)
+        FAIL: after the open period one trial call goes through (4 call(s))
+        FAIL: …and a rate limit on the trial opens it again (5 call(s))
+        FAIL: the third call within a minute is not sent to the limited provider (3 call(s))
+        FAIL: …and is answered by failover (0 call(s))
+        FAIL: asked for explicitly, it is refused rather than sent
+        FAIL: …and the refusal reads as a rate limit, not an outage
+        FAIL: after the open period, five calls at once send only one trial call (5 trial call(s))
+        FAIL: …the others are answered by failover (2 to the backup)
+        …
+      Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/bridge/providerGuard.js' imported from /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests
+          at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+          at moduleResolve (node:internal/modules/esm/resolve:865:10)
+          at defaultResolve (node:internal/modules/esm/resolve:989:11)
+          at nextResolve (node:internal/modules/esm/hooks:748:28)
+          at resolveBase (file:///home/user/anti-gravity-for-jarvis-assistant/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs?1794759625910:2:3744)
+          at async resolveDirectory (file:///home/user/anti-gravity-for-jarvis-assistant/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs?1794759625910:2:4237)
+          at async resolve (file:///home/user/anti-gravity-for-jarvis-assistant/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/esm/index.mjs?1794759625910:2:5355)
+          at async nextResolve (node:internal/modules/esm/hooks:748:22)
+          at async Hooks.resolve (node:internal/modules/esm/hooks:240:24)
+          at async handleMessage (node:internal/modules/esm/worker:199:18) {
+        code: 'ERR_MODULE_NOT_FOUND',
+        url: 'file:///tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/bridge/providerGuard.js'
+      }
+      Node.js v22.23.4
+  - qaModelFailureTest: === Results: 6 passed, 20 failed ===
+        FAIL: the QA task is FAILED, not COMPLETED (COMPLETED: undefined model answer)
+        FAIL: …with the provider's full reason, not cut short
+        FAIL: …and it says the strict route failed
+        FAIL: the default (coding) model was not asked instead (default)
+        FAIL: the QA task is FAILED (COMPLETED: undefined model answer)
+        FAIL: …with the original reason
+        FAIL: the QA task is FAILED, not "Stopped before a final answer" (COMPLETED: undefined model answer)
+        FAIL: …with the original reason
+        FAIL: a worker answered by keyword rules makes the QA task FAILED (COMPLETED: undefined model answer
+        FAIL: …and the reason names the worker and the keyword rules
+        FAIL: the coding task is FAILED (COMPLETED: undefined model answer)
+        FAIL: …with the provider's reason
+        FAIL: no other model was asked (default)
+        FAIL: it still completes with keyword rules (unchanged) (COMPLETED; tools )
+        FAIL: …the limitation says the model was not available, with the full reason
+        FAIL: …and the result is marked as not the model's answer ({"toolCalls":0,"taskDescription":"What changed in git recently?"})
+        FAIL: the task is FAILED with the queue-wait reason (COMPLETED: )
+        FAIL: the QA task is COMPLETED with the model's answer (COMPLETED: undefined model answer)
+        FAIL: …marked as the model's answer ({"toolCalls":0,"taskDescription":"Review the change summary"})
+        FAIL: it ends CANCELLED (COMPLETED)
+        …
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [ModelRouter] Background call waited 5001 ms for the owner's request.
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        FAIL: the task is FAILED with the queue-wait reason (COMPLETED: )
+        PASS: …the model was not asked and no keyword rule ran (default / )
+      --- 8. QA whose model answers (unchanged) ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 1 ms
+        FAIL: the QA task is COMPLETED with the model's answer (COMPLETED: undefined model answer)
+        FAIL: …marked as the model's answer ({"toolCalls":0,"taskDescription":"Review the change summary"})
+      --- 9. A QA call cancelled while it runs (unchanged) ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        FAIL: it ends CANCELLED (COMPLETED)
+        PASS: …and no keyword rule ran
+      === Results: 6 passed, 20 failed ===
+  - reviewRound3FixesTest: TypeError: categories.observedAgentIndependence is not a function
+        FAIL: the QA task is FAILED, not COMPLETED by keyword rules (COMPLETED )
+        FAIL: …and the result says the model gave no answer
+        FAIL: an unconfigured coding agent with an empty model answer still uses keyword rules (unchanged) (COMPLETED )
+        FAIL: the configured coding task is FAILED, not COMPLETED by keyword rules (COMPLETED )
+        FAIL: …and the result says the model gave an empty answer
+        FAIL: the configured coding task is FAILED (COMPLETED )
+        FAIL: …with the budget reason
+        FAIL: …and no keyword-rule tool ran (git_overview)
+        FAIL: after the time limit, the same provider is not asked again with another model (a:own)
+        FAIL: …the next provider in the order answers (a:own answered)
+        FAIL: with no other provider: a clear error, not a second request to the slow provider (a:own → a:own answered)
+        FAIL: the fallback ends with the queue-wait error (a answered)
+        FAIL: …and keeps the route's own failure as its cause ((no cause))
+        …
+        PASS: the next call is sent to the provider at once, not refused until the lease expires (2 → can answered)
+      --- L5. A fallback not sent keeps the route's failure ---
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [ModelRouter] Background call waited 5001 ms for the owner's request.
+      [LLM usage] a own planning: ? in / ? out tokens, 0 ms
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        FAIL: the fallback ends with the queue-wait error (a answered)
+        FAIL: …and keeps the route's own failure as its cause ((no cause))
+      --- L6. "(provider default)" is not a model name ---
+      /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/reviewRound3FixesTest.ts:215
+        const res = categories.observedAgentIndependence([rec('coding_agent', p, '(provider default)'), rec('qa_agent', p, llmConfig.model)]);
+                               ^
+      TypeError: categories.observedAgentIndependence is not a function
+          at <anonymous> (/tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/base-c4ac909/tests/reviewRound3FixesTest.ts:215:26)
+      Node.js v22.23.4
+  - strictHelperRoutingTest: === Results: 7 passed, 15 failed ===
+        FAIL: the request was split into helpers (default:undefined,default:undefined)
+        FAIL: every helper asked the configured coding model
+        FAIL: …and never the planning/default model (default:undefined,default:undefined)
+        FAIL: the parent is COMPLETED, answered by the model (COMPLETED  {"taskDescription":"Explain the router code; then explain the agent manager code"})
+        FAIL: the parent coding task is FAILED, not COMPLETED (COMPLETED )
+        FAIL: …the default/planning model was never asked (default:undefined,default:undefined)
+        FAIL: …and the error names the failed helpers
+        FAIL: the parent coding task is FAILED (COMPLETED )
+        FAIL: helpers use the default model, as before
+        FAIL: QA helpers asked QA's configured model (default:undefined,default:undefined)
+        FAIL: …never the default model (default:undefined,default:undefined)
+        FAIL: QA is COMPLETED, answered by its model (COMPLETED )
+        FAIL: QA with a failing configured model and helpers is FAILED (COMPLETED )
+        FAIL: …the default model was never asked (default:undefined,default:undefined)
+        FAIL: a helper call that inherits a configured coding route goes to the coding model (a:own)
+        …
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        PASS: …no keyword-rule tool ran
+      --- 6. The router honours an inherited route only when it is configured and strict ---
+        FAIL: QA helpers asked QA's configured model (default:undefined,default:undefined)
+        FAIL: …never the default model (default:undefined,default:undefined)
+        FAIL: QA is COMPLETED, answered by its model (COMPLETED )
+        FAIL: QA with a failing configured model and helpers is FAILED (COMPLETED )
+        FAIL: …the default model was never asked (default:undefined,default:undefined)
+        FAIL: a helper call that inherits a configured coding route goes to the coding model (a:own)
+      [LLM usage] a own planning: ? in / ? out tokens, 0 ms
+      [LLM usage] a own planning: ? in / ? out tokens, 0 ms
+        PASS: an inherited route that is not strict is ignored (the helper's own route) (a:own)
+      [LLM usage] a own planning: ? in / ? out tokens, 0 ms
+        PASS: with nothing configured, the inherited name changes nothing (a:own)
+      === Results: 7 passed, 15 failed ===
+  - usageLedgerTest: FAIL: a failed rotation can be checked (bridge/usageLedger.ts not found)
+        FAIL: the ledger module exists
+        FAIL: one line was written (0 line(s) at /tmp/jarvis-usage-ledger-To8AEN/data/usage/model_usage.jsonl)
+        FAIL: it is the usage record
+        FAIL: a new process on the same data root sees the earlier record ({"n":0,"summary":{}})
+        FAIL: …and counts it in the summary ({})
+        FAIL: the failed call is recorded
+        FAIL: UsageLedger can be given a size limit for this test (bridge/usageLedger.ts not found)
+        FAIL: malformed lines can be checked (bridge/usageLedger.ts not found)
+        FAIL: an unwritable ledger can be checked (bridge/usageLedger.ts not found)
+        FAIL: rotation then restart can be checked (bridge/usageLedger.ts not found)
+        FAIL: a failed rotation can be checked (bridge/usageLedger.ts not found)
+        …
+        FAIL: UsageLedger can be given a size limit for this test (bridge/usageLedger.ts not found)
+        FAIL: malformed lines can be checked (bridge/usageLedger.ts not found)
+      --- 6. Turned off ---
+      [LLM usage] stub m-off planning: 7 in / 3 out tokens, 0 ms
+        PASS: JARVIS_USAGE_LEDGER=off writes nothing (0 → 0)
+        PASS: …the call is still recorded in memory
+      --- 7. A ledger that cannot be written ---
+        FAIL: an unwritable ledger can be checked (bridge/usageLedger.ts not found)
+      [LLM usage] stub m-blocked planning: 7 in / 3 out tokens, 0 ms
+        PASS: the model call still succeeds (secret reply about x)
+      --- 8. Rotation, then a restart (L4) ---
+      --- 9. A rotation that fails does not lose the record (L4) ---
+      === Results: 7 passed, 11 failed ===
+        FAIL: rotation then restart can be checked (bridge/usageLedger.ts not found)
+        FAIL: a failed rotation can be checked (bridge/usageLedger.ts not found)
+ ELIFECYCLE  Test failed. See above for more details.

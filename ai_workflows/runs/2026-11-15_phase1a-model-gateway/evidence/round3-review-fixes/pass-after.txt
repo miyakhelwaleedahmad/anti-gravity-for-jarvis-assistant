@@ -1,0 +1,31 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=reviewRound3FixesTest,qaModelFailureTest,modelRouteRound3Test,modelRoleRoutingTest,modelRouteCorrectionsTest,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest,foregroundPriorityTest,llmClientBehaviourTest,providerHealthTest,agentSpecialistsTest,sevenAgentTest,agentRuntimeTest,jarvisAgentIntegrationTest,goalAgentIntegrationTest,codeRepairTest,claudeProviderTest,llmCancellationTest,docsHygieneTest
+
+
+=== JARVIS test suite — 20 file(s) ===
+
+  PASS    agentRuntimeTest                             2737ms
+  PASS    agentSpecialistsTest                         1094ms
+  PASS    claudeProviderTest                           1216ms
+  PASS    codeRepairTest                               8401ms
+  PASS    docsHygieneTest                              1159ms
+  PASS    foregroundPriorityTest                       1118ms
+  PASS    goalAgentIntegrationTest                     2569ms
+  PASS    jarvisAgentIntegrationTest                   3729ms
+  PASS    llmCancellationTest                          2107ms
+  PASS    llmClientBehaviourTest                       1074ms
+  PASS    modelRoleRoutingTest                         9597ms
+  PASS    modelRouteCorrectionsTest                    5518ms
+  PASS    modelRouteRound3Test                         1979ms
+  PASS    providerCapabilitiesTest                     635ms
+  PASS    providerHealthTest                           3608ms
+  PASS    providerIsolationTest                        1283ms
+  PASS    qaModelFailureTest                           1490ms
+  PASS    reviewRound3FixesTest                        3642ms
+  PASS    sevenAgentTest                               1618ms
+  PASS    usageLedgerTest                              1187ms
+
+=== 20 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

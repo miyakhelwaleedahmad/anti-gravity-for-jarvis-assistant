@@ -1,0 +1,62 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+
+=== A question does not count against the tool's time (M-2) ===
+
+--- Which low-risk tools run inside a sandbox call ---
+  PASS: (setup) save_relation is a low-risk tool
+[ToolRegistry] ⚠️  Tool "test_plain_low" has no metadata in core/toolCatalog.ts — using derived defaults (risk 1).
+[ToolRegistry] ⚠️  Tool "test_asking_low" has no metadata in core/toolCatalog.ts — using derived defaults (risk 1).
+  FAIL: a low-risk tool that asks the owner runs inside a sandbox call (its budget can pause) (false)
+  PASS: an ordinary low-risk tool runs as before, outside the sandbox (control) (false)
+
+--- A "yes" after 26 s is stored ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mwkmb5v5_8qev)
+-----------------------------------------------------------------
+  ACTION:           Keep in long-term memory
+  WHY:              You asked: "Remember that my exam is on Friday"
+  TARGET:           "User HAS_EXAM_ON Friday"
+  EXPECTED EFFECT:  Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.
+  RISK:             Level 1 — low
+  REVERSIBILITY:    Yes
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 20 s.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  FAIL: the owner's "yes" after 26 s stores the fact (0 stored after 26 s; Error: save_relation stopped by memory policy - your answer came after this call was stopped, so nothing was stored. Ask)
+  FAIL: …and the record matches what happened (approved, stored) ({"approved":true,"by":"console"})
+
+--- A stopped call withdraws its question ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mwkmbpxi_6x23)
+-----------------------------------------------------------------
+  ACTION:           Keep in long-term memory
+  WHY:              You asked: "Remember that my exam is on Friday"
+  TARGET:           "User HAS_EXAM_ON Friday at ten"
+  EXPECTED EFFECT:  Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.
+  RISK:             Level 1 — low
+  REVERSIBILITY:    Yes
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 20 s.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: nothing is stored (0 stored)
+  FAIL: the question is recorded as cancelled, not approved ({"approved":true,"by":"console"})
+
+=== Results: 3 passed, 4 failed ===
+exit=1

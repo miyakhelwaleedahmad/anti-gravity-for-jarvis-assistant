@@ -1,0 +1,12 @@
+157c157
+<   const a = r.qaIndependence({ JARVIS_MODEL_AGENT_QA_AGENT: 'openai:gpt-4o-mini' });
+---
+>   const a = await r.qaIndependence({ JARVIS_MODEL_AGENT_QA_AGENT: 'openai:gpt-4o-mini' });
+161c161
+<     const b = r.qaIndependence({ JARVIS_MODEL_AGENT_CODING_AGENT: `${primary}:model-a`, JARVIS_MODEL_AGENT_QA_AGENT: `${primary}:model-b` });
+---
+>     const b = await r.qaIndependence({ JARVIS_MODEL_AGENT_CODING_AGENT: `${primary}:model-a`, JARVIS_MODEL_AGENT_QA_AGENT: `${primary}:model-b` });
+163c163
+<     const c = r.qaIndependence({ JARVIS_AGENT_MODEL: 'model-a', JARVIS_MODEL_AGENT_QA_AGENT: `${primary}:model-b` });
+---
+>     const c = await r.qaIndependence({ JARVIS_AGENT_MODEL: 'model-a', JARVIS_MODEL_AGENT_QA_AGENT: `${primary}:model-b` });

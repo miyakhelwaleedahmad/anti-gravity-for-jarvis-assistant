@@ -25,6 +25,7 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { toolRegistryV2, type ToolResult } from '../toolRegistryV2.js';
 import { modelRouter } from '../../bridge/modelRouter.js';
+import { routeFor } from '../../bridge/modelCategories.js';
 import type { ILLMRequest, ILLMResponse } from '../../bridge/llmTypes.js';
 import { securityAuditLogger } from '../../security/securityAuditLogger.js';
 import { dataRoot, getWorkspaceRoot } from '../workspaceRoot.js';
@@ -131,6 +132,38 @@ function eventTypeFor(status: LifecycleState): AgentEventType {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Errors that mean the required model did not answer (strict route, queue wait, QA rules): recorded as MODEL_UNAVAILABLE. */
+const MODEL_FAILURES: ReadonlySet<string> = new Set(['StrictRouteError', 'QueueWaitTimeoutError', 'ModelUnavailableError', 'IndependentQaUnavailableError']);
+
+/** Codes a worker's failure may carry up to its parent unchanged (core/agents/behaviors/common.ts PropagatedFailure). */
+const CARRIED_CODES: ReadonlySet<string> = new Set(['MODEL_UNAVAILABLE', 'MODEL_IDENTITY_UNCONFIRMED', 'BUDGET_EXCEEDED']);
+
+/**
+ * The code a failed task is recorded with (owner, 2026-11-16): a code carried
+ * up from a worker as is; the provider not confirming the configured model
+ * (ModelIdentityError under a StrictRouteError, or QA's reply check with no
+ * reported model) MODEL_IDENTITY_UNCONFIRMED; the required model not
+ * answering MODEL_UNAVAILABLE; anything else AGENT_ERROR.
+ */
+function failureCode(err: unknown): string {
+  const e = err as { name?: unknown; code?: unknown; identity?: unknown; cause?: { name?: unknown } } | null;
+  if (typeof e?.code === 'string' && CARRIED_CODES.has(e.code)) return e.code;
+  if ((e?.name === 'StrictRouteError' && e.cause?.name === 'ModelIdentityError') || (e?.name === 'IndependentQaUnavailableError' && e.identity === true)) return 'MODEL_IDENTITY_UNCONFIRMED';
+  return MODEL_FAILURES.has(String(e?.name)) ? 'MODEL_UNAVAILABLE' : 'AGENT_ERROR';
+}
+
+/** A worker's distinct causes carried with its code (review LR-2): only carried codes and known budgets. */
+function carriedCauses(value: unknown): NonNullable<ChildResult['error']>['causes'] {
+  if (!Array.isArray(value)) return undefined;
+  type Cause = NonNullable<NonNullable<ChildResult['error']>['causes']>[number];
+  const out = value.flatMap((c: { code?: unknown; budget?: unknown } | null): Cause[] => {
+    if (typeof c?.code !== 'string' || !CARRIED_CODES.has(c.code)) return [];
+    const b = c.budget;
+    return [b === 'llmCalls' || b === 'toolCalls' || b === 'tokens' ? { code: c.code, budget: b } : { code: c.code }];
+  });
+  return out.length > 1 ? out : undefined;
 }
 
 function isAbort(err: unknown): boolean {
@@ -432,6 +465,32 @@ export class AgentManager {
   // ── The factory ────────────────────────────────────────────────────────────
 
   /**
+   * The nearest specialist, this agent or one above it (below JARVIS), whose
+   * own model setting is a configured strict route: every agent under a
+   * configured coding_agent / qa_agent uses that model (owner, 2026-11-16).
+   * Read from the registry (who spawned whom), never from task input.
+   */
+  strictRouteRole(agent: AgentRecord): string | undefined {
+    const seen = new Set<string>();
+    for (let cur: AgentRecord | undefined = agent; cur && cur.agentId !== JARVIS_AGENT_ID && !seen.has(cur.agentId); cur = cur.parentAgentId ? this.agentOf(agent.rootTaskId ?? cur.rootTaskId ?? '', cur.parentAgentId) : undefined) {
+      seen.add(cur.agentId);
+      if (cur.permanent && routeFor('planning', process.env, cur.role).strict) return cur.role;
+    }
+    return undefined;
+  }
+
+  /** The roles of this agent and the agents above it, up to its specialist (not JARVIS). */
+  lineageRoles(agent: AgentRecord): string[] {
+    const roles: string[] = [];
+    const seen = new Set<string>();
+    for (let cur: AgentRecord | undefined = agent; cur && cur.agentId !== JARVIS_AGENT_ID && !seen.has(cur.agentId); cur = cur.parentAgentId ? this.agentOf(agent.rootTaskId ?? cur.rootTaskId ?? '', cur.parentAgentId) : undefined) {
+      seen.add(cur.agentId);
+      roles.push(cur.role);
+    }
+    return roles;
+  }
+
+  /**
    * CREATE_CHILD_AGENT. Checks the request; on success creates the agent and
    * its task and starts it. Throws SpawnRejectedError with every failed check.
    */
@@ -631,7 +690,7 @@ export class AgentManager {
     const run = this.runs.get(task.rootTaskId)!;
     let outcome: AgentOutcome | undefined;
     let status: LifecycleState = 'FAILED';
-    let error: { code: string; message: string } | undefined;
+    let error: ChildResult['error'];
     let truncated = false;
     try {
       await Promise.resolve(); // let the caller receive its handle first
@@ -672,11 +731,13 @@ export class AgentManager {
         error = { code: err.code, message: err.message };
       } else if (err instanceof BudgetExceededError) {
         status = 'FAILED';
-        error = { code: err.code, message: err.message };
+        error = { code: err.code, message: err.message, budget: err.kind };
         truncated = true;
       } else {
         status = 'FAILED';
-        error = { code: 'AGENT_ERROR', message: errorMessage(err) };
+        const budget = (err as { budget?: unknown } | null)?.budget;
+        const causes = carriedCauses((err as { causes?: unknown } | null)?.causes);
+        error = { code: failureCode(err), message: errorMessage(err), ...(budget === 'llmCalls' || budget === 'toolCalls' || budget === 'tokens' ? { budget } : {}), ...(causes ? { causes } : {}) };
       }
     } finally {
       this.heldSlots.get(task.taskId)?.();
@@ -1239,13 +1300,24 @@ class TaskContext implements AgentContext {
     }
   }
 
+  strictRouteRole(): string | undefined {
+    return this.manager.strictRouteRole(this.agent);
+  }
+
+  lineageRoles(): string[] {
+    return this.manager.lineageRoles(this.agent);
+  }
+
   async llm(request: Omit<ILLMRequest, 'signal'>): Promise<ILLMResponse> {
     this.checkpoint();
     const left = this.manager.remainingBudget(this.task.taskId);
     if (left.tokens <= 0) throw new BudgetExceededError('tokens', this.task.taskId);
     this.manager.charge(this.task.taskId, 'llmCalls', 1);
     this.manager.tasks.touch(this.task.taskId);
-    const response = await this.manager.withLlmSlot(this.task, () => modelRouter.chat({ ...request, signal: this.signal, category: request.category ?? 'planning' }));
+    // A helper below a configured coding_agent / qa_agent uses that route (decided by lineage, not input).
+    const { routeAs: _ignored, ...asked } = request;
+    const routeAs = this.strictRouteRole();
+    const response = await this.manager.withLlmSlot(this.task, () => modelRouter.chat({ ...asked, signal: this.signal, category: request.category ?? 'planning', agentRole: this.agent.role, ...(routeAs && routeAs !== this.agent.role ? { routeAs } : {}) }));
     // Unreported usage is unknown, not zero: nothing is charged for it.
     const tokens = response.usage?.totalTokens;
     if (typeof tokens === 'number') this.manager.charge(this.task.taskId, 'tokens', tokens, false);

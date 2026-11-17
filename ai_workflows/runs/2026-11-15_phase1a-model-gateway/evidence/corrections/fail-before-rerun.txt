@@ -1,0 +1,54 @@
+production unchanged: yes
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=modelRouteCorrectionsTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    modelRouteCorrectionsTest                    8242ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - modelRouteCorrectionsTest: === Results: 21 passed, 23 failed ===
+        FAIL: after the conversation, the configured provider answers (its time limit did not run during the wait) (a answered)
+        FAIL: …and the default provider was not asked (a:chat)
+        FAIL: …with a clear strict-route error that says it timed out (AbortError: aborted)
+        FAIL: a wait longer than JARVIS_MODEL_QUEUE_WAIT_MS ends with a clear error (answered by alt answered)
+        FAIL: …soon after the limit, not after the full yield (3004 ms)
+        FAIL: …sent to no provider, and not answered by the default model (alt:chat)
+        FAIL: categoryChat: the wait does not use up the coding time limit either (AbortError: Request aborted before it was sent)
+        FAIL: a bare-model review route fails as itself (StrictRouteError) (answered by b answered)
+        FAIL: …the original reason is kept
+        FAIL: …no other provider is asked (a:chat,b:chat)
+        FAIL: code repair (categoryChat) with a bare coding model: no failover to another provider (answered by b answered)
+        FAIL: a failing configured qa_agent route fails as itself (answered by coding-default answered)
+        FAIL: …and is never answered by the default (coding) model (qa_agent-stub:chat,coding-default:chat)
+        FAIL: a failing configured coding_agent route fails as itself (answered by coding-default answered)
+        FAIL: …and is never answered by the default (coding) model (coding_agent-stub:chat,coding-default:chat)
+        FAIL: goalVerifier with a failing configured review model does not report the criterion met ({"met":true,"reason":"looks fine"})
+        FAIL: …and no other provider was asked (primary:chat,openai:chat)
+        FAIL: every provider is asked at most once (a:chat,b:chat,a:chat,b:chat)
+        FAIL: …and the error says every eligible provider failed (b is down (503))
+        FAIL: a provider registered under two names is asked once (a:chat,a:chat,b:chat → b answered)
+        FAIL: a routed stream that fails does not ask the same provider again (stream or chat) (a:stream,a:stream,a:chat,b:chat)
+        FAIL: agentIndependence: QA set to the default provider and model that coding uses is not independent (true)
+        FAIL: observedAgentIndependence() exists
+        …
+      [ModelRouter] Provider "textOnly" cannot take this request: no image input. Answering without streaming.
+      [ModelRouter] Provider "textOnly" cannot take this request: no image input. Trying next.
+      [ModelRouter] textOnly failed (Provider "textOnly" cannot take this request: no image input.); answered by the fallback "seeing".
+      [ModelRouter] JARVIS_MODEL_CONVERSATION stream (blind:m) failed before any text (Provider "blind" cannot take this request: no image input.); answering with the default model.
+        FAIL: agentIndependence: QA set to the default provider and model that coding uses is not independent (true)
+        FAIL: observedAgentIndependence() exists
+      [LLM usage] seeing (default model) unspecified: ? in / ? out tokens, 0 ms
+        PASS: default stream: a provider without image input is not asked to stream an image (seeing:chat)
+        PASS: …the image request is answered by a provider that takes images (seeing answered)
+      [LLM usage] a (default model) conversation: ? in / ? out tokens, 0 ms, streamed
+        PASS: routed stream: the configured provider without image input is not asked (a:stream)
+        PASS: …the non-strict conversation route falls back to a provider that may take it (a streamed)
+      --- M4. Independence compares the models really used ---
+        PASS: …a different provider is independent
+      === Results: 21 passed, 23 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

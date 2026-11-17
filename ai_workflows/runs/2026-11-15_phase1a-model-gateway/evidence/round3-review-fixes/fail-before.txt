@@ -1,0 +1,43 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=reviewRound3FixesTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    reviewRound3FixesTest                        3795ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - reviewRound3FixesTest: === Results: 4 passed, 13 failed ===
+        FAIL: the QA task is FAILED, not COMPLETED by keyword rules (COMPLETED )
+        FAIL: …no keyword-rule tool ran (dev_status,diagnose_app)
+        FAIL: …and the result says the model gave no answer
+        FAIL: the configured coding task is FAILED (COMPLETED )
+        FAIL: …with the budget reason
+        FAIL: …and no keyword-rule tool ran (git_overview)
+        FAIL: after the time limit, the same provider is not asked again with another model (a:slow-model,a:own)
+        FAIL: …the next provider in the order answers (a:own answered)
+        FAIL: with no other provider: a clear error, not a second request to the slow provider (a:slow-model,a:own → a:own answered)
+        FAIL: the next call is sent to the provider at once, not refused until the lease expires (1 → b answered)
+        FAIL: …and keeps the route's own failure as its cause ((no cause))
+        FAIL: an unknown model on either side is never reported as independent ({"coding":{"provider":"groq","model":"(provider default)"},"qa":{"provider":"groq","model":"qwen-2.5-32b"},"independent":true,"reason":"independent: different models answered"})
+        FAIL: …it is reported as unknown (null) (true)
+        …
+      [ModelRouter] can rate-limited locally (a trial call after the open period is still running); not sent Trying next.
+      [ModelRouter] can failed (can rate-limited locally (a trial call after the open period is still running); not sent); answered by the fallback "b".
+      [LLM usage] b (default model) unspecified: ? in / ? out tokens, 0 ms
+      --- L5. A fallback not sent keeps the route's failure ---
+        FAIL: the next call is sent to the provider at once, not refused until the lease expires (1 → b answered)
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] elsewhere m planning: ? in / ? out tokens, 0 ms, failed
+      [ModelRouter] JARVIS_MODEL_PLANNING (elsewhere:m) failed (elsewhere is down (500)); answered by the default model.
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: the fallback ends with the queue-wait error (QueueWaitTimeoutError: JARVIS_MODEL_PLANNING: waited 100 ms for the owner's conversation (JARVIS_MODEL_QUEUE_WAIT_MS); not sent to a, and not answered by another model)
+      --- L6. "(provider default)" is not a model name ---
+        FAIL: …and keeps the route's own failure as its cause ((no cause))
+        FAIL: an unknown model on either side is never reported as independent ({"coding":{"provider":"groq","model":"(provider default)"},"qa":{"provider":"groq","model":"qwen-2.5-32b"},"independent":true,"reason":"independent: different models answered"})
+        FAIL: …it is reported as unknown (null) (true)
+      === Results: 4 passed, 13 failed ===
+ ELIFECYCLE  Test failed. See above for more details.
