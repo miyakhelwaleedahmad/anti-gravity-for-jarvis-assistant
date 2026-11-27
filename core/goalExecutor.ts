@@ -236,8 +236,11 @@ export class AgentGoalExecutor implements GoalTaskExecutor {
 const STEP_START = String.raw`^\s*(?:(?:first|then|next|finally|also|and)\b\s*,?\s*)?(?:please\s+)?`;
 /** "Remember what …", "note which …": reading what is remembered, not keeping something (final review L-7). */
 const RECALL_STEP = new RegExp(STEP_START + String.raw`(?:remember|note|recall)\s+(?:what|which|whether|how|if|when|where|who|why)\b`, 'i');
-/** A value after a colon makes it a keep step: "Remember who the manager is: Sara" (LL-2, owner decision D-3). */
-const GIVES_VALUE = /:\s*\S/;
+/**
+ * A value after a colon makes it a keep step: "Remember who the manager is: Sara" (LL-2, owner decision D-3).
+ * The colon in a time ("at 10:30") or a web address ("https://") is not one (review, PR #2).
+ */
+const GIVES_VALUE = /(?<!\d):(?!\/\/)\s*\S|\d:(?![\d/])\s*\S/;
 /**
  * A step that starts by asking to keep something (LL-2). "Remember to …" and
  * "don't forget to …" are instructions, "keep in mind" is not keeping; "add",

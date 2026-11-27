@@ -8,7 +8,8 @@
  * only, read from the start of the step.
  *
  *   A  the phrasings of the existing tests keep their outcome (guard)
- *   B  "Remember when/who/where/how …: value" asks to keep (regression; D-3)
+ *   B  "Remember when/who/where/how …: value" asks to keep (regression; D-3);
+ *      B2: the colon in a time (10:30) or a web address (https://) is not one
  *   C  other keep steps: a leading "First,/Then/Next,", "make sure to
  *      remember", "keep track of", "log/write down/learn that", "persist",
  *      "set/change the user's preference", "do not forget that"
@@ -109,6 +110,11 @@ for (const d of ['Remember what the user said about the exam and summarise it', 
 console.log('\n--- B. A wh-word with a value after a colon asks to keep it (D-3) ---');
 for (const d of ['Remember when the exam is: Friday', "Remember who the user's manager is: Sara", 'Note where the user lives: Lahore',
   'Remember how the user takes coffee: black']) await expectHeld('B', d);
+// Review (Graphify, PR #2): a colon inside a time or a web address is not a value after a colon.
+for (const d of ['Remember what the user asked at 10:30', 'Note which page was opened (https://example.com/exam)',
+  'Recall when the meeting starts, 14:00 or 15:00']) await expectCompletes('B2 (a time or address is not a value)', d);
+for (const d of ['Remember what time the exam starts: 10:30', 'Note which page the exam is on: https://example.com/exam'])
+  await expectHeld('B2 (a value after a colon still counts)', d);
 
 console.log('\n--- C. Other ways of asking to keep a fact ---');
 for (const d of ['First, remember that the exam is on Friday', 'Then store the exam date: Friday', 'Next, save that the exam is on Friday',
