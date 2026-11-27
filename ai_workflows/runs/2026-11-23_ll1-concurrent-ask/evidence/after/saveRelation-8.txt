@@ -1,0 +1,16 @@
+
+=== JARVIS test suite — 8 file(s) (CI mode) ===
+
+  PASS    saveRelationAskOnceTest                      4632ms
+  PASS    saveRelationConcurrentAskTest                5129ms
+  PASS    saveRelationConfirmReviewTest                1342ms
+  PASS    saveRelationConfirmTest                      1279ms
+  PASS    saveRelationLowFixesTest                     1303ms
+  PASS    saveRelationProvenanceTest                   1357ms
+  PASS    saveRelationRepliesTest                      5731ms
+  PASS    saveRelationTimeBudgetTest                   30146ms
+
+=== 8 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.
+exit=0

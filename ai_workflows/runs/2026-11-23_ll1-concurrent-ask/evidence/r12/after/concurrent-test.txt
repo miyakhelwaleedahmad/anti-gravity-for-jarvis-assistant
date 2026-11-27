@@ -1,0 +1,111 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+
+=== save_relation: the same fact asked at the same moment (LL-1 part A) ===
+
+--- 1. Same fact at once, "yes" ---
+  PASS: one request: all 2 calls are inside save_relation while the one question is open (entered 2; open 1; asked 1)
+  PASS: one request: the others wait: none returns and nothing more is asked before the answer (returned 0; asked 1; stored 0)
+  PASS: one request: asked once, stored once (asked 1; stored 1)
+  PASS: …one call saves it and the other says it is already kept, both after the answer (Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Already kept in long-term memory: "User HAS_EXAM_ON Friday". Not store)
+  PASS: two workers of one agent root task: all 2 calls are inside save_relation while the one question is open (entered 2; open 1; asked 1)
+  PASS: two workers of one agent root task: the others wait: none returns and nothing more is asked before the answer (returned 0; asked 1; stored 0)
+  PASS: two workers: asked once, stored once; one saves, the other says it is already kept (asked 1; stored 1; Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Already kept in long-term memory: "User HAS_EXAM_ON Friday". Not store)
+
+--- 2. Same fact at once, "no" ---
+  PASS: "no": all 2 calls are inside save_relation while the one question is open (entered 2; open 1; asked 1)
+  PASS: "no": the others wait: none returns and nothing more is asked before the answer (returned 0; asked 1; stored 0)
+  PASS: asked once, nothing stored (asked 1; stored 0)
+  PASS: …both calls report the owner's denial (APPROVAL_DENIED), after the answer (APPROVAL_DENIED | APPROVAL_DENIED)
+
+--- 3. Different facts at once ---
+  PASS: each fact is asked once (asked 2: "User HAS_EXAM_ON Friday", "User HAS_EXAM_ON Monday")
+  PASS: …and each is stored once (stored 2; Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Saved relation: (User)-[HAS_EXAM_ON]->(Monday) in long-term memory.)
+
+--- 4. The same fact at once in a request and in an agent's root task ---
+  PASS: each context asks its own question (asked 2)
+  PASS: …the request's "no" does not stop the agent's "yes": only the agent's fact is stored ({"success":false,"error":"APPROVAL_DENIED","message":"save_relation ca | Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.; stored 1)
+
+--- 5. The first question stopped ---
+  PASS: a stopped request: asked once, nothing stored (asked 1; stored 0)
+  PASS: …both calls say the request was stopped, not "not confirmed" (Error: save_relation stopped by memory policy - this request was stopp | Error: save_relation stopped by memory policy - this request was stopp)
+  PASS: only the first stopped: it stores nothing and says it was stopped (Error: save_relation stopped by memory policy - this request was stopp)
+  PASS: …the other call is asked itself and stores the fact once on "yes" (asked 2; stored 1; Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.)
+
+--- 6. A store error after "yes" ---
+  PASS: store error: all 2 calls are inside save_relation while the one question is open (entered 2; open 1; asked 1)
+  PASS: store error: the others wait: none returns and nothing more is asked before the answer (returned 0; asked 1; stored 0)
+  PASS: asked once; the fact is stored once in the end, by the waiting call, without asking again (asked 1; stored 1)
+  PASS: …one call reports the store error, the other saves it (Error: save_relation failed: Error: EBUSY: the fact store is busy | Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.)
+
+--- 8. Three calls for the same fact at once ---
+  PASS: three calls: all 3 calls are inside save_relation while the one question is open (entered 3; open 1; asked 1)
+  PASS: three calls: the others wait: none returns and nothing more is asked before the answer (returned 0; asked 1; stored 0)
+  PASS: asked once, stored once (asked 1; stored 1)
+  PASS: …one call saves it and the other two say it is already kept, all after the answer (Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Already kept in long-term memory: "User HAS_EXAM_ON Friday". Not store | Already kept in long-term memory: "User HAS_EXAM_ON Friday". Not store)
+
+--- 9. Only the waiting call stopped while the owner is still answering ---
+  PASS: waiter stopped: all 2 calls are inside save_relation while the one question is open (entered 2; open 1; asked 1)
+  PASS: waiter stopped: the others wait: none returns and nothing more is asked before the answer (returned 0; asked 1; stored 0)
+  PASS: the stopped waiting call returns while the question is still open (waiter returned true; first returned false)
+  PASS: …it says it was stopped, nothing is stored, nothing more is asked (Error: save_relation stopped by memory policy - this request was stopp)
+  PASS: …the owner's "yes" to the open question still stores the fact once, for the first call (Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.; stored 1; asked 1)
+
+--- 10. The question itself fails (throws) ---
+  PASS: failing question: all 2 calls are inside save_relation while the one question is open (entered 2; open 1; asked 1)
+  PASS: failing question: the others wait: none returns and nothing more is asked before the answer (returned 0; asked 1; stored 0)
+  PASS: the failing call ends; the waiting call is not left blocked and asks the owner itself (open 2; first returned true)
+  PASS: …the failing call reports the error and stores nothing (the registry does not retry it: risk 1) (Error: approval channel failed)
+  PASS: …the waiting call's own "yes" stores the fact once (Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.; stored 1; asked 2)
+  PASS: …a later call for the same fact is not blocked by a leftover entry: it returns "already kept" without asking (Already kept in long-term memory: "User HAS_EXAM_ON Friday". Not store)
+
+--- 7. Waiting for another call's question does not use up the call's time ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mwtgvw6o_wd16)
+-----------------------------------------------------------------
+  ACTION:           Keep in long-term memory
+  WHY:              You asked: "Remember that my exam is on Friday"
+  TARGET:           "User HAS_EXAM_ON Friday"
+  EXPECTED EFFECT:  Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.
+  RISK:             Level 1 — low
+  REVERSIBILITY:    Partly
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 20 s.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  PASS: asked once, stored once; both calls were inside save_relation while the question was open (asked 1; stored 1; inside while open 2)
+  PASS: …the owner took about 2.5 s to answer (2501 ms)
+  PASS: …both calls succeed: one saves, the other says it is already kept (Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Already kept in long-term memory: "User HAS_EXAM_ON Friday". Not store)
+  PASS: …the waiting call stayed active past its own 1.5 s budget (paused while it waited) and was not stopped (returned after 2505 ms)
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mwtgvy4a_lvaa)
+-----------------------------------------------------------------
+  ACTION:           Keep in long-term memory
+  WHY:              You asked: "Remember that my exam is on Friday"
+  TARGET:           "User HAS_EXAM_ON Saturday"
+  EXPECTED EFFECT:  Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.
+  RISK:             Level 1 — low
+  REVERSIBILITY:    Partly
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 20 s.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+[ToolSandbox] ⚠️ "save_relation" did not stop after its signal; its slot stays taken until it ends.
+  PASS: control: with the same budget, a call whose store runs 4 s is stopped by its budget (2508 ms; Error: TIMEOUT (outcome unknown): Tool "save_relation" ran past its 2 s budget and did not)
+
+=== Results: 43 passed, 0 failed ===
+exit=0

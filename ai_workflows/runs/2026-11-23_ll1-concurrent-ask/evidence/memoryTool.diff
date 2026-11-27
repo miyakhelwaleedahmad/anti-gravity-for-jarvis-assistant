@@ -1,0 +1,119 @@
+--- a/core/tools/memoryTool.ts
++++ b/core/tools/memoryTool.ts
+@@ -14,6 +14,7 @@
+ import { buildApprovalRequest, voiceApprovalMaxRisk } from '../../security/approvalRequest.js';
+ import { getAgentIds, getAgentPath, getGoalContext, getRequestSource, getRequestText, getTraceId } from '../traceContext.js';
+ import { stripMarkdown } from '../spokenText.js';
++import { whileOwnerAnswers } from '../toolExecutionSandbox.js';
+ 
+ /**
+  * What the owner is shown must be what is stored (review M-1): the console
+@@ -65,6 +66,29 @@
+   while (answers.size > 500) answers.delete(answers.keys().next().value!);
+ }
+ 
++/**
++ * A fact being handled right now under the same key (final-lows review LL-1):
++ * a second call for the same fact in the same task or request waits for the
++ * first one instead of asking again, then reads the kept answer. `answered`
++ * settles when the first call's question is over, `done` when the call has
++ * finished, its store included. Both always settle.
++ */
++const inFlight = new Map<string, { answered: Promise<void>; done: Promise<void> }>();
++
++/** Settles when `p` does, or as soon as `signal` is aborted. */
++function settledOrStopped(p: Promise<void>, signal?: AbortSignal): Promise<void> {
++  if (!signal) return p;
++  if (signal.aborted) return Promise.resolve();
++  return new Promise<void>((resolve) => {
++    const stop = (): void => resolve();
++    signal.addEventListener('abort', stop, { once: true });
++    void p.then(() => { signal.removeEventListener('abort', stop); resolve(); });
++  });
++}
++
++/** A request stopped while the owner was asked stores nothing, whatever the answer (review M-2, final review L-4). */
++const STOPPED = 'Error: save_relation stopped by memory policy - this request was stopped before your answer counted, so nothing was stored. Ask me again.';
++
+ /** The owner did not approve: reported as the registry reports its own denials (APPROVAL_DENIED; final review L-4). */
+ const NOT_CONFIRMED = JSON.stringify({
+   success: false,
+@@ -172,30 +196,57 @@
+ 
+     // With no request in flight (code calling the registry) nothing is asked or kept, as before.
+     const key = getRequestText() === undefined ? undefined : answerKey(fact);
+-    const kept = key === undefined ? { yes: true, stored: false, at: 0 } : keptAnswer(key);
+-    if (kept?.stored) return `Already kept in long-term memory: "${fact}". Not stored again.`;
+-    // The owner's "no", or no answer, is final (review M-3, final review L-4, L-5): reported as the owner's
+-    // denial, which the task graph and the repair step do not retry, and not asked again in this task.
+-    if (kept && !kept.yes) return NOT_CONFIRMED;
+-    if (!kept) {
+-      const yes = await ownerConfirms(fact);
+-      // A request stopped while it was asked stores nothing, whatever the answer (review M-2, final review L-4).
+-      if (signal?.aborted) return 'Error: save_relation stopped by memory policy - this request was stopped before your answer counted, so nothing was stored. Ask me again.';
+-      keepAnswer(key!, { yes, stored: false });
+-      if (!yes) return NOT_CONFIRMED;
++    // The same fact at the same moment in this task or request (two graph nodes, two workers;
++    // LL-1): wait for that call rather than asking again. Waiting for the owner's answer to its
++    // question does not count against this call's time; its store does.
++    let mine: { answered: Promise<void>; done: Promise<void> } | undefined;
++    let answered = (): void => {};
++    let finished = (): void => {};
++    if (key !== undefined) {
++      for (let busy = inFlight.get(key); busy; busy = inFlight.get(key)) {
++        const other = busy;
++        await whileOwnerAnswers(() => settledOrStopped(other.answered, signal));
++        await settledOrStopped(other.done, signal);
++        if (signal?.aborted) return STOPPED;
++      }
++      mine = {
++        answered: new Promise<void>((r) => { answered = r; }),
++        done: new Promise<void>((r) => { finished = r; }),
++      };
++      inFlight.set(key, mine);
+     }
+ 
+     try {
+-      // Also a long-term fact: search_memory reads facts, not the graph, and
+-      // with graph memory off (the default) the graph write does nothing — the
+-      // relation was reported saved and could never be recalled.
+-      await memoryManager.rememberFact(fact, 'relation', 6);
+-      if (key !== undefined) keepAnswer(key, { yes: true, stored: true });
+-      await graphMemory.saveRelation(entity1, relation, entity2);
+-      const where = graphMemory.isAvailable() ? 'long-term memory and the graph' : 'long-term memory';
+-      return `Saved relation: (${entity1})-[${relation.toUpperCase()}]->(${entity2}) in ${where}.`;
+-    } catch (err) {
+-      throw new Error(`save_relation failed: ${String(err)}`);
++      const kept = key === undefined ? { yes: true, stored: false, at: 0 } : keptAnswer(key);
++      if (kept?.stored) return `Already kept in long-term memory: "${fact}". Not stored again.`;
++      // The owner's "no", or no answer, is final (review M-3, final review L-4, L-5): reported as the owner's
++      // denial, which the task graph and the repair step do not retry, and not asked again in this task.
++      if (kept && !kept.yes) return NOT_CONFIRMED;
++      if (!kept) {
++        const yes = await ownerConfirms(fact);
++        // A request stopped while it was asked stores nothing, whatever the answer (review M-2, final review L-4).
++        if (signal?.aborted) return STOPPED;
++        keepAnswer(key!, { yes, stored: false });
++        if (!yes) return NOT_CONFIRMED;
++      }
++      answered();
++
++      try {
++        // Also a long-term fact: search_memory reads facts, not the graph, and
++        // with graph memory off (the default) the graph write does nothing — the
++        // relation was reported saved and could never be recalled.
++        await memoryManager.rememberFact(fact, 'relation', 6);
++        if (key !== undefined) keepAnswer(key, { yes: true, stored: true });
++        await graphMemory.saveRelation(entity1, relation, entity2);
++        const where = graphMemory.isAvailable() ? 'long-term memory and the graph' : 'long-term memory';
++        return `Saved relation: (${entity1})-[${relation.toUpperCase()}]->(${entity2}) in ${where}.`;
++      } catch (err) {
++        throw new Error(`save_relation failed: ${String(err)}`);
++      }
++    } finally {
++      answered();
++      finished();
++      if (key !== undefined && inFlight.get(key) === mine) inFlight.delete(key);
+     }
+   },
+ };

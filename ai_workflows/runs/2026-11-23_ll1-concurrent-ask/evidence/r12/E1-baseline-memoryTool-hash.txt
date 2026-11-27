@@ -1,0 +1,5 @@
+Baseline core/tools/memoryTool.ts before LL-1A (recorded at R10 Stage A, before any edit):
+1c79a0abdd0bd7f45f53850b7656d21ab60727951dbd308e097eb8b06b39b67a  core/tools/memoryTool.ts
+Copy kept as evidence/baseline/memoryTool.before.ts.txt:
+1c79a0abdd0bd7f45f53850b7656d21ab60727951dbd308e097eb8b06b39b67a  ai_workflows/runs/2026-11-23_ll1-concurrent-ask/evidence/baseline/memoryTool.before.ts.txt
+R10 fail-before run used that file; R12 fail-before run used it in a scratch copy of the repository (evidence/r12/fail-before/hashes-in-scratch-copy.txt).
