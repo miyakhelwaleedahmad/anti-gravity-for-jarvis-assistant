@@ -18,11 +18,14 @@
  */
 
 import type { GoalCriterion, GoalTask } from './goalLifecycle.js';
+import { redact } from '../security/redactor.js';
 
 export interface JudgeInput {
   objective: string;
   criterion: string;
   evidence: string;
+  /** Told why no verdict could be reached, when the judge knows (MM-1A-P2). */
+  onFailure?: (reason: string) => void;
 }
 
 /** Undefined: no verdict could be reached (model down). */
@@ -116,10 +119,13 @@ export async function verifyCriteria(input: {
           check = { id: c.id, description: c.description, evidence: 'no model to check this; waiting for your review' };
           break;
         }
-        const verdict = await input.judge({ objective: input.objective, criterion: c.description, evidence }).catch(() => undefined);
+        // Why no verdict was reached is kept in the check's evidence (MM-1A-P2).
+        let why: string | undefined;
+        const verdict = await input.judge({ objective: input.objective, criterion: c.description, evidence, onFailure: (reason) => { why = reason; } })
+          .catch((err: unknown) => { why = err instanceof Error ? err.message : String(err); return undefined; });
         check = verdict
           ? { id: c.id, description: c.description, met: verdict.met, evidence: verdict.reason.slice(0, 300) }
-          : { id: c.id, description: c.description, evidence: 'the check could not run (model unavailable); waiting for your review' };
+          : { id: c.id, description: c.description, evidence: `the check could not run (${why ? failureReason(why) : 'model unavailable'}); waiting for your review` };
       }
     }
     checks.push(check);
@@ -134,9 +140,14 @@ export async function verifyCriteria(input: {
   };
 }
 
-/** A judge that asks the model; undefined when the model fails or answers out of form. */
+/** A judge's failure reason as one short line, secrets removed: it is shown to the owner (MM-1A-P2). */
+function failureReason(reason: string): string {
+  return redact(reason).replace(/\s+/g, ' ').trim().slice(0, 240) || 'model unavailable';
+}
+
+/** A judge that asks the model; undefined when the model fails or answers out of form (the reason goes to onFailure). */
 export function modelJudge(chat?: (req: { messages: { role: 'system' | 'user'; content: string }[]; temperature?: number; max_tokens?: number }) => Promise<{ content: string }>): Judge {
-  return async ({ objective, criterion, evidence }) => {
+  return async ({ objective, criterion, evidence, onFailure }) => {
     try {
       const send: NonNullable<typeof chat> = chat ?? (async (req) => {
         const { modelRouter } = await import('../bridge/modelRouter.js');
@@ -152,9 +163,13 @@ export function modelJudge(chat?: (req: { messages: { role: 'system' | 'user'; c
       });
       const m = /\{[\s\S]*\}/.exec(res.content);
       const o = m ? JSON.parse(m[0]) as { met?: unknown; reason?: unknown } : undefined;
-      if (!o || typeof o.met !== 'boolean') return undefined;
+      if (!o || typeof o.met !== 'boolean') {
+        onFailure?.('the review model\'s answer was not in the expected form');
+        return undefined;
+      }
       return { met: o.met, reason: String(o.reason ?? '') };
-    } catch {
+    } catch (err) {
+      onFailure?.(err instanceof Error ? err.message : String(err));
       return undefined;
     }
   };

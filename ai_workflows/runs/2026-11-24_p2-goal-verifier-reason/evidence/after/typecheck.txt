@@ -1,0 +1,6 @@
+cmd: pnpm run typecheck
+
+> antigravityforjarvisassistant@1.0.0 typecheck /home/user/anti-gravity-for-jarvis-assistant
+> tsc --noEmit
+
+exit=0
