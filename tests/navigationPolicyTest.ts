@@ -82,8 +82,17 @@ if (!findChromium()) {
   process.env['JARVIS_CDP_PORT'] = String(chrome.port);
   try {
     const agent = await import('../control/browserAgent.js');
-    const { listPages } = await import('../perception/cdpClient.js');
+    const { listPages, withPage } = await import('../perception/cdpClient.js');
     for (let i = 0; i < 50 && !(await listPages(chrome.port)).length; i++) await new Promise((r) => setTimeout(r, 100));
+    // Warm-up, not a check: the first page a brand-new Chrome loads can take longer than JARVIS's 10 s navigation
+    // limit on a fresh Windows CI runner (on one commit this test passed in 5.8 s in one run, and in the other the
+    // first load passed 10 s). One page is loaded first with up to 45 s, so the checks below run against a started
+    // Chrome with JARVIS's own limit. A warm-up that fails is not hidden: the setup check below then reports it.
+    const [first] = await listPages(chrome.port);
+    if (first) {
+      await withPage(first, (s) => s.send('Page.navigate', { url: `http://public.example:${port}/warm` }, 45_000), chrome.port)
+        .catch((err: unknown) => console.log(`  (warm-up page load did not finish: ${err instanceof Error ? err.message : String(err)})`));
+    }
     const direct = await agent.navigate({ action: 'go', url: `http://public.example:${port}/page` });
     ok('(setup) the public name opens normally', direct.success && direct.check?.status === 'verified', direct.check?.evidence ?? direct.error);
     const r = await agent.navigate({ action: 'go', url: `http://public.example:${port}/go` });
