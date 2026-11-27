@@ -64,9 +64,12 @@ type Topology = 'direct' | 'launcher';
 interface WorkerStart { pid: number; ppid: number; label: string; created?: string; parentCreated?: string }
 /** A FILETIME as written by a stand-in: 1 .. 2^64-1 in plain decimal digits, else not recorded. Checked exactly (BigInt). */
 const filetime = (s: string | undefined): string | undefined => (s !== undefined && /^[1-9]\d{0,19}$/.test(s) && BigInt(s) < 2n ** 64n ? s : undefined);
-/** One starts.log line: "pid ppid label created parentCreated"; "-" or a missing field means not recorded (always, off Windows). */
+/**
+ * One starts.log line: "pid ppid label created parentCreated"; "-" or a missing field means not recorded (always, off
+ * Windows). Trimmed first: Python on Windows ends each line with \r\n, and a \r left on the last field rejected it.
+ */
 const parseStart = (l: string): WorkerStart => {
-  const [pid, ppid, label, created, parentCreated] = l.split(' ');
+  const [pid, ppid, label, created, parentCreated] = l.trim().split(' ');
   const c = filetime(created), pc = filetime(parentCreated);
   return { pid: Number(pid), ppid: Number(ppid), label: label!, ...(c ? { created: c } : {}), ...(pc ? { parentCreated: pc } : {}) };
 };
