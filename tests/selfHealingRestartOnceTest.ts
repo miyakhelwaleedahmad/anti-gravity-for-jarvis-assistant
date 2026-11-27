@@ -585,6 +585,18 @@ const starts = (dir: string): WorkerStart[] => {
 const launchers = (dir: string): number[] => {
   try { return fs.readFileSync(path.join(dir, 'launchers.log'), 'utf8').trim().split('\n').filter(Boolean).map(Number); } catch { return []; }
 };
+/** The process JARVIS tracks for this service (the stand-in, or its launcher) has exited. */
+const exited = (label: string) => { const p = entry(label).proc; return !!p && (p.exitCode !== null || p.signalCode !== null); };
+/**
+ * Waits until cond() holds, for up to limitMs; false if it never did. The cases wait for what they need instead of a
+ * fixed 800 ms: on a busy Windows PC a stand-in can take longer than that to start.
+ */
+async function waitUntil(cond: () => boolean, limitMs = 15_000): Promise<boolean> {
+  const end = Date.now() + limitMs;
+  while (!cond()) { if (Date.now() > end) return false; await sleep(50); }
+  return true;
+}
+const notReady = (ok: boolean, what: string) => (ok ? '' : `${what} not seen within 15 s; `);
 
 console.log('\n=== Self-healing: one crash, one restart (SH-1) ===');
 await windowsVerifiedStopSelfCheck();
@@ -617,11 +629,12 @@ try { for (const mode of topologies()) {
     const label = L('Sh1BurstSvc');
     const svc = standIn('burst', label, mode, EXIT_CLEAN);
     selfHealingManager.launchPythonService(svc.rel, label);
-    await sleep(800);                                         // started and exited cleanly (no restart)
+    const up = await waitUntil(() => starts(svc.dir).length === 1 && exited(label));   // started and exited cleanly (no restart)
     for (let i = 0; i < 3; i++) selfHealingManager.scheduleRestart(label, 200);
+    const again = await waitUntil(() => starts(svc.dir).length >= 2);
     await sleep(1_500);
     const all = starts(svc.dir);
-    ok(`${tag}three requests at once start the service once`, all.length === 2, `${all.length} starts`);
+    ok(`${tag}three requests at once start the service once`, up && again && all.length === 2, `${notReady(up, 'the first start and exit')}${notReady(again, 'a second start')}${all.length} starts`);
     ok(`${tag}…and are counted once`, entry(label).restarts === 1, `restarts ${entry(label).restarts}`);
   }
 
@@ -630,11 +643,16 @@ try { for (const mode of topologies()) {
     const label = L('Sh1BreakerSvc');
     const svc = standIn('breaker', label, mode, EXIT_CLEAN);
     selfHealingManager.launchPythonService(svc.rel, label);
-    await sleep(800);
-    for (let i = 0; i < 4; i++) { selfHealingManager.scheduleRestart(label, 100); await sleep(900); }
+    let up = await waitUntil(() => starts(svc.dir).length === 1 && exited(label));
+    // Each request after the previous copy has started and exited; the fourth one starts nothing.
+    for (let i = 0; i < 4 && up; i++) {
+      selfHealingManager.scheduleRestart(label, 100);
+      up = i === 3 || await waitUntil(() => starts(svc.dir).length === i + 2 && exited(label));
+    }
+    await sleep(900);
     const all = starts(svc.dir);
     const e = entry(label);
-    ok(`${tag}three restarts are made, one at a time`, all.length === 4, `${all.length} starts`);
+    ok(`${tag}three restarts are made, one at a time`, up && all.length === 4, `${notReady(up, 'each start and exit')}${all.length} starts`);
     ok(`${tag}the fourth request disables the service`, !!e.disabledAt && e.restarts === 4, `restarts ${e.restarts}, disabled ${!!e.disabledAt}`);
   }
 
@@ -643,13 +661,14 @@ try { for (const mode of topologies()) {
     const label = L('Sh1PendingSvc');
     const svc = standIn('pending', label, mode, EXIT_CLEAN);
     selfHealingManager.launchPythonService(svc.rel, label);
-    await sleep(800);
+    const up = await waitUntil(() => starts(svc.dir).length === 1 && exited(label));
     selfHealingManager.scheduleRestart(label, 1_500);  // automatic restart waiting
     const res = await selfHealingManager.restartService(label);
+    const again = await waitUntil(() => starts(svc.dir).length >= 2);
     await sleep(2_500);                                 // past the automatic restart's time
     const all = starts(svc.dir);
     ok(`${tag}the requested restart starts the service`, res.ok, JSON.stringify(res));
-    ok(`${tag}…and the waiting automatic restart does not start another copy`, all.length === 2, `${all.length} starts`);
+    ok(`${tag}…and the waiting automatic restart does not start another copy`, up && again && all.length === 2, `${notReady(up, 'the first start and exit')}${notReady(again, 'a second start')}${all.length} starts`);
   }
 
   console.log('\n--- 5. A requested restart of a running service while an automatic one is waiting ---');
@@ -668,15 +687,16 @@ try { for (const mode of topologies()) {
       '    time.sleep(0.2)',
     ].join('\n'));
     selfHealingManager.launchPythonService(svc.rel, label);
-    await sleep(800);
+    const up = await waitUntil(() => starts(svc.dir).length === 1);   // running, and its start recorded
     selfHealingManager.scheduleRestart(label, 0);       // automatic restart waiting
     const res = await selfHealingManager.restartService(label);
+    const again = await waitUntil(() => starts(svc.dir).length >= 2);
     await sleep(1_500);
     const all = starts(svc.dir);
     const alive = all.filter((w) => running(w.pid, svc.dir));
     const t = tracks(entry(label).proc?.pid, alive[0], all, svc.dir, mode);
     ok(`${tag}the requested restart starts the service`, res.ok, JSON.stringify(res));
-    ok(`${tag}one new start, not two`, all.length === 2, `${all.length} starts`);
+    ok(`${tag}one new start, not two`, up && again && all.length === 2, `${notReady(up, 'the first start')}${notReady(again, 'a second start')}${all.length} starts`);
     ok(`${tag}exactly one copy is running, the tracked one`, alive.length === 1 && t.ok, `${alive.length} running; ${t.how}`);
   }
 } } finally {

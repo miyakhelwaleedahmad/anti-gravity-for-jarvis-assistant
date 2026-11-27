@@ -489,6 +489,17 @@ function scriptPathFor(voice: string, file: string, p: typeof path = path): stri
 /** Every stand-in this test creates, in either arrangement: the cleanup after an exception finds them here. */
 const created: Svc[] = [];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Waits until cond() holds, for up to limitMs; false if it never did. The cases wait for what they need instead of a
+ * fixed 800 ms: on a busy Windows PC a stand-in can take longer than that to start, and the copy was then stopped
+ * before it had recorded its start.
+ */
+async function waitUntil(cond: () => boolean, limitMs = 15_000): Promise<boolean> {
+  const end = Date.now() + limitMs;
+  while (!cond()) { if (Date.now() > end) return false; await sleep(50); }
+  return true;
+}
+const notReady = (ok: boolean, what: string, limitS = 15) => (ok ? '' : `${what} not seen within ${limitS} s; `);
 
 type Check = { label: string; ok: boolean; detail: string; skipped?: boolean };
 
@@ -582,6 +593,8 @@ class Svc {
     try { return fs.readFileSync(path.join(this.dir, 'launchers.log'), 'utf8').trim().split('\n').filter(Boolean).map(Number).filter((p) => running(p, this.dir)); } catch { return []; }
   }
   entry() { return selfHealingManager.getManagedProcesses().get(this.label)!; }
+  /** An automatic restart is waiting (the stand-in crashed and its restart is scheduled). */
+  restartWaiting(): boolean { return !!(this.entry() as { pendingRestart?: unknown }).pendingRestart; }
   tracked(): number | undefined { return this.entry().proc?.pid; }
   /** The one running worker is the process JARVIS tracks (itself, or through its verified launcher). */
   tracksRunning(): { ok: boolean; how: string } {
@@ -626,13 +639,14 @@ async function runArrangement(mode: Topology): Promise<{ checks: Check[]; servic
 
   async function case4(): Promise<Check[]> {
     const s = svc('Sh1cWatchdog', BODY.slowStop); s.launch();
-    await sleep(800);
+    const up = await waitUntil(() => s.starts().length === 1);   // running, and its start recorded
     const old = s.starts()[0]?.pid;
     await heal(s);
+    const again = await waitUntil(() => s.starts().length >= 2);
     await sleep(4_500);
     const t = s.tracksRunning();
     return [
-      { label: '4  watchdog: one replacement', ok: s.starts().length === 2, detail: `${s.starts().length} starts` },
+      { label: '4  watchdog: one replacement', ok: up && again && s.starts().length === 2, detail: `${notReady(up, 'the first start')}${notReady(again, 'a second start')}${s.starts().length} starts` },
       { label: '4  …the old copy stopped before the new one started (never two at once)', ok: s.maxAlive === 1 && !s.alive().includes(old!), detail: `max at once ${s.maxAlive}` },
       { label: '4  …the new copy is tracked; the watchdog restart is counted once', ok: s.alive().length === 1 && t.ok && s.entry().restarts === 1, detail: `${t.how}; restarts ${s.entry().restarts}` },
     ];
@@ -640,13 +654,14 @@ async function runArrangement(mode: Topology): Promise<{ checks: Check[]; servic
 
   async function case5(): Promise<Check[]> {
     const s = svc('Sh1cFileChange', BODY.slowStop); s.launch();
-    await sleep(800);
+    const up = await waitUntil(() => s.starts().length === 1);
     const old = s.starts()[0]?.pid;
     selfHealingManager.scheduleRestart(s.label);   // the file watcher's call (self_healing/fsWatcher.ts)
+    const again = await waitUntil(() => s.starts().length >= 2);
     await sleep(4_500);
     const t = s.tracksRunning();
     return [
-      { label: '5  file change: one replacement', ok: s.starts().length === 2, detail: `${s.starts().length} starts` },
+      { label: '5  file change: one replacement', ok: up && again && s.starts().length === 2, detail: `${notReady(up, 'the first start')}${notReady(again, 'a second start')}${s.starts().length} starts` },
       { label: '5  …old copy stopped first (never two at once)', ok: s.maxAlive === 1 && !s.alive().includes(old!) && s.alive().length === 1 && t.ok, detail: `max at once ${s.maxAlive}; ${t.how}` },
       { label: '5  …a file change is not counted as a failure', ok: s.entry().restarts === 0, detail: `restarts ${s.entry().restarts}` },
     ];
@@ -654,49 +669,52 @@ async function runArrangement(mode: Topology): Promise<{ checks: Check[]; servic
 
   async function case6(): Promise<Check[]> {
     const s = svc('Sh1cHealPending', BODY.crashOnce); s.launch();
-    await sleep(1_000);                                  // crashed; an automatic restart is waiting
-    const waiting = !!(s.entry() as { pendingRestart?: unknown }).pendingRestart;
+    const waiting = await waitUntil(() => s.restartWaiting());   // crashed; an automatic restart is waiting
     const res = await selfHealingManager.restartService(s.label);
+    const again = await waitUntil(() => s.starts().length >= 2);
     await sleep(10_000);                                 // past the waiting restart's time
     const t = s.tracksRunning();
     return [
-      { label: '6  heal yourself: an automatic restart was waiting', ok: waiting, detail: '' },
-      { label: '6  …one replacement, the waiting restart cancelled', ok: res.ok && s.starts().length === 2 && s.alive().length === 1 && t.ok && s.maxAlive === 1, detail: `${JSON.stringify(res)}; ${s.starts().length} starts; ${t.how}` },
+      { label: '6  heal yourself: an automatic restart was waiting', ok: waiting, detail: notReady(waiting, 'a waiting restart') },
+      { label: '6  …one replacement, the waiting restart cancelled', ok: res.ok && again && s.starts().length === 2 && s.alive().length === 1 && t.ok && s.maxAlive === 1, detail: `${notReady(again, 'a second start')}${JSON.stringify(res)}; ${s.starts().length} starts; ${t.how}` },
     ];
   }
 
   async function case7(): Promise<Check[]> {
     const s = svc('Sh1cTogether', BODY.slowStop); s.launch();
-    await sleep(800);
+    const up = await waitUntil(() => s.starts().length === 1);
     const [, , r] = await Promise.all([heal(s), Promise.resolve(selfHealingManager.scheduleRestart(s.label)), selfHealingManager.restartService(s.label), heal(s)]);
+    const again = await waitUntil(() => s.starts().length >= 2);
     await sleep(4_500);
     const t = s.tracksRunning();
     return [
-      { label: '7  four requests at once: one replacement', ok: s.starts().length === 2, detail: `${s.starts().length} starts` },
+      { label: '7  four requests at once: one replacement', ok: up && again && s.starts().length === 2, detail: `${notReady(up, 'the first start')}${notReady(again, 'a second start')}${s.starts().length} starts` },
       { label: '7  …never two copies at once; the requested restart reports success', ok: s.maxAlive === 1 && s.alive().length === 1 && t.ok && r.ok, detail: `max at once ${s.maxAlive}; ${t.how}; ${JSON.stringify(r)}` },
     ];
   }
 
   async function case8(): Promise<Check[]> {
     const s = svc('Sh1cNoResurrect', BODY.crashOnce); s.launch();
-    await sleep(1_000);                                  // crashed; an automatic restart is waiting
+    const waiting = await waitUntil(() => s.restartWaiting());   // crashed; an automatic restart is waiting
     await selfHealingManager.restartService(s.label);    // started again on request
-    await sleep(600);
+    const again = await waitUntil(() => s.starts().length === 2);
     const p = s.entry().proc!;
     mgr.intendedStops.add(p);                            // then stopped on purpose
     p.kill();
     await sleep(10_000);                                 // past the first restart's time
     return [
-      { label: '8  a waiting restart does not bring back a service stopped on purpose', ok: s.starts().length === 2 && s.alive().length === 0 && s.launchersAlive().length === 0, detail: `${s.starts().length} starts, ${s.alive().length} running` },
+      { label: '8  a waiting restart does not bring back a service stopped on purpose', ok: waiting && again && s.starts().length === 2 && s.alive().length === 0 && s.launchersAlive().length === 0, detail: `${notReady(waiting, 'a waiting restart')}${notReady(again, 'a second start')}${s.starts().length} starts, ${s.alive().length} running` },
     ];
   }
 
   async function case9(): Promise<Check[]> {
     const s = svc('Sh1cBreaker', BODY.crashAlways); s.launch();
-    await sleep(24_000);                                 // three restarts with back-off 3 s, 6 s, 9 s
+    // Three restarts with back-off 3 s, 6 s, 9 s (18 s), plus four starts: up to 40 s, then 1 s for anything extra.
+    const done = await waitUntil(() => !!s.entry().disabledAt, 40_000);
+    await sleep(1_000);
     const e = s.entry();
     return [
-      { label: '9  three crashes are restarted, the fourth disables the service', ok: s.starts().length === 4 && !!e.disabledAt && e.restarts === 4, detail: `${s.starts().length} starts, restarts ${e.restarts}, disabled ${!!e.disabledAt}` },
+      { label: '9  three crashes are restarted, the fourth disables the service', ok: done && s.starts().length === 4 && !!e.disabledAt && e.restarts === 4, detail: `${notReady(done, 'the service disabled', 40)}${s.starts().length} starts, restarts ${e.restarts}, disabled ${!!e.disabledAt}` },
       { label: '9  …never two copies at once', ok: s.maxAlive <= 1, detail: `max at once ${s.maxAlive}` },
     ];
   }
@@ -717,21 +735,21 @@ async function runArrangement(mode: Topology): Promise<{ checks: Check[]; servic
       return [{ label: '11 a copy that will not stop', ok: true, detail: `not run: ${mode === 'launcher' ? 'ending the launcher ends the service at once' : 'Windows ends a process at once'}, so a copy cannot refuse to stop here`, skipped: true }];
     }
     const s = svc('Sh1cStubborn', BODY.stubborn); s.launch();
-    await sleep(800);
-    const old = s.starts()[0]!.pid;
+    const up = await waitUntil(() => s.starts().length === 1);   // running, and ignoring SIGTERM
+    const old = s.starts()[0]?.pid;
     await heal(s);                                       // watchdog: stop times out (stopTimeoutMs 1.5 s)
     const manual = await selfHealingManager.restartService(s.label, 1_500);
     await sleep(4_000);
     const t = s.tracksRunning();
     return [
-      { label: '11 a copy that will not stop: no second copy is started', ok: s.starts().length === 1 && s.alive().length === 1 && s.alive()[0] === old && t.ok, detail: `${s.starts().length} starts; ${t.how}` },
+      { label: '11 a copy that will not stop: no second copy is started', ok: up && s.starts().length === 1 && s.alive().length === 1 && s.alive()[0] === old && t.ok, detail: `${notReady(up, 'the first start')}${s.starts().length} starts; ${t.how}` },
       { label: '11 …and the failure is reported with the reason', ok: !manual.ok && /did not stop/.test(manual.reason), detail: JSON.stringify(manual) },
     ];
   }
 
   async function case12(): Promise<Check[]> {
     const s = svc('Sh1cDuringStop', BODY.slowStop); s.launch();
-    await sleep(800);
+    const up = await waitUntil(() => s.starts().length === 1);
     const replacing = heal(s);                           // watchdog stop in progress
     // Where a stop takes time (about 1 s), the other requests arrive in the middle
     // of it; where it is immediate, they arrive while the replacement is in progress.
@@ -740,10 +758,11 @@ async function runArrangement(mode: Topology): Promise<{ checks: Check[]; servic
     selfHealingManager.reportError('Traceback (most recent call last):\nValueError: late report', s.label.toLowerCase());
     const manual = await selfHealingManager.restartService(s.label);
     await replacing;
+    const again = await waitUntil(() => s.starts().length >= 2);
     await sleep(5_000);                                  // past any back-off a late report could schedule
     const t = s.tracksRunning();
     return [
-      { label: '12 requests during a replacement: one replacement, never two copies at once', ok: s.starts().length === 2 && s.maxAlive === 1 && s.alive().length === 1 && t.ok, detail: `${s.starts().length} starts, max at once ${s.maxAlive}; ${t.how}` },
+      { label: '12 requests during a replacement: one replacement, never two copies at once', ok: up && again && s.starts().length === 2 && s.maxAlive === 1 && s.alive().length === 1 && t.ok, detail: `${notReady(up, 'the first start')}${notReady(again, 'a second start')}${s.starts().length} starts, max at once ${s.maxAlive}; ${t.how}` },
       { label: '12 …the requested restart joins it and reports success; counted once', ok: manual.ok && s.entry().restarts === 1, detail: `${JSON.stringify(manual)}; restarts ${s.entry().restarts}` },
     ];
   }
