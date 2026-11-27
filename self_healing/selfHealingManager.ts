@@ -73,6 +73,10 @@ interface ManagedProcess {
   proc: ChildProcess | null;
   restarts: number;          // HIGH-4: sole restart counter lives here
   disabledAt?: Date;
+  /** The automatic restart waiting to start, if any (SH-1). */
+  pendingRestart?: ReturnType<typeof setTimeout>;
+  /** A stop-then-start in progress; other requests join it (SH-1 Option C). */
+  replacing?: Promise<{ ok: boolean; reason: string }>;
 }
 
 // ─── SelfHealingManager ───────────────────────────────────────────────────────
@@ -80,10 +84,12 @@ interface ManagedProcess {
 export class SelfHealingManager extends EventEmitter {
   private static instance: SelfHealingManager;
   private processes = new Map<string, ManagedProcess>();
-  /** Processes stopped on purpose by restartService(): their exit is not a crash. */
+  /** Processes stopped on purpose (stop-then-start): their exit is not a crash. */
   private intendedStops = new WeakSet<ChildProcess>();
   private readonly MAX_RESTARTS = 3;
   private readonly RESTART_BACKOFF_MS = 3_000;
+  /** How long the watchdog's and the file watcher's restarts wait for the old copy to exit. */
+  private stopTimeoutMs = 10_000;
 
   // PART B-3: Periodic health check interval handle
   private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -185,10 +191,50 @@ export class SelfHealingManager extends EventEmitter {
     });
   }
 
+  /**
+   * Option C (owner decision 2026-11-24). A process that has exited gets one
+   * restart after the back-off, counted once however many times its exit was
+   * reported (SH-1). A process still running (the file watcher's call after a
+   * .py change) is stopped first and replaced once; a file change is not a
+   * failure, so it is not counted.
+   */
   scheduleRestart(label: string, delayMs?: number): void {
     const entry = this.processes.get(label);
     if (!entry || entry.disabledAt) return;
 
+    if (entry.replacing) {
+      console.log(`[SelfHeal] A restart of ${label} is already in progress; not starting another copy.`);
+      return;
+    }
+    if (this.isRunning(entry.proc)) {
+      void this.replaceProcess(label, entry, { count: false, stopTimeoutMs: this.stopTimeoutMs, why: 'restart requested' });
+      return;
+    }
+
+    // One crash is reported up to three times (its traceback, its exit code,
+    // the exit itself): it gets one restart and counts once (SH-1).
+    if (entry.pendingRestart) {
+      console.log(`[SelfHeal] A restart of ${label} is already scheduled; not starting another copy.`);
+      return;
+    }
+
+    if (!this.countRestart(label, entry)) return;
+
+    // Phase 8: use policy-driven backoff if provided, else default exponential
+    const delay = delayMs ?? (this.RESTART_BACKOFF_MS * entry.restarts);
+    console.warn(`[SelfHeal] Scheduling restart of ${label} in ${delay}ms (attempt ${entry.restarts}/${this.MAX_RESTARTS})…`);
+    entry.pendingRestart = setTimeout(() => {
+      entry.pendingRestart = undefined;
+      if (entry.replacing || this.isRunning(entry.proc)) {
+        console.log(`[SelfHeal] ${label} is already running again; not starting another copy.`);
+        return;
+      }
+      this.spawnProcess(label);
+    }, delay);
+  }
+
+  /** Counts one restart; false when that trips the circuit breaker (the service is then disabled). */
+  private countRestart(label: string, entry: ManagedProcess): boolean {
     entry.restarts += 1;  // HIGH-4: count incremented only here
 
     if (entry.restarts > this.MAX_RESTARTS) {
@@ -199,20 +245,16 @@ export class SelfHealingManager extends EventEmitter {
       alertManager.critical(label, `Module "${label}" circuit-broken after ${entry.restarts} crashes`, 'SelfHealingManager');
       console.error(`[SelfHeal] 🔴 Circuit breaker: ${label} crashed ${entry.restarts} times. DISABLED.`);
       nodeBridge.speakToClients(`Sir, my ${label} module has failed repeatedly and has been disabled.`);
-      return;
+      return false;
     }
-
-    // Phase 8: use policy-driven backoff if provided, else default exponential
-    const delay = delayMs ?? (this.RESTART_BACKOFF_MS * entry.restarts);
-    console.warn(`[SelfHeal] Scheduling restart of ${label} in ${delay}ms (attempt ${entry.restarts}/${this.MAX_RESTARTS})…`);
-    setTimeout(() => this.spawnProcess(label), delay);
+    return true;
   }
 
   /**
    * A restart asked for by a repair run (core/repairRun.ts): the running
    * process, if any, is stopped and waited for before a new one starts, so two
-   * copies never run at once. Not counted as a crash. The automatic paths
-   * above (scheduleRestart) are unchanged.
+   * copies never run at once. Not counted as a crash; it replaces an automatic
+   * restart that is still waiting, and joins a stop-then-start in progress.
    */
   async restartService(label: string, stopTimeoutMs = 10_000): Promise<{ ok: boolean; reason: string }> {
     const key = [...this.processes.keys()].find((k) => k.toLowerCase() === label.toLowerCase());
@@ -221,18 +263,59 @@ export class SelfHealingManager extends EventEmitter {
     if (entry.disabledAt) {
       return { ok: false, reason: `${key} was disabled after repeated crashes at ${entry.disabledAt.toISOString()}; restart JARVIS to enable it again` };
     }
-    const old = entry.proc;
-    if (old && old.exitCode === null && old.signalCode === null) {
-      this.intendedStops.add(old);
-      const exited = new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), stopTimeoutMs);
-        old.once("exit", () => { clearTimeout(timer); resolve(true); });
-      });
-      old.kill();
-      if (!(await exited)) return { ok: false, reason: `${key} did not stop within ${Math.round(stopTimeoutMs / 1000)} s` };
-    }
-    this.spawnProcess(key);
-    return { ok: true, reason: `${key} restarted` };
+    return this.replaceProcess(key, entry, { count: false, stopTimeoutMs, why: 'restart requested' });
+  }
+
+  /**
+   * Stop-then-start (SH-1 Option C): cancel a waiting automatic restart, stop
+   * the running copy and wait for it to exit, then start one. A request while
+   * one is in progress joins it. If the old copy does not exit in time, no
+   * second copy is started and the failure is returned.
+   */
+  private replaceProcess(key: string, entry: ManagedProcess, opts: { count: boolean; stopTimeoutMs: number; why: string }): Promise<{ ok: boolean; reason: string }> {
+    if (entry.replacing) return entry.replacing;
+    const run = (async (): Promise<{ ok: boolean; reason: string }> => {
+      await null;   // entry.replacing is set before any of this runs
+      try {
+        if (entry.disabledAt) return { ok: false, reason: `${key} was disabled after repeated failures; restart JARVIS to enable it again` };
+        this.cancelPendingRestart(entry);
+        if (opts.count && !this.countRestart(key, entry)) return { ok: false, reason: `${key} was disabled after repeated failures` };
+        const old = entry.proc;
+        if (this.isRunning(old)) {
+          this.intendedStops.add(old);
+          const exited = new Promise<boolean>((resolve) => {
+            const timer = setTimeout(() => resolve(false), opts.stopTimeoutMs);
+            old.once("exit", () => { clearTimeout(timer); resolve(true); });
+          });
+          old.kill();
+          if (!(await exited)) {
+            const reason = `${key} did not stop within ${Math.round(opts.stopTimeoutMs / 1000)} s; no second copy was started`;
+            console.error(`[SelfHeal] ${reason}.`);
+            return { ok: false, reason };
+          }
+        }
+        this.cancelPendingRestart(entry);   // also one scheduled while the old process stopped
+        console.log(`[SelfHeal] ${key}: ${opts.why}; the old copy has exited, starting one.`);
+        this.spawnProcess(key);
+        return { ok: true, reason: `${key} restarted` };
+      } finally {
+        entry.replacing = undefined;
+      }
+    })();
+    entry.replacing = run;
+    return run;
+  }
+
+  /** A started process that has not exited (a failed spawn has no pid). */
+  private isRunning(proc: ChildProcess | null): proc is ChildProcess {
+    return !!proc && proc.pid !== undefined && proc.exitCode === null && proc.signalCode === null;
+  }
+
+  /** This start replaces an automatic restart still waiting (SH-1). */
+  private cancelPendingRestart(entry: ManagedProcess): void {
+    if (!entry.pendingRestart) return;
+    clearTimeout(entry.pendingRestart);
+    entry.pendingRestart = undefined;
   }
 
   // ── Failure Pipeline ──────────────────────────────────────────────────────
@@ -261,6 +344,17 @@ export class SelfHealingManager extends EventEmitter {
     const plan = planRecovery(failure, currentRestarts + 1, this.MAX_RESTARTS);
 
     for (const action of plan.actions) {
+      if (action.kind === "restart_process") {
+        const lbl = this.resolveLabel(action.target);
+        const target = lbl ? this.processes.get(lbl) : undefined;
+        // An error from a service that is still running is not a crash: it is
+        // recorded above, not restarted and not counted (SH-1 Option C). If the
+        // service then exits, its exit restarts it.
+        if (target && this.isRunning(target.proc)) {
+          console.log(`[SelfHeal] ${lbl} reported an error but is still running: recorded, not restarted.`);
+          continue;
+        }
+      }
       const result = await repairExecutor.execute(action);
 
       if (action.kind === "restart_process" && result.success) {
@@ -321,7 +415,13 @@ export class SelfHealingManager extends EventEmitter {
                break;
            }
         }
-        if (foundLabel) {
+        const found = foundLabel ? this.processes.get(foundLabel) : undefined;
+        if (foundLabel && found && (this.isRunning(found.proc) || found.replacing)) {
+           // The pipeline is broken while its process runs: it is stuck. Stop it,
+           // wait for it to exit, then start one; counted (SH-1 Option C).
+           const res = await this.replaceProcess(foundLabel, found, { count: true, stopTimeoutMs: this.stopTimeoutMs, why: `pipeline '${pipeline}' is broken` });
+           if (!res.ok) console.error(`[SelfHeal] Watchdog restart of ${foundLabel} failed: ${res.reason}`);
+        } else if (foundLabel) {
            this.scheduleRestart(foundLabel);
         } else {
            console.warn(`[SelfHeal] Target ${actionPlan.target} not managed directly by continuous process spawner. Skipping raw spawn.`);
