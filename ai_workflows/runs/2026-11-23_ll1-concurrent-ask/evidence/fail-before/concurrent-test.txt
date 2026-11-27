@@ -1,0 +1,81 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+
+=== save_relation: the same fact asked at the same moment (LL-1 part A) ===
+
+--- 1. Same fact at once, "yes" ---
+  FAIL: one request: the owner is asked once (asked 2)
+  FAIL: …the fact is stored once (stored 2)
+  FAIL: …one call saves it and the other says it is already kept (Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.)
+  FAIL: two workers of one agent root task: asked once, stored once (asked 2; stored 2)
+  FAIL: …one saves it, the other says it is already kept (Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.)
+
+--- 2. Same fact at once, "no" ---
+  FAIL: the owner is asked once (asked 2)
+  PASS: …nothing is stored (stored 0)
+  PASS: …both calls report the owner's denial (APPROVAL_DENIED) (APPROVAL_DENIED: {"success":false,"error":"APPROVAL_DENIED","message":"save_relation ca | APPROVAL_DENIED: {"success":false,"error":"APPROVAL_DENIED","message":"save_relation ca)
+
+--- 3. Different facts at once ---
+  PASS: each fact is asked once (asked 2: "User HAS_EXAM_ON Friday", "User HAS_EXAM_ON Monday")
+  PASS: …and each is stored once (stored 2; Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Saved relation: (User)-[HAS_EXAM_ON]->(Monday) in long-term memory.)
+
+--- 4. The same fact at once in a request and in an agent's root task ---
+  PASS: each context asks its own question (asked 2)
+  PASS: …the request's "no" does not stop the agent's "yes": only the agent's fact is stored ({"success":false,"error":"APPROVAL_DENIED","message":"save_relation ca | Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.; stored 1)
+
+--- 5. The first question stopped ---
+  FAIL: a stopped request: asked once, nothing stored (asked 2; stored 0)
+  PASS: …both calls say the request was stopped, not "not confirmed" (Error: save_relation stopped by memory policy - this request was stopp | Error: save_relation stopped by memory policy - this request was stopp)
+  PASS: only the first stopped: it stores nothing and says it was stopped (Error: save_relation stopped by memory policy - this request was stopp)
+  PASS: …the other call is asked itself and stores the fact once on "yes" (asked 2; stored 1; Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.)
+
+--- 6. A store error after "yes" ---
+  FAIL: the owner is asked once (asked 2)
+  PASS: …the fact is stored once in the end, without asking again (stored 1; Error: save_relation failed: Error: EBUSY: the fact store is busy | Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.)
+
+--- 7. Waiting for another call's question does not use up the call's time ---
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mwtf677m_r86u)
+-----------------------------------------------------------------
+  ACTION:           Keep in long-term memory
+  WHY:              You asked: "Remember that my exam is on Friday"
+  TARGET:           "User HAS_EXAM_ON Friday"
+  EXPECTED EFFECT:  Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.
+  RISK:             Level 1 — low
+  REVERSIBILITY:    Partly
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 20 s.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+
+=================================================================
+JARVIS NEEDS YOUR APPROVAL  (request apr_mwtf677n_rlpa)
+-----------------------------------------------------------------
+  ACTION:           Keep in long-term memory
+  WHY:              You asked: "Remember that my exam is on Friday"
+  TARGET:           "User HAS_EXAM_ON Friday"
+  EXPECTED EFFECT:  Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.
+  RISK:             Level 1 — low
+  REVERSIBILITY:    Partly
+-----------------------------------------------------------------
+  Do you approve this action?
+  Type APPROVE, YES or CONFIRM within 20 s.
+  Anything else, or no answer, cancels it.
+=================================================================
+
+  Approved by user.
+
+  FAIL: asked once, stored once (asked 2; stored 2)
+  FAIL: …neither call is stopped by its budget: one saves, the other says it is already kept (Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory. | Saved relation: (User)-[HAS_EXAM_ON]->(Friday) in long-term memory.)
+
+=== Results: 10 passed, 10 failed ===
+exit=1

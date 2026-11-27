@@ -228,17 +228,36 @@ export class AgentGoalExecutor implements GoalTaskExecutor {
   }
 }
 
+/**
+ * The start of a step: an optional "First,", "Then", "Next,", "Finally,",
+ * "Also" or "And", then an optional "please" (LL-2). Only the start of the
+ * step is read; a request later in its text is not (owner decision D-2).
+ */
+const STEP_START = String.raw`^\s*(?:(?:first|then|next|finally|also|and)\b\s*,?\s*)?(?:please\s+)?`;
 /** "Remember what …", "note which …": reading what is remembered, not keeping something (final review L-7). */
-const RECALL_STEP = /^\s*(?:please\s+)?(?:remember|note|recall)\s+(?:what|which|whether|how|if|when|where|who|why)\b/i;
-/** A step that starts by asking to keep something; "save time" is not one. */
-const KEEP_STEP = /^\s*(?:please\s+)?(?:remember|note|keep in mind|don'?t forget|memori[sz]e|record|make a note|store|save|add)\b(?!\s+time\b)/i;
-/** "Keep, store, save, add, record or put … in memory"; "update the profile / preferences / memory". */
-const IN_MEMORY_STEP = /\b(?:keep|store|save|add|record|put)\b[^.?!]*\b(?:in|to|into)\s+(?:long-term\s+)?memory\b/i;
-const PROFILE_STEP = /^\s*(?:please\s+)?update\b[^.?!]*\b(?:profile|preferences?|memory)\b/i;
+const RECALL_STEP = new RegExp(STEP_START + String.raw`(?:remember|note|recall)\s+(?:what|which|whether|how|if|when|where|who|why)\b`, 'i');
+/**
+ * A value after a colon makes it a keep step: "Remember who the manager is: Sara" (LL-2, owner decision D-3).
+ * The colon in a time ("at 10:30") or a web address ("https://") is not one (review, PR #2).
+ */
+const GIVES_VALUE = /(?<!\d):(?!\/\/)\s*\S|\d:(?![\d/])\s*\S/;
+/**
+ * A step that starts by asking to keep something (LL-2). "Remember to …" and
+ * "don't forget to …" are instructions, "keep in mind" is not keeping; "add",
+ * "record", "store" and "save" ask to keep only with "that", the user's or
+ * owner's, my/our/this/these/it/fact, or "the/a … : value" ("save time",
+ * "store hours: …", "record the answer" are not). "Note that …" stays a keep
+ * step (owner decision D-1).
+ */
+const KEEP_STEP = new RegExp(STEP_START + String.raw`(?:remember\b(?!\s+to\b)|(?:don'?t|do not) forget\b(?!\s+to\b)|note\b|memori[sz]e\b|make a note\b|make sure to remember\b|log that\b|write down\b|learn that\b|persist\b|keep track of\b|(?:record|store|save|add)\s+(?:that\b|(?:the\s+)?(?:user|owner)'?s?\b|(?:my|our|this|these|it|facts?)\b|(?:the|a|an)\s+[^:.?!]*:\s*\S))`, 'i');
+/** A step that starts with "keep, store, save, add, record or put … in memory" (not "list what you store in memory"). */
+const IN_MEMORY_STEP = new RegExp(STEP_START + String.raw`(?:keep|store|save|add|record|put)\b[^.?!]*\b(?:in|to|into)\s+(?:long-term\s+)?memory\b`, 'i');
+/** "Update / set / change the (user's) profile, preference(s) or memory" (not "update the user on …"). */
+const PROFILE_STEP = new RegExp(STEP_START + String.raw`(?:update|set|change)\s+(?:the\s+)?(?:(?:user|owner)'?s?\s+|my\s+)?(?:profile|preferences?|(?:long-term\s+)?memory)\b`, 'i');
 
-/** A goal step asked to keep a fact (English phrasing; final review L-7). */
+/** A goal step asked to keep a fact (English phrasing only, read from its start; final review L-7, LL-2). */
 function isRememberStep(description: string): boolean {
-  if (RECALL_STEP.test(description)) return false;
+  if (RECALL_STEP.test(description) && !GIVES_VALUE.test(description)) return false;
   return KEEP_STEP.test(description) || IN_MEMORY_STEP.test(description) || PROFILE_STEP.test(description);
 }
 

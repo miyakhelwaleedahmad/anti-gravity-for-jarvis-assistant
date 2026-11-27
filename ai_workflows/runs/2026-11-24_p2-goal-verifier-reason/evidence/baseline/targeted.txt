@@ -1,0 +1,12 @@
+cmd: pnpm exec tsx tests/runAll.ts --ci --only=modelRouteCorrectionsTest,verificationInconclusiveTest,goalRuntimeTest
+
+=== JARVIS test suite — 3 file(s) (CI mode) ===
+
+  PASS    goalRuntimeTest                              2356ms
+  PASS    modelRouteCorrectionsTest                    5760ms
+  PASS    verificationInconclusiveTest                 1887ms
+
+=== 3 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.
+exit=0

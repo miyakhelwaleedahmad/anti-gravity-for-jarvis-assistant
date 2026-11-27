@@ -1,0 +1,2 @@
+305db5b531d12e78e50f24c18f471433d811ac5fcf37657c702a045fe1731680  core/goalExecutor.ts
+65a3d8d869707bacd7f7808dde1bb70ae6413d35e5ea0f76bf57044956538dd3  tests/goalStepClassifierTest.ts

@@ -1,0 +1,19 @@
+cmd: pnpm exec tsx tests/runAll.ts --ci --only=goalStepClassifierTest,saveRelationLowFixesTest,saveRelationConfirmReviewTest,goalAgentIntegrationTest,mixedFailureCausesTest,errorClassificationTest,lowReviewFixesTest,saveRelationConfirmTest,saveRelationProvenanceTest,docsHygieneTest
+
+=== JARVIS test suite — 10 file(s) (CI mode) ===
+
+  PASS    docsHygieneTest                              1157ms
+  PASS    errorClassificationTest                      1198ms
+  PASS    goalAgentIntegrationTest                     2336ms
+  PASS    goalStepClassifierTest                       1241ms
+  PASS    lowReviewFixesTest                           1192ms
+  PASS    mixedFailureCausesTest                       1231ms
+  PASS    saveRelationConfirmReviewTest                1240ms
+  PASS    saveRelationConfirmTest                      1162ms
+  PASS    saveRelationLowFixesTest                     1327ms
+  PASS    saveRelationProvenanceTest                   1359ms
+
+=== 10 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.
+exit=0

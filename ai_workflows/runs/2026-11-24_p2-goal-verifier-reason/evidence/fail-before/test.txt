@@ -1,0 +1,35 @@
+cmd: pnpm exec tsx tests/goalVerifierReasonTest.ts
+
+=== Goal criteria: why a check could not run (MM-1A-P2) ===
+
+--- 1. modelJudge: the contract is kept and the reason is reported ---
+  PASS: modelJudge still returns undefined when the model fails
+  FAIL: …and reports the model error as the reason (undefined)
+
+--- 2. An answer that is not the expected JSON ---
+  PASS: an answer out of form gives no verdict
+  FAIL: …and says the answer was not in the expected form (undefined)
+
+--- 3. verifyCriteria through modelJudge ---
+  PASS: the criterion is not met and waits for review (unchanged) (needs_review; met undefined)
+  FAIL: …and its evidence gives the reason, not only "model unavailable" (the check could not run (model unavailable); waiting for your review)
+  PASS: …and still asks for the owner's review (the check could not run (model unavailable); waiting for your review)
+
+--- 4. A judge that throws ---
+  FAIL: needs review, with the thrown message in the evidence (the check could not run (model unavailable); waiting for your review)
+
+--- 5. A judge that gives no verdict and no reason (control) ---
+  PASS: the old wording is kept (the check could not run (model unavailable); waiting for your review)
+
+--- 6. A judge that answers (control) ---
+  PASS: a "met" verdict is unchanged (met; React is recommended)
+  PASS: an "unmet" verdict is unchanged (unmet; no recommendation)
+
+--- 7. A secret in the error ---
+  FAIL: the key is not copied into the evidence (the check could not run (model unavailable); waiting for your review)
+
+--- 8. A long, multi-line error ---
+  FAIL: the evidence is one line of at most 300 characters (68 chars)
+
+=== Results: 7 passed, 6 failed ===
+exit=1

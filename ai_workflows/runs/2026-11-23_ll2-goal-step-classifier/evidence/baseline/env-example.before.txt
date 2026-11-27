@@ -1,0 +1,565 @@
+# Environment variables — NEVER commit real secrets!
+
+# ─── LLM provider ─────────────────────────────────────────────────────────────
+
+# JARVIS uses Gemini or Groq through the same OpenAI-compatible client.
+# Set the key of ONE provider; JARVIS picks the provider whose key is set.
+# Set JARVIS_LLM_PROVIDER=gemini or groq only if both keys are present.
+# JARVIS_LLM_PROVIDER=anthropic: Claude answers (needs ANTHROPIC_API_KEY,
+# see "Claude" below) and Gemini or Groq, if its key is set, is the fallback
+# when a Claude call fails.
+
+JARVIS_LLM_PROVIDER=
+
+# ── Gemini (Google AI Studio key) ──
+
+GEMINI_API_KEY=
+
+# Optional. Defaults to the OpenAI-compatible endpoint below; the bare API root
+# (https://generativelanguage.googleapis.com/v1beta) also works.
+
+GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/openai
+
+# ── Groq (https://console.groq.com) ──
+
+GROQ_API_KEY=
+
+# GitHub search and repository lookups (tools/githubTools.ts). Optional: without
+# a token GitHub allows about 10 searches a minute. A read-only token is enough;
+# JARVIS writes nothing to GitHub. Never paste the token into a file JARVIS can
+# read (SEC-14) — keep it here only.
+
+# GITHUB_TOKEN=
+GROQ_API_URL=https://api.groq.com/openai/v1
+
+# ── Models (must belong to the provider above) ──
+# Gemini: gemini-3.5-flash and gemini-3.5-flash-lite (each has its own
+#         free-tier rate limit, so using both spreads the load)
+# Groq:   e.g. qwen/qwen3-32b and llama-3.1-8b-instant
+
+JARVIS_BRAIN_MODEL=
+JARVIS_FAST_MODEL=
+
+# Thinking before answering: none | minimal | low | medium | high | off.
+# Default for Gemini is minimal: thinking is paid out of max_tokens, and higher
+# levels cut short replies off. "off" stops JARVIS sending the setting at all.
+# Leave empty for Groq unless your model supports reasoning_effort.
+
+JARVIS_LLM_REASONING_EFFORT=
+
+# ─── Fallback LLM provider (optional) ────────────────────────────────────────
+
+# Any OpenAI-compatible chat-completions endpoint, tried when the primary
+# provider fails. Without this, a Groq outage stops all reasoning. Leave the key
+# empty and set only the base URL for a local server that needs no auth.
+
+JARVIS_FALLBACK_BASE_URL=
+JARVIS_FALLBACK_API_KEY=
+JARVIS_FALLBACK_MODEL=
+
+# ─── Model per kind of work (optional; bridge/modelCategories.ts) ─────────────
+
+# Each kind of work uses the brain or fast model above unless set here:
+#   <model>                same provider, another model
+#   <provider>:<model>     e.g. anthropic:claude-opus-5-5
+#   anthropic              Claude with its default model (claude-opus-5-5)
+# Kinds: INTENT, CONVERSATION, PLANNING, REPAIR_PLAN, CODING, REVIEW.
+# JARVIS_MODEL_CODING=
+# JARVIS_MODEL_REVIEW=
+# JARVIS_MODEL_CODING_TIMEOUT_MS=300000
+# A kind set here is sent to that provider and model.
+#   Strict: CODING and REVIEW (code repair, and the goal checks, which ask as
+#   REVIEW), and the two agent settings below. They go to that one provider
+#   and model, even when only a model name is given (then: the provider
+#   above). If it fails, that call fails with that reason; no other provider
+#   or model answers it. On a strict route the provider must also answer with
+#   exactly that model: the Gemini/Groq client does not move to its fast
+#   model, Claude's server-side fallback models are off, and a cached reply of
+#   a non-strict call is not reused (a cached strict reply is checked again). The answer is accepted only when the provider
+#   reports the model it used and that is the configured one (Claude: or the
+#   dated id its model list gives for it); no report, or another model, and
+#   the call fails ("model identity not confirmed"). A strict route is not
+#   streamed, so no text appears before that check. A strict route that would
+#   be sent as another model is refused before sending: "openai:<model>" for a
+#   model other than JARVIS_FALLBACK_MODEL (that provider always sends its
+#   own), and, with Claude as the primary, a bare non-Claude model name (it
+#   would be sent as a Claude model). Live providers may report a model id in
+#   another form than the one configured (e.g. a dated id for an alias): such
+#   a strict route then fails until the configured name matches what the
+#   provider reports; check this on the PC with the real providers.
+#   Not strict: INTENT, CONVERSATION, PLANNING, REPAIR_PLAN. If the set
+#   provider and model fail, the failover order above answers with the
+#   model the caller asked for. A provider may be asked a second time, with
+#   a different model, only when the first failure was about the model
+#   (e.g. 404 "model not found", a refused request). After a sign-in,
+#   network, rate-limit, server or time-out failure, or an open breaker,
+#   that provider is not asked again in that call. No provider and model
+#   pair is asked twice; when all have failed, the error says so.
+# A time limit or token cap applies only when set. The time limit applies to
+# the set provider's own attempt and counts from when it is asked, not while
+# a background call waits for you.
+# One specialist agent's own model (same syntax), e.g. QA on another model
+# than coding:
+# JARVIS_MODEL_AGENT_CODING_AGENT=
+# JARVIS_MODEL_AGENT_QA_AGENT=
+# What a task result means:
+#   - An agent task that ends COMPLETED with data.answeredBy = "model" was
+#     answered by its model. "keyword_rules" means its model failed or gave
+#     no answer and fixed keyword rules ran read-only tools instead. That is
+#     not an AI answer. It can happen for every agent except QA and a
+#     coding_agent with its own setting: only those two settings are strict,
+#     so e.g. a browser agent with its own setting can still end this way.
+#   - A coding_agent with its own setting ends FAILED, with the reason, when
+#     its model fails, gives an empty answer or its model-call budget is used
+#     up. When it splits a request into parts, every helper agent uses that
+#     same model and strict routing (never the PLANNING setting or keyword
+#     rules), and the coding task ends FAILED if any part failed or was not
+#     answered by that model. Every agent below it (helpers, research
+#     workers, their workers) uses that same model; this follows who spawned
+#     whom, never task input. Its GitHub research flow keeps its workers, but
+#     a model failure or an unusable answer anywhere in it ends the task
+#     FAILED (no rules, no retry of the failed worker). The same holds for QA
+#     with its own setting and the agents below it. Agents without their own
+#     setting keep their own route and fallback, as before.
+#   - QA's own work (reviews, "run the type check") never falls back to
+#     keyword rules: if its model fails, set or not, gives an empty answer,
+#     or any part (a helper's or its own) was not completed by its model,
+#     the QA task ends FAILED with the reason.
+#   - QA's automatic check of another agent's result uses fixed rules and no
+#     model; it is not an AI verification. "Verified" means every check
+#     passed. A check that could not run (a cited source not re-read: the
+#     site unreachable, the worker not finished or not allowed, no licence to
+#     compare) makes it "inconclusive": not verified, with the full reason,
+#     and it needs your review. A goal's "verified" criterion is met only by
+#     results that were verified; anything else waits for review. A goal
+#     task whose verification is inconclusive, or did not finish, pauses the
+#     goal for your review (VERIFICATION_INCONCLUSIVE). An agent result goes
+#     into long-term memory only when the Verification agent verified it:
+#     with JARVIS_AGENT_VERIFY=0 nothing is stored. Browser, PC and memory
+#     results are verified only when they have conflicts; QA results never
+#     are. The full result is still reported, and kept in the task archive
+#     (data/agents/<task>.json) unless JARVIS_AGENT_ARCHIVE=0. In a goal, a
+#     result a later step builds on is marked "not verified" when it was not
+#     verified. save_relation keeps only what you confirm: during a request
+#     (yours, or an agent's task) it shows you the fact, naming the agent that
+#     asks, and stores it only on "yes", given within 20 seconds. Within one
+#     agent task, or one of your requests answered by JARVIS itself, a fact
+#     asked about one call at a time is asked once: a "no" or no answer is
+#     not asked again, a "yes" stores it once, and a store that failed is tried
+#     again without asking. Two calls for the same fact at the same moment, or
+#     JARVIS and an agent it started in the same request, are asked
+#     separately. The question does not count against the tool's time limit,
+#     and a request that is stopped withdraws it and stores nothing. Refused
+#     without asking: a fact longer than 150 characters; one with a line
+#     break, a control character, a run of spaces, or a character the screen
+#     does not show (format and default-ignorable characters, the blank
+#     Braille pattern); and a password, key or token, also when split across
+#     the parts. This also refuses some ordinary text: Persian or Urdu typed
+#     with a zero-width non-joiner, scripts or emoji joined with a zero-width
+#     joiner, keycaps and subdivision flags. A single emoji with its own
+#     variation selector (U+FE0F right after it) is allowed. By voice, a fact
+#     longer than about 56 characters, or with markdown that speech leaves
+#     out, needs a typed answer. Inside a goal nothing is stored and nobody is
+#     asked; a goal step that tried to keep a fact, or whose text starts by
+#     asking to keep one in English (remember that, store, save, record,
+#     memorize, make a note) or asks to keep, store, save, add, record or put
+#     something in memory, or to update the profile, waits for your review.
+#     The check reads only those phrasings: other wordings, other languages,
+#     or the request later in the step's text are not recognised, and a step
+#     starting "Add up", "Record the answer" or "Remember to" may be held for
+#     review although it stores nothing. forget_memory removes a kept fact; it
+#     does not remove a graph-memory edge, or the note in your second-brain
+#     vault when a vault is configured.
+#   - A split request whose parts failed for different reasons keeps every
+#     cause; recovery acts on the identity failure first, then a model that
+#     did not answer, and waits for budget only when every part ran out of
+#     budget.
+#   - Independent QA (QA on a model distinct from every model coding can be
+#     answered by, failover included, and the models of its helpers that have
+#     their own JARVIS_MODEL_AGENT_<HELPER ROLE> setting). Counted as the same
+#     model: names that reduce to the same model id (case, a "models/" or
+#     gateway "vendor/" prefix, a Bedrock "vendor." or "region.vendor."
+#     prefix, a ":variant" suffix, a date stamp, a "-001" version, a "-v2"
+#     version after a number, "5.5" = "5-5"); two ids the provider treats as
+#     one model (Claude: an alias and the dated id its model list returns); a
+#     model whose identity cannot be looked up, or a floating alias
+#     ("...-latest", ":latest"); two models on one
+#     Gemini/Groq client, or two Claude models, unless both are strict routes.
+#     Identities are looked up only when independence is required, each look-
+#     up limited to JARVIS_QA_IDENTITY_LOOKUP_MS (default 10000, 1000-60000);
+#     a failed or timed-out look-up counts as unknown and is not retried for
+#     a minute. Only these name forms are recognised: do not give QA another
+#     provider's id for coding's model.
+#       JARVIS_QA_REQUIRE_INDEPENDENT=true   required
+#       JARVIS_QA_REQUIRE_INDEPENDENT=false  not required; QA runs and its
+#                                            result is labelled not independent
+#       unset                                required when QA has its own
+#                                            setting (JARVIS_MODEL_AGENT_QA_AGENT)
+#     When required, QA work (QA and the agents below it) ends FAILED
+#     "independent QA unavailable … human review required" before any model
+#     is asked if no distinct model is available, and after a reply that does
+#     not report its model or reports one coding may use. A QA result carries
+#     data.independence: "independent" only when required and every reply
+#     reported a distinct model; never when not required.
+# JARVIS_QA_REQUIRE_INDEPENDENT=
+# JARVIS_QA_IDENTITY_LOOKUP_MS=10000
+# Failure codes an agent task or goal records (they stay distinct):
+#   MODEL_UNAVAILABLE           the required model did not answer: the goal
+#                               retries later, waiting for the service
+#   MODEL_IDENTITY_UNCONFIRMED  the provider did not confirm the configured
+#                               model: the goal is blocked until the setting
+#                               is fixed (not retried)
+#   TOOL_BUDGET_EXHAUSTED       the tool-call budget ran out (the agent task
+#                               shows BUDGET_EXCEEDED with budget "toolCalls"):
+#                               the goal waits for budget; never a model failure
+#   VERIFICATION_INCONCLUSIVE   a verification check did not happen: the goal
+#                               waits for your review
+# A background call (agents, goals) waits while you are talking to JARVIS,
+# before the set provider and before each fallback attempt, at most
+# JARVIS_BACKGROUND_YIELD_MS each time (default 20000, at most 120000), then
+# goes ahead. Your own calls never wait. To fail such a call instead when one
+# wait reaches this long (a clear error; it is not sent, and no other model
+# answers it):
+# JARVIS_MODEL_QUEUE_WAIT_MS=
+# This limit covers calls for a kind or agent set above (and their fallback
+# attempts) and code repair's coding and review calls, set or not; other
+# background calls wait as before and then go ahead.
+#
+# Each provider has its own rate-limit breaker (2 rate limits pause it for
+# 60 s; failover answers meanwhile; then one trial call decides) and an
+# optional limit of requests a minute, e.g. 5 for the Gemini free tier.
+# Gemini and Groq use their client's own breaker (bridge/groqProvider.ts);
+# the two BREAKER settings below apply to ANTHROPIC and OPENAI only. The
+# request limit applies to all four. This breaker is new: before Phase 1A,
+# Claude and the OpenAI-compatible fallback were asked after every 429.
+# JARVIS_PROVIDER_<NAME>_RPM=              (<NAME>: GEMINI, GROQ, ANTHROPIC, OPENAI)
+# JARVIS_PROVIDER_<NAME>_BREAKER_429S=2    (<NAME>: ANTHROPIC, OPENAI)
+# JARVIS_PROVIDER_<NAME>_BREAKER_MS=60000  (<NAME>: ANTHROPIC, OPENAI)
+# Usage records are kept in data/usage/ (no message text); off turns that off:
+# JARVIS_USAGE_LEDGER=off
+# Price per million tokens, only to estimate cost where token counts are known:
+# JARVIS_MODEL_PRICES={"claude-opus-5-5":{"input":4,"output":20}}
+
+# ─── Claude (optional) ────────────────────────────────────────────────────────
+
+# With JARVIS_LLM_PROVIDER=anthropic, Claude answers every request. Otherwise
+# it is used only by a kind of work that names "anthropic" above, and never as
+# a fallback for ordinary requests. The model is checked against your key's
+# model list before its first use.
+# ANTHROPIC_API_KEY=
+# JARVIS_ANTHROPIC_BRAIN_MODEL=claude-opus-5-5
+# JARVIS_ANTHROPIC_FAST_MODEL=claude-haiku-5-5
+# Only for a proxy or gateway in front of the Claude API:
+# ANTHROPIC_BASE_URL=
+# JARVIS_ANTHROPIC_EFFORT=high
+# Server-side fallback when Claude declines a request (on by default):
+# JARVIS_ANTHROPIC_FALLBACKS=off
+
+# ─── Self-repair limits (optional) ────────────────────────────────────────────
+
+# "heal yourself" and "propose a code repair": attempts per run, minutes per
+# run, and the model-token cap for a code repair.
+# JARVIS_REPAIR_MAX_ATTEMPTS=2
+# JARVIS_REPAIR_MAX_MINUTES=20
+# JARVIS_REPAIR_TOKEN_CAP=200000
+# JARVIS's second brain (memory/secondBrain.ts), off by default. The full path
+# of your Obsidian vault: the folder that holds a .obsidian folder. JARVIS only
+# writes under <vault>/JARVIS/ and never changes, moves or deletes your notes.
+# Example (Windows): JARVIS_OBSIDIAN_VAULT=C:\Users\you\Documents\MyVault
+# Check it (writes, reads, finds and removes one test note): pnpm check:brain
+# JARVIS_OBSIDIAN_VAULT=
+
+# ─── Workspace containment ────────────────────────────────────────────────────
+
+# Absolute path to the JARVIS project root. This is the containment boundary for
+# all agent file I/O (read_file / write_file / control_file / run_command cwd).
+# Leave empty to derive it from the installed location, which is correct for a
+# normal checkout. Set it explicitly only if the project is launched from a
+# different directory than it lives in.
+
+JARVIS_WORKSPACE_ROOT=
+
+# ─── Permissions ──────────────────────────────────────────────────────────────
+#
+# What JARVIS may do without asking (docs/upgrade/PERMISSION_MODEL.md).
+# 1 (default): reading the PC and low-risk actions (open an app or a web page,
+# focus a window) run at once. 0: the previous default, where control_app and
+# control_window need full control mode as well.
+# JARVIS_DEFAULT_PERMISSION_LEVEL=1
+#
+# Actions of level 2 and above (type, click, close an app, write a file, end a
+# process): session (default) = only while full control mode is on, and level 3
+# and 4 are also asked each time; ask = JARVIS asks you to approve each one,
+# with or without full control mode.
+# JARVIS_LEVEL2_POLICY=session
+#
+# Highest risk level a spoken "yes" may approve (0-3, default 2). Above it the
+# request must be approved by typing in the console; voice can still cancel.
+# The microphone can pick up a video, a call or another person.
+# JARVIS_VOICE_APPROVAL_MAX_RISK=2
+#
+# How long a typed approval waits for your answer, in seconds (10–120; default
+# 30). No answer still denies the action. Three ways to give it 120 s:
+#   - here in .env (every run):           JARVIS_APPROVAL_TIMEOUT_S=120
+#   - CMD, this window only:              set JARVIS_APPROVAL_TIMEOUT_S=120
+#   - PowerShell, this window only:       $env:JARVIS_APPROVAL_TIMEOUT_S = "120"
+# In CMD, put no spaces around "=" and no quotes.
+# JARVIS_APPROVAL_TIMEOUT_S=30
+#
+# Most times each tool may run per minute, at risk level 0,1,2,3,4 (0 = no limit).
+# JARVIS_TOOL_RATE_LIMITS=120,60,20,10,10
+#
+# While you talk to JARVIS, background agents and goals wait this long (ms) at
+# most before each model call, so your request gets the provider quota first.
+# 0 = do not wait.
+# JARVIS_BACKGROUND_YIELD_MS=20000
+#
+# The local Control Center: a page at http://127.0.0.1:7790 on this PC only.
+# Log in with the token in data\security\control_center_token (made at the
+# first start), or set your own below. Actions use the same permission checks
+# as a spoken request; turning on full control is still approved in the console.
+# JARVIS_CONTROL_CENTER=1
+# JARVIS_CONTROL_CENTER_PORT=7790
+# JARVIS_CONTROL_CENTER_TOKEN=
+
+# ─── Development awareness ────────────────────────────────────────────────────
+#
+# Local ports "is my backend running?" checks (127.0.0.1 only).
+# JARVIS_DEV_PORTS=3000,3001,4200,5000,5173,8000,8080,8081,8888
+#
+# Folders whose git repositories JARVIS may read (;-separated; it looks at each
+# folder and one level below). Default: the JARVIS folder.
+# JARVIS_PROJECT_DIRS=C:\Users\you\code;D:\work
+#
+# How long a test/build script may run, and how long a dev server has to
+# answer on its port (milliseconds).
+# JARVIS_DEV_RUN_TIMEOUT_MS=600000
+# JARVIS_DEV_SERVER_START_MS=30000
+
+# ─── Browser ──────────────────────────────────────────────────────────────────
+#
+# JARVIS opens pages in a Chrome of its own, which it starts when needed with
+# a separate profile and a free debugging port; it does not open pages in, or
+# close, your everyday Chrome. "Close the browser" closes only JARVIS's Chrome,
+# after asking. That Chrome keeps the sign-ins you make in it and stays open
+# when JARVIS exits; its debugging port listens on 127.0.0.1 only, without a
+# password, so other programs on this PC can use it too.
+# Leave these unset unless you need them:
+# Chrome's program, if it is not in the standard install folder:
+# JARVIS_CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
+# The profile folder (default %USERPROFILE%\jarvis-chrome-profile). If you
+# used another folder for JARVIS's Chrome before (earlier instructions named
+# W:\jarvis-chrome-profile), set it here to keep that profile's sign-ins:
+# JARVIS_CHROME_PROFILE=C:\Users\you\jarvis-chrome-profile
+# off: JARVIS never starts Chrome itself.
+# JARVIS_CHROME_AUTOSTART=off
+#
+# Only if you start the Chrome yourself: its debugging port. When this is set,
+# JARVIS uses that Chrome and starts none.
+#   start chrome.exe --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\jarvis-chrome-profile"
+# JARVIS_CDP_PORT=9222
+#
+# Where browser downloads go (an absolute path). Default: Downloads\jarvis in
+# your user folder. Downloaded files are never opened by JARVIS.
+# JARVIS_DOWNLOAD_DIR=C:\Users\you\Downloads\jarvis
+
+# ─── Runtime tuning for older local PCs ───────────────────────────────────────
+
+JARVIS_LLM_TIMEOUT_MS=10000
+# Leave empty: planning then waits for every retry of a model request (3 × the timeout above + 2 s).
+JARVIS_PLANNING_WATCHDOG_MS=
+JARVIS_MEMORY_WRITE_DEBOUNCE_MS=2000
+JARVIS_ACTIVE_WINDOW_POLL_MS=4000
+JARVIS_OPEN_APPS_POLL_MS=5000
+JARVIS_CHROME_TABS_POLL_MS=7000
+JARVIS_SERVICES_POLL_MS=15000
+JARVIS_SYSTEM_STATS_POLL_MS=10000
+JARVIS_SYSTEM_STATE_WRITE_MS=3000
+
+# A command heard while JARVIS is busy waits at most this long (ms) before it
+# is skipped; JARVIS says when it skips one.
+# JARVIS_QUEUED_COMMAND_MAX_AGE_MS=30000
+
+# Seconds after a reply in which a follow-up needs no wake word (0 = off).
+# JARVIS_FOLLOWUP_SECONDS=15
+
+# off = do not start the screen-capture (Vision) service. Nothing switches it
+# on yet, so on a low-memory PC it only holds memory.
+# JARVIS_VISION=off
+
+# ─── Vector memory model download (optional) ─────────────────────────────────
+
+# The embedding model is downloaded from Hugging Face once, then loaded from the
+# local cache. A free read token (huggingface.co/settings/tokens) lifts the
+# anonymous rate limit on that first download.
+
+# HF_TOKEN=
+
+# ─── Vector memory persistence ────────────────────────────────────────────────
+
+# Where the vector store is written. Defaults to <project>/data/vector.
+
+JARVIS_VECTOR_STORE_DIR=
+
+# Set false to run the vector store in RAM only (previous behaviour).
+
+JARVIS_VECTOR_PERSIST=true
+
+# Flush the store to disk after this many accepted writes.
+
+JARVIS_VECTOR_PERSIST_EVERY=10
+
+# The vector service (127.0.0.1:8000) answers only requests carrying this token.
+# Leave empty: JARVIS makes one and keeps it in data/security/vector_token, which
+# the service reads too. Set it only if you start vectorMemory.py yourself with
+# a different data folder.
+
+JARVIS_VECTOR_TOKEN=
+
+# Cap on how many facts are re-embedded when no persisted store is found.
+# Empty or 0 means all of them. (This used to be hard-coded to 10.)
+
+JARVIS_VECTOR_REBUILD_LIMIT=
+
+# Minimum gap in ms between two calls to the same tool.
+
+JARVIS_MIN_TOOL_GAP_MS=250
+
+# ─── xAI ──────────────────────────────────────────────────────────────────────
+
+# Not used by JARVIS: no code calls xAI. Kept only so older .env files still
+# parse. It does not count as an LLM key.
+
+XAI_API_KEY=
+
+# ─── Graph memory (Neo4j — optional, off by default) ─────────────────────────
+
+# Master switch. Graph memory stays disabled unless this is exactly "true".
+
+JARVIS_NEO4J_ENABLED=false
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+
+# Required when JARVIS_NEO4J_ENABLED=true. There is no default: the driver
+# refuses to connect without it rather than trying a well-known password.
+
+NEO4J_PASSWORD=
+
+# ─── Voice ────────────────────────────────────────────────────────────────────
+
+TTS_VOICE=en-US-GuyNeural
+
+# Wake-word log detail: INFO (default) or DEBUG.
+
+JARVIS_WAKEWORD_LOG_LEVEL=
+
+# ─── Local Python Bridge ──────────────────────────────────────────────────────
+
+BRIDGE_HOST=127.0.0.1
+BRIDGE_PORT=9000
+
+# Required shared secret for local Python voice clients.
+
+# Set your own strong secret in the real .env file.
+
+JARVIS_BRIDGE_TOKEN=
+
+# Set true ONLY if you explicitly want local insecure development without a token.
+# Dev mode skips the token only: a web page (any browser Origin) is refused in
+# every mode, so it can never send commands or answer approvals.
+
+JARVIS_BRIDGE_DEV_MODE=false
+
+# Browser origins allowed to connect to the bridge, comma-separated and exact
+# (e.g. http://127.0.0.1:5555). Leave empty: JARVIS's own clients send none.
+
+JARVIS_BRIDGE_ALLOWED_ORIGINS=
+
+# Largest message a bridge client may send, in MB (default 16; vision frames are the largest).
+
+JARVIS_BRIDGE_MAX_PAYLOAD_MB=
+
+# Full URI used by Python voice modules
+
+BRIDGE_WS_URI=ws://127.0.0.1:9000
+
+# ─── Slow PC or slow connection (all optional) ───────────────────────────────
+
+# Time budget for one tool call by its risk, in ms (defaults 30000 / 20000 / 15000).
+# When it runs out the tool's process and everything it started are stopped,
+# the call ends as a timeout, and it is not retried.
+
+JARVIS_TOOL_BUDGET_LOW_MS=
+JARVIS_TOOL_BUDGET_MEDIUM_MS=
+JARVIS_TOOL_BUDGET_HIGH_MS=
+
+# How long a stopped tool gets to end before JARVIS stops waiting for it (default 5000).
+
+JARVIS_TOOL_STOP_GRACE_MS=
+
+# One LLM request may take this long before it is cancelled (default 10000).
+
+# JARVIS_LLM_TIMEOUT_MS=20000
+
+# Planning gives up after this long. Default: 3 × JARVIS_LLM_TIMEOUT_MS + 2000 (32000),
+# so the model's own retries can finish. Best left empty: the default follows the
+# timeout above. With JARVIS_LLM_TIMEOUT_MS=20000 that is 3 × 20000 + 2000 = 62000.
+# A lower value is used as set, with a warning (it cuts slow answers off); a value
+# that is not a positive number of milliseconds is not used, also with a warning.
+
+# JARVIS_PLANNING_WATCHDOG_MS=62000
+
+# Background checks: active window, Chrome tabs, JARVIS services (defaults 8000, 12000, 20000).
+
+# JARVIS_ACTIVE_WINDOW_POLL_MS=20000
+
+# JARVIS_CHROME_TABS_POLL_MS=60000
+
+# JARVIS_SERVICES_POLL_MS=60000
+
+# Python services print at once, so the log shows their loading times.
+
+# PYTHONUNBUFFERED=1
+
+# A listen session nobody ends returns to idle after this long, and the mic
+# goes back to the wake word (default 35000).
+
+# JARVIS_LISTENING_WATCHDOG_MS=35000
+
+# A command spoken while Whisper is still loading waits this many seconds,
+# then Google STT transcribes it (default 5).
+
+# JARVIS_STT_MODEL_WAIT_S=5
+
+# The STT noise floor of a session may be at most this many times the quiet
+# room's (default 2.0), so speech in the calibration sample does not raise it.
+
+# JARVIS_STT_MAX_FLOOR_RISE=2.0
+
+# After edge-tts refuses (HTTP 403) or fails twice in a row, the offline voice is used
+# for this many seconds before edge-tts is tried again (default 600).
+
+# JARVIS_TTS_EDGE_SKIP_S=600
+
+# How long a memory search waits for the vector service before using keyword
+# search, in ms (default 1500).
+
+# JARVIS_VECTOR_SEARCH_BUDGET_MS=1500
+
+# Which alerts are spoken: critical (default), warning, or off. All are logged.
+
+# JARVIS_VOICE_ALERT_LEVEL=critical
+
+# A garbage-collection pause longer than this (ms) raises a warning (default 500).
+
+# JARVIS_GC_WARN_MS=500
+
+# ─── Tests only (pnpm test) ───────────────────────────────────────────────────
+# windowsScriptsTest checks JARVIS's PowerShell files with PowerShell 7 (pwsh).
+# JARVIS itself keeps running on Windows PowerShell 5.1; this is only for the
+# test. Install it in CMD:   winget install --id Microsoft.PowerShell --source winget
+# then open a NEW CMD window and check:   pwsh -v
+# The test finds pwsh on the PATH or in C:\Program Files\PowerShell\7. Elsewhere,
+# name it in the window that runs the tests (the runner does not read it from
+# this file), for example in CMD:
+#   set JARVIS_TEST_PWSH=D:\Tools\PowerShell\7\pwsh.exe

@@ -1,0 +1,191 @@
+/**
+ * tests/saveRelationConcurrentAskTest.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Review INDEPENDENT_REVIEW_FINAL_LOWS.md, LL-1 part A (owner approval R10,
+ * 2026-11-23): two save_relation calls for the same fact that start at the
+ * same moment in one task or request (two parallel graph nodes, two workers)
+ * ask the owner once. "Yes" stores the fact once and the other call says it is
+ * already kept; "no" is final for both. Different facts and different tasks or
+ * requests stay independent. A stopped question, a store error after "yes" and
+ * the call's time budget keep their existing behaviour.
+ *
+ *   1  same fact at once, "yes" (one request; one agent root task)
+ *   2  same fact at once, "no"
+ *   3  different facts at once
+ *   4  the same fact at once in a request and in an agent's root task
+ *   5  the first question stopped (a) with the whole request, (b) alone
+ *   6  a store error after "yes"
+ *   7  a call waiting for another call's question is not stopped by its own
+ *      time budget (the real approval gate; a short budget)
+ *
+ * Stand-in memory store, graph and owner; no network, no provider.
+ */
+
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-save-concurrent-'));
+for (const dir of ['memory', 'data']) fs.mkdirSync(path.join(workspace, dir), { recursive: true });
+process.env['JARVIS_WORKSPACE_ROOT'] = workspace;
+process.env['JARVIS_DATA_ROOT'] = workspace;
+process.chdir(workspace);
+for (const k of Object.keys(process.env)) if (k.startsWith('JARVIS_MODEL_') || k.startsWith('JARVIS_PROVIDER_') || k.startsWith('JARVIS_QA_') || k.startsWith('JARVIS_VOICE_APPROVAL')) delete process.env[k];
+for (const name of ['JARVIS_FALLBACK_BASE_URL', 'JARVIS_FALLBACK_API_KEY', 'ANTHROPIC_API_KEY']) process.env[name] = '';
+delete process.env['JARVIS_TOOL_BUDGET_LOW_MS'];
+process.env['JARVIS_TOOL_STOP_GRACE_MS'] = '1000';
+process.env['JARVIS_AGENT_ARCHIVE'] = '0';
+
+const { memoryManager } = await import('../memory/memoryManager.js');
+const stored: string[] = [];
+let storeFails = 0;
+(memoryManager as unknown as { rememberFact: (fact: string) => Promise<void> }).rememberFact = async (fact: string) => {
+  if (storeFails > 0) { storeFails--; throw new Error('EBUSY: the fact store is busy'); }
+  stored.push(fact);
+};
+const { graphMemory } = await import('../memory/graphMemory.js');
+(graphMemory as unknown as { saveRelation: () => Promise<void> }).saveRelation = async () => {};
+
+// The owner: each question is recorded and answered after a short delay, so a
+// second call starts while the first question is still open.
+const { approvalGate } = await import('../security/approvalGate.js');
+const realRequestApproval = (approvalGate as any).requestApproval.bind(approvalGate);
+const asked: any[] = [];
+let answerFor: (request: any) => boolean = () => true;
+let answerDelayMs = 150;
+let onAsked: (request: any) => void = () => {};
+const standInOwner = async (...args: unknown[]): Promise<boolean> => {
+  const request = args[0];
+  asked.push(request);
+  onAsked(request);
+  await new Promise((r) => setTimeout(r, answerDelayMs));
+  return answerFor(request);
+};
+(approvalGate as any).requestApproval = standInOwner;
+
+const { registerAllTools } = await import('../core/tools/index.js');
+const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');
+const { runAsAgent } = await import('../core/agents/agentScope.js');
+const { beginTrace, endTrace } = await import('../core/traceContext.js');
+
+let passed = 0;
+let failed = 0;
+function ok(label: string, condition: boolean, detail = ''): void {
+  if (condition) { console.log(`  PASS: ${label}${detail ? ` (${detail})` : ''}`); passed++; }
+  else { console.error(`  FAIL: ${label}${detail ? ` (${detail})` : ''}`); failed++; }
+}
+
+registerAllTools();
+type Result = { success: boolean; output: string; error?: string };
+const save = (e2: string, signal?: AbortSignal): Promise<Result> =>
+  toolRegistryV2.execute('save_relation', { entity1: 'User', relation: 'HAS_EXAM_ON', entity2: e2 }, signal) as Promise<Result>;
+function reset(): void {
+  stored.length = 0; asked.length = 0; storeFails = 0;
+  answerFor = () => true; answerDelayMs = 150; onAsked = () => {};
+}
+async function inRequest<T>(fn: () => Promise<T>): Promise<T> {
+  beginTrace('cli', 'Remember that my exam is on Friday');
+  try { return await fn(); } finally { endTrace(); }
+}
+const inAgent = <T>(rootTaskId: string, fn: () => Promise<T>) => runAsAgent({ rootTaskId, taskId: `${rootTaskId}-t-${Math.random().toString(36).slice(2, 6)}`, agentId: `${rootTaskId}-a`, agentPath: 'JARVIS › Memory & Personalization Agent', request: 'Remember that my exam is on Friday', source: 'cli' }, fn);
+const brief = (r: Result) => r.output.slice(0, 70);
+const isSaved = (r: Result) => r.success && /^Saved relation/.test(r.output);
+const isKept = (r: Result) => r.success && /^Already kept in long-term memory/.test(r.output);
+const isDenied = (r: Result) => !r.success && r.error === 'APPROVAL_DENIED';
+const isStopped = (r: Result) => !r.success && /stopped/i.test(r.output) && stored.length === 0;
+
+console.log('\n=== save_relation: the same fact asked at the same moment (LL-1 part A) ===\n');
+
+console.log('--- 1. Same fact at once, "yes" ---');
+{
+  reset();
+  const [a, b] = await inRequest(() => Promise.all([save('Friday'), save('Friday')]));
+  ok('one request: the owner is asked once', asked.length === 1, `asked ${asked.length}`);
+  ok('…the fact is stored once', stored.length === 1, `stored ${stored.length}`);
+  ok('…one call saves it and the other says it is already kept', (isSaved(a) && isKept(b)) || (isKept(a) && isSaved(b)), `${brief(a)} | ${brief(b)}`);
+  reset();
+  const [c, d] = await Promise.all([inAgent('root-two-workers', () => save('Friday')), inAgent('root-two-workers', () => save('Friday'))]);
+  ok('two workers of one agent root task: asked once, stored once', asked.length === 1 && stored.length === 1, `asked ${asked.length}; stored ${stored.length}`);
+  ok('…one saves it, the other says it is already kept', (isSaved(c) && isKept(d)) || (isKept(c) && isSaved(d)), `${brief(c)} | ${brief(d)}`);
+}
+
+console.log('\n--- 2. Same fact at once, "no" ---');
+{
+  reset();
+  answerFor = () => false;
+  const [a, b] = await inRequest(() => Promise.all([save('Friday'), save('Friday')]));
+  ok('the owner is asked once', asked.length === 1, `asked ${asked.length}`);
+  ok('…nothing is stored', stored.length === 0, `stored ${stored.length}`);
+  ok('…both calls report the owner\'s denial (APPROVAL_DENIED)', isDenied(a) && isDenied(b), `${a.error}: ${brief(a)} | ${b.error}: ${brief(b)}`);
+}
+
+console.log('\n--- 3. Different facts at once ---');
+{
+  reset();
+  const [a, b] = await inRequest(() => Promise.all([save('Friday'), save('Monday')]));
+  ok('each fact is asked once', asked.length === 2 && new Set(asked.map((q) => String(q?.target ?? ''))).size === 2, `asked ${asked.length}: ${asked.map((q) => q?.target).join(', ')}`);
+  ok('…and each is stored once', stored.length === 2 && isSaved(a) && isSaved(b), `stored ${stored.length}; ${brief(a)} | ${brief(b)}`);
+}
+
+console.log('\n--- 4. The same fact at once in a request and in an agent\'s root task ---');
+{
+  reset();
+  // The owner says no to the request's question and yes to the agent's (review p1 J).
+  answerFor = (q) => !!q?.rootTaskId;
+  const [fore, agent] = await inRequest(() => Promise.all([save('Friday'), inAgent('root-separate', () => save('Friday'))]));
+  ok('each context asks its own question', asked.length === 2 && asked.filter((q) => q?.rootTaskId).length === 1, `asked ${asked.length}`);
+  ok('…the request\'s "no" does not stop the agent\'s "yes": only the agent\'s fact is stored', isDenied(fore) && isSaved(agent) && stored.length === 1, `${brief(fore)} | ${brief(agent)}; stored ${stored.length}`);
+}
+
+console.log('\n--- 5. The first question stopped ---');
+{
+  // (a) The whole request is stopped while the owner is asked.
+  reset();
+  const ac = new AbortController();
+  onAsked = () => { setTimeout(() => ac.abort(), 30); };
+  answerFor = () => false;
+  const [a, b] = await inRequest(() => Promise.all([save('Friday', ac.signal), save('Friday', ac.signal)]));
+  ok('a stopped request: asked once, nothing stored', asked.length === 1 && stored.length === 0, `asked ${asked.length}; stored ${stored.length}`);
+  ok('…both calls say the request was stopped, not "not confirmed"', isStopped(a) && isStopped(b) && !/not confirmed/i.test(a.output + b.output), `${brief(a)} | ${brief(b)}`);
+
+  // (b) Only the first call is stopped: the second asks for itself, as a new call does after a stopped one.
+  reset();
+  const first = new AbortController();
+  let n = 0;
+  onAsked = () => { if (n++ === 0) setTimeout(() => first.abort(), 30); };
+  const [x, y] = await inRequest(() => Promise.all([save('Friday', first.signal), save('Friday')]));
+  ok('only the first stopped: it stores nothing and says it was stopped', !x.success && /stopped/i.test(x.output), brief(x));
+  ok('…the other call is asked itself and stores the fact once on "yes"', asked.length === 2 && stored.length === 1 && isSaved(y), `asked ${asked.length}; stored ${stored.length}; ${brief(y)}`);
+}
+
+console.log('\n--- 6. A store error after "yes" ---');
+{
+  reset();
+  storeFails = 1;
+  const [a, b] = await inRequest(() => Promise.all([save('Friday'), save('Friday')]));
+  ok('the owner is asked once', asked.length === 1, `asked ${asked.length}`);
+  ok('…the fact is stored once in the end, without asking again', stored.length === 1, `stored ${stored.length}; ${brief(a)} | ${brief(b)}`);
+}
+
+console.log('\n--- 7. Waiting for another call\'s question does not use up the call\'s time ---');
+{
+  reset();
+  // The real approval gate pauses the asking call's budget; the owner answers after 2.5 s,
+  // with a 1.5 s budget for low-risk calls.
+  (approvalGate as any).requestApproval = realRequestApproval;
+  const prompt = async (request: any) => { asked.push(request); await new Promise((r) => setTimeout(r, 2_500)); return 'yes'; };
+  (approvalGate as any)._promptWithTimeout = async (_p: string, _ms: number, request: any) => prompt(request);
+  (approvalGate as any)._voiceOrTextPromptWithTimeout = async (request: any) => prompt(request);
+  process.env['JARVIS_TOOL_BUDGET_LOW_MS'] = '1500';
+  try {
+    const [a, b] = await inRequest(() => Promise.all([save('Friday'), save('Friday')]));
+    ok('asked once, stored once', asked.length === 1 && stored.length === 1, `asked ${asked.length}; stored ${stored.length}`);
+    ok('…neither call is stopped by its budget: one saves, the other says it is already kept', (isSaved(a) && isKept(b)) || (isKept(a) && isSaved(b)), `${brief(a)} | ${brief(b)}`);
+  } finally {
+    delete process.env['JARVIS_TOOL_BUDGET_LOW_MS'];
+    (approvalGate as any).requestApproval = standInOwner;
+  }
+}
+
+console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
+process.exit(failed > 0 ? 1 : 0);
