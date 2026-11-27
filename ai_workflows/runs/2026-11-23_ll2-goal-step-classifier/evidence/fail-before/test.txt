@@ -1,0 +1,73 @@
+cmd: pnpm exec tsx tests/goalStepClassifierTest.ts
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+
+=== Goal steps that ask to keep a fact (LL-2) ===
+
+--- A. Phrasings of the existing tests (unchanged outcome) ---
+  PASS: A held for review: "Store the user's exam date (Friday)" (false MEMORY_NOT_STORED)
+  PASS: A held for review: "Record that the exam is on Friday" (false MEMORY_NOT_STORED)
+  PASS: A held for review: "Memorize the exam date: Friday" (false MEMORY_NOT_STORED)
+  PASS: A held for review: "Make a note that the exam is on Friday" (false MEMORY_NOT_STORED)
+  PASS: A held for review: "Update the user profile: exam on Friday" (false MEMORY_NOT_STORED)
+  PASS: A held for review: "Remember that my exam is on Friday" (false MEMORY_NOT_STORED)
+  PASS: A held for review: "Keep the key facts from these results in memory" (false MEMORY_NOT_STORED)
+  PASS: A completes: "Remember what the user said about the exam and summarise it" (true)
+  PASS: A completes: "Note which remembered facts about the exam are out of date" (true)
+  PASS: A completes: "Save time: read the remembered facts first, then answer" (true)
+  PASS: A completes: "What do you remember about my exam?" (true)
+
+--- B. A wh-word with a value after a colon asks to keep it (D-3) ---
+  FAIL: B held for review: "Remember when the exam is: Friday" (true)
+  FAIL: B held for review: "Remember who the user's manager is: Sara" (true)
+  FAIL: B held for review: "Note where the user lives: Lahore" (true)
+  FAIL: B held for review: "Remember how the user takes coffee: black" (true)
+
+--- C. Other ways of asking to keep a fact ---
+  FAIL: C held for review: "First, remember that the exam is on Friday" (true)
+  FAIL: C held for review: "Then store the exam date: Friday" (true)
+  FAIL: C held for review: "Next, save that the exam is on Friday" (true)
+  FAIL: C held for review: "Make sure to remember that the exam is Friday" (true)
+  FAIL: C held for review: "Keep track of the exam date: Friday" (true)
+  FAIL: C held for review: "Log that the exam is on Friday" (true)
+  FAIL: C held for review: "Write down that the exam is on Friday" (true)
+  FAIL: C held for review: "Set the user's preference: tea" (true)
+  FAIL: C held for review: "Change the user's preference to tea" (true)
+  FAIL: C held for review: "Learn that the user prefers tea" (true)
+  FAIL: C held for review: "Persist the exam date: Friday" (true)
+  FAIL: C held for review: "Do not forget that the exam is Friday" (true)
+
+--- D. Steps that keep nothing are not held ---
+  FAIL: D completes: "Remember to check the remembered facts first" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Don't forget to search memory before answering" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Keep in mind the user's time zone" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Add up the expenses in the report" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Add the exam date to the summary" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Record the answer in the final report" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Store hours: 9 to 5" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Save some time by reading the summary" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "List what you store in memory about the exam" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Check what we keep in memory about the user" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Summarise what the user asked to save in memory" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Update the user on what is in memory" (false MEMORY_NOT_STORED)
+  FAIL: D completes: "Update the summary using the user's preferences" (false MEMORY_NOT_STORED)
+
+--- E. Documented limits (D-1, D-2, D-4) ---
+  PASS: E (D-1, "note that" stays on the safe side) held for review: "Note that the remembered facts may be stale" (false MEMORY_NOT_STORED)
+  PASS: E (D-2, a request in the middle is not read) completes: "The Memory agent should remember the exam date" (true)
+  PASS: E (D-2, a request in the middle is not read) completes: "Find the exam date and just save it" (true)
+  PASS: E (D-4, other languages are not read) completes: "Recuerda que el examen es el viernes" (true)
+
+--- F. Controls ---
+  PASS: F: another specialist is not held for its wording (true)
+  PASS: F: a Memory-agent step whose save_relation was refused is held, whatever its wording (false MEMORY_NOT_STORED; the fact was not stored in long-term memory: save_relation: Error: save_relation refused -)
+  FAIL: F: an archived Memory-agent step that asked to keep a fact is not taken back as done ({"status":"COMPLETED","result":true})
+  PASS: F: …an archived recall step is taken back as done ({"status":"COMPLETED","result":true})
+  PASS: F: …and so is another specialist's archived step, whatever its wording ({"status":"COMPLETED","result":true})
+
+=== Results: 19 passed, 30 failed ===
+exit=1
