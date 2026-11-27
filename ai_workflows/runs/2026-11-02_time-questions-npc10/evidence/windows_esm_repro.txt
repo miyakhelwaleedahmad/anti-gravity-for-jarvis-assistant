@@ -1,0 +1,12 @@
+1-windows-style-plain-path
+  specifier: D:\a\anti-gravity-for-jarvis-assistant\core\deterministicRoutes.ts
+  exit=1 stdout=(none)
+  Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: Only URLs with a scheme in: file, data, and node are supported by the default ESM loader. Received protocol 'd:'
+2-windows-pathToFileURL (format only)
+  file:///D:/a/anti-gravity-for-jarvis-assistant/core/deterministicRoutes.ts
+3a-this-os-plain-path
+  specifier: /home/user/anti-gravity-for-jarvis-assistant/core/deterministicRoutes.ts
+  exit=0 stdout=["It is 01:38 PM, sir."]
+3b-this-os-pathToFileURL
+  specifier: file:///home/user/anti-gravity-for-jarvis-assistant/core/deterministicRoutes.ts
+  exit=0 stdout=["It is 01:38 PM, sir."]

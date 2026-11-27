@@ -1,0 +1,33 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=finalReviewFixesTest,strictHelperRoutingTest,reviewRound3FixesTest,qaModelFailureTest,modelRouteRound3Test,modelRoleRoutingTest,modelRouteCorrectionsTest,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest,agentSpecialistsTest,sevenAgentTest,agentRuntimeTest,jarvisAgentIntegrationTest,goalAgentIntegrationTest,codeRepairTest,foregroundPriorityTest,llmClientBehaviourTest,providerHealthTest,claudeProviderTest,llmCancellationTest,docsHygieneTest
+
+
+=== JARVIS test suite — 22 file(s) ===
+
+  PASS    agentRuntimeTest                             2738ms
+  PASS    agentSpecialistsTest                         1472ms
+  PASS    claudeProviderTest                           1254ms
+  PASS    codeRepairTest                               8641ms
+  PASS    docsHygieneTest                              1376ms
+  PASS    finalReviewFixesTest                         1418ms
+  PASS    foregroundPriorityTest                       1174ms
+  PASS    goalAgentIntegrationTest                     2503ms
+  PASS    jarvisAgentIntegrationTest                   3776ms
+  PASS    llmCancellationTest                          2238ms
+  PASS    llmClientBehaviourTest                       1105ms
+  PASS    modelRoleRoutingTest                         9722ms
+  PASS    modelRouteCorrectionsTest                    5526ms
+  PASS    modelRouteRound3Test                         2092ms
+  PASS    providerCapabilitiesTest                     780ms
+  PASS    providerHealthTest                           3655ms
+  PASS    providerIsolationTest                        1419ms
+  PASS    qaModelFailureTest                           1399ms
+  PASS    reviewRound3FixesTest                        3782ms
+  PASS    sevenAgentTest                               1653ms
+  PASS    strictHelperRoutingTest                      1384ms
+  PASS    usageLedgerTest                              1281ms
+
+=== 22 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

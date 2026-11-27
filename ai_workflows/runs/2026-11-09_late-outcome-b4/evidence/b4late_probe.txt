@@ -1,0 +1,8 @@
+# Gate 0 probe (2026-11-09, base dbaa5b1): node node_modules/tsx/dist/cli.mjs evidence/b4late_probe.mts <repo>
+# Budget 0.3 s, stop grace 0.2 s; a high-risk tool that ignores its signal and acts after 1 s.
+A. sandbox returned after 503 ms: Error: TIMEOUT: Tool "slow_action" ran past its 0 s budget and did not stop within 0 s; JARVIS stopped waiting for it.
+   acted at return: 0
+   acted 1.2 s later: 1
+B. classification: undefined
+C. spoken (network_error): I couldn't reach a service I needed, sir. TIMEOUT: Tool "slow_action" ran past its 0 s budget and did not stop within 0 s; JARVIS stopped waiting for it.
+D. spoken for a stopped admin command: I couldn't reach a service I needed, sir. TIMEOUT: The command was cancelled and stopped (exit null).

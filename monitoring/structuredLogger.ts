@@ -22,13 +22,15 @@
 
 import * as fs   from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
+import { redactDeep } from '../security/redactor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const LOG_DIR          = path.join(__dirname, '..', 'data', 'logs');
+const LOG_DIR          = path.join(dataRoot(path.resolve(__dirname, '..')), 'data', 'logs');
 const LOG_FILE_BASE    = 'jarvis';
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILES        = 5;
@@ -125,7 +127,9 @@ export class StructuredLogger {
     message: string,
     data?: Record<string, unknown>,
     correlationId?: string,
-    error?: LogEntry['error']
+    error?: LogEntry['error'],
+    /** false: the file only, no console line (the per-request trace, monitoring/traceWiring.ts). */
+    toConsole = true,
   ): void {
     if (LEVEL_ORDER[level] < LEVEL_ORDER[this.minLevel]) return;
 
@@ -141,7 +145,7 @@ export class StructuredLogger {
     };
 
     // Console mirror
-    if (DEV_MODE || level === 'ERROR' || level === 'CRITICAL') {
+    if (toConsole && (DEV_MODE || level === 'ERROR' || level === 'CRITICAL')) {
       const color = LEVEL_COLOR[level];
       const ts    = entry.timestamp.slice(11, 23);
       const cid   = correlationId ? ` [${correlationId.slice(0, 8)}]` : '';
@@ -193,7 +197,7 @@ export class StructuredLogger {
 
   private _writeToFile(entry: LogEntry): void {
     if (!this.writeStream) return;
-    const line = JSON.stringify(entry) + '\n';
+    const line = JSON.stringify(redactDeep(entry)) + '\n';
     const bytes = Buffer.byteLength(line, 'utf8');
 
     // Rotate if over size limit
@@ -224,19 +228,25 @@ export class ChildLogger {
   constructor(
     private readonly module: string,
     private correlationId: string | undefined,
-    private readonly root: StructuredLogger
+    private readonly root: StructuredLogger,
+    private readonly toConsole = true,
   ) {}
 
   withCorrelation(id: string): ChildLogger {
-    return new ChildLogger(this.module, id, this.root);
+    return new ChildLogger(this.module, id, this.root, this.toConsole);
   }
 
-  debug(msg: string, data?: Record<string, unknown>): void    { this.root._log('DEBUG',    this.module, msg, data, this.correlationId); }
-  info(msg: string, data?: Record<string, unknown>): void     { this.root._log('INFO',     this.module, msg, data, this.correlationId); }
-  warn(msg: string, data?: Record<string, unknown>): void     { this.root._log('WARN',     this.module, msg, data, this.correlationId); }
+  /** The same logger, writing to the log file only (no console line). */
+  fileOnly(): ChildLogger {
+    return new ChildLogger(this.module, this.correlationId, this.root, false);
+  }
+
+  debug(msg: string, data?: Record<string, unknown>): void    { this.root._log('DEBUG',    this.module, msg, data, this.correlationId, undefined, this.toConsole); }
+  info(msg: string, data?: Record<string, unknown>): void     { this.root._log('INFO',     this.module, msg, data, this.correlationId, undefined, this.toConsole); }
+  warn(msg: string, data?: Record<string, unknown>): void     { this.root._log('WARN',     this.module, msg, data, this.correlationId, undefined, this.toConsole); }
   error(msg: string, err?: Error | Record<string, unknown>): void {
     const { data, error } = this._ex(err);
-    this.root._log('ERROR',    this.module, msg, data, this.correlationId, error);
+    this.root._log('ERROR',    this.module, msg, data, this.correlationId, error, this.toConsole);
   }
   critical(msg: string, err?: Error | Record<string, unknown>): void {
     const { data, error } = this._ex(err);

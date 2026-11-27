@@ -142,6 +142,11 @@ async function runFullIntegrationSuite() {
       routeType = route.type;
       if (route.type === 'open_app') selectedTool = 'open_app';
       if (route.type === 'close_app' || route.type === 'close_browser_tab') selectedTool = 'control_process';
+      // The router answers the time itself. This fell through to
+      // candidateTools[0] (open_app) and dry-ran opening "what time is it",
+      // which passed only because the registry ignored open_app's own
+      // {"success": false}.
+      if (route.type === 'time') selectedTool = 'get_system_info';
     } else if (cleanInput.includes('remember')) {
       selectedTool = 'save_relation';
     } else if (cleanInput.includes('time')) {

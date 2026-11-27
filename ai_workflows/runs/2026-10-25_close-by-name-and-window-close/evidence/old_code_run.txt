@@ -1,0 +1,56 @@
+
+> antigravityforjarvisassistant@1.0.0 test <scratchpad>/a1old
+> tsx tests/runAll.ts -- --only=closeByNameTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    closeByNameTest                              3210ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - closeByNameTest: === Close by name: 10 passed, 26 failed ===
+        FAIL: "close notepad" closes the Notepad window (No open application matches "notepad".; closed [])
+        FAIL: "close Notepad.exe" closes the same window (No open application matches "Notepad.exe".)
+        FAIL: "close calculator" closes the Calculator window (ApplicationFrameHost) (No open application matches "calculator".)
+        FAIL: "focus notepad" brings the Notepad window to the front (No running window found for app "notepad".)
+        FAIL: "restart notepad" closes the running Notepad before opening it once (closed [], opened 1)
+        FAIL: control_app close "youtube": no window closed, the reply points to the tab (closed ["0x2B"])
+        FAIL: control_app close "gmail": no window closed, the reply points to the tab (closed ["0x2C"])
+        FAIL: control_app close "chrome": the browser is not closed through app control (No open application matches "chrome".)
+        FAIL: control_app close "google chrome": the browser is not closed through app control (closed ["0x2B","0x2C"])
+        FAIL: control_app close "Chrome.exe": the browser is not closed through app control (No open application matches "Chrome.exe".)
+        FAIL: control_app close "edge": the browser is not closed through app control (closed ["0x2F"])
+        FAIL: control_window close "youtube": no Chrome window closed (closed ["0x2B"])
+        FAIL: control_window close "chrome": no Chrome window closed (closed ["0x2B"])
+        FAIL: two Notepad windows, the owner says no: nothing closed (No open application matches "notepad".)
+        FAIL: the question names both windows (not asked)
+        FAIL: two Notepad windows, the owner says yes: both closed, Code left open (No open application matches "notepad".)
+        FAIL: kill "notepad": the process named exactly notepad (PID 101), not notepad++ (Successfully terminated process: notepad++ (PID: 900); Stop-Process -Id 900 -Force)
+        FAIL: the approval question names that PID (Terminate Process: Kill process: notepad++ (PID: 900))
+        FAIL: the reply says it ended, after the check (Successfully terminated process: notepad++ (PID: 900))
+        FAIL: Stop-Process fails: the kill fails, with the reason (reported success)
+        FAIL: the process is still running afterwards: the kill fails (reported success)
+        FAIL: kill "chrome": refused (the everyday browser), nothing asked or stopped (killed)
+        FAIL: "close this tab": tab tools offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, control_browser)
+        FAIL: "close the YouTube tab": tab tools offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, control_browser)
+        FAIL: "close all tabs": tab tools offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure)
+        FAIL: "close the gmail tab in chrome": tab tools offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, control_browser, get_system_info)
+        …
+      --- 6. kernel results for app, window and process ---
+      [windowsState] Poll failed (non-fatal): no current window list for an action: PowerShell exited with code null/undefined; a fresh one failed too: This needs Windows: JARVIS reads it through Windows PowerShell.
+      [ActionQueue] Action "closeApp" failed (attempt 1/2). Retrying... Error: No open application matches "jarvis_test_not_open_xyz".
+      [Memory] Initialized. Short-term: 0 Long-term: 0
+      [GoalManager] ✅ Initialized. 0 historical goal(s) found.
+      [Orchestrator] 🎯 GoalManager initialized.
+      [Redis] Initial connection failed — running without cache.
+        PASS: control_app close of something not open: success false, with the reason (false No open application matches "jarvis_test_not_open_xyz".)
+      [ActionQueue] Action "closeWindow" failed (attempt 1/2). Retrying... Error: Window matching "jarvis_test_not_open_xyz" not found.
+        PASS: control_window close of something not open: success false, with the reason (false Window matching "jarvis_test_not_open_xyz" not found.)
+      [ActionQueue] Action "killProcess" failed (attempt 1/2). Retrying... Error: No process found matching "jarvis_test_not_open_xyz".
+      [Redis] Cannot connect after 3 retries — running without cache.
+        PASS: control_process kill of something not open: success false, with the reason (false No process found matching "jarvis_test_not_open_xyz".)
+      [PermissionSession] 🛡️ Full Control disabled. Reason: close by name test. Session: ps_mvo3de34_zc0qh
+      === Close by name: 10 passed, 26 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

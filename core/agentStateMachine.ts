@@ -19,21 +19,55 @@
  * Watchdog timers:
  *   SPEAKING  → auto-resets to IDLE after SPEAKING_WATCHDOG_MS (default 12s)
  *               Protects against tts.py crashing without sending speaking_end.
- *   PLANNING  → auto-resets to IDLE after PLANNING_WATCHDOG_MS (default 15s)
+ *   PLANNING  → auto-resets to IDLE after PLANNING_WATCHDOG_MS (default: the LLM retry budget, 32 s)
+ *   LISTENING → auto-resets to IDLE after LISTENING_WATCHDOG_MS (default 35 s): STT
+ *               that never answers (it crashed, or an old stt.py) cannot keep
+ *               JARVIS deaf with the mic held
  *               Protects against LLM hanging indefinitely.
  */
 
 import { EventEmitter } from 'events';
+import { planningWatchdogMs } from '../config/llmTiming.js';
 
 // PHASE2-LATENCY-1: Watchdog timeouts reduced to match actual TTS/LLM timeouts.
 const SPEAKING_WATCHDOG_MS = parseInt(
   process.env.JARVIS_SPEAKING_WATCHDOG_MS ?? '12000',
   10
 );
-const PLANNING_WATCHDOG_MS = parseInt(
-  process.env.JARVIS_PLANNING_WATCHDOG_MS ?? '15000',
-  10
-);
+/** Upper bound for a SPEAKING watchdog stretched to fit queued speech. */
+const MAX_SPEAKING_WATCHDOG_MS = 120_000;
+
+/**
+ * Rough playback time for a TTS utterance: ~0.4 s per word (neural voices
+ * speak 2.5–3 words a second) plus 1 s for synthesis.
+ */
+export function estimateSpeechMs(text: string): number {
+  // An ordinary word is 0.4 s. A web address, a long number or any other long
+  // token is read out piece by piece, so it counts by its length, 0.15 s a
+  // character (owner's PC, 2026-11-14: "https://www.youtube.com/" counted as
+  // one 0.4 s word, and the reply was cut while it was being read).
+  let ms = 1_000;
+  for (const raw of text.trim().split(/\s+/).filter(Boolean)) {
+    const token = raw.replace(/^[("'[]+|[)"'\].,!?;:]+$/g, '');
+    const ordinary = token.length <= 12 && (/^[\p{L}'-]+$/u.test(token) || /^\d{1,3}$/.test(token));
+    ms += ordinary || !token ? 400 : Math.max(400, token.length * 150);
+  }
+  return ms;
+}
+
+// Derived from the model request's own retries (PERF-03, config/llmTiming.ts).
+const PLANNING_WATCHDOG_MS = planningWatchdogMs();
+
+/**
+ * Longest a listen session may take: calibration (0.5 s), waiting for speech
+ * (JARVIS_STT_LISTEN_TIMEOUT, 5 s), the phrase (JARVIS_STT_PHRASE_TIME_LIMIT,
+ * 20 s) and transcription, with a margin. stt.py ends every session itself
+ * (stt_result or stt_no_speech); this is the backstop when it does not.
+ */
+export function listeningWatchdogMs(env: Record<string, string | undefined> = process.env): number {
+  const v = Number(env['JARVIS_LISTENING_WATCHDOG_MS']);
+  return Number.isFinite(v) && v >= 1_000 ? Math.min(v, 300_000) : 35_000;
+}
 
 // ─── State Enum ───────────────────────────────────────────────────────────────
 
@@ -81,6 +115,18 @@ const INTERRUPTIBLE_STATES: ReadonlySet<AgentState> = new Set([
   AgentState.SPEAKING,
 ]);
 
+/**
+ * Whether TTS starting to play (speaking_start from tts.py) moves the state
+ * machine to SPEAKING. Only from IDLE or INTERRUPTED: a request's reply has
+ * already moved it there in orchestrator.speak() before playback starts, so
+ * speech that starts during PLANNING…REPAIRING is a progress message or a
+ * background announcement (an approval prompt for a goal), and moving the
+ * loop to SPEAKING then made its next step illegal (BUG-02, HYP-01).
+ */
+export function speechStartMovesState(state: AgentState): boolean {
+  return state === AgentState.IDLE || state === AgentState.INTERRUPTED;
+}
+
 // ─── Agent State Machine ──────────────────────────────────────────────────────
 
 export class AgentStateMachine extends EventEmitter {
@@ -98,6 +144,7 @@ export class AgentStateMachine extends EventEmitter {
   // ── Watchdog timers ──────────────────────────────────────────────────────────
   private _speakingWatchdog: ReturnType<typeof setTimeout> | null = null;
   private _planningWatchdog: ReturnType<typeof setTimeout> | null = null;
+  private _listeningWatchdog: ReturnType<typeof setTimeout> | null = null;
 
   get currentState(): AgentState {
     return this._state;
@@ -156,14 +203,17 @@ export class AgentStateMachine extends EventEmitter {
     // ── Watchdog management ────────────────────────────────────────────────────
     if (prev === AgentState.SPEAKING)  this._clearSpeakingWatchdog();
     if (prev === AgentState.PLANNING)  this._clearPlanningWatchdog();
+    if (prev === AgentState.LISTENING) this._clearListeningWatchdog();
     if (newState === AgentState.SPEAKING) this._armSpeakingWatchdog();
     if (newState === AgentState.PLANNING) this._armPlanningWatchdog();
+    if (newState === AgentState.LISTENING) this._armListeningWatchdog();
 
     // ── Event emission ─────────────────────────────────────────────────────────
     this.emit('transition', { from: prev, to: newState });
     this.emit('state_changed', newState);
+    // 'interrupted' for INTERRUPTED. It was emitted a second time here, so
+    // every interrupt listener ran twice (BUG-19).
     this.emit(newState.toLowerCase());
-    if (newState === AgentState.INTERRUPTED) this.emit('interrupted');
 
     return true;
   }
@@ -184,24 +234,89 @@ export class AgentStateMachine extends EventEmitter {
 
   // ── Watchdog helpers ──────────────────────────────────────────────────────────
 
+  /** Estimated playback still queued at the TTS process (reset on speaking_end). */
+  private _pendingSpeechMs = 0;
+
+  /**
+   * TTS reports speaking_start once and speaking_end only when its whole queue
+   * is empty, so a fixed 12 s watchdog cut off any reply longer than that, or
+   * several queued ones (seen on Windows: greeting + warning + error message).
+   * The watchdog now allows for the speech actually queued; 12 s stays the
+   * minimum, so a crashed TTS is still caught.
+   */
+  noteSpeechQueued(text: string): void {
+    this._pendingSpeechMs = Math.min(this._pendingSpeechMs + estimateSpeechMs(text), MAX_SPEAKING_WATCHDOG_MS);
+    if (this._state === AgentState.SPEAKING && this._speakingWatchdog !== null) {
+      this._armSpeakingWatchdog(); // stretch the running deadline
+    }
+  }
+
+  /**
+   * TTS is taking longer than estimated for a known reason (a synthesis
+   * retry after a timeout). The SPEAKING watchdog was armed when the text was
+   * sent, and its estimate allows ~1 s for synthesis; a 5 s timeout plus a
+   * retry used it up, so it fired during normal speech and reopened the mic
+   * while JARVIS was about to talk. The extra time is added and the running
+   * deadline restarted; a TTS that dies still trips the watchdog.
+   */
+  noteSpeechDelayed(extraMs: number, reason = 'tts_delay'): void {
+    const extra = Math.max(0, Math.min(extraMs, 30_000));
+    if (!extra) return;
+    this._pendingSpeechMs = Math.min(this._pendingSpeechMs + extra, MAX_SPEAKING_WATCHDOG_MS);
+    if (this._state === AgentState.SPEAKING && this._speakingWatchdog !== null) {
+      console.log(`[AgentStateMachine] TTS delayed (${reason}, +${extra} ms); SPEAKING watchdog extended to ${this.speakingWatchdogMs()} ms.`);
+      this._armSpeakingWatchdog();
+    }
+  }
+
+  /**
+   * Playback really started (speaking_start). The watchdog was armed when the
+   * text was sent, so synthesis time used up the allowance meant for speech
+   * (owner's PC, 2026-11-14: synthesis took 4 s and the reply was cut at
+   * 12 s). The running deadline restarts from now with the same allowance:
+   * the one timer is re-armed, never a second one added. Until playback
+   * starts, the deadline set when the text was sent still catches a TTS that
+   * never plays; after it, the new one catches a missing speaking_end. Only
+   * while SPEAKING with the watchdog running: a speaking_start that arrives
+   * after a stop or an interruption changes nothing.
+   */
+  notePlaybackStarted(): void {
+    if (this._state === AgentState.SPEAKING && this._speakingWatchdog !== null) {
+      this._armSpeakingWatchdog();
+    }
+  }
+
+  /** The TTS queue is empty (speaking_end) or was cleared by a stop command. */
+  noteSpeechFinished(): void {
+    this._pendingSpeechMs = 0;
+  }
+
+  /** Current SPEAKING watchdog allowance in ms. */
+  speakingWatchdogMs(): number {
+    if (this._pendingSpeechMs === 0) return SPEAKING_WATCHDOG_MS;
+    return Math.min(Math.max(SPEAKING_WATCHDOG_MS, this._pendingSpeechMs + 3_000), MAX_SPEAKING_WATCHDOG_MS);
+  }
+
   private _armSpeakingWatchdog(): void {
-    this._clearSpeakingWatchdog();
+    this._clearSpeakingWatchdog(true);
+    const ms = this.speakingWatchdogMs();
     this._speakingWatchdog = setTimeout(() => {
       if (this._state !== AgentState.SPEAKING) return; // already left
       console.warn(
-        `[AgentStateMachine] ⏰ SPEAKING watchdog fired after ${SPEAKING_WATCHDOG_MS}ms. ` +
+        `[AgentStateMachine] ⏰ SPEAKING watchdog fired after ${ms}ms. ` +
         `TTS may have crashed without sending speaking_end. Resetting to IDLE.`
       );
+      this._pendingSpeechMs = 0;
       // Use the validated internal path — never bypass transition table.
       this._watchdogReset(AgentState.SPEAKING, 'speaking_timeout');
-    }, SPEAKING_WATCHDOG_MS);
+    }, ms);
   }
 
-  private _clearSpeakingWatchdog(): void {
+  private _clearSpeakingWatchdog(rearming = false): void {
     if (this._speakingWatchdog !== null) {
       clearTimeout(this._speakingWatchdog);
       this._speakingWatchdog = null;
-      console.log('[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).');
+      if (!rearming) console.log('[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).');
     }
   }
 
@@ -215,6 +330,25 @@ export class AgentStateMachine extends EventEmitter {
       );
       this._watchdogReset(AgentState.PLANNING, 'planning_timeout');
     }, PLANNING_WATCHDOG_MS);
+  }
+
+  private _armListeningWatchdog(): void {
+    this._clearListeningWatchdog();
+    const ms = listeningWatchdogMs();
+    this._listeningWatchdog = setTimeout(() => {
+      this._listeningWatchdog = null;
+      if (this._state !== AgentState.LISTENING) return;
+      console.warn(`[AgentStateMachine] ⏰ LISTENING watchdog fired after ${ms}ms: no transcript and no "no speech" from STT. Resetting to IDLE.`);
+      this._watchdogReset(AgentState.LISTENING, 'listening_timeout');
+    }, ms);
+    this._listeningWatchdog.unref?.();
+  }
+
+  private _clearListeningWatchdog(): void {
+    if (this._listeningWatchdog !== null) {
+      clearTimeout(this._listeningWatchdog);
+      this._listeningWatchdog = null;
+    }
   }
 
   private _clearPlanningWatchdog(): void {
@@ -242,6 +376,7 @@ export class AgentStateMachine extends EventEmitter {
       this._recordHistory(AgentState.IDLE);
       this._clearSpeakingWatchdog();
       this._clearPlanningWatchdog();
+      this._clearListeningWatchdog();
       this.emit('transition', { from: fromState, to: AgentState.IDLE });
       this.emit('state_changed', AgentState.IDLE);
       this.emit('idle');
@@ -400,3 +535,17 @@ export class AgentStateMachine extends EventEmitter {
 }
 
 export const agentStateMachine = new AgentStateMachine();
+
+/**
+ * A transition a caller may skip when it is not allowed from the current
+ * state, recorded instead of swallowed (ARCH-07: four call sites used an empty
+ * `catch {}`, so a refused transition left no trace of where it came from).
+ */
+export function tryTransition(to: AgentState, context: string): boolean {
+  try {
+    return agentStateMachine.transition(to);
+  } catch (err) {
+    console.warn(`[AgentStateMachine] ${context}: transition to ${to} refused from ${agentStateMachine.currentState} (${err instanceof Error ? err.message.slice(0, 120) : String(err)}).`);
+    return false;
+  }
+}

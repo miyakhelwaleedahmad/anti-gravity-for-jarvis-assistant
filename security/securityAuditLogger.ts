@@ -8,12 +8,15 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
+import type { ApprovalDecision, ApprovalRequest } from './approvalRequest.js';
+import { redact, redactDeep } from './redactor.js';
 
 // Resolve project root (two levels up from security/)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..');
-const AUDIT_LOG_PATH = path.join(PROJECT_ROOT, 'data', 'logs', 'security_audit.log');
+const DATA_ROOT = dataRoot(path.resolve(__dirname, '..'));
+const AUDIT_LOG_PATH = path.join(DATA_ROOT, 'data', 'logs', 'security_audit.log');
 
 export type SecurityEventType =
   | 'COMMAND_ALLOWED'
@@ -40,15 +43,34 @@ export interface SecurityEvent {
   allowed?: boolean;
   source?: string;
   expiresAt?: string;
+  /** Approval requests and decisions (security/approvalGate.ts). */
+  requestId?: string;
+  why?: string;
+  target?: string;
+  expectedEffect?: string;
+  reversibility?: string;
+  decidedBy?: string;
+  partOf?: string;
+  /** The agent, task and root task that asked, for approvals asked by agents. */
+  agent?: string;
+  agentId?: string;
+  taskId?: string;
+  rootTaskId?: string;
+}
+
+/** The asking agent's fields of an approval request, when an agent asked. */
+function askedBy(request: ApprovalRequest): Pick<SecurityEvent, 'agent' | 'agentId' | 'taskId' | 'rootTaskId'> {
+  return {
+    ...(request.agent ? { agent: request.agent } : {}),
+    ...(request.agentId ? { agentId: request.agentId } : {}),
+    ...(request.taskId ? { taskId: request.taskId } : {}),
+    ...(request.rootTaskId ? { rootTaskId: request.rootTaskId } : {}),
+  };
 }
 
 function sanitize(value: string | undefined): string {
   if (!value) return '';
-  // Strip anything that looks like a secret/key (basic heuristic)
-  return value
-    .replace(/sk-[A-Za-z0-9\-_]{10,}/g, '[REDACTED_KEY]')
-    .replace(/Bearer\s+[A-Za-z0-9\-._~+/=]{10,}/g, 'Bearer [REDACTED]')
-    .replace(/api[_\-]?key[=:]\s*["']?[A-Za-z0-9\-._~+/=]{8,}["']?/gi, 'api_key=[REDACTED]');
+  return redact(value);
 }
 
 class SecurityAuditLogger {
@@ -59,17 +81,31 @@ class SecurityAuditLogger {
     }
   }
 
+  private listeners: Array<(event: SecurityEvent) => void> = [];
+
+  /** Also hand each event (redacted) to `fn`: the request trace (monitoring/traceWiring.ts). */
+  public onEvent(fn: (event: SecurityEvent) => void): void {
+    this.listeners.push(fn);
+  }
+
   public log(event: SecurityEvent): void {
+    let clean: SecurityEvent | undefined;
     try {
-      this.ensureLogDir();
-      const line = JSON.stringify({
+      // Every field, not only the command and reason: targets and actions
+      // can carry a token too.
+      clean = redactDeep({
         ...event,
         command: sanitize(event.command),
         reason: sanitize(event.reason),
       });
-      fs.appendFileSync(AUDIT_LOG_PATH, line + '\n', 'utf8');
+      this.ensureLogDir();
+      fs.appendFileSync(AUDIT_LOG_PATH, JSON.stringify(clean) + '\n', 'utf8');
     } catch {
       // Audit logging must never crash the application
+    }
+    if (!clean) return;
+    for (const fn of this.listeners) {
+      try { fn(clean); } catch { /* a trace listener must not stop the audit record */ }
     }
   }
 
@@ -91,6 +127,40 @@ class SecurityAuditLogger {
       riskLevel,
       reason,
       toolName,
+    });
+  }
+
+  /** The six fields shown to the user (already redacted by the request builder). */
+  public approvalRequest(request: ApprovalRequest): void {
+    this.log({
+      eventType: 'APPROVAL_REQUESTED',
+      timestamp: new Date(request.createdAt).toISOString(),
+      requestId: request.id,
+      toolName: request.tool,
+      action: request.action,
+      why: request.why,
+      target: request.target,
+      expectedEffect: request.expectedEffect,
+      riskLevel: `LEVEL_${request.risk}`,
+      reversibility: request.reversibility,
+      source: request.source,
+      ...askedBy(request),
+    });
+  }
+
+  public approvalDecision(request: ApprovalRequest, decision: ApprovalDecision): void {
+    this.log({
+      eventType: decision.approved ? 'APPROVAL_GRANTED' : decision.by === 'timeout' ? 'APPROVAL_TIMEOUT' : 'APPROVAL_DENIED',
+      timestamp: new Date(decision.at).toISOString(),
+      requestId: request.id,
+      toolName: request.tool,
+      action: request.action,
+      target: request.target,
+      riskLevel: `LEVEL_${request.risk}`,
+      approved: decision.approved,
+      decidedBy: decision.by,
+      ...(decision.partOf ? { partOf: decision.partOf } : {}),
+      ...askedBy(request),
     });
   }
 

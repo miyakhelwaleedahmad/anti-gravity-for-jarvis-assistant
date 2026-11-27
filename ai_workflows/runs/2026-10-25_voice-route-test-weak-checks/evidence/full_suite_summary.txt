@@ -1,0 +1,8 @@
+# pnpm test -- --ci  (cloud Linux, v22.22.2, pnpm 10.33.0); working tree = 76f4712 + TEST-06 change; fake xdg-open first on PATH
+  BLOCKED realTtsHandoffTest                           431ms  (needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.)
+  PASS    voiceRouteMockTest                           1883ms
+=== 200 passed · 0 failed · 0 timed out · 1 blocked · 0 environment · 9 skipped ===
+Blocked, not verified (the environment the test needs was not available):
+  - realTtsHandoffTest: needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.
+exit=1
+opener calls during the whole suite: 0

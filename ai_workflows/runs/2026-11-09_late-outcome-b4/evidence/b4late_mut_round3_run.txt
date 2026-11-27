@@ -1,0 +1,20 @@
+K1 late_result takes the identity when the tool ends, not at the start: CAUGHT | 4 failing; first: FAIL: 1.4 one `late_result` line when the tool ended: the same call id and request, its real completion time, success ({"timestamp":"2026-11-11T16:08:05.640Z","type":"lat
+K6 no late_result line: CAUGHT | 6 failing; first: FAIL: 1.4 one `late_result` line when the tool ended: the same call id and request, its real completion time, success ({})
+K8 late_result not ordered after outcome_unknown: CAUGHT | 2 failing; first: FAIL: 4.3 (K8) …and its `late_result` line comes after the `outcome_unknown` line (outcome_unknown at 19, late_result at 18)
+K21 the owner's sentence is not used: CAUGHT | 5 failing; first: FAIL: 1.2 …said as the owner's sentence, with the request in quotes (I stopped waiting for that, sir. It may still finish, so check before asking me to try again.)
+K22 several steps named like one: CAUGHT | 2 failing; first: FAIL: 1.2 several steps: the exact tool and action step is named (I stopped waiting for "open the page and close the fake thing" after 2 seconds, sir. It may still finish
+K23 a stopped command said like a tool JARVIS stopped waiting for: CAUGHT | 1 failing; first: FAIL: 2.1 what the owner hears for a stopped command (I stopped waiting for "run the backup command", sir. It may still finish, so check before asking me to try again.)
+K24 a command that never started said to have maybe run: CAUGHT | 3 failing; first: FAIL: 2.1 a command that never started: a definite failure, never "may have run" (TIMEOUT (outcome unknown): The command was stopped after 0 seconds; part of it may alrea
+V1m the never-started wording is not final for the action queue (retried, asked twice): CAUGHT | 2 failing; first: FAIL: 2.1 a command that never started: a definite failure, never "may have run" (The command was not started: the request had already been stopped.)
+V2m late_result waits only for the 2 s limit, not for the timeout line's write: CAUGHT | 1 failing; first: FAIL: 5.3 (V2) …and the `outcome_unknown` line is still written before the `late_result` line (outcome_unknown at 22, late_result at 21)
+V3m the planner's [SYSTEM NOTE] is said: CAUGHT | 1 failing; first: FAIL: 5.4 (V3) after a replan: the owner's request is quoted, never the internal [SYSTEM NOTE …] (I stopped waiting for "close the backup window
+V5m the failure message's comment misplaced again: CAUGHT | 1 failing; first: FAIL: 5.5 (V5) the comment "Spoken when the task is abandoned" sits directly above buildFailureVoiceMessage
+
+11/11 caught
+tree restored (md5): YES
+exit=0
+jarvis-b4late folders left: 0
+core/toolExecutionSandbox.ts: OK
+control/adminController.ts: OK
+core/reflectionEngine.ts: OK
+test processes left: 0

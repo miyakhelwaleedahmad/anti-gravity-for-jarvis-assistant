@@ -1,0 +1,49 @@
+
+=== Honest self-check (phase A5b) ===
+
+--- 1. the "tools" item ---
+  PASS: no item says "tools: working" because one tool ran ([VERIFIED] last tool call: working (list_capabilities ran, 0 s ago); not a check of what the tools can do)
+  PASS: it is said as the last tool call, with the tool ([VERIFIED] last tool call: working (list_capabilities ran, 0 s ago); not a check of what the tools can do)
+  PASS: …and says it is not a check of what the tools can do ([VERIFIED] last tool call: working (list_capabilities ran, 0 s ago); not a check of what the tools can do)
+  FAIL: …without "working": what ran, and when (review B2) ([VERIFIED] last tool call: working (list_capabilities ran, 0 s ago); not a check of what the tools can do)
+  FAIL: why stuck: a failing last tool call is named as such when spoken (Failing: tools.)
+  FAIL: …and a failing item does not carry the "not a check" note ([FAILING] last tool call: failed 2 times in a row (open_app crashed (test)); not a check of what the tools can do)
+--- 2. Redis (Q1) ---
+  PASS: Redis on its in-memory fallback: not verified ([NOT_VERIFIED] service redis: Redis is not connected; JARVIS uses its in-memory cache instead)
+  PASS: …with the reason: not connected, the in-memory cache is used ([NOT_VERIFIED] service redis: Redis is not connected; JARVIS uses its in-memory cache instead)
+  PASS: Redis connected: verified, as before ([VERIFIED] service redis: round-trip OK)
+  PASS: Redis's own probe can be stood in for (redisProbeDeps)
+  PASS: the probe marks the fallback; the dashboard still reads "online, fallback" ({"name":"redis","status":"online","fallback":true,"detail":"in-memory cache fallback","checkedAt":1793882450930})
+  PASS: a probe that throws: degraded with the reason, not "online" ({"name":"redis","status":"degraded","latencyMs":0,"detail":"the cache check failed: the cache module failed to load (test)","checkedAt":1793882450930})
+  PASS: through the real service list: Redis on its fallback is not verified ([NOT_VERIFIED] service redis: Redis is not connected; JARVIS uses its in-memory cache instead)
+--- 3. JARVIS's Chrome (Q2, Q3) ---
+  PASS: running and answering: verified, with its port ([VERIFIED] Chrome (web pages): Chrome is running and answers on port 9333)
+  PASS: installed but not running: not verified, starts when JARVIS opens a page ([NOT_VERIFIED] Chrome (web pages): not running; it starts when JARVIS opens a page (Chrome found: /opt/chrome/chrome))
+  FAIL: installed, not running, JARVIS_CHROME_AUTOSTART off: blocked, JARVIS will not start it (review B1) ([NOT_VERIFIED] Chrome (web pages): not running; it starts when JARVIS opens a page (Chrome found: /opt/chrome/chrome))
+  PASS: not installed: failing, web pages cannot open ([FAILING] Chrome (web pages): Chrome is not installed where JARVIS looks (or JARVIS_CHROME_PATH is wrong), so web pages can't open)
+  PASS: JARVIS_CDP_PORT set and nothing answers there: failing, with the port ([FAILING] Chrome (web pages): nothing answers on JARVIS_CDP_PORT 9555, so JARVIS can't open or read web pages)
+  PASS: the check itself fails: failing, with the reason ([FAILING] Chrome (web pages): the check failed: profile unreadable (test))
+  PASS: not in the quick self-check (Q3) (no such item)
+  PASS: the real check: a Chrome path that does not exist is failing ([FAILING] Chrome (web pages): Chrome is not installed where JARVIS looks (or JARVIS_CHROME_PATH is wrong), so web pages can't open)
+  FAIL: the real check, autostart off (as here): blocked, nothing started ([NOT_VERIFIED] Chrome (web pages): not running; it starts when JARVIS opens a page (Chrome found: /opt/node22/bin/node))
+  PASS: the real check, autostart on: installed, not running, nothing started: not verified, starts when needed ([NOT_VERIFIED] Chrome (web pages): not running; it starts when JARVIS opens a page (Chrome found: /opt/node22/bin/node))
+--- 4. PowerShell (Q3) ---
+  PASS: on Windows, PowerShell answers: verified, with its version ([VERIFIED] PowerShell (desktop control): PowerShell 5.1.19041.5007 answers)
+  PASS: on Windows, PowerShell cannot start: failing, with the reason ([FAILING] PowerShell (desktop control): PowerShell did not answer (spawn powershell.exe ENOENT (test)), so desktop control cannot work)
+  FAIL: on Windows, PowerShell slower than 5 s: not verified, not "cannot work" (review B3) ([FAILING] PowerShell (desktop control): PowerShell did not answer (no answer within 5 s), so desktop control cannot work)
+  PASS: not Windows: blocked, desktop control needs Windows ([BLOCKED] PowerShell (desktop control): desktop control needs Windows, and this computer is not running Windows)
+  PASS: …and PowerShell is not asked (calls=0)
+  PASS: not in the quick self-check (Q3) (calls=0)
+--- 5. the permission level ---
+  PASS: quick: the level is said (Self-check: 0 of 5 checks verified, 5 not verified yet. No open issues are recorded. Permission: level 1, safe control.)
+  PASS: …as a line, not a check (speech output, speech recognition, wake word, language model, last tool call)
+  PASS: full control: with the time left (Full self-check: 1 of 7 checks verified, 6 not verified yet. No open issues are recorded. Permission: full control, 12 min left.)
+  FAIL: full control under a minute: "less than 1 min left" (review B8) (Full self-check: 1 of 7 checks verified, 6 not verified yet. No open issues are recorded. Permission: full control, 1 min left.)
+  PASS: level 0: read only (Full self-check: 1 of 7 checks verified, 6 not verified yet. No open issues are recorded. Permission: level 0, read only.)
+  PASS: the level cannot be read: said so, with the reason (Full self-check: 1 of 7 checks verified, 6 not verified yet. No open issues are recorded. Permission: not read.)
+--- 6. the whole report ---
+  PASS: no overclaim in the spoken report (Full self-check: 1 of 8 checks verified, 7 not verified yet. No open issues are recorded. Permission: level 1, safe control.)
+  FAIL: no nested brackets in what is said (review B8) (Full self-check: 0 of 7 checks verified, 1 blocked (PowerShell (desktop control)), 6 not verified yet. No open issues are recorded. Permission: level 1, safe control.)
+  PASS: the details say what the Chrome and PowerShell checks look at (Not observed by these checks: failures outside tool calls, speech, the wake word, the language model, | the Python services and goal tasks; and a pipeline marked "not verified" has had no outcome this run. | Chrome and PowerShell are checked only for whether they answer, not for every action that uses them.)
+
+30 passed, 8 failed

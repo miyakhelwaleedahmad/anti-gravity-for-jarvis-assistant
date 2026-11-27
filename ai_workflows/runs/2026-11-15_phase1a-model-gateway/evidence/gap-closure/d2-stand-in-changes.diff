@@ -1,0 +1,59 @@
+--- /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/d2-before/modelRoleRoutingTest.ts	2026-11-16 13:09:34.586861065 +0000
++++ tests/modelRoleRoutingTest.ts	2026-11-16 13:09:46.325667443 +0000
+@@ -56,7 +56,8 @@
+       if (req.signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+       log.push({ who, model: req.model, category: req.category, agentRole: req.agentRole, max_tokens: req.max_tokens, streamed: false });
+       if (opts.fail) throw new Error(opts.fail);
+-      return { content: `${who} answered`, usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 } };
++      // D2 (owner, 2026-11-16): a stand-in reports the model it answers with, as real providers do.
++      return { content: `${who} answered`, usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 }, model: req.model };
+     },
+   };
+   if (opts.stream !== false) {
+--- /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/d2-before/modelRouteCorrectionsTest.ts	2026-11-16 13:09:34.586892897 +0000
++++ tests/modelRouteCorrectionsTest.ts	2026-11-16 13:09:46.326349693 +0000
+@@ -76,7 +76,8 @@
+       const b = how();
+       if (b === 'hang') return pending(req);
+       if (b === 'fail') throw new Error(`${who} is down (503)`);
+-      return { content: `${who} answered` };
++      // D2 (owner, 2026-11-16): a stand-in reports the model it answers with, as real providers do.
++      return { content: `${who} answered`, model: req.model };
+     },
+   };
+   if (opts.stream) {
+--- /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/d2-before/reviewRound3FixesTest.ts	2026-11-16 13:09:34.586914651 +0000
++++ tests/reviewRound3FixesTest.ts	2026-11-16 13:09:46.326883261 +0000
+@@ -97,8 +97,8 @@
+ modelRouter.registerProvider((modelRouter as any).primary, defaultProvider as never);
+ modelRouter.registerProvider('openai', defaultProvider as never);
+ (modelRouter as any).failoverOrder = (name?: string) => [name ?? (modelRouter as any).primary];
+-modelRouter.registerNamedProvider('codingblank', { isConfigured: () => true, async chat(req: any) { modelCalls.push(`codingblank:${req.agentRole}`); return { content: '' }; } } as never);
+-modelRouter.registerNamedProvider('codingok', { isConfigured: () => true, async chat(req: any) { modelCalls.push(`codingok:${req.agentRole}`); return { content: 'coding model answer' }; } } as never);
++modelRouter.registerNamedProvider('codingblank', { isConfigured: () => true, async chat(req: any) { modelCalls.push(`codingblank:${req.agentRole}`); return { content: '', model: req.model }; } } as never); // D2: reports its model
++modelRouter.registerNamedProvider('codingok', { isConfigured: () => true, async chat(req: any) { modelCalls.push(`codingok:${req.agentRole}`); return { content: 'coding model answer', model: req.model }; } } as never); // D2: reports its model
+ 
+ function manager(limits: Record<string, string> = {}) {
+   const m = new AgentManager(agentEvents, loadAgentLimits(limits));
+--- /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/d2-before/strictHelperRoutingTest.ts	2026-11-16 13:09:34.586934014 +0000
++++ tests/strictHelperRoutingTest.ts	2026-11-16 13:10:29.111445835 +0000
+@@ -81,7 +81,8 @@
+   async chat(req: any) {
+     modelCalls.push(`${who}:${req.agentRole}`);
+     if (behaviour === 'fail') throw new Error(`${who} is down (500)`);
+-    return { content: behaviour === 'blank' ? '' : `${req.agentRole} answered by ${who}` };
++    // D2 (owner, 2026-11-16): a stand-in reports the model it answers with, as real providers do.
++    return { content: behaviour === 'blank' ? '' : `${req.agentRole} answered by ${who}`, model: req.model };
+   },
+ });
+ modelRouter.registerNamedProvider('codeok', named('codeok', 'ok') as never);
+@@ -172,7 +173,8 @@
+ console.log('\n--- 6. The router honours an inherited route only when it is configured and strict ---');
+ {
+   const log: string[] = [];
+-  const stub = (who: string) => ({ isConfigured: () => true, async chat(req: any) { log.push(`${who}:${req.model}`); return { content: `${who} answered` }; } });
++  // D2 (owner, 2026-11-16): a stand-in reports the model it answers with, as real providers do.
++  const stub = (who: string) => ({ isConfigured: () => true, async chat(req: any) { log.push(`${who}:${req.model}`); return { content: `${who} answered`, model: req.model }; } });
+   const r = new ModelRouter('a');
+   r.registerProvider('a', stub('a') as never);
+   r.registerNamedProvider('coder', stub('coder') as never);

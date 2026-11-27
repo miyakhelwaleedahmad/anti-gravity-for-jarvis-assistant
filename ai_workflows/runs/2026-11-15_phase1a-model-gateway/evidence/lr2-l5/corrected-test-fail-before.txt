@@ -1,0 +1,49 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+
+=== Mixed failure causes in a split request (LR-2) ===
+
+--- Controls: one cause ---
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 2 ms
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+  PASS: both parts out of tool calls: TOOL_BUDGET_EXHAUSTED, waits for budget (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+[LLM usage] qaprov qa-model planning: ? in / ? out tokens, 1 ms, failed
+[LLM usage] qaprov qa-model planning: ? in / ? out tokens, 1 ms, failed
+  PASS: both parts' model down: MODEL_UNAVAILABLE, retried later (MODEL_UNAVAILABLE [] → dependency → retry/continue: retry at 2026-11-17T10:26:58.301Z: something it needs is unavailable (QA could not check every part: test_runner_worker-1 (test_runner_worke)
+
+--- Tool budget mixed with a model that did not answer ---
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 1 ms
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms, failed
+  FAIL: QA: one part out of tool calls, one answered by rules (model down): not TOOL_BUDGET_EXHAUSTED (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: …recorded as the model not answering (MODEL_UNAVAILABLE, dependency) (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: …recovery does not wait for budget and does not give the budget as the reason (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: …its reason is that something it needs is unavailable (waiting: the goal's budget is used up)
+  FAIL: …both causes are kept in the goal failure
+  FAIL: …and in the agent task's error ({"code":"BUDGET_EXCEEDED"})
+  FAIL: …the recovery action still names the tool budget (waiting: the goal's budget is used up)
+  PASS: …its signature differs from the pure tool-budget and the pure model-down signatures (sig-9a8161c3e35b / sig-3dd6ae33cbf4 / sig-cbe99a79dae0)
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms, failed
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+  PASS: the same mix in the other order: the same code and causes (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+[LLM usage] qaprov qa-model planning: ? in / ? out tokens, 0 ms
+[LLM usage] qaprov qa-model planning: ? in / ? out tokens, 0 ms, failed
+  FAIL: strict QA: one helper out of tool calls, one helper's model down: MODEL_UNAVAILABLE, never waits for budget (TOOL_BUDGET_EXHAUSTED [] → budget → ready/wait/budget: waiting: the goal's budget is used up)
+  FAIL: …both causes kept
+
+--- Identity mixed with anything: blocked ---
+[LLM usage] qaprov qa-model planning: ? in / ? out tokens, 0 ms
+[LLM usage] qaprov qa-model planning: ? in / ? out tokens, 0 ms
+  PASS: strict QA: tool budget and identity: MODEL_IDENTITY_UNCONFIRMED, blocked (MODEL_IDENTITY_UNCONFIRMED [] → configuration → blocked/block: blocked: QA could not check every part: test_runner_worker-1 (test_runner_worker): failed — The toolCalls budget is used up (task task-99edb)
+  FAIL: …the tool budget is still recorded
+
+--- The cause rules themselves ---
+  FAIL: failureCauses and leadingCause exist
+  FAIL: classifyFailure never gives "budget" when a model cause is among the causes (budget)
+  FAIL: the signature includes the causes, in any order (sig-8ec14dbf472a sig-8ec14dbf472a sig-8ec14dbf472a)
+
+=== Results: 5 passed, 13 failed ===
+exit=1

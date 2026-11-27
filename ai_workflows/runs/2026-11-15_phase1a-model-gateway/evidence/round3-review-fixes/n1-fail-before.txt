@@ -1,0 +1,33 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=reviewRound3FixesTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    reviewRound3FixesTest                        3752ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - reviewRound3FixesTest: === Results: 17 passed, 3 failed ===
+        FAIL: the configured coding task is FAILED, not COMPLETED by keyword rules (COMPLETED )
+        FAIL: …no keyword-rule tool ran (git_overview)
+        FAIL: …and the result says the model gave an empty answer
+        …
+      [LLM usage] b (default model) unspecified: ? in / ? out tokens, 1 ms
+        PASS: the trial stream reached the provider (1)
+      [LLM usage] can (default model) unspecified: ? in / ? out tokens, 1 ms
+        PASS: the next call is sent to the provider at once, not refused until the lease expires (2 → can answered)
+      --- L5. A fallback not sent keeps the route's failure ---
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] elsewhere m planning: ? in / ? out tokens, 0 ms, failed
+      [ModelRouter] JARVIS_MODEL_PLANNING (elsewhere:m) failed (elsewhere is down (500)); answered by the default model.
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: the fallback ends with the queue-wait error (QueueWaitTimeoutError: JARVIS_MODEL_PLANNING: waited 100 ms for the owner's conversation (JARVIS_MODEL_QUEUE_WAIT_MS); not sent to a, and not answered by another model)
+        PASS: …and keeps the route's own failure as its cause (elsewhere is down (500))
+      --- L6. "(provider default)" is not a model name ---
+        PASS: an unknown model on either side is never reported as independent ({"coding":{"provider":"groq","model":"(provider default)"},"qa":{"provider":"groq","model":"qwen-2.5-32b"},"independent":null,"reason":"unknown: a coding_agent call was recorded without its model"})
+        PASS: …it is reported as unknown (null) (null)
+      === Results: 17 passed, 3 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

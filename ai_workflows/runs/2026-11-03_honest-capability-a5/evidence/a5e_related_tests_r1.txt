@@ -1,0 +1,84 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=boundaryDoublesTest,browserControlAgentTest,browserObservationTest,capabilityA5eTest,childEnvCoverageTest,claudeProviderTest,closeByNameTest,codeRepairTest,docsHygieneTest,echoFilterCommandAcceptanceTest,echoShortReplyTest,echoWindowFromPlaybackEndTest,endToEndLatencyTest,filesAndDevToolsTest,fullSystemIntegrationTest,healthLedgerTest,honestActionReplyTest,honestReadToolsA5aTest,jarvisAgentIntegrationTest,jarvisChromeTest,kernelOutcomeA5cTest,openAppHonestA5dTest,plannerDecisionAuditTest,plannerDesktopToolSelectionTest,realTtsHandoffTest,repairRunTest,routeGoldenTest,routingA3Test,scenarioIntegrationTest,secondBrainIntegrationTest,selfCheckA5bTest,selfCheckTest,skillLoadOrderTest,speechRequestCorrelationTest,spokenTextTest,systemObservationTest,taskFailureHonestyTest,toolDiscoverabilityAuditTest,toolNameListsTest,toolRegistryMetadataTest,ttsDeliveryLifecycleTest,ttsRepeatDeliveryTest,verifyAfterActTest,voiceYouTubeIntegrationTest,windowsToolsTest
+
+
+=== JARVIS test suite — 45 file(s) ===
+
+  PASS    boundaryDoublesTest                          361ms
+  PASS    browserControlAgentTest                      8545ms
+  PASS    browserObservationTest                       8043ms
+  PASS    capabilityA5eTest                            2196ms
+  PASS    childEnvCoverageTest                         864ms
+  PASS    claudeProviderTest                           1134ms
+  PASS    closeByNameTest                              11577ms
+  PASS    codeRepairTest                               8323ms
+  PASS    docsHygieneTest                              1273ms
+  PASS    echoFilterCommandAcceptanceTest              1212ms
+  PASS    echoShortReplyTest                           383ms
+  PASS    echoWindowFromPlaybackEndTest                352ms
+  PASS    endToEndLatencyTest                          1282ms
+  PASS    filesAndDevToolsTest                         2819ms
+  PASS    fullSystemIntegrationTest                    1235ms
+  PASS    healthLedgerTest                             4896ms
+  PASS    honestActionReplyTest                        3359ms
+  FAIL    honestReadToolsA5aTest                       3289ms
+  PASS    jarvisAgentIntegrationTest                   3716ms
+  PASS    jarvisChromeTest                             13291ms
+  PASS    kernelOutcomeA5cTest                         2296ms
+  PASS    openAppHonestA5dTest                         5699ms
+  PASS    plannerDecisionAuditTest                     1190ms
+  PASS    plannerDesktopToolSelectionTest              1525ms
+  BLOCKED realTtsHandoffTest                           439ms  (needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.)
+  PASS    repairRunTest                                6534ms
+  PASS    routeGoldenTest                              1259ms
+  PASS    routingA3Test                                1551ms
+  PASS    scenarioIntegrationTest                      44806ms
+  PASS    secondBrainIntegrationTest                   1812ms
+  PASS    selfCheckA5bTest                             519ms
+  PASS    selfCheckTest                                1348ms
+  PASS    skillLoadOrderTest                           2811ms
+  PASS    speechRequestCorrelationTest                 3324ms
+  PASS    spokenTextTest                               507ms
+  PASS    systemObservationTest                        2885ms
+  PASS    taskFailureHonestyTest                       1319ms
+  PASS    toolDiscoverabilityAuditTest                 1132ms
+  PASS    toolNameListsTest                            1211ms
+  PASS    toolRegistryMetadataTest                     1254ms
+  PASS    ttsDeliveryLifecycleTest                     3227ms
+  PASS    ttsRepeatDeliveryTest                        3096ms
+  PASS    verifyAfterActTest                           6407ms
+  PASS    voiceYouTubeIntegrationTest                  1340ms
+  PASS    windowsToolsTest                             5029ms
+
+=== 43 passed · 1 failed · 0 timed out · 1 blocked · 0 environment · 0 skipped ===
+
+Blocked, not verified (the environment the test needs was not available):
+  - realTtsHandoffTest: needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.
+
+Real failures:
+  - honestReadToolsA5aTest: 30 passed, 6 failed
+        FAIL: …with the reason of this read (not only "not read yet") (RISK_REFUSED)
+        FAIL: is_app_open: a failure, not "false", with the reason (false RISK_REFUSED)
+        FAIL: get_active_window: a failure, not an empty window, with the reason (false RISK_REFUSED)
+        FAIL: a list that was read and is really empty: [] and a success (false Not available here: get_open_apps needs Windows, and this computer is not running Windows.)
+        FAIL: …and an app in a read list is found ("true") (false Not available here: is_app_open needs Windows, and this computer is not running Windows.)
+        FAIL: "whats running" with a read list: the apps, as before (I can't read the open windows right now, sir. No development server is running on the usual ports, sir (3000, 3001, 4200, 5000, 5173, 8000, 8080, 8081, 8888).)
+        …
+      [ToolRegistry] ⛔ Not available here: get_open_apps needs Windows, and this computer is not running Windows.
+      [Orchestrator] RISK_REFUSED
+      [AgentStateMachine] EXECUTING → OBSERVING
+      [AgentStateMachine] OBSERVING → REFLECTING
+      [AgentStateMachine] REFLECTING → SPEAKING
+      [Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+      [AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+      [Timing] Total request processing time: 2ms
+      [NodeBridge] RX type=speaking_start role=tts
+      [ConvBus] 🔊 Speaking started.
+      [NodeBridge] RX type=speaking_end role=tts
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        FAIL: "whats running" with a read list: the apps, as before (I can't read the open windows right now, sir. No development server is running on the usual ports, sir (3000, 3001, 4200, 5000, 5173, 8000, 8080, 8081, 8888).)
+      30 passed, 6 failed
+ ELIFECYCLE  Test failed. See above for more details.
+EXIT=1

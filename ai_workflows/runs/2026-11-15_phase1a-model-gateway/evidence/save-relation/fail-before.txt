@@ -1,0 +1,38 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+
+=== save_relation never stores unverified information ===
+
+--- Through the real Memory agent in a goal (review probe 5) ---
+[GoalManager] ✅ Initialized. 0 historical goal(s) found.
+[GoalManager] 📌 Goal "tgoal_mwkkdzio_13i30": planning → ready (planned 4 task(s) (model))
+[GoalManager] 🎯 temporary goal created [priority 5]: "tgoal_mwkkdzio_13i30" — "Find the best library and remember it"
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 2 ms
+[LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+[GoalManager] 📌 Goal "tgoal_mwkkdzio_13i30": executing → completed (success criteria met: every task completed with a result: 4 task(s) completed)
+  PASS: (setup) the Memory agent's model asked to save an earlier, unverified result (["{\"entity1\":\"fast-tool\",\"relation\":\"IS\",\"entity2\":\"the best library\"}"])
+  FAIL: nothing from it reached long-term memory (["relation: fast-tool IS the best library"])
+  FAIL: …and the tool said it was not stored, and why (Saved relation: (fast-tool)-[IS]->(the best library) in long-term memory.)
+  FAIL: L-B: all three "not verified" labels reach the Memory agent's model, uncut (2 label(s) in 1557 chars)
+
+--- Inside a goal's agent: refused, whatever the words ---
+  FAIL: a goal task's save_relation stores nothing, even in the task's own words (1 stored; Saved relation: (fast-tool)-[IS]->(the best library) in long-term memory.)
+
+--- A delegated Memory task: only the request's own words ---
+  PASS: the owner's own fact is stored (control) (1 stored; Saved relation: (User)-[HAS_EXAM_ON]->(Friday at nine) in long-term memory.)
+  FAIL: a fact not in the request's words is refused (1 stored; Saved relation: (fast-tool)-[IS]->(the best library) in long-term memory.)
+
+--- The main planner: only the owner's own words ---
+  FAIL: a fact read from goal_status (an agent's result) is refused (1 stored; Saved relation: (fast-tool)-[IS]->(the best library) in long-term memory.)
+  PASS: the owner's "remember this" is stored (control) (1 stored; Saved relation: (User)-[PREFERS]->(dark theme) in long-term memory.)
+
+--- Unchanged ---
+  PASS: no request in flight (code calling the registry): stored as before (1 stored)
+  PASS: a credential is still refused (Error: save_relation refused - I don't store passwords, keys or tokens, sir.)
+
+=== Results: 5 passed, 6 failed ===
+exit=1

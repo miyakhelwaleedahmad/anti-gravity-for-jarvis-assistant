@@ -1,0 +1,57 @@
+/**
+ * core/voiceInput.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Normalises a spoken or typed command before routing: lower case, no
+ * punctuation, brand names joined ("you tube" → "youtube"), wake word and
+ * filler words removed. Moved out of core/orchestrator.ts unchanged (ARCH-01);
+ * the orchestrator re-exports it.
+ */
+
+export function normalizeVoiceInput(text: string): string {
+  if (!text) return "";
+
+  // 1. Lowercase and replace punctuation (keeping hyphens for now to handle "you-tube")
+  let result = text.toLowerCase().replace(/[^a-z0-9\s.-]/g, '').trim();
+
+  // Collapse spaces
+  result = result.replace(/\s+/g, ' ');
+
+  // 2. Normalize brand names
+  result = result.replace(/\byou tube\b/g, 'youtube');
+  result = result.replace(/\byou-tube\b/g, 'youtube');
+  result = result.replace(/\bgit-hub\b/g, 'github');
+  result = result.replace(/\bgit hub\b/g, 'github');
+
+  // Strip remaining hyphens
+  // A dot stays only between letters or digits ("github.com", "2.5", phase A3).
+  result = result.replace(/[^a-z0-9\s.]/g, '').replace(/(?<![a-z0-9])\.|\.(?![a-z0-9])/g, '').replace(/\s+/g, ' ').trim();
+
+  // 3. Strip wake word prefixes
+  const wakePrefixes = ['hey jarvis', 'jarvis'];
+  for (const prefix of wakePrefixes) {
+    if (result.startsWith(prefix + ' ')) {
+      result = result.substring(prefix.length).trim();
+      break;
+    } else if (result === prefix) {
+      result = '';
+      break;
+    }
+  }
+
+  // 4. Strip politeness at the edges only. Anywhere in the sentence it changed
+  //    the meaning: "language task can you set" became "language task set"
+  //    and that is what the planner was asked (BUG-11).
+  const LEAD = /^(?:(?:can|could|would|will) you|please)\b\s*/;
+  const TRAIL = /\s*\b(?:for me|please)$/;
+  for (let changed = true; changed;) {
+    const before = result;
+    result = result.replace(LEAD, '').replace(TRAIL, '').trim();
+    changed = result !== before;
+  }
+  result = result.replace(/\bfor\b$/g, '');
+
+  // Collapse spaces and trim one last time
+  result = result.replace(/\s+/g, ' ').trim();
+
+  return result;
+}

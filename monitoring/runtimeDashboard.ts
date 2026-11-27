@@ -16,6 +16,8 @@
 
 import { healthManager, HealthSnapshot, ServiceStatus } from './healthManager.js';
 import { adaptiveRamManager } from '../core/adaptiveRamManager.js';
+import { nodeBridge } from '../bridge/nodeBridge.js';
+import { cacheStats } from '../memory/redisCache.js';
 
 // ─── Render helpers ───────────────────────────────────────────────────────────
 
@@ -32,6 +34,7 @@ function statusColor(s: ServiceStatus): string {
   switch (s) {
     case 'online':   return GREEN;
     case 'degraded': return YELLOW;
+    case 'loading':  return CYAN;
     case 'offline':  return RED;
     default:         return DIM;
   }
@@ -41,6 +44,7 @@ function statusIcon(s: ServiceStatus): string {
   switch (s) {
     case 'online':   return '●';
     case 'degraded': return '◐';
+    case 'loading':  return '◌';
     case 'offline':  return '○';
     default:         return '?';
   }
@@ -54,8 +58,38 @@ function bar(used: number, total: number, width = 20): string {
   return `${color}${'█'.repeat(filled)}${DIM}${'░'.repeat(empty)}${RESET}`;
 }
 
+/**
+ * Both caches, each named (BUG-22). "Hit Ratio" was the in-process LRU's,
+ * which memory lookups do not use, so it stayed at 0.0% while the log showed
+ * Redis cache hits. "-" when a cache has not been asked yet.
+ */
+export function cacheHitsLabel(
+  lru: { totalHits: number; totalMisses: number },
+  redis: Record<string, { hits: number; misses: number }>,
+): string {
+  const ratio = (hits: number, total: number) => (total === 0 ? '-' : `${((hits / total) * 100).toFixed(1)}% (${hits}/${total})`);
+  let hits = 0;
+  let total = 0;
+  for (const c of Object.values(redis)) { hits += c.hits; total += c.hits + c.misses; }
+  return `Cache hits: Redis ${ratio(hits, total)}  in-process ${ratio(lru.totalHits, lru.totalHits + lru.totalMisses)}`;
+}
+
 function pad(s: string, len: number): string {
   return s.length >= len ? s.substring(0, len) : s + ' '.repeat(len - s.length);
+}
+
+/**
+ * The engine actually in use (BUG-7): the labels said "STT (Whisper)" and
+ * "TTS (Kokoro)" while Google STT (wake-word process) heard the owner and
+ * edge-tts or the offline voice spoke. Unknown until the first use.
+ */
+export function voiceLabel(
+  key: 'stt' | 'tts',
+  bridge: { lastTranscriptEngine?: string | null; lastSpeechOutcome?: { engine?: string } | null },
+): string {
+  if (key === 'stt') return bridge.lastTranscriptEngine ? `STT (${bridge.lastTranscriptEngine})` : 'STT';
+  const engine = bridge.lastSpeechOutcome?.engine;
+  return (engine ? `TTS (${engine})` : 'TTS').slice(0, 18);
 }
 
 // ─── Dashboard renderer ───────────────────────────────────────────────────────
@@ -63,6 +97,12 @@ function pad(s: string, len: number): string {
 class RuntimeDashboard {
   private timer: ReturnType<typeof setInterval> | null = null;
   private logEnabled = false;
+  /** One line about background goals, set by core/goalService.ts when the Goal Runtime runs. */
+  private goalSummary: (() => string) | undefined;
+
+  setGoalSummary(fn: (() => string) | undefined): void {
+    this.goalSummary = fn;
+  }
 
   /** Start auto-refresh. intervalMs default = 15 000 (15s). */
   start(intervalMs = 15_000, enableLog = false): void {
@@ -114,10 +154,10 @@ class RuntimeDashboard {
     const svcLabels: Record<string, string> = {
       redis:          'Redis Cache       ',
       vector_memory:  'Vector Memory     ',
-      llm:            'LLM (Groq/xAI)    ',
+      llm:            'LLM API           ',
       tool_registry:  'Tool Registry     ',
-      stt:            'STT (Whisper)     ',
-      tts:            'TTS (Kokoro)      ',
+      stt:            pad(voiceLabel('stt', nodeBridge), 18),
+      tts:            pad(voiceLabel('tts', nodeBridge), 18),
       wake_word:      'Wake Word         ',
     };
 
@@ -143,15 +183,20 @@ class RuntimeDashboard {
     
     // Adaptive RAM Stats
     const ramStats = adaptiveRamManager.getStats();
-    const hitRatioPct = (ramStats.cacheHitRatio * 100).toFixed(1) + '%';
     const pressure = ramStats.pressureLevel;
-    lines.push(`${CYAN}│${RESET}    RSS: ${BLUE}${m.rssMB} MB${RESET}  Hit Ratio: ${GREEN}${hitRatioPct}${RESET}  Pressure: ${CYAN}${pressure}${RESET}${' '.repeat(15)}${CYAN}│${RESET}`);
+    lines.push(`${CYAN}│${RESET}    RSS: ${BLUE}${pad(`${m.rssMB} MB`, 10)}${RESET}  Pressure: ${CYAN}${pad(String(pressure), 29)}${RESET}${CYAN}│${RESET}`);
+    lines.push(`${CYAN}│${RESET}    ${GREEN}${pad(cacheHitsLabel(ramStats, cacheStats()), 56)}${RESET}${CYAN}│${RESET}`);
 
     lines.push(`${CYAN}├${'─'.repeat(60)}┤${RESET}`);
 
     // Active agents
     const agents = snap.activeAgents.length > 0 ? snap.activeAgents.join(', ') : 'none';
     lines.push(`${CYAN}│${RESET}  ${BOLD}ACTIVE AGENTS:${RESET} ${DIM}${agents.substring(0, 42)}${RESET}${' '.repeat(Math.max(0, 44 - agents.length))}${CYAN}│${RESET}`);
+
+    // Background goals (core/goalRuntime.ts)
+    let goals = 'Goal Runtime not running';
+    try { if (this.goalSummary) goals = this.goalSummary(); } catch { goals = 'goal status unavailable'; }
+    lines.push(`${CYAN}│${RESET}  ${BOLD}GOALS:${RESET} ${DIM}${goals.substring(0, 51)}${RESET}${' '.repeat(Math.max(0, 52 - goals.length))}${CYAN}│${RESET}`);
 
     lines.push(`${CYAN}└${'─'.repeat(60)}┘${RESET}`);
     lines.push('');

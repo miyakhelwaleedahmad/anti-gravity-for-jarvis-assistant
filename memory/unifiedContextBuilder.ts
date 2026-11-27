@@ -18,6 +18,7 @@
 import { memoryManager } from './memoryManager.js';
 import { graphMemory } from './graphMemory.js';
 import { getCachedRecentMessages } from './redisCache.js';
+import { secondBrain } from './secondBrain.js';
 import { AdaptiveLruCache } from '../core/adaptiveRamManager.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -95,7 +96,9 @@ export class UnifiedContextBuilder {
     const hit = this.hotCache.get(cacheKey) ?? this.cache.get(cacheKey);
     if (hit) {
       console.log(`[UnifiedContext] ⚡ Cache hit total=${(performance.now() - totalStart).toFixed(1)}ms heavy=${includeHeavy}`);
-      return hit;
+      // The memory may be reused; the clock may not (N-PC10).
+      const systemState = _buildSystemState(depthHint, budget);
+      return { ...hit, systemState, mergedContext: hit.mergedContext.replace(hit.systemState, () => systemState) };
     }
 
     console.log(`[UnifiedContext] Building context heavy=${includeHeavy} depth=${depthHint} budget=${budget}tok [PARALLEL]`);
@@ -144,11 +147,19 @@ export class UnifiedContextBuilder {
 
     const parallelMs = performance.now() - parallelStart;
 
+    // 4. The second brain (Obsidian vault): a few bounded notes, as data. Empty when no vault is configured.
+    let brainStr = '';
+    if (includeHeavy) {
+      try { brainStr = secondBrain.retrieveForTask(query); }
+      catch (err) { console.warn('[UnifiedContext] second brain retrieval failed:', (err as Error).message); }
+    }
+
     // ── Priority memory selection: sort STM by recency, LTM already ranked ───
     const stm = stmRaw as any[];
     const formattedStm = stm
       .slice(-Math.ceil(stmBudget / 60)) // rough msg count estimate
-      .map((m: any) => `[${m.role}] ${m.content}`)
+      // A reply built from tool output keeps that origin (SEC-03): it is evidence, not an instruction.
+      .map((m: any) => `[${m.role}${Array.isArray(m.tags) && m.tags.includes('from_tool_output') ? ', from tool results' : ''}] ${m.content}`)
       .join('\n');
 
     // ── Apply adaptive section budgets ────────────────────────────────────────
@@ -180,7 +191,7 @@ ${trimmedLtm || (includeHeavy ? 'No relevant facts found.' : 'Skipped (fast/simp
 
 [GRAPH RELATIONSHIPS]
 ${trimmedGraph || (includeHeavy ? 'No explicit relationships found.' : 'Skipped (fast/simple query).')}
-
+${brainStr ? `\n[SECOND BRAIN NOTES]\n${brainStr}\n` : ''}
 [CONTEXT BUDGET]
 STM: ${tokenEst.stm}tok | LTM: ${tokenEst.ltm}tok | Graph: ${tokenEst.graph}tok | Total: ${tokenEst.total}/${budget}tok
 ==============================
@@ -242,7 +253,17 @@ function _estimateTokens(text: string): number {
 }
 
 function _buildSystemState(depth: string, budget: number): string {
-  // Phase 7: minimal system state — trimmed from 6 lines to 3 to save ~40 tokens per request
+  // Phase 7: minimal system state — trimmed from 6 lines to 3 to save ~40 tokens per request.
+  // The owner's local date, time and time zone: a bare UTC time sent the planner
+  // to powershell for the clock, which is refused (N-PC10). Stated as a fact, not an
+  // order: this line sits in the untrusted context block (review T14).
   const now = new Date();
-  return `[SYS t=${now.toISOString().slice(11, 19)} depth=${depth} budget=${budget}tok]`;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const offset = -now.getTimezoneOffset();
+  const zoneOffset = `UTC${offset >= 0 ? '+' : '-'}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+  const zoneName = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  return `[SYS now=${weekday} ${date} ${time} local time (${zoneOffset}${zoneName ? `, ${zoneName}` : ''}), read from this PC's clock for this request. depth=${depth} budget=${budget}tok]`;
 }

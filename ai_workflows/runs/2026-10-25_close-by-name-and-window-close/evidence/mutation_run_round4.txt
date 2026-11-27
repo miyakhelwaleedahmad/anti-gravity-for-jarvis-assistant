@@ -1,0 +1,5 @@
+# Round 4 mutation run (after review round 3): one fault per round-3 fix, 4 tests
+none                               === 4 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+R3_1_2_any_title_is_the_app        === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R3_3_protection_from_app_list      === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R3_4_always_read_all_windows       === 3 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest

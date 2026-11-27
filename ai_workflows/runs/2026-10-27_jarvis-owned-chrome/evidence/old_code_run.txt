@@ -1,0 +1,151 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=jarvisChromeTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    jarvisChromeTest                             5347ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - jarvisChromeTest: === Results: 14 passed, 44 failed ===
+        FAIL: Windows: names chrome.exe and JARVIS_CHROME_PATH
+        FAIL: Linux: names chromium or google-chrome, not chrome.exe
+        FAIL: macOS: names Google Chrome.app, not chrome.exe
+        FAIL: "Chrome not reachable" on this platform (linux) gives this platform's instructions (Chrome is not reachable for JARVIS on 127.0.0.1:9. Start it with chrome.exe --remote-debugging-port=9 --user-data-dir=<a separate profile folder> (Chrome 136 and later ignore the port for the everyday profile
+        FAIL: the tab tools' instruction is the same text (Please start Chrome with remote debugging enabled:
+        FAIL: the Chrome state reader gives this platform's instructions too (Chrome DevTools endpoint unavailable. Suggest starting Chrome with: start chrome.exe --remote-debugging-port=9 --user-data-dir="%USERPROFILE%\jarvis-chrome-profile")
+        FAIL: JARVIS_CHROME_PROFILE wins
+        FAIL: Windows: the folder the old instructions named (%USERPROFILE%\jarvis-chrome-profile)
+        FAIL: elsewhere: ~/.jarvis-chrome-profile
+        FAIL: then the port in JARVIS's profile (9222)
+        FAIL: control/jarvisChrome.ts exists (not on this code)
+        FAIL: "open youtube": a new tab in JARVIS's Chrome, brought forward ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","platform":"linux","method":"xdg-open"})
+        FAIL: …and no default-browser opener ran (xdg-open https://www.youtube.com)
+        FAIL: "open chrome": JARVIS's Chrome is brought forward, no new tab, no opener (Q1) ({"success":true,"target":"chrome","resolvedTarget":"chrome.exe","platform":"linux","method":"xdg-open"})
+        FAIL: JARVIS's Chrome cannot be reached: "open youtube" fails, says why, opens nothing elsewhere (Q2) ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","platform":"linux","method":"xdg-open"} xdg-open https://www.youtube.com | xdg-open chrome.exe | xdg-open https://www
+        FAIL: …and with automatic start off, the reply names the switch ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","platform":"linux","method":"xdg-open"} xdg-open https://www.youtube.com | xdg-open chrome.exe | xdg-open https://www.youtube.com | xdg-open https://www.yo
+        FAIL: control_browser open_url without Chrome: an error that names the fix, no default browser ( xdg-open https://www.youtube.com | xdg-open chrome.exe | xdg-open https://www.youtube.com | xdg-open https://www.youtube.com | xdg-open https://example.com)
+        FAIL: YouTube search without Chrome: fails and says so, no default browser ({"success":true,"action":"open in browser","url":"https://www.youtube.com/results?search_query=lofi","did":"opened https://www.youtube.com/results?search_query=lofi in the default browser","check":{"s xdg-open https://www.
+        FAIL: site search without Chrome: fails and says so, no default browser ({"success":true,"action":"open in browser","url":"https://www.google.com/search?q=weather","did":"opened https://www.google.com/search?q=weather in the default browser","check":{"status":"unverifiable xdg-open https://www.you
+        FAIL: JARVIS's Chrome not running: says so, asks nothing, closes nothing (no closeBrowser)
+        FAIL: owner says no: asked once, outside the earlier approval, naming JARVIS's Chrome, its tabs and that the owner's own Chrome stays open
+        FAIL: …nothing closed, and the reply says it was not approved (no closeBrowser)
+        FAIL: owner says yes: asked once, outside the earlier approval, naming JARVIS's Chrome, its tabs and that the owner's own Chrome stays open
+        FAIL: …closed: Browser.close sent, the port no longer answers, the reply says so (no closeBrowser)
+        FAIL: Chrome still answers after the close: a failure, and the queue does not retry it (asked once) (no closeBrowser; asked 0)
+        FAIL: the owner's JARVIS_CDP_PORT Chrome counts as JARVIS's: closed after the question (no closeBrowser)
+        FAIL: "not open" is not retried by the action queue either
+        FAIL: control_browser knows close_browser (through the kernel) ({"thrown":"Unknown browser action: \"close_browser\""})
+        FAIL: close_browser check: verified when the port is gone ({"status":"failed","evidence":"no tab was named in the result"})
+        FAIL: open_app in JARVIS's Chrome: verified when its tab is there (not "unverifiable") ({"status":"unverifiable","evidence":"checked on Windows only (phase P14); not checked here"})
+        FAIL: …failed when the tab is not ({"status":"unverifiable","evidence":"checked on Windows only (phase P14); not checked here"})
+        FAIL: "close the browser" → close_browser (null)
+        FAIL: "close browser" → close_browser (null)
+        FAIL: "close chrome" → close_browser (null)
+        FAIL: "close google chrome" → close_browser (null)
+        FAIL: "close the chrome" → close_browser (null)
+        FAIL: "Close Chrome." → close_browser (null)
+        FAIL: "close the browser": control_browser offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, control_browser, get_system_info)
+        FAIL: "please close chrome": control_browser offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, get_system_info, get_system_state)
+        FAIL: "close google chrome now": control_browser offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, web_search, deep_search)
+        … last lines:
+      --- 1. start instructions per platform (TRA-16) ---
+        (cannot load ../perception/chromeProfile.js: Cannot find module '/home/user/miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant/perception/chromeProfile.js' imported from /home/user/miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant/tests/jarvisChromeTest.ts)
+        FAIL: Windows: names chrome.exe and JARVIS_CHROME_PATH
+        FAIL: Linux: names chromium or google-chrome, not chrome.exe
+        FAIL: macOS: names Google Chrome.app, not chrome.exe
+        FAIL: "Chrome not reachable" on this platform (linux) gives this platform's instructions (Chrome is not reachable for JARVIS on 127.0.0.1:9. Start it with chrome.exe --remote-debugging-port=9 --user-data-dir=<a separate profile folder> (Chrome 136 and later ignore the port for the everyday profile
+        FAIL: the tab tools' instruction is the same text (Please start Chrome with remote debugging enabled:
+      start chrome.exe --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\jarvis-chrome-profile")
+        FAIL: the Chrome state reader gives this platform's instructions too (Chrome DevTools endpoint unavailable. Suggest starting Chrome with: start chrome.exe --remote-debugging-port=9 --user-data-dir="%USERPROFILE%\jarvis-chrome-profile")
+        FAIL: JARVIS_CHROME_PROFILE wins
+        FAIL: Windows: the folder the old instructions named (%USERPROFILE%\jarvis-chrome-profile)
+        FAIL: elsewhere: ~/.jarvis-chrome-profile
+      --- 2. the profile and the port ---
+        PASS: JARVIS_CDP_PORT first
+        PASS: then 9222
+        FAIL: then the port in JARVIS's profile (9222)
+        PASS: a damaged profile file is ignored
+      --- 3. starting JARVIS's Chrome ---
+        (cannot load ../control/jarvisChrome.js: Cannot find module '/home/user/miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant/control/jarvisChrome.js' imported from /home/user/miyakhelwaleedahmad/anti-gravity-for-jarvis-assistant/tests/jarvisChromeTest.ts)
+        FAIL: control/jarvisChrome.ts exists (not on this code)
+      --- 4. opening pages (TRA-03, Q1, Q2) ---
+      [open_app] target="youtube" resolved="https://www.youtube.com"
+      [open_app] platform=linux command=xdg-open args=https://www.youtube.com
+        FAIL: "open youtube": a new tab in JARVIS's Chrome, brought forward ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","platform":"linux","method":"xdg-open"})
+        FAIL: …and no default-browser opener ran (xdg-open https://www.youtube.com)
+      [open_app] target="chrome" resolved="chrome.exe"
+      [open_app] platform=linux command=xdg-open args=chrome.exe
+        FAIL: "open chrome": JARVIS's Chrome is brought forward, no new tab, no opener (Q1) ({"success":true,"target":"chrome","resolvedTarget":"chrome.exe","platform":"linux","method":"xdg-open"})
+        PASS: a dry run still opens nothing (DO_NOT_BREAK smoke test) ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","dryRun":true})
+      [open_app] target="youtube" resolved="https://www.youtube.com"
+      [open_app] platform=linux command=xdg-open args=https://www.youtube.com
+        FAIL: JARVIS's Chrome cannot be reached: "open youtube" fails, says why, opens nothing elsewhere (Q2) ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","platform":"linux","method":"xdg-open"} xdg-open https://www.youtube.com | xdg-open chrome.exe | xdg-open https://www
+      [open_app] target="youtube" resolved="https://www.youtube.com"
+      [open_app] platform=linux command=xdg-open args=https://www.youtube.com
+        FAIL: …and with automatic start off, the reply names the switch ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","platform":"linux","method":"xdg-open"} xdg-open https://www.youtube.com | xdg-open chrome.exe | xdg-open https://www.youtube.com | xdg-open https://www.yo
+      [windowsState] OPT-PS-1: Persistent PowerShell session started.
+      [AppController] Opening target: "https://example.com" (resolved: "https://example.com")
+      [RollbackManager] Registered rollback point: rb_1793101249082_q28mx (Close opened app: https://example.com)
+        FAIL: control_browser open_url without Chrome: an error that names the fix, no default browser ( xdg-open https://www.youtube.com | xdg-open chrome.exe | xdg-open https://www.youtube.com | xdg-open https://www.youtube.com | xdg-open https://example.com)
+      [windowsState] PS spawn error: spawn powershell ENOENT
+      [AppController] Opening target: "https://www.youtube.com/results?search_query=lofi" (resolved: "https://www.youtube.com/results?search_query=lofi")
+      [RollbackManager] Registered rollback point: rb_1793101249110_alkqg (Close opened app: https://www.youtube.com/results?search_query=lofi)
+        FAIL: YouTube search without Chrome: fails and says so, no default browser ({"success":true,"action":"open in browser","url":"https://www.youtube.com/results?search_query=lofi","did":"opened https://www.youtube.com/results?search_query=lofi in the default browser","check":{"s xdg-open https://www.
+      [AppController] Opening target: "https://www.google.com/search?q=weather" (resolved: "https://www.google.com/search?q=weather")
+      [RollbackManager] Registered rollback point: rb_1793101249114_kbev0 (Close opened app: https://www.google.com/search?q=weather)
+      --- 5. close the browser (TRA-17, D3) ---
+        FAIL: site search without Chrome: fails and says so, no default browser ({"success":true,"action":"open in browser","url":"https://www.google.com/search?q=weather","did":"opened https://www.google.com/search?q=weather in the default browser","check":{"status":"unverifiable xdg-open https://www.you
+        FAIL: JARVIS's Chrome not running: says so, asks nothing, closes nothing (no closeBrowser)
+        FAIL: owner says no: asked once, outside the earlier approval, naming JARVIS's Chrome, its tabs and that the owner's own Chrome stays open
+        FAIL: …nothing closed, and the reply says it was not approved (no closeBrowser)
+        FAIL: owner says yes: asked once, outside the earlier approval, naming JARVIS's Chrome, its tabs and that the owner's own Chrome stays open
+        FAIL: …closed: Browser.close sent, the port no longer answers, the reply says so (no closeBrowser)
+        FAIL: Chrome still answers after the close: a failure, and the queue does not retry it (asked once) (no closeBrowser; asked 0)
+        FAIL: the owner's JARVIS_CDP_PORT Chrome counts as JARVIS's: closed after the question (no closeBrowser)
+        FAIL: "not open" is not retried by the action queue either
+        FAIL: control_browser knows close_browser (through the kernel) ({"thrown":"Unknown browser action: \"close_browser\""})
+      --- 6. checks, routes, planner, catalog ---
+        FAIL: close_browser check: verified when the port is gone ({"status":"failed","evidence":"no tab was named in the result"})
+        PASS: …and failed when it still answers ({"status":"failed","evidence":"no tab was named in the result"})
+        FAIL: open_app in JARVIS's Chrome: verified when its tab is there (not "unverifiable") ({"status":"unverifiable","evidence":"checked on Windows only (phase P14); not checked here"})
+        FAIL: …failed when the tab is not ({"status":"unverifiable","evidence":"checked on Windows only (phase P14); not checked here"})
+        FAIL: "close the browser" → close_browser (null)
+        FAIL: "close browser" → close_browser (null)
+        FAIL: "close chrome" → close_browser (null)
+        FAIL: "close google chrome" → close_browser (null)
+        FAIL: "close the chrome" → close_browser (null)
+        FAIL: "Close Chrome." → close_browser (null)
+        PASS: "close the youtube tab" unchanged → no close_browser (null)
+        PASS: "close youtube" unchanged → close_browser_tab ({"type":"close_browser_tab","target":"youtube","reply":"Closing YouTube, sir."})
+        PASS: "close notepad" unchanged → close_app ({"type":"close_app","target":"notepad","reply":"Closing Notepad, sir."})
+        PASS: "open youtube for me" unchanged → open_app ({"type":"open_app","target":"youtube","reply":"Opening youtube, sir."})
+        PASS: "launch youtube" unchanged → open_app ({"type":"open_app","target":"youtube","reply":"Opening youtube, sir."})
+        PASS: "open browser" unchanged → open_app ({"type":"open_app","target":"chrome","reply":"Opening chrome, sir."})
+        PASS: "open chrome" unchanged → open_app ({"type":"open_app","target":"chrome","reply":"Opening chrome, sir."})
+        PASS: "launch cmd /c del *" still matches nothing
+      [GraphMemory] Neo4j disabled.
+      [ToolRegistry] ✅ Registered 53 tool(s) into registry.
+      [ToolRegistry] 53 built-in tools registered; skills load next.
+      [ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, b
+      [SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+      [Orchestrator] 🎯 26 skill(s) loaded into ToolRegistry: 79 tools in total.
+      [UnifiedContext] Building context heavy=false depth=fast budget=2400tok [PARALLEL]
+        FAIL: "close the browser": control_browser offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, control_browser, get_system_info)
+        FAIL: "please close chrome": control_browser offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, get_system_info, get_system_state)
+        FAIL: "close google chrome now": control_browser offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, web_search, deep_search)
+        PASS: "close notepad" still gets control_app (control_app, control_window)
+        FAIL: catalog: close_browser is risk 2, like closing a tab
+        FAIL: the skill lists close_browser for the planner (Manages browser tabs (list, focus, close, close_current, open_url, refresh).)
+        FAIL: A1's browser refusal tells the owner how to close JARVIS's Chrome (I don't close the Chrome browser through app, window or process control: that would close your own Chrome windows too. I can close a tab.)
+      --- 7. a real headless Chromium ---
+      [GoalManager] ✅ Initialized. 0 historical goal(s) found.
+      [Orchestrator] 🎯 GoalManager initialized.
+      [Memory] Initialized. Short-term: 0 Long-term: 0
+      [Redis] Initial connection failed — running without cache.
+        FAIL: real Chromium: control/jarvisChrome.ts exists (not on this code)
+      === Results: 14 passed, 44 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

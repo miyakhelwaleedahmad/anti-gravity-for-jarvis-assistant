@@ -1,0 +1,271 @@
+/**
+ * bridge/anthropicProvider.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The Claude provider, through the official SDK. Two ways in:
+ *   - JARVIS_LLM_PROVIDER=anthropic with ANTHROPIC_API_KEY: Claude answers
+ *     every request (JARVIS_ANTHROPIC_BRAIN_MODEL, default claude-opus-5-5;
+ *     JARVIS_ANTHROPIC_FAST_MODEL, default claude-haiku-5-5), with Gemini or
+ *     Groq as the fallback when a call fails (bridge/modelRouter.ts).
+ *   - Otherwise only a category that names it, e.g.
+ *       JARVIS_MODEL_CODING=anthropic                 (claude-opus-5-5)
+ *       JARVIS_MODEL_REVIEW=anthropic:claude-sonnet-5-5
+ *     and then it never joins the failover order.
+ * ANTHROPIC_BASE_URL, when set, is the API address (a proxy or gateway).
+ * Replies stream (streamChat) for the voice; the token counts of each call are
+ * recorded (modelRouter's usage line).
+ *
+ * Before the first call with a model, the model is looked up in the provider's
+ * model list (models.retrieve); an unknown or inaccessible model fails with
+ * that reason instead of being assumed to exist.
+ *
+ * Translation from JARVIS's OpenAI-style messages:
+ *   system messages        → the top-level system prompt
+ *   assistant tool_calls   → tool_use blocks; tool messages → one user turn of tool_result blocks
+ *   tool_choice "required" → "auto" plus an instruction (current models reject a forced choice)
+ * Not sent: temperature (rejected by current models). Effort is set
+ * explicitly (JARVIS_ANTHROPIC_EFFORT, default high: Claude Opus 5.5 would
+ * otherwise default to medium). Server-side fallback is on by default
+ * (JARVIS_ANTHROPIC_FALLBACKS=off turns it off): when the model declines on
+ * policy grounds the API retries on a fallback model; if the whole chain
+ * declines, this throws instead of returning an empty answer.
+ */
+
+import Anthropic from '@anthropic-ai/sdk';
+import type { ILLMMessage, ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall, ProviderCapabilities } from './llmTypes.js';
+import { llmStatus } from './llmStatus.js';
+
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+type Effort = typeof EFFORTS[number];
+
+function effort(env = process.env): Effort {
+  const v = env['JARVIS_ANTHROPIC_EFFORT']?.trim().toLowerCase();
+  return (EFFORTS as readonly string[]).includes(v ?? '') ? v as Effort : 'high';
+}
+
+function textOf(content: ILLMMessage['content']): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map((p) => (p && typeof p.text === 'string' ? p.text : '')).filter(Boolean).join('\n');
+  return '';
+}
+
+/** JARVIS messages → the system prompt and Messages API turns. */
+export function toAnthropicMessages(messages: ILLMMessage[], forceTool: boolean): { system: string; messages: Anthropic.Beta.BetaMessageParam[] } {
+  const system: string[] = [];
+  const out: Anthropic.Beta.BetaMessageParam[] = [];
+  for (const m of messages) {
+    if (m.role === 'system') { const t = textOf(m.content); if (t) system.push(t); continue; }
+    if (m.role === 'tool') {
+      const block: Anthropic.Beta.BetaToolResultBlockParam = { type: 'tool_result', tool_use_id: m.tool_call_id ?? '', content: textOf(m.content) || '(no output)' };
+      const last = out[out.length - 1];
+      // All results of one assistant turn go back in a single user message.
+      if (last && last.role === 'user' && Array.isArray(last.content) && last.content.every((b) => (b as { type: string }).type === 'tool_result')) {
+        (last.content as Anthropic.Beta.BetaContentBlockParam[]).push(block);
+      } else out.push({ role: 'user', content: [block] });
+      continue;
+    }
+    if (m.role === 'assistant') {
+      const blocks: Anthropic.Beta.BetaContentBlockParam[] = [];
+      const t = textOf(m.content);
+      if (t) blocks.push({ type: 'text', text: t });
+      for (const c of m.tool_calls ?? []) {
+        let input: Record<string, unknown> = {};
+        try { input = JSON.parse(c.function.arguments || '{}') as Record<string, unknown>; } catch { input = {}; }
+        blocks.push({ type: 'tool_use', id: c.id, name: c.function.name, input });
+      }
+      if (blocks.length) out.push({ role: 'assistant', content: blocks });
+      continue;
+    }
+    out.push({ role: 'user', content: textOf(m.content) || '(empty)' });
+  }
+  if (forceTool) system.push('Answer by calling one of the provided tools.');
+  return { system: system.join('\n\n'), messages: out };
+}
+
+/** OpenAI-style tool definitions → Messages API tools. */
+export function toAnthropicTools(tools: any[] | undefined): Anthropic.Beta.BetaToolUnion[] | undefined {
+  if (!tools?.length) return undefined;
+  return tools.map((t) => {
+    const f = t?.function ?? t;
+    return { name: String(f.name), description: String(f.description ?? ''), input_schema: (f.parameters ?? { type: 'object', properties: {} }) as Anthropic.Beta.BetaTool.InputSchema };
+  });
+}
+
+/** The Messages API answer → JARVIS's response shape. Throws on a refusal. */
+export function fromAnthropicMessage(msg: Anthropic.Beta.BetaMessage): ILLMResponse {
+  if (msg.stop_reason === 'refusal') {
+    const category = (msg as { stop_details?: { category?: string | null } }).stop_details?.category;
+    throw new Error(`Anthropic declined the request${category ? ` (${category})` : ''}`);
+  }
+  const text: string[] = [];
+  const toolCalls: ILLMToolCall[] = [];
+  for (const b of msg.content) {
+    if (b.type === 'text') text.push(b.text);
+    else if (b.type === 'tool_use') toolCalls.push({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) } });
+  }
+  const input = typeof msg.usage?.input_tokens === 'number' ? msg.usage.input_tokens : null;
+  const output = typeof msg.usage?.output_tokens === 'number' ? msg.usage.output_tokens : null;
+  return {
+    content: text.join(''),
+    ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+    usage: { promptTokens: input, completionTokens: output, totalTokens: input !== null && output !== null ? input + output : null },
+    // The model the API reports it used (a server-side fallback would show here).
+    ...(typeof msg.model === 'string' && msg.model ? { model: msg.model } : {}),
+  };
+}
+
+/** A typed API error as a message JARVIS's failure categories read correctly. */
+function describe(err: unknown): Error {
+  if (err instanceof Anthropic.RateLimitError) return new Error(`Anthropic API error 429: rate limit reached`);
+  if (err instanceof Anthropic.AuthenticationError) return new Error(`Anthropic API error 401: unauthorized (check ANTHROPIC_API_KEY)`);
+  if (err instanceof Anthropic.NotFoundError) return new Error(`Anthropic API error 404: not found (${err.message})`);
+  if (err instanceof Anthropic.BadRequestError) return new Error(`Anthropic API error 400: ${err.message}`);
+  if (err instanceof Anthropic.APIError) return new Error(`Anthropic API error ${err.status ?? ''}: ${err.status === 529 ? 'overloaded' : err.message}`);
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+export class AnthropicProvider implements ILLMProvider {
+  private client: Anthropic | null = null;
+  private checked = new Map<string, Promise<void>>();
+  /** The id the model list returned for each model name looked up (an alias's dated id). */
+  private canonical = new Map<string, string>();
+  /** Token counts of the last finished stream (modelRouter records them). */
+  lastStreamUsage: ILLMResponse['usage'] | null = null;
+
+  constructor(private readonly env: Record<string, string | undefined> = process.env, private readonly factory?: () => Anthropic) {}
+
+  isConfigured(): boolean {
+    return !!this.env['ANTHROPIC_API_KEY']?.trim() || !!this.factory;
+  }
+
+  /**
+   * What this adapter passes through today (bridge/llmTypes.ts). Images are
+   * not translated (textOf keeps text parts only), so image input is declared
+   * absent and the router refuses such a request instead of letting the
+   * image be dropped.
+   */
+  capabilities(): ProviderCapabilities {
+    return {
+      streaming: true, toolCalling: true, structuredOutput: false, imageInput: false, audioInput: false,
+      audioOutput: false, webSearch: false, reportsUsage: true, reportsStreamUsage: true,
+      cancellation: true, ownBreaker: false,
+    };
+  }
+
+  private api(): Anthropic {
+    if (!this.isConfigured()) throw new Error('The Anthropic provider is not configured: set ANTHROPIC_API_KEY to use it.');
+    const baseURL = this.env['ANTHROPIC_BASE_URL']?.trim();
+    this.client ??= this.factory ? this.factory() : new Anthropic({ apiKey: this.env['ANTHROPIC_API_KEY']!.trim(), maxRetries: 2, ...(baseURL ? { baseURL } : {}) });
+    return this.client;
+  }
+
+  /** The model exists and this key may use it (looked up once per model). */
+  validateModel(model: string): Promise<void> {
+    let p = this.checked.get(model);
+    if (!p) {
+      p = this.api().models.retrieve(model).then((info) => {
+        const id = (info as { id?: unknown } | undefined)?.id;
+        if (typeof id === 'string' && id) this.canonical.set(model, id);
+      }, (err) => {
+        this.checked.delete(model);
+        throw err instanceof Anthropic.NotFoundError
+          ? new Error(`The model "${model}" is not available to this Anthropic key; set another in JARVIS_MODEL_<CATEGORY>.`)
+          : describe(err);
+      });
+      this.checked.set(model, p);
+    }
+    return p;
+  }
+
+  /**
+   * The ids this provider treats as `requested`: the name itself and the id
+   * the model list returned for it (looked up before the first call). The
+   * router compares the model a reply reports against these on a strict route.
+   */
+  modelIdentities(requested: string): string[] {
+    const canonical = this.canonical.get(requested);
+    return canonical && canonical !== requested ? [requested, canonical] : [requested];
+  }
+
+  /** The Messages API request for a JARVIS request (the same for chat and stream). */
+  private async params(request: ILLMRequest) {
+    const model = request.model;
+    if (!model) throw new Error('The Anthropic provider needs a model (JARVIS_MODEL_<CATEGORY>=anthropic:<model>).');
+    await this.validateModel(model);
+    const { system, messages } = toAnthropicMessages(request.messages, request.tool_choice === 'required');
+    const tools = toAnthropicTools(request.tools);
+    // A strict route needs exactly this model: no server-side fallback models (owner, 2026-11-16).
+    const fallbacks = !request.exactModel && (this.env['JARVIS_ANTHROPIC_FALLBACKS'] ?? '').trim().toLowerCase() !== 'off';
+    return {
+      model,
+      max_tokens: request.max_tokens ?? 16_000,
+      messages,
+      ...(system ? { system } : {}),
+      ...(tools ? { tools, tool_choice: { type: request.tool_choice === 'none' ? 'none' as const : 'auto' as const } } : {}),
+      output_config: { effort: effort(this.env) },
+      ...(fallbacks ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
+    };
+  }
+
+  async chat(request: ILLMRequest): Promise<ILLMResponse> {
+    const params = await this.params(request);
+    try {
+      const msg = await this.api().beta.messages.create(params, { ...(request.signal ? { signal: request.signal } : {}) });
+      const response = fromAnthropicMessage(msg);
+      llmStatus.recordSuccess('request', 'anthropic');
+      return response;
+    } catch (err) {
+      if (request.signal?.aborted) throw err;
+      const e = err instanceof Error && /^Anthropic declined/.test(err.message) ? err : describe(err);
+      llmStatus.recordFailure(e, 'request', 'anthropic');
+      throw e;
+    }
+  }
+
+  /**
+   * The reply's text as it is generated. A reply that is a tool call has no
+   * text; the planner uses chat() for those. A refusal before any text throws,
+   * so modelRouter can answer through the fallback.
+   */
+  async *streamChat(request: ILLMRequest): AsyncGenerator<string, void, unknown> {
+    const params = await this.params(request);
+    this.lastStreamUsage = null;
+    let yielded = false;
+    try {
+      const stream = this.api().beta.messages.stream(params, { ...(request.signal ? { signal: request.signal } : {}) });
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta' && event.delta.text) {
+          yielded = true;
+          yield event.delta.text;
+        }
+      }
+      const final = await stream.finalMessage();
+      if (final.stop_reason === 'refusal' && !yielded) fromAnthropicMessage(final);   // throws, with the category
+      const input = typeof final.usage?.input_tokens === 'number' ? final.usage.input_tokens : null;
+      const output = typeof final.usage?.output_tokens === 'number' ? final.usage.output_tokens : null;
+      this.lastStreamUsage = { promptTokens: input, completionTokens: output, totalTokens: input !== null && output !== null ? input + output : null };
+      llmStatus.recordSuccess('request', 'anthropic');
+    } catch (err) {
+      if (request.signal?.aborted) throw err;
+      const e = err instanceof Error && /^Anthropic declined/.test(err.message) ? err : describe(err);
+      llmStatus.recordFailure(e, 'request', 'anthropic');
+      throw e;
+    }
+  }
+
+  /**
+   * Reachability for the health check: looks the model up, nothing generated
+   * (no tokens spent). Rate limits and errors come back as the router's messages.
+   */
+  async ping(model: string, signal?: AbortSignal): Promise<void> {
+    try {
+      await this.api().models.retrieve(model, {}, { ...(signal ? { signal } : {}) });
+      llmStatus.recordSuccess('probe', 'anthropic');
+    } catch (err) {
+      const e = describe(err);
+      llmStatus.recordFailure(e, 'probe', 'anthropic');
+      throw e;
+    }
+  }
+}
+
+export const anthropicProvider = new AnthropicProvider();

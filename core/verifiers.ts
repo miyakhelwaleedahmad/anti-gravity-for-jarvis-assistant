@@ -1,0 +1,503 @@
+/**
+ * core/verifiers.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * After an action reports success, a check of its real effect
+ * (docs/upgrade/JARVIS_PHASES.md, P5: observe → act → verify).
+ *
+ * Every action tool has an entry: a check, or the reason there is none. A
+ * check only reads, and only the paths or state the action itself touched.
+ * `failed` turns the step into a failure; `unverifiable` makes no claim.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { appWindowMatcher, appWindowsLeft } from '../control/appMatch.js';
+
+// How an app's window is recognised by title or program (control/appMatch.ts).
+export { appWindowMatcher };
+
+export type VerificationStatus = 'verified' | 'failed' | 'unverifiable';
+
+export interface Verification {
+  status: VerificationStatus;
+  /** What was looked at, in a few words that can be spoken. */
+  evidence: string;
+}
+
+export type Verifier = (args: Record<string, unknown>, output: string) => Promise<Verification>;
+
+const verified = (evidence: string): Verification => ({ status: 'verified', evidence });
+const failed = (evidence: string): Verification => ({ status: 'failed', evidence });
+const unverifiable = (evidence: string): Verification => ({ status: 'unverifiable', evidence });
+
+function text(args: Record<string, unknown>, key: string): string {
+  return typeof args[key] === 'string' ? (args[key] as string) : '';
+}
+
+function exists(p: string): boolean {
+  try { fs.statSync(p); return true; } catch { return false; }
+}
+
+/** The file holds exactly `content` (size first, so a large file is not read for nothing). */
+function holds(p: string, content: string): Verification {
+  let stat: fs.Stats;
+  try { stat = fs.statSync(p); } catch { return failed(`${path.basename(p)} is not there`); }
+  if (!stat.isFile()) return failed(`${path.basename(p)} is not a file`);
+  if (stat.size !== Buffer.byteLength(content, 'utf8')) {
+    return failed(`${path.basename(p)} has ${stat.size} bytes, not the ${Buffer.byteLength(content, 'utf8')} written`);
+  }
+  return fs.readFileSync(p, 'utf8') === content
+    ? verified(`${path.basename(p)} holds the ${content.length} characters written`)
+    : failed(`${path.basename(p)} holds different text`);
+}
+
+const verifyWriteFile: Verifier = async (args) => {
+  const { resolveWorkspacePath } = await import('../security/workspacePathPolicy.js');
+  const check = resolveWorkspacePath(text(args, 'filePath'), 'write', 'write_file');
+  if (!check.allowed || !check.resolvedPath) return unverifiable('the path could not be resolved again');
+  return holds(check.resolvedPath, String(args['content'] ?? ''));
+};
+
+/** FileController resolves paths against the working folder; so does this. */
+const verifyControlFile: Verifier = async (args) => {
+  const action = text(args, 'action').toLowerCase();
+  const source = path.resolve(text(args, 'path'));
+  const destination = text(args, 'destination') ? path.resolve(text(args, 'destination')) : '';
+  const name = path.basename(source);
+  switch (action) {
+    case 'write':
+      return holds(source, String(args['content'] ?? ''));
+    case 'copy':
+      if (!destination || !exists(destination)) return failed(`the copy ${path.basename(destination)} is not there`);
+      return exists(source) ? verified(`the copy is there and ${name} is still there`) : failed(`${name} is gone after a copy`);
+    case 'move':
+    case 'rename':
+      if (!destination || !exists(destination)) return failed(`${path.basename(destination)} is not there`);
+      return exists(source) ? failed(`${name} is still there`) : verified(`${path.basename(destination)} is there and ${name} is gone`);
+    case 'create_folder':
+      try {
+        return fs.statSync(source).isDirectory() ? verified(`the folder ${name} is there`) : failed(`${name} is not a folder`);
+      } catch {
+        return failed(`the folder ${name} is not there`);
+      }
+    case 'delete':
+    case 'delete_folder':
+      return exists(source) ? failed(`${name} is still there`) : verified(`${name} is gone`);
+    default:
+      return unverifiable('reading or searching changes nothing');
+  }
+};
+
+const verifySaveRelation: Verifier = async (args) => {
+  const { memoryManager } = await import('../memory/memoryManager.js');
+  const fact = relationFact(args);
+  return memoryManager.getLongTermFacts(500).some((f) => f.fact === fact)
+    ? verified('it is in long-term memory')
+    : failed('it is not in long-term memory');
+};
+
+/** memory_brain: a written note is really in the vault; reads and status need no check. */
+const verifyMemoryBrain: Verifier = async (args, output) => {
+  const action = text(args, 'action');
+  let body: { success?: boolean; result?: { path?: string; status?: string }; folder?: string; created?: string[] } = {};
+  try { body = JSON.parse(output); } catch { return unverifiable('the result was not JSON'); }
+  if (!body.success) return failed('the action reported failure');
+  const { secondBrain } = await import('../memory/secondBrain.js');
+  const st = secondBrain.vault.state();
+  if (!st.ok) return body.result?.status === 'queued' ? verified('queued in the outbox until the vault is back') : failed(st.detail);
+  if (action === 'remember' || action === 'remember_preference') {
+    const p = body.result?.path;
+    return p && exists(path.join(st.vault, p)) ? verified(`${p} is in the vault`) : failed('the note is not in the vault');
+  }
+  if (action === 'create_space') return body.folder && exists(path.join(st.vault, 'JARVIS', body.folder)) ? verified(`${body.folder} exists`) : failed('the folder is not in the vault');
+  if (action === 'init') return exists(path.join(st.vault, 'JARVIS', '00 Index', 'JARVIS Memory Index.md')) ? verified('the main index is in the vault') : failed('the main index is missing');
+  return verified('the vault is connected and the action reported its result');
+};
+
+/** forget_memory: the removed facts are no longer in the fact store; the index's own report counts. */
+const verifyForgetMemory: Verifier = async (_args, output) => {
+  let body: { success?: boolean; removed?: Array<{ id: string }>; vectorIndex?: string[] } = {};
+  try { body = JSON.parse(output); } catch { return unverifiable('the result was not JSON'); }
+  if (!body.success || !body.removed?.length) return failed('nothing was removed');
+  const { memoryManager } = await import('../memory/memoryManager.js');
+  const ids = new Set(body.removed.map((r) => r.id));
+  if (memoryManager.getLongTermFacts(100_000).some((f) => ids.has(f.id))) return failed('a removed fact is still in the fact store');
+  return (body.vectorIndex ?? []).every((v) => v === 'deleted')
+    ? verified(`${ids.size} fact(s) gone from the fact store and the search index`)
+    : failed('the fact is gone from the fact store, but the search index was not updated');
+};
+
+/** How save_relation stores a relation as a fact (core/tools/memoryTool.ts). */
+export function relationFact(args: Record<string, unknown>): string {
+  return `${text(args, 'entity1').trim()} ${text(args, 'relation').trim().toUpperCase()} ${text(args, 'entity2').trim()}`;
+}
+
+const verifyIngest: Verifier = async (args, output) => {
+  if (/Ingested 0 chunk/.test(output)) return failed('nothing was added');
+  const { loadManifest } = await import('../rag/index.js');
+  const { getWorkspaceRoot } = await import('./workspaceRoot.js');
+  const target = path.resolve(text(args, 'path'));
+  const relative = path.relative(getWorkspaceRoot(), target).replace(/\\/g, '/');
+  const sources = Object.values(loadManifest().chunks).map((c) => c.source);
+  const listed = sources.filter((s) => s === relative || s.startsWith(`${relative}/`) || relative === '');
+  return listed.length > 0
+    ? verified(`the index lists ${listed.length} chunk(s) from it`)
+    : failed('the index does not list it');
+};
+
+const verifyFullControl = (on: boolean): Verifier => async () => {
+  const { permissionSession } = await import('../control/permissionSession.js');
+  const level = permissionSession.getCurrentLevel();
+  return (level >= 2) === on
+    ? verified(on ? 'full control mode is on' : 'full control mode is off')
+    : failed(on ? 'full control mode is still off' : 'full control mode is still on');
+};
+
+/**
+ * control_browser, checked in the Chrome JARVIS reads (P8/P9): the tab the
+ * action names in its message — "(tab <id>)" — is gone, on screen or open.
+ */
+const verifyControlBrowser: Verifier = async (args, output) => {
+  const action = text(args, 'action').toLowerCase();
+  if (action === 'list') return unverifiable('listing tabs changes nothing');
+  let message = output;
+  try { message = String(JSON.parse(output)?.message ?? ''); } catch { /* plain text */ }
+  if (action === 'close_browser') {
+    // JARVIS's own Chrome: closed when its debugging port no longer answers.
+    // At the end of the reply: tab titles (set by the pages) come earlier in it.
+    const port = Number(/\(port (\d+) no longer answers\)\.?\s*$/.exec(message)?.[1]);
+    if (!port) return failed('the result named no closed Chrome');
+    const { cdpVersion } = await import('../perception/cdpClient.js');
+    return (await cdpVersion(port).then(() => true, () => false))
+      ? failed(`JARVIS's Chrome still answers on port ${port}`)
+      : verified(`nothing answers on JARVIS's Chrome's port ${port} any more`);
+  }
+  if (action === 'refresh') {
+    if (/\(checked: /.test(message)) return verified(/\(checked: (.*)\)$/.exec(message)?.[1] ?? 'the page loaded again');
+    const found = /but the check found that (.*)$/.exec(message)?.[1];
+    return found ? failed(found) : unverifiable('the refresh was a key press, which cannot be checked');
+  }
+  // At the end of the result: a page title earlier in it could hold "(tab …)" (review R4).
+  const id = /\(tab ([A-Za-z0-9]+)\)\.?\s*$/.exec(message)?.[1];
+  if (!id) {
+    if (action === 'open_url') return unverifiable('it was opened outside the Chrome JARVIS reads');
+    if (/Ctrl\+W/.test(message)) return unverifiable('the tab was closed with a key press, which cannot be checked');
+    return failed(/is not open/.test(message) ? 'no open tab matched' : 'no tab was named in the result');
+  }
+  const { listPages, withPage, evaluateFixed, cdpPort } = await import('../perception/cdpClient.js');
+  let pages;
+  try { pages = await listPages(cdpPort()); } catch { return unverifiable('Chrome is not reachable for JARVIS, so the tabs could not be checked'); }
+  let page = pages.find((p) => p.id === id);
+  switch (action) {
+    case 'close':
+    case 'close_current': {
+      // /json/close only starts the close: on a busy PC the tab is still
+      // listed for a moment (owner's PC, N-PC4). Wait up to 2 s, as
+      // browser_tab does, for that tab (by its id) to go.
+      const deadline = Date.now() + 2_000;
+      while (page && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 100));
+        try { page = (await listPages(cdpPort())).find((p) => p.id === id); } catch { page = undefined; }
+      }
+      return page ? failed('the tab is still open') : verified('the tab is gone');
+    }
+    case 'focus': {
+      if (!page) return failed('the tab is not open');
+      const { VISIBILITY_SCRIPT } = await import('../perception/cdpScripts.js');
+      const visibility = await withPage(page, (s) => evaluateFixed<string>(s, VISIBILITY_SCRIPT, 2_000), cdpPort()).catch(() => 'unknown');
+      return visibility === 'visible' ? verified('the tab is on screen') : failed('the tab is not on screen');
+    }
+    case 'open_url':
+      return page ? verified('the new tab is open') : failed('the new tab is not open');
+    default:
+      return unverifiable('nothing to check');
+  }
+};
+
+/** Windows actions are checked against the desktop in P14, which needs the PC itself. */
+const ON_WINDOWS = 'checked on Windows only (phase P14); not checked here';
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Ask `look` until it answers true, for up to `ms` — but at least `minLooks`
+ * times. Each look at the desktop starts a fresh Windows PowerShell; on a
+ * slow PC (the owner's 2010 iMac) one look can take longer than `ms`, and a
+ * window that closed or appeared while it ran was then never seen.
+ */
+export async function keepLooking(look: () => Promise<boolean>, ms: number, minLooks = 2, pauseMs = 300): Promise<boolean> {
+  const until = Date.now() + ms;
+  for (let looks = 1; ; looks++) {
+    if (await look()) return true;
+    if (looks >= minLooks && Date.now() >= until) return false;
+    await pause(pauseMs);
+  }
+}
+
+/** The result's message: kernel results carry it in JSON, others are plain text. */
+function messageOf(output: string): string {
+  try { return String(JSON.parse(output)?.message ?? output); } catch { return output; }
+}
+
+/** What the window checks read from the desktop; tests put stand-ins here. */
+export const windowChecks = {
+  onWindows: (): boolean => process.platform === 'win32',
+  windowState: async (hwnd: string) => (await import('../perception/windowsProbe.js')).windowState(hwnd),
+};
+
+/** The same window handle, written in hex or decimal. */
+function sameHandle(a: string, b: string): boolean {
+  try { return BigInt(a) === BigInt(b); } catch { return false; }
+}
+
+const CLOSING = new Set(['close', 'close_current']);
+
+/** A control_window close: never taken on trust, so a close that cannot be checked is not done. */
+function isWindowClose(tool: string, args: Record<string, unknown>): boolean {
+  return tool === 'control_window' && CLOSING.has(text(args, 'action').toLowerCase());
+}
+
+/**
+ * control_window (P14), asked of Windows by the window's handle: a closed
+ * window is gone (looked for up to 3 s; one asking whether to save stays,
+ * which is said), a focused one is in front, a minimised or maximised one is
+ * so. A move or resize is not read back.
+ *
+ * A close is checked strictly (Step C; on the owner's seventh Windows run the
+ * close did nothing, said nothing, and "not checked" let it pass as done): no
+ * result naming the window, another window than the handle asked for, or a
+ * window that could not be read is a failed close. The window checked is the
+ * one asked for when the request gave its handle.
+ */
+const verifyControlWindow: Verifier = async (args, output) => {
+  const action = text(args, 'action').toLowerCase();
+  const closing = CLOSING.has(action);
+  if (!windowChecks.onWindows()) return closing ? failed('windows are closed, and the close checked, only on Windows') : unverifiable(ON_WINDOWS);
+  const named = /window (0x[0-9a-f]+)/i.exec(messageOf(output))?.[1];
+  const target = text(args, 'target').trim();
+  const asked = /^0x[0-9a-f]{1,16}$/i.test(target) ? target : undefined;
+  if (closing) {
+    if (!named) return failed('the close gave no result naming a window, so nothing shows it was done');
+    if (asked && !sameHandle(named, asked)) return failed(`it acted on window ${named}, not on ${asked}, the window asked for`);
+    const hwnd = asked ?? named;
+    try {
+      return (await keepLooking(async () => !(await windowChecks.windowState(hwnd)).exists, 3_000))
+        ? verified('the window is gone')
+        : failed('the window is still open; it may be asking whether to save');
+    } catch (err) {
+      return failed(`whether the window closed could not be read: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  const hwnd = named ?? asked;
+  if (!hwnd) return unverifiable('the result did not name the window');
+  const state = await windowChecks.windowState(hwnd);
+  if (!state.exists) return failed('the window is gone');
+  if (action === 'focus') return state.foreground ? verified('the window is in front') : failed('another window is in front');
+  if (action === 'minimize') return state.minimized ? verified('the window is minimised') : failed('the window is not minimised');
+  if (action === 'maximize') return state.maximized ? verified('the window is maximised') : failed('the window is not maximised');
+  return unverifiable('its new position or size is not read back');
+};
+
+/** A visible window of the app, or (for `open`) its process, asked again for up to `ms`. */
+async function appState(target: string, wanted: boolean, ms: number): Promise<boolean> {
+  const { probeWindows } = await import('../perception/windowsProbe.js');
+  const { appController } = await import('../control/appController.js');
+  const matcher = appWindowMatcher(target);
+  return keepLooking(async () => {
+    const windows = await probeWindows('windows') as Array<{ title: string; process: string }>;
+    // A close is checked by the controller's own rule: the windows it would
+    // close (no browser window, not Notepad++ for "notepad" when Notepad was there).
+    const visible = wanted
+      ? windows.some((w) => matcher.test(w.title) || matcher.test(w.process))
+      : appWindowsLeft(target, windows.map((w) => ({ name: w.process, pid: 0, windowTitle: w.title }))).length > 0;
+    // Closing closes windows: a process left in the background counts as closed.
+    const open = visible || (wanted && (await appController.isAppOpen(target)));
+    return open === wanted;
+  }, ms);
+}
+
+/** An app that was opened may need a while to show its window on a slow PC. */
+const APP_OPEN_WAIT_MS = 15_000;
+
+/** control_app (P14), on the desktop: an opened or restarted app runs, a closed one has no window left, a focused one is in front. */
+/** A page or Chrome itself shown in JARVIS's own Chrome: the tab is there (whether its window came forward is not read). */
+async function jarvisChromeHasTab(port: number, tabId: string): Promise<Verification> {
+  const { listPages } = await import('../perception/cdpClient.js');
+  let pages;
+  try { pages = await listPages(port); } catch { return failed(`JARVIS's Chrome does not answer on port ${port}`); }
+  const tab = pages.find((p) => p.id === tabId);
+  return tab ? verified(`JARVIS's Chrome has the tab ${tab.url.slice(0, 80)}`) : failed('the tab is not open in JARVIS\'s Chrome');
+}
+
+const verifyControlApp: Verifier = async (args, output) => {
+  const action = text(args, 'action').toLowerCase();
+  const shown = /in JARVIS's Chrome \(port (\d+), tab ([A-Za-z0-9]+)\)\.?\s*$/.exec(messageOf(output));
+  if (action === 'open' && shown) return jarvisChromeHasTab(Number(shown[1]), shown[2]!);
+  if (!windowChecks.onWindows()) return unverifiable(ON_WINDOWS);
+  const target = text(args, 'target');
+  if (!target) return unverifiable('no app was named');
+  if (action === 'open' || action === 'restart') {
+    return (await appState(target, true, APP_OPEN_WAIT_MS)) ? verified(`${target} is running`) : failed(`${target} is not running`);
+  }
+  if (action === 'close') {
+    // The windows the close named: exactly those must be gone (another
+    // program's window with a similar name is not "still open").
+    // At the end of the reply: the target, quoted earlier, may contain anything.
+    const closed = /\(windows ([^)]*)\)\.?\s*$/.exec(messageOf(output))?.[1]?.match(/0x[0-9a-f]+/gi) ?? [];
+    if (closed.length > 0) {
+      try {
+        const gone = await keepLooking(async () => {
+          for (const hwnd of closed) if ((await windowChecks.windowState(hwnd)).exists) return false;
+          return true;
+        }, 3_000);
+        return gone
+          ? verified(closed.length === 1 ? 'the window is gone' : `the ${closed.length} windows are gone`)
+          : failed(`a window of ${target} is still open; it may be asking whether to save`);
+      } catch (err) {
+        return failed(`whether the windows closed could not be read: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return (await appState(target, false, 3_000)) ? verified(`no window of ${target} is open`) : failed(`a window of ${target} is still open`);
+  }
+  if (action === 'focus') {
+    const { getWindowsState } = await import('../perception/windowsState.js');
+    const active = (await getWindowsState({ waitMs: 1_000 })).activeWindow;
+    const matcher = appWindowMatcher(target);
+    return matcher.test(active.processName) || matcher.test(active.title)
+      ? verified(`${target} is in front`) : failed(`${active.processName || 'another window'} is in front`);
+  }
+  return unverifiable('nothing to check');
+};
+
+/** open_app (P14): an app runs afterwards; a web page opens in the default browser, which is not checked. */
+const verifyOpenApp: Verifier = async (args, output) => {
+  // A page or Chrome itself, shown in JARVIS's own Chrome: its tab is there (any platform).
+  let shown: { method?: string; port?: number; tabId?: string } = {};
+  try { shown = JSON.parse(output) ?? {}; } catch { /* plain text */ }
+  if (shown.method === 'jarvis-chrome' && shown.port && shown.tabId) return jarvisChromeHasTab(shown.port, shown.tabId);
+  if (process.platform !== 'win32') return unverifiable(ON_WINDOWS);
+  if (args['dryRun']) return unverifiable('a dry run opens nothing');
+  let resolved = '';
+  try { resolved = String(JSON.parse(output)?.resolvedTarget ?? ''); } catch { /* plain text */ }
+  const target = text(args, 'target');
+  if (/^(https?:|www\.)|^ms-settings:/i.test(resolved) || /^(https?:|www\.)/i.test(target)) {
+    return unverifiable('a web page or a Windows page opened, which is not checked');
+  }
+  if (!target) return unverifiable('no app was named');
+  return (await appState(target, true, APP_OPEN_WAIT_MS)) ? verified(`${target} is running`) : failed(`${target} is not running`);
+};
+
+/** goal_create: the goal is in the store, of the kind asked for. */
+const verifyGoalCreate: Verifier = async (args, output) => {
+  let body: { success?: boolean; goalId?: string; kind?: string } = {};
+  try { body = JSON.parse(output); } catch { return unverifiable('the result was not JSON'); }
+  if (!body.success || !body.goalId) return failed('no goal was recorded');
+  const { goalManager } = await import('./goalManager.js');
+  const g = goalManager.getGoal(body.goalId);
+  if (!g) return failed(`goal ${body.goalId} is not in the goal store`);
+  return g.kind === (body.kind ?? args['kind'] ?? g.kind) ? verified(`the goal store holds ${g.id} (${g.kind}, ${g.status})`) : failed(`the stored goal is ${g.kind}, not ${String(body.kind)}`);
+};
+
+/** goal_control: the goal's state changed the way the action says. */
+const verifyGoalControl: Verifier = async (args, output) => {
+  let body: { success?: boolean; goalId?: string } = {};
+  try { body = JSON.parse(output); } catch { return unverifiable('the result was not JSON'); }
+  if (!body.success || !body.goalId) return unverifiable('nothing was changed');
+  const { goalManager } = await import('./goalManager.js');
+  const g = goalManager.getGoal(body.goalId);
+  if (!g) return failed('the goal is no longer in the store');
+  const action = text(args, 'action');
+  const ok: Record<string, () => boolean> = {
+    pause: () => g.status === 'paused',
+    resume: () => !['paused', 'blocked', 'failed', 'cancelled'].includes(g.status),
+    cancel: () => g.status === 'cancelled',
+    confirm: () => g.status === 'completed' || (g.kind === 'permanent' && g.status === 'waiting'),
+    priority: () => g.priority === Math.max(1, Math.min(10, Math.round(Number(args['value'])))),
+    feedback: () => (g.history ?? []).some((h) => h.event === 'feedback'),
+  };
+  const check = ok[action];
+  if (!check) return unverifiable(`no check for "${action}"`);
+  return check() ? verified(`the goal is now ${g.status}${action === 'priority' ? `, priority ${g.priority}` : ''}`) : failed(`the goal is ${g.status}`);
+};
+
+export const VERIFIERS: Readonly<Record<string, Verifier | { reason: string }>> = {
+  goal_create: verifyGoalCreate,
+  goal_control: verifyGoalControl,
+  write_file: verifyWriteFile,
+  control_file: verifyControlFile,
+  save_relation: verifySaveRelation,
+  forget_memory: verifyForgetMemory,
+  memory_brain: verifyMemoryBrain,
+  ingest_documents: verifyIngest,
+  enable_full_control_session: verifyFullControl(true),
+  disable_full_control_session: verifyFullControl(false),
+  run_command: { reason: "a command's effect cannot be checked in general; its exit code is reported" },
+  open_app: verifyOpenApp,
+  control_app: verifyControlApp,
+  control_window: verifyControlWindow,
+  control_browser: verifyControlBrowser,
+  control_keyboard: { reason: ON_WINDOWS },
+  control_mouse: { reason: ON_WINDOWS },
+  control_process: { reason: ON_WINDOWS },
+  control_system: { reason: ON_WINDOWS },
+  cancel_current_action: { reason: 'it stops work in progress; there is nothing left to look at' },
+  delegate_task: { reason: 'it starts background agents; their result is checked and reported when they finish' },
+  propose_code_repair: { reason: 'it starts a background proposal whose own checks (type check, tests, review, an unchanged checkout) are its result; the branch is for the owner to review' },
+  self_repair: { reason: 'it starts a repair run that checks the failed effect itself (a played check phrase; a reconnect, then a real transcript) and reports the result when it finishes' },
+  cancel_agent_task: { reason: 'the tool itself waits until the cancelled agents have stopped' },
+};
+
+/** What JARVIS says when an action reported success but its check failed. */
+export function verificationFailedReply(text: string): string {
+  const evidence = /the check found that (.*?)\.?$/.exec(text.trim())?.[1];
+  return evidence
+    ? `I tried, sir, but I could not confirm it worked: ${evidence}.`
+    : 'I tried, sir, but I could not confirm it worked.';
+}
+
+/** A reply with what was checked added, when it was. */
+export function withCheck(reply: string, verification: Verification | undefined): string {
+  if (verification?.status !== 'verified') return reply;
+  return `${reply.trim().replace(/[.!]?$/, '.')} I checked: ${verification.evidence}.`;
+}
+
+const LIMIT_MS = 5_000;
+/**
+ * Checks that look at the Windows desktop start a fresh PowerShell per look,
+ * which on a slow PC takes many seconds (the owner's 2010 iMac): they get
+ * longer before they count as not checked.
+ */
+const DESKTOP_LIMIT_MS = 60_000;
+const DESKTOP_CHECKS = new Set(['control_window', 'control_app', 'open_app']);
+
+/**
+ * The check for `tool`'s successful call, cut off after 5 s (60 s for the
+ * Windows desktop checks). A check that
+ * throws or runs out of time is `unverifiable`, never a pass. Undefined when
+ * the tool has no entry (it only reads).
+ */
+export async function verifyCall(
+  tool: string,
+  args: Record<string, unknown>,
+  output: string,
+  own?: Verifier,
+): Promise<Verification | undefined> {
+  const entry = own ?? VERIFIERS[tool];
+  if (!entry) return undefined;
+  if (typeof entry !== 'function') return unverifiable(entry.reason);
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<Verification>((resolve) => {
+    const limit = process.platform === 'win32' && DESKTOP_CHECKS.has(tool) ? DESKTOP_LIMIT_MS : LIMIT_MS;
+    timer = setTimeout(() => resolve(unverifiable(`the check took longer than ${limit / 1000} s`)), limit);
+  });
+  try {
+    const result = await Promise.race([
+      entry(args, output).catch((err: unknown) => unverifiable(`the check failed to run: ${err instanceof Error ? err.message : String(err)}`)),
+      timeout,
+    ]);
+    // A window close whose check did not run, or took too long, is not done.
+    return isWindowClose(tool, args) && result.status === 'unverifiable' ? failed(`the close could not be checked: ${result.evidence}`) : result;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}

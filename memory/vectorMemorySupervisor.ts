@@ -29,6 +29,30 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import { childEnv, looksSecret, PYTHON_UTF8 } from '../system/childEnv.js';
+import { getVectorToken, vectorHeaders } from './vectorAuth.js';
+
+// ─── The service's environment ───────────────────────────────────────────────
+
+/** Settings vectorMemory.py and its model libraries read (not credentials). */
+const SERVICE_ENV_PREFIXES = ['VECTOR_', 'JARVIS_VECTOR_', 'EMBEDDING_', 'HF_', 'TRANSFORMERS_', 'SENTENCE_TRANSFORMERS_', 'TORCH_', 'OMP_', 'MKL_', 'CUDA_', 'PYTHON'];
+/** The first model download goes through the user's proxy, if they have one. */
+const SERVICE_ENV_NAMES = new Set(['JARVIS_DATA_ROOT', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'REQUESTS_CA_BUNDLE', 'SSL_CERT_FILE', 'CURL_CA_BUNDLE']);
+
+/** The one credential the service uses: the Hugging Face read token for the model download (.env.example). */
+const SERVICE_CREDENTIALS = new Set(['HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN']);
+
+export function vectorServiceEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined) continue;
+    const upper = name.toUpperCase();
+    if (SERVICE_CREDENTIALS.has(upper)) { out[name] = value; continue; }
+    if (looksSecret(name)) continue;
+    if (SERVICE_ENV_NAMES.has(upper) || SERVICE_ENV_PREFIXES.some((p) => upper.startsWith(p))) out[name] = value;
+  }
+  return out;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -50,6 +74,20 @@ const MAX_RETRY_QUEUE_SIZE  = 200;
 /** Batch size for retry flush (matches /batch_embed max) */
 const RETRY_BATCH_SIZE      = 32;
 
+/**
+ * Python logging, uvicorn and progress bars all write to stderr, so every
+ * stderr line used to print as "[VectorAPI:ERR]", including "VectorMemory
+ * initialized" and "Started server process". Only lines that report a problem
+ * are errors.
+ */
+export function isVectorErrorLine(line: string): boolean {
+  // vectorMemory.py and uvicorn name the level: "Stored: 'Failed task …'" at
+  // INFO quotes a fact, it is not a failure (BUG-16).
+  if (/^\[VectorMemory\] (?:DEBUG|INFO|WARNING)\b|^(?:DEBUG|INFO|WARNING):\s/.test(line)) return false;
+  // "Error\b" without a leading boundary also catches ModuleNotFoundError: etc.
+  return /ERROR|CRITICAL|Traceback|Exception\b|Error\b|\b[Ff]ailed\b/.test(line);
+}
+
 // ─── Supervisor ───────────────────────────────────────────────────────────────
 
 interface RetryQueueEntry {
@@ -61,6 +99,10 @@ class VectorMemorySupervisor {
   private proc: ChildProcess | null = null;
   private restartCount = 0;
   private healthy = false;
+  /** The server answers but its model is not ready yet (/health 503 or /liveness OK). */
+  private loading = false;
+  /** The server reported that its model could not be loaded (e.g. a blocked download). */
+  private modelError: string | null = null;
   private running = false;
   private healthTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt: number | null = null;
@@ -124,12 +166,43 @@ class VectorMemorySupervisor {
       this.proc = null;
     }
     this.healthy = false;
+    this.loading = false;
+    this.modelError = null;
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────
 
   isHealthy(): boolean { return this.healthy; }
   isStartupReady(): boolean { return this._startupReady; }
+
+  /**
+   * One word for the service's condition, for health reports:
+   *   ready    /health answered 200: search and embedding work
+   *   loading  the server answers but its model is still loading, or the
+   *            process was started less than STARTUP_WAIT_MS ago — expected,
+   *            not a failure
+   *   down     running but not answering, or out of restarts
+   *   stopped  never started (or stopped)
+   */
+  state(now = Date.now()): 'ready' | 'loading' | 'failed' | 'down' | 'stopped' {
+    if (this.healthy) return 'ready';
+    if (!this.running) return 'stopped';
+    if (this.modelError) return 'failed';
+    if (this.restartCount >= MAX_RESTARTS) return 'down';
+    if (this.loading) return 'loading';
+    if (this.startedAt !== null && now - this.startedAt < STARTUP_WAIT_MS) return 'loading';
+    return 'down';
+  }
+
+  /** Why the model could not be loaded, as the server reported it; null otherwise. */
+  getModelError(): string | null { return this.modelError; }
+
+  /** Seconds since the current process started, or 0. */
+  loadingSeconds(now = Date.now()): number {
+    return this.startedAt ? Math.round((now - this.startedAt) / 1000) : 0;
+  }
+  /** True while the supervisor owns the service (started and not stopped). */
+  isRunning(): boolean { return this.running; }
   getRestartCount(): number { return this.restartCount; }
   getRetryQueueDepth(): number { return this._retryQueue.length; }
   getUptimeSeconds(): number {
@@ -156,7 +229,7 @@ class VectorMemorySupervisor {
       const t = setTimeout(() => controller.abort(), 10_000);
       const res = await fetch(BATCH_EMBED_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: vectorHeaders(true),
         body: JSON.stringify({ texts, skip_dedup: skipDedup }),
         signal: controller.signal,
       });
@@ -215,7 +288,7 @@ class VectorMemorySupervisor {
       const t = setTimeout(() => controller.abort(), 1000);
       // Use /liveness instead of /health — always returns 200 if uvicorn is alive,
       // even while the model is still loading (unlike /health which returns 503).
-      const res = await fetch(LIVENESS_URL, { signal: controller.signal });
+      const res = await fetch(LIVENESS_URL, { headers: vectorHeaders(), signal: controller.signal });
       clearTimeout(t);
       // Any HTTP response (200, 503, etc.) means the port is bound
       return res.status >= 200 && res.status < 600;
@@ -257,6 +330,8 @@ class VectorMemorySupervisor {
     this.proc = spawn(python, [VECTOR_SCRIPT], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
+      // The service's token, and no other JARVIS secret (SEC-06, SEC-18).
+      env: childEnv({ ...PYTHON_UTF8, JARVIS_VECTOR_TOKEN: getVectorToken(), ...vectorServiceEnv() }),
     });
 
     this.proc.stdout?.on('data', (d) => {
@@ -277,7 +352,8 @@ class VectorMemorySupervisor {
           return;
         }
         if (!isPortConflict) {
-          console.error(`[VectorAPI:ERR] ${msg}`);
+          if (isVectorErrorLine(msg)) console.error(`[VectorAPI:ERR] ${msg}`);
+          else console.log(`[VectorAPI] ${msg}`);
         }
         if (msg.includes('ModuleNotFoundError') || msg.includes('ImportError')) {
           isDependencyError = true;
@@ -308,6 +384,8 @@ class VectorMemorySupervisor {
       console.warn(`[VectorSupervisor] Process exited (code=${code}, signal=${signal})`);
       this.proc = null;
       this.healthy = false;
+      this.loading = false;
+      this.modelError = null;
       this.notifyPipelineFailure(`Process exited: code=${code}`);
 
       if (isDependencyError) {
@@ -330,6 +408,7 @@ class VectorMemorySupervisor {
     this.proc.on('error', (err) => {
       console.error(`[VectorSupervisor] Spawn error: ${err.message}`);
       this.healthy = false;
+      this.loading = false;
     });
 
     await this.waitForStartupHealth();
@@ -350,12 +429,14 @@ class VectorMemorySupervisor {
       const controller = new AbortController();
       // 5s timeout — allows for CPU-constrained environments (8GB Windows)
       const t = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(HEALTH_URL, { signal: controller.signal });
+      const res = await fetch(HEALTH_URL, { headers: vectorHeaders(), signal: controller.signal });
       clearTimeout(t);
 
       if (res.ok) {
         const wasUnhealthy = !this.healthy;
         this.healthy = true;
+        this.loading = false;
+        this.modelError = null;
 
         // Resolve the startup readiness gate on first healthy signal
         if (!this._startupReady) {
@@ -382,7 +463,24 @@ class VectorMemorySupervisor {
       // Server IS alive — don't mark as unhealthy yet.
       // The model may still be warming up.
       if (res.status === 503) {
-        console.log('[VectorSupervisor] /health returned 503 — model still loading. Server is alive.');
+        // The server says whether the model is still loading or failed to load.
+        const body = await res.json().catch(() => null) as { detail?: { state?: string; error?: string } } | null;
+        if (body?.detail?.state === 'failed') {
+          const reason = String(body.detail.error ?? 'unknown error').slice(0, 200);
+          if (this.modelError !== reason) {
+            console.error(`[VectorSupervisor] Embedding model failed to load: ${reason}. Lexical search is used instead. ` +
+              'Check the network or the model cache, then restart JARVIS.');
+            this.notifyPipelineFailure(`model failed to load: ${reason}`);
+          }
+          this.modelError = reason;
+          this.loading = false;
+          return false;
+        }
+        // Said once per loading phase: the startup poll runs every 300 ms and
+        // used to print this line up to ~66 times for one normal model load.
+        if (!this.loading) console.log('[VectorSupervisor] Embedding model loading (/health 503). The server is up; waiting for the model.');
+        this.loading = true;
+        this.reportLoading();
         return false;
       }
     } catch {
@@ -391,11 +489,21 @@ class VectorMemorySupervisor {
       try {
         const lc = new AbortController();
         const lt = setTimeout(() => lc.abort(), 2000);
-        const lr = await fetch(LIVENESS_URL, { signal: lc.signal });
+        const lr = await fetch(LIVENESS_URL, { headers: vectorHeaders(), signal: lc.signal });
         clearTimeout(lt);
         if (lr.ok) {
+          const live = await lr.json().catch(() => null) as { model_state?: string; model_error?: string } | null;
+          if (live?.model_state === 'failed') {
+            const reason = String(live.model_error ?? 'unknown error').slice(0, 200);
+            if (this.modelError !== reason) this.notifyPipelineFailure(`model failed to load: ${reason}`);
+            this.modelError = reason;
+            this.loading = false;
+            return false;
+          }
           // Server is alive but /health failed — model probably loading
-          console.log('[VectorSupervisor] /health unreachable but /liveness OK — model may be loading.');
+          if (!this.loading) console.log('[VectorSupervisor] /health unreachable but /liveness OK — model may be loading.');
+          this.loading = true;
+          this.reportLoading();
           return false;
         }
       } catch {
@@ -403,6 +511,7 @@ class VectorMemorySupervisor {
       }
     }
 
+    this.loading = false;
     if (this.healthy) {
       this.healthy = false;
       console.warn('[VectorSupervisor] ⚠️  Vector memory health check failed.');
@@ -427,12 +536,21 @@ class VectorMemorySupervisor {
   // ── Circuit breaker integration ────────────────────────────────────────────
 
   private resetCircuitBreaker(): void {
+    // Also lets the memory manager run a re-sync it had to skip while the
+    // service was still loading.
     import('../memory/memoryManager.js').then(({ memoryManager }) => {
-      memoryManager.resetVectorCircuit();
+      memoryManager.onVectorServiceHealthy();
     }).catch(() => {});
   }
 
   // ── Pipeline registry integration ──────────────────────────────────────────
+
+  /** Loading is not a failure: the pipeline shows "loading" until the first success. */
+  private reportLoading(): void {
+    import('../self_healing/pipelineRegistry.js').then(({ pipelineRegistry }) => {
+      pipelineRegistry.recordLoading('vector_memory');
+    }).catch(() => {});
+  }
 
   private notifyPipelineFailure(reason: string): void {
     import('../self_healing/pipelineRegistry.js').then(({ pipelineRegistry }) => {
@@ -496,7 +614,7 @@ class VectorMemorySupervisor {
         const t = setTimeout(() => controller.abort(), 30_000);
         const res = await fetch(DEDUP_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: vectorHeaders(true),
           body: JSON.stringify({ threshold: 0.97 }),
           signal: controller.signal,
         });

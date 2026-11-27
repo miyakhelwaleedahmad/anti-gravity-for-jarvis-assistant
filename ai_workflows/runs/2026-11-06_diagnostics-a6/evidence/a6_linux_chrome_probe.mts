@@ -1,0 +1,10 @@
+import { pathToFileURL } from 'url'; import * as path from 'path'; import { execSync } from 'child_process';
+const h = await import(pathToFileURL(path.join('/home/user/anti-gravity-for-jarvis-assistant', 'tests/chromeHelper.ts')).href);
+const c = await h.startChromium();
+const prof = String(execSync('ps -o args= -p ' + c.process.pid)).match(/--user-data-dir=(\S+)/)?.[1];
+const count = () => String(execSync("ps -eo pid,args")).split("\n").filter((l) => l.includes(prof!) && /chrom/i.test(l) && !/pgrep|ps -eo/.test(l)).length;
+console.log('chrome processes with this profile while running:', count());
+await c.stop();
+await new Promise((r) => setTimeout(r, 1500));
+console.log('after stop():', count());
+process.exit(0);

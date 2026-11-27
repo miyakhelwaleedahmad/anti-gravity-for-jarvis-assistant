@@ -1,0 +1,64 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=tabTargetingA4Test,jarvisChromeTest,browserControlTest,browserControlAgentTest,browserObservationTest,chromeStateSmokeTest,closeByNameTest,routingA3Test,routeGoldenTest,deterministicCommandRouteTest,riskEngineTest,verifyAfterActTest,honestActionReplyTest,browserRefusalSpokenTest,navigationPolicyTest,scenarioIntegrationTest,taskFailureHonestyTest,toolDiscoverabilityAuditTest,executionDispatchAuditTest,systemStateRouteTest,closeAppRouteTest,voiceYouTubeIntegrationTest,youtubePlayIntentTest,errorRecoveryTest,registryRepairHonestyTest,dispatchAuthzTest,nodeBridgeSingletonTest,voiceRouteMockTest,interruptGatingTest,openAppSmokeTest,latencySmokeTest,boundaryDoublesTest,selfCheckTest,windowsToolsTest
+
+
+=== JARVIS test suite — 34 file(s) ===
+
+  PASS    boundaryDoublesTest                          354ms
+  PASS    browserControlAgentTest                      10942ms
+  FAIL    browserControlTest                           453ms
+  PASS    browserObservationTest                       8007ms
+  PASS    browserRefusalSpokenTest                     1626ms
+  PASS    chromeStateSmokeTest                         619ms
+  PASS    closeAppRouteTest                            1169ms
+  PASS    closeByNameTest                              12475ms
+  PASS    deterministicCommandRouteTest                1291ms
+  PASS    dispatchAuthzTest                            1190ms
+  PASS    errorRecoveryTest                            11683ms
+  PASS    executionDispatchAuditTest                   3158ms
+  PASS    honestActionReplyTest                        3170ms
+  PASS    interruptGatingTest                          368ms
+  PASS    jarvisChromeTest                             13714ms
+  PASS    latencySmokeTest                             1227ms
+  PASS    navigationPolicyTest                         1578ms
+  PASS    nodeBridgeSingletonTest                      477ms
+  PASS    openAppSmokeTest                             467ms
+  PASS    registryRepairHonestyTest                    1294ms
+  PASS    riskEngineTest                               1447ms
+  PASS    routeGoldenTest                              1324ms
+  PASS    routingA3Test                                1467ms
+  PASS    scenarioIntegrationTest                      44668ms
+  PASS    selfCheckTest                                1278ms
+  PASS    systemStateRouteTest                         1222ms
+  PASS    tabTargetingA4Test                           5207ms
+  PASS    taskFailureHonestyTest                       1285ms
+  PASS    toolDiscoverabilityAuditTest                 1118ms
+  PASS    verifyAfterActTest                           6318ms
+  PASS    voiceRouteMockTest                           1410ms
+  PASS    voiceYouTubeIntegrationTest                  1190ms
+  PASS    windowsToolsTest                             4830ms
+  PASS    youtubePlayIntentTest                        1173ms
+
+=== 33 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - browserControlTest: ❌ FAIL: closeTab() resolves without throwing
+        ❌ FAIL: closeTab() resolves without throwing
+        …
+      --- Test 1: listTabs() fallback ---
+        ✅ PASS: listTabs() resolves without throwing
+        ✅ PASS: listTabs() returns a string
+        ✅ PASS: listTabs() returns meaningful response
+      --- Test 2: findTab() when Chrome unavailable ---
+        ✅ PASS: findTab() resolves without throwing
+        ✅ PASS: findTab() returns null or object (not undefined)
+      --- Test 3: isTabOpen() when Chrome unavailable ---
+        ✅ PASS: isTabOpen() resolves without throwing
+        ✅ PASS: isTabOpen() returns a boolean
+        ✅ PASS: isTabOpen() returns false when Chrome not reachable
+      --- Test 4: closeTab() fallback message ---
+        ✅ PASS: closeTab() result mentions DevTools or returns message
+      === Results: 9 passed, 1 failed ===
+        ❌ FAIL: closeTab() resolves without throwing
+ ELIFECYCLE  Test failed. See above for more details.

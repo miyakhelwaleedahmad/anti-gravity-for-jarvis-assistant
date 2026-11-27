@@ -1,0 +1,44 @@
+CASE 1 one YouTube tab
+  typed: "close youtube tab"
+  said:  Closing the youtube tab, sir.
+  tabs after: Inbox - Gmail
+--
+CASE 2 slow close (0.6 s)
+  typed: "close the youtube tab"
+  said:  Closing the youtube tab, sir.
+  tabs after: Inbox - Gmail
+--
+CASE 3 two YouTube tabs, neither on screen
+  typed: "close youtube tab"
+  said:  I tried to close the tab "youtube" but encountered an issue, sir. Which tab, sir? 2 match "youtube": "YouTube", "lofi beats YouTube".
+  tabs after: YouTube, lofi beats - YouTube, Inbox - Gmail
+--
+CASE 4 the last tab
+  typed: "close youtube tab"
+  said:  Closing the youtube tab, sir.
+  tabs after: about:blank
+--
+CASE 5 Chrome not running
+  typed: "close youtube tab"
+  said:  I tried to close the tab "youtube" but encountered an issue, sir.
+  tabs after: -
+--
+CASE 6 close this tab, full control off
+  typed: "close this tab"
+  said:  That needs full control mode, sir. Say 'enable full control mode', then ask again.
+  tabs after: Inbox - Gmail
+--
+CASE 7 close this tab, full control on
+  typed: "close this tab"
+  said:  Closing current tab, sir.
+  tabs after: YouTube
+--
+CASE 8 close this tab, none on screen
+  typed: "close this tab"
+  said:  I tried to close the current tab but encountered an issue, sir. No tab is on screen (is Chrome minimised?). Which tab, sir: "Inbox Gmail", "YouTube".
+  tabs after: Inbox - Gmail, YouTube
+--
+CASE 9 "youtube" matches only a Google sign-in page
+  typed: "close youtube tab"
+  said:  That needs full control mode, sir. Say 'enable full control mode', then ask again.
+  tabs after: Sign in - Google Accounts

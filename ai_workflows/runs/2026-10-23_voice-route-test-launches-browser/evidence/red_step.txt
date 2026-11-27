@@ -1,0 +1,25 @@
+=== JARVIS test suite — 2 file(s) ===
+  PASS    boundaryDoublesTest                          366ms
+  FAIL    voiceRouteMockTest                           1799ms
+=== 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+Real failures:
+  - voiceRouteMockTest: ❌ Some voice route tests FAILED.
+        ❌ FAIL: open_app was a dry run (no browser launched)
+      ❌ Some voice route tests FAILED.
+        …
+      [AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+      [open_app] target="youtube" resolved="https://www.youtube.com"
+      [open_app] platform=linux command=xdg-open args=https://www.youtube.com
+      [AgentStateMachine] EXECUTING → OBSERVING
+      [AgentStateMachine] OBSERVING → REFLECTING
+      [AgentStateMachine] REFLECTING → SPEAKING
+      [NodeBridge] TTS dedup: identical phrase already queued — skipping: "Opening youtube, sir."
+      [Orchestrator] State is SPEAKING — deferring reset and conversationEnded to IDLE until TTS completes.
+      [Timing] Total request processing time: 59ms
+        ✅ PASS: Deterministic pre-router fired for "open YouTube for me"
+        ✅ PASS: open_app tool was invoked
+        ✅ PASS: open_app ran for "youtube" once per request
+        ❌ FAIL: open_app was a dry run (no browser launched)
+      === Results: 10 passed, 1 failed ===
+      ❌ Some voice route tests FAILED.
+ ELIFECYCLE  Test failed. See above for more details.

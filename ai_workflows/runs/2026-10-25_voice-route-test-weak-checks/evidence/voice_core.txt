@@ -1,0 +1,15 @@
+# pnpm test:voice-core (repository working tree, cloud Linux); fake xdg-open on PATH
+  PASS    bargeInProcessingTest                        1472ms
+  PASS    deterministicCommandRouteTest                1433ms
+  PASS    interruptGatingTest                          468ms
+  PASS    latencySmokeTest                             1496ms
+  PASS    nodeBridgeSingletonTest                      565ms
+  PASS    noGroqForLocalCommandsTest                   1632ms
+  PASS    noThinkMemoryTest                            1224ms
+  PASS    openAppSmokeTest                             408ms
+  PASS    stopClearsTtsQueueTest                       1238ms
+  PASS    ttsLifecycleStateTest                        1294ms
+  PASS    voiceRouteMockTest                           1526ms
+  PASS    voiceYouTubeIntegrationTest                  1574ms
+=== 12 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+opener calls: 0

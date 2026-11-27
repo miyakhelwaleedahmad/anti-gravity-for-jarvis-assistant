@@ -21,10 +21,16 @@
  * v2 preserved: LLM fallback for unknown failure classification.
  */
 
-import type { TaskGraph, TaskNode } from './taskGraphEngine.js';
+import { taskGraphEngine, type TaskGraph, type TaskNode } from './taskGraphEngine.js';
 import type { AgentMemory } from '../memory/agentMemory.js';
 import type { ILLMMessage } from '../bridge/llmTypes.js';
 import { toolRegistryV2 } from './toolRegistryV2.js';
+import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
+import { verificationFailedReply } from './verifiers.js';
+import { isBrowserRefusal } from '../control/appMatch.js';
+import { isSkillStillLoading } from './skillLoader.js';
+import { failureSignature, type FailureSignature } from './failureSignature.js';
+import { OUTCOME_UNKNOWN_MARK, isOutcomeUnknown } from './outcomeUnknown.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +42,7 @@ export type FailureClass =
   | 'network_error'   // TIMEOUT, connection refused, rate limit
   | 'context_error'   // Missing required context (file not found, permission denied)
   | 'abort_error'     // Execution was interrupted by user
+  | 'outcome_unknown' // JARVIS stopped waiting, or stopped a command part way: it may have happened (B4)
   | 'unknown';
 
 export type RepairStrategy =
@@ -56,6 +63,8 @@ export interface ReflectionResult {
   summary: string;
   shouldSpeak: boolean;    // Whether to vocalize the outcome
   voiceMessage?: string;   // What to say via TTS
+  /** One per failed node: the shared signature (core/failureSignature.ts), the same the tool registry records. */
+  failureSignatures?: FailureSignature[];
 }
 
 // ─── Phase 1: Pre-Execution Types ─────────────────────────────────────────────
@@ -97,6 +106,10 @@ interface FailurePattern {
 }
 
 const FAILURE_PATTERNS: FailurePattern[] = [
+  // An action that may have happened (B4): before the network TIMEOUT below,
+  // and never retried.
+  { pattern: OUTCOME_UNKNOWN_MARK,   class: 'outcome_unknown', strategy: 'abort' },
+
   // Network / timeout
   { pattern: /TIMEOUT/i,             class: 'network_error', strategy: 'retry_with_delay' },
   { pattern: /ECONNREFUSED/i,        class: 'network_error', strategy: 'retry_with_delay' },
@@ -118,8 +131,12 @@ const FAILURE_PATTERNS: FailurePattern[] = [
   { pattern: /parse/i,               class: 'plan_error',    strategy: 'replan' },
   { pattern: /JSON/i,                class: 'plan_error',    strategy: 'replan' },
   { pattern: /expects type/i,        class: 'plan_error',    strategy: 'replan' },
+  { pattern: /must be one of/i,      class: 'plan_error',    strategy: 'replan' },
 
   // Context / filesystem / safety errors
+  { pattern: /PERMISSION_DENIED|permission level \d/i, class: 'context_error', strategy: 'abort' },
+  { pattern: /allowlist|policy/i,    class: 'context_error', strategy: 'abort' },
+  { pattern: /no open application/i, class: 'context_error', strategy: 'abort' },
   { pattern: /ENOENT/i,              class: 'context_error', strategy: 'retry_same' },
   { pattern: /Permission denied/i,   class: 'context_error', strategy: 'abort' },
   { pattern: /blocked by safety/i,   class: 'context_error', strategy: 'abort' },
@@ -133,6 +150,13 @@ const FAILURE_PATTERNS: FailurePattern[] = [
   { pattern: /threw an error/i,      class: 'tool_error',    strategy: 'fallback_tool' },
   { pattern: /failed:/i,             class: 'tool_error',    strategy: 'fallback_tool' },
 ];
+
+/**
+ * The registry refused the call before running the tool (bad arguments,
+ * unknown tool). Nothing happened on the PC, so a new plan is safe even for a
+ * step that is never retried.
+ */
+const REFUSED_BEFORE_RUNNING = /missing required argument|expects type|must be one of|unknown tool|not registered/i;
 
 function classifyError(errorMsg: string): { class: FailureClass; strategy: RepairStrategy } {
   for (const fp of FAILURE_PATTERNS) {
@@ -182,6 +206,7 @@ Do not include any other text.`,
     const response = await modelRouter.chat({
       model: llmConfig.model,
       messages,
+      category: 'repair_plan',
     });
 
     const rawContent = (response.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
@@ -208,6 +233,9 @@ Do not include any other text.`,
 }
 
 // ─── Reflection Engine ────────────────────────────────────────────────────────
+
+/** A request to play something (a song, a video), not only to find it. */
+const PLAY_INTENT = /\b(?:play|watch|listen to|put on)\b/i;
 
 export class ReflectionEngine {
 
@@ -258,6 +286,20 @@ export class ReflectionEngine {
         console.warn(`[Reflection] ⚠️  PRE-CHECK: node "${node.id}" has empty args for tool "${node.tool}"`);
       }
 
+      // ── Check 2b: "play" means playback, not a results page (BUG-8) ──────
+      // "open YouTube and play song of Sanam" ran youtube_search with its
+      // default open=results: a results page, reported as done. The plan is
+      // made to match the request before it runs.
+      if (node.tool === 'youtube_search' && PLAY_INTENT.test(graph.goal)) {
+        const open = String(node.args?.['open'] ?? 'results');
+        if (open !== 'best' && open !== 'first') {
+          node.args = { ...(node.args ?? {}), open: 'best' };
+          patchedNodes.push(node.id);
+          issues.push(`Node "${node.id}" (youtube_search): the request asks to play, so open=best (was ${open}).`);
+          console.log(`[Reflection] 🔧 PRE-CHECK: "${graph.goal.slice(0, 60)}" asks to play; youtube_search open=${open} → best.`);
+        }
+      }
+
       // ── Check 3: Dependency nodes are not already blocked ────────────────
       const hasBlockedDep = node.dependencies.some(depId => blockedNodes.includes(depId));
       if (hasBlockedDep) {
@@ -285,10 +327,10 @@ export class ReflectionEngine {
       }
     }
 
-    const verdict: PreCheckVerdict = blockedNodes.length > 0 ? 'modified' : 'approved';
+    const verdict: PreCheckVerdict = blockedNodes.length > 0 || patchedNodes.length > 0 ? 'modified' : 'approved';
     const summary = verdict === 'approved'
       ? `PRE-CHECK APPROVED: ${graph.nodes.size} node(s) ready for execution.`
-      : `PRE-CHECK MODIFIED: ${blockedNodes.length} node(s) blocked, ${executableNodes.length} remaining.`;
+      : `PRE-CHECK MODIFIED: ${blockedNodes.length} node(s) blocked, ${patchedNodes.length} adjusted, ${executableNodes.length} remaining.`;
 
     console.log(`[Reflection] ✅ PRE-CHECK ${verdict.toUpperCase()}: ${summary}`);
     return { verdict, issues, patchedNodes, blockedNodes, summary };
@@ -321,7 +363,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
         },
       ];
 
-      const response = await modelRouter.chat({ model: llmConfig.model, messages });
+      const response = await modelRouter.chat({ model: llmConfig.model, messages, category: 'planning' });
       const raw = (response.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       const jsonMatch = /\[[\s\S]*\]/.exec(raw);
       if (!jsonMatch) return [];
@@ -485,12 +527,33 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
 
     // Determine dominant failure class across all failed nodes
     const classifications = failedNodes.map(n => classifyError(n.error ?? ''));
+    // The signature the tool registry recorded for this call, when it recorded one (the
+    // node's error text is reworded on the way); otherwise one from the node's error.
+    const failureSignatures = failedNodes.map(n =>
+      toolRegistryV2.lastFault(n.tool, n.startedAt ?? 0)?.signature
+        ?? failureSignature({ component: `tool:${n.tool}`, tool: n.tool, message: n.error ?? '' }));
     let dominantClass = this.getDominantClass(classifications);
     let dominantStrategy = this.getDominantStrategy(classifications, dominantClass);
     let llmContext = '';
+    // A step that may have happened decides the outcome (B4): it is never
+    // retried or re-planned, and the owner is told it may still finish.
+    const unknownOutcome = failedNodes.find(n => isOutcomeUnknown(n.error));
+    if (unknownOutcome) {
+      dominantClass = 'outcome_unknown';
+      dominantStrategy = 'abort';
+    }
+
+    // If ALL retries exhausted for all failed nodes, force abort. Steps that
+    // change something have no retries, so one failure exhausts them; a call
+    // refused before it ran is not counted, so it can still be replanned.
+    const allExhausted = failedNodes.every(
+      n => n.retryCount >= n.maxRetries && !REFUSED_BEFORE_RUNNING.test(n.error ?? ''),
+    );
 
     // ── LLM FALLBACK: diagnose unknown failures intelligently ──────────────
-    if (dominantClass === 'unknown') {
+    // Not once retries are spent: the strategy is forced to abort then, so the
+    // diagnosis cost an LLM request (and seconds) for an answer thrown away.
+    if (dominantClass === 'unknown' && !allExhausted) {
       console.log('[Reflection] 🤔 Unknown failure class — invoking LLM diagnosis...');
       const diagnosis = await llmDiagnoseFailure(failedNodes, graph.goal);
       dominantClass = diagnosis.class;
@@ -505,8 +568,6 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
 
     // ── ANALYZE + DECIDE ───────────────────────────────────────────────────
 
-    // If ALL retries exhausted for all failed nodes, force abort
-    const allExhausted = failedNodes.every(n => n.retryCount >= n.maxRetries);
     const effectiveStrategy = allExhausted ? 'abort' : dominantStrategy;
 
     // Build human-readable summary
@@ -536,9 +597,11 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
       repairStrategy: effectiveStrategy,
       repairArgs,
       summary,
+      failureSignatures,
       shouldSpeak: effectiveStrategy === 'abort',
       voiceMessage: effectiveStrategy === 'abort'
-        ? this.buildFailureVoiceMessage(graph.goal, dominantClass)
+        ? (unknownOutcome ? this.outcomeUnknownVoiceMessage(graph, unknownOutcome) : undefined)
+          ?? this.refusalVoiceMessage(failedNodes) ?? this.buildFailureVoiceMessage(graph.goal, dominantClass, failedNodes)
         : undefined,
     });
 
@@ -599,9 +662,19 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     for (const id of nodeIds) {
       const node = graph.nodes.get(id);
       if (node && node.status === 'failed') {
+        // The steps that never ran because this one failed run again with it
+        // (BUG-01: they stayed failed, so a repaired plan could not finish).
+        const dependents = taskGraphEngine.blockedDependents(graph, id);
         node.status = 'pending';
         node.error = undefined;
-        console.log(`[Reflection] ♻️  Reset node "${id}" for retry`);
+        node.blockedBy = undefined;
+        console.log(`[Reflection] Reset node "${id}" for retry`);
+        for (const dep of dependents) {
+          dep.status = 'pending';
+          dep.error = undefined;
+          dep.blockedBy = undefined;
+          console.log(`[Reflection] Reset node "${dep.id}" (it waited on "${id}")`);
+        }
       }
     }
     // Reset graph status so execution loop can continue
@@ -652,6 +725,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     summary: string;
     shouldSpeak: boolean;
     voiceMessage?: string;
+    failureSignatures?: FailureSignature[];
   }): ReflectionResult {
     return {
       outcome: params.outcome,
@@ -663,6 +737,7 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
       summary: params.summary,
       shouldSpeak: params.shouldSpeak,
       voiceMessage: params.voiceMessage,
+      ...(params.failureSignatures ? { failureSignatures: params.failureSignatures } : {}),
     };
   }
 
@@ -674,16 +749,67 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     return `I have completed the task successfully, sir.`;
   }
 
-  private buildFailureVoiceMessage(goal: string, failureClass: FailureClass): string {
+  /**
+   * A refusal the user can act on, said plainly: a permission level ("needs
+   * full control mode") or a tool's own reason (not on the open_app
+   * allow-list, nothing open to close, no such window, a browser or a page
+   * named as an app). Undefined otherwise.
+   */
+  private refusalVoiceMessage(failedNodes: TaskNode[]): string | undefined {
+    const failedCheck = failedNodes.find(n => (n.error ?? '').startsWith('VERIFICATION_FAILED'));
+    if (failedCheck) return verificationFailedReply(failedCheck.error ?? '');
+    const reasons = failedNodes.map(n => (n.error ?? '').replace(/^(RISK_REFUSED|APPROVAL_DENIED|RATE_LIMITED):\s*/, ''));
+    if (failedNodes.some(n => (n.error ?? '').startsWith('APPROVAL_DENIED'))) return APPROVAL_DENIED_REPLY;
+    if (failedNodes.some(n => (n.error ?? '').startsWith('RATE_LIMITED'))) return RATE_LIMITED_REPLY;
+    if (reasons.some(isPermissionDenial)) return FULL_CONTROL_HINT;
+    // Phase A1's browser refusals say what to ask instead; the browser one is
+    // longer than the limit below, so they are matched on their own.
+    const browserRefusal = reasons.find(isBrowserRefusal);
+    if (browserRefusal) return `I couldn't do that, sir. ${browserRefusal}`;
+    const loading = reasons.find(isSkillStillLoading);
+    if (loading) return `I couldn't do that yet, sir. ${loading}`;
+    const reason = reasons.find(r => /allowlist|policy|no open application|no process found|window matching .* not found|no active window/i.test(r));
+    return reason && reason.length <= 160 ? `I couldn't do that, sir. ${reason.replace(/^Refused by safety policy:\s*/, '')}` : undefined;
+  }
+
+  /**
+   * An action that may have happened (B4), in the owner's words: a command
+   * stopped part way, or a tool JARVIS stopped waiting for. One step is named
+   * by the owner's request; a step of several by its tool and action.
+   */
+  private outcomeUnknownVoiceMessage(graph: TaskGraph, node: TaskNode): string {
+    const text = node.error ?? '';
+    const after = text.slice(text.indexOf(OUTCOME_UNKNOWN_MARK) + OUTCOME_UNKNOWN_MARK.length).replace(/^:\s*/, '');
+    const stopped = /^(.+?) was stopped after (\d+ seconds?); part of it may already have run/.exec(after);
+    if (stopped) return `${stopped[1]} was stopped after ${stopped[2]}, sir. Part of it may already have run, so please check before trying again.`;
+    const waited = /stopped waiting for it after (\d+ seconds?)/.exec(after);
+    // A replan appends an internal "[SYSTEM NOTE: …]" to the goal (core/orchestrator.ts): never said.
+    const request = graph.goal.replace(/\n\n\[SYSTEM NOTE:[\s\S]*$/, '').trim();
+    const action = graph.nodes.size <= 1
+      ? `"${request}"`
+      : `the ${node.tool}${typeof node.args?.['action'] === 'string' ? ` ${node.args['action']}` : ''} step`;
+    return `I stopped waiting for ${action}${waited ? ` after ${waited[1]}` : ''}, sir. It may still finish, so check before asking me to try again.`;
+  }
+
+  /**
+   * Spoken when the task is abandoned. The old wording promised a retry or "an
+   * alternative approach" that never came; this says it stopped, and why when
+   * the reason is short enough to say.
+   */
+  private buildFailureVoiceMessage(goal: string, failureClass: FailureClass, failedNodes: TaskNode[] = []): string {
     const messages: Record<FailureClass, string> = {
-      network_error:  `I'm experiencing connectivity issues, sir. I'll retry when the connection is restored.`,
-      plan_error:     `My plan was flawed. I'll re-approach this differently, sir.`,
-      tool_error:     `One of my tools encountered an error. I'm attempting an alternative approach.`,
-      context_error:  `I'm missing some required context to complete that task, sir.`,
+      outcome_unknown: `I stopped waiting for that, sir. It may still finish, so check before asking me to try again.`,
+      network_error:  `I couldn't reach a service I needed, sir.`,
+      plan_error:     `I couldn't work out how to do that, sir.`,
+      tool_error:     `One of my tools failed, sir.`,
+      context_error:  `I'm missing something I need to do that, sir.`,
       abort_error:    `Task aborted as requested, sir.`,
       unknown:        `I encountered an unexpected error and have been unable to complete the task, sir.`,
     };
-    return messages[failureClass] ?? messages.unknown;
+    const base = messages[failureClass] ?? messages.unknown;
+    if (failureClass === 'abort_error') return base;
+    const reason = (failedNodes[0]?.error ?? '').split('\n')[0]!.replace(/^Error:\s*/i, '').trim();
+    return reason && reason.length <= 120 ? `${base} ${reason}` : base;
   }
 
   private recordEpisode(

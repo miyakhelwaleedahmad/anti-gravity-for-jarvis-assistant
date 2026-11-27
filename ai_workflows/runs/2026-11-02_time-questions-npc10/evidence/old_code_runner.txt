@@ -1,0 +1,68 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=timeQuestionsNpc10Test,boundaryDoublesTest
+
+
+=== JARVIS test suite — 2 file(s) ===
+
+  PASS    boundaryDoublesTest                          399ms
+  FAIL    timeQuestionsNpc10Test                       2846ms
+
+=== 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - timeQuestionsNpc10Test: 22 passed, 37 failed
+        FAIL: "what  time is this" → the time (planner)
+        FAIL: "what time is this" → the time (planner)
+        FAIL: "what time is it now" → the time (planner)
+        FAIL: "what's the time" → the time (planner)
+        FAIL: "whats the time" → the time (planner)
+        FAIL: "what is the time now" → the time (planner)
+        FAIL: "what's the time now" → the time (planner)
+        FAIL: "tell me the time" → the time (planner)
+        FAIL: "can you tell me time" → the time (planner)
+        FAIL: "can you tell me the time" → the time (planner)
+        FAIL: "tell me what time is" → the time (planner)
+        FAIL: "tell me what time it is" → the time (planner)
+        FAIL: "current time" → the time (planner)
+        FAIL: "the time" → the time (planner)
+        FAIL: "time now" → the time (planner)
+        FAIL: "what's the date" → the date (planner)
+        FAIL: "whats the date today" → the date (planner)
+        FAIL: "what is the date" → the date (planner)
+        FAIL: "what is the date today" → the date (planner)
+        FAIL: "what is today's date" → the date (planner)
+        FAIL: "today's date" → the date (planner)
+        FAIL: "what day is it" → the date (planner)
+        FAIL: "what day is it today" → the date (planner)
+        FAIL: "what day is today" → the date (planner)
+        FAIL: "what is today" → the date (planner)
+        FAIL: "can you tell me the date" → the date (planner)
+        FAIL: typed "what  time is this": the time is spoken (Five hours remain until then, sir.)
+        FAIL: …with no model call (so no shell command) (1 call(s))
+        FAIL: typed "can you tell me time": the time is spoken (Five hours remain until then, sir.)
+        FAIL: …with no model call (so no shell command) (1 call(s))
+        FAIL: typed "what day is it": the date is spoken, no model call (Five hours remain until then, sir. | 1 call(s))
+        FAIL: …with the local date (2026-11-02)
+        FAIL: …the local time (15:34)
+        FAIL: …and the time zone (UTC+05:00)
+        FAIL: the context line says local time, with date and offset ([SYS t=10:34:02 depth=balanced budget=2400tok])
+        FAIL: …and not the old bare UTC time ([SYS t=10:34:02 depth=balanced budget=2400tok])
+        FAIL: on a cache hit the clock line is made fresh (time zone changed to London) ([SYS t=10:34:02 depth=balanced budget=2400tok])
+        …
+      [ConvBus] 🔊 Speaking started.
+      [NodeBridge] RX type=speaking_end role=tts
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: a planner request is sent to the model (it has no fast answer) (1 call(s): Five hours remain until then, sir.)
+        FAIL: …with the local date (2026-11-02)
+        FAIL: …the local time (15:34)
+        FAIL: …and the time zone (UTC+05:00)
+      [UnifiedContext] Building context heavy=false depth=balanced budget=2400tok [PARALLEL]
+      [UnifiedContext] parallel=0.0ms total=0.5ms heavy=false depth=balanced tokens=85/2400
+        FAIL: the context line says local time, with date and offset ([SYS t=10:34:02 depth=balanced budget=2400tok])
+        FAIL: …and not the old bare UTC time ([SYS t=10:34:02 depth=balanced budget=2400tok])
+      [UnifiedContext] ⚡ Cache hit total=0.1ms heavy=false
+        PASS: …and the cached old line is gone from the context
+        FAIL: on a cache hit the clock line is made fresh (time zone changed to London) ([SYS t=10:34:02 depth=balanced budget=2400tok])
+      22 passed, 37 failed
+ ELIFECYCLE  Test failed. See above for more details.

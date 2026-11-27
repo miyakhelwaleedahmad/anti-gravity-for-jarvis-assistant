@@ -76,6 +76,26 @@ console.log('\n--- Test 6: Queue accepts next action after error ---');
 const afterError = await queue.enqueue('afterError', async () => 'recovered');
 ok('Queue continues after error in previous action', afterError === 'recovered');
 
+// ── Test 7: A refusal is final, a transient error is retried once ───────────
+console.log('\n--- Test 7: Cancelled and refused actions are not retried ---');
+for (const message of [
+  'Write cancelled by user for sensitive file: notes.ts',
+  'Dangerous shortcut requires explicit confirmation and was denied: alt+f4',
+  'Permission Level 2 required to write files.',
+  'Access Denied: Path "C:\\Windows" is not allowed outside approved directories.',
+]) {
+  let attempts = 0;
+  await queue.enqueue('refused', async () => { attempts++; throw new Error(message); }).catch(() => undefined);
+  ok(`not retried: "${message.slice(0, 40)}" (attempts=${attempts})`, attempts === 1);
+}
+let transient = 0;
+const retried = await queue.enqueue('transient', async () => {
+  transient++;
+  if (transient === 1) throw new Error('window not ready');
+  return 'second try';
+});
+ok('a transient error is still retried once', retried === 'second try' && transient === 2);
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 if (failed > 0) {
   process.exit(1);

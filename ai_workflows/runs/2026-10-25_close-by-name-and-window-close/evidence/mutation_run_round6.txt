@@ -1,0 +1,4 @@
+# Round 6 mutation run (after review round 5): R5-1, R5-2
+none                               === 2 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+R5_1_window_question_in_scope      === 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+R5_2_no_windows_terminal_alias     === 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest

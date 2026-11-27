@@ -1,0 +1,29 @@
+"what time is it"                  -> time
+"time"                             -> time
+"what is the time"                 -> time
+"what  time is this"               -> null (planner)
+"what time is this"                -> null (planner)
+"what's the time"                  -> null (planner)
+"whats the time"                   -> null (planner)
+"tell me the time"                 -> null (planner)
+"can you tell me time"             -> null (planner)
+"can you tell me the time"         -> null (planner)
+"tell me what time is"             -> null (planner)
+"jarvis what time is it"           -> time
+"what time is it now"              -> null (planner)
+"current time"                     -> null (planner)
+"time now"                         -> null (planner)
+"what is the time now"             -> null (planner)
+"what's the date"                  -> null (planner)
+"what is the date today"           -> null (planner)
+"what day is it"                   -> null (planner)
+"what is today"                    -> null (planner)
+"what time is my meeting"          -> null (planner)
+"set a timer for 5 minutes"        -> null (planner)
+"what time does the shop close"    -> null (planner)
+"how long until 5 pm"              -> null (planner)
+"remind me at 5 pm"                -> null (planner)
+"time to close youtube"            -> null (planner)
+
+unifiedContextBuilder export: object
+local time now: Mon Nov 02 2026 10:31:17 GMT+0000 (Coordinated Universal Time)

@@ -1,0 +1,42 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=verificationInconclusiveTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    verificationInconclusiveTest                 1532ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - verificationInconclusiveTest: === Results: 6 passed, 12 failed ===
+        FAIL: re-read could not run: never "verified" (verified)
+        FAIL: …the verdict is "inconclusive" (verified)
+        FAIL: …the re-read check is not counted as passed ({"name":"source re-read","ok":true,"note":"not checked: could not re-read acme/fast-tool: GitHub API answered 503 Service Unavailable for repos/acme/fast-tool (request id gh-0123456789abcdef-0123456789abcdef-0123456789abcdef-0123456789abcdef)"})
+        FAIL: …the summary does not say "Verified" (Verified: 8 checks passed.)
+        FAIL: …an inconclusive verification needs review, never met
+        FAIL: …an unverified result needs review, never met
+        FAIL: …a result recorded as "not verified" needs review, never met
+        FAIL: the re-read worker cannot be created: inconclusive, never verified (verified undefined)
+        FAIL: …with the reason kept
+        FAIL: the re-read worker does not complete: inconclusive, never verified (verified {"name":"source re-read","ok":true,"note":"not checked: Evidence Check Worker failed: the GitHub tool crashed while reading acme/fast-tool"})
+        FAIL: the source states no licence but the answer states one: inconclusive, not a match (verified {"name":"source re-read","ok":true,"note":"acme/fast-tool exists; matches the answer"})
+        FAIL: the spoken completion says an inconclusive result needs review (Sir, the Research Agent has finished. fast-tool is the best fit. The full report is in the console.)
+        …
+        FAIL: …the summary does not say "Verified" (Verified: 8 checks passed.)
+        PASS: …the original error is kept in full (not checked: could not re-read acme/fast-tool: GitHub API answered 503 Service Unavailable for repos/acme/fast-tool (request id gh-0123456789abcdef-0123456789abcdef-0123456789abcdef-0123456789abcdef))
+        PASS: goal criterion "verified": a verified result is met
+        PASS: …a result with issues is unmet
+        FAIL: …an inconclusive verification needs review, never met
+        FAIL: …an unverified result needs review, never met
+        FAIL: …a result recorded as "not verified" needs review, never met
+      --- Final review L4 additions ---
+        FAIL: the re-read worker cannot be created: inconclusive, never verified (verified undefined)
+        FAIL: …with the reason kept
+        FAIL: the re-read worker does not complete: inconclusive, never verified (verified {"name":"source re-read","ok":true,"note":"not checked: Evidence Check Worker failed: the GitHub tool crashed while reading acme/fast-tool"})
+        PASS: …with the worker's error kept (not checked: Evidence Check Worker failed: the GitHub tool crashed while reading acme/fast-tool)
+        FAIL: the source states no licence but the answer states one: inconclusive, not a match (verified {"name":"source re-read","ok":true,"note":"acme/fast-tool exists; matches the answer"})
+        FAIL: the spoken completion says an inconclusive result needs review (Sir, the Research Agent has finished. fast-tool is the best fit. The full report is in the console.)
+      === Results: 6 passed, 12 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

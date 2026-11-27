@@ -8,11 +8,17 @@
  *   - agentStateMachine handles interrupt state (via systemController shim)
  *   - All voice pipeline events still work exactly as before
  *   - Self-healing, watchdog, fsWatcher unchanged
- *   - Reflection is now inline TypeScript (see core/reflectionEngine.ts)
- *     The Python reflectionEngine.py is still scheduled as a backup summary job
+ *   - Reflection is inline TypeScript: core/reflectionEngine.ts for each
+ *     request, core/goalLearning.ts across goals. The old 30-minute Python job
+ *     (voice/reflectionEngine.py, which no longer exists) was removed.
  */
 
 import 'dotenv/config';
+import { wireExecutionTracing } from './monitoring/traceWiring.js';
+import { startIssueRecording } from './core/issueStore.js';
+import { healthLedger } from './monitoring/healthLedger.js';
+import { configValidator } from './config/configValidator.js';
+import { llmConfig } from './config/llmconfig.js';
 import * as readline from 'readline';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -22,14 +28,16 @@ import { memoryManager }   from './memory/memoryManager.js';
 import { nodeBridge }      from './bridge/nodeBridge.js';
 import { orchestrator, normalizeVoiceInput }    from './core/orchestrator.js';
 import { brainLoop }       from './core/brainLoop.js';
-import { terminalTools }   from './core/terminalTools.js';
 import { conversationBus } from './core/conversationBus.js';
-import { agentStateMachine, AgentState } from './core/agentStateMachine.js';
+import { agentStateMachine, AgentState, speechStartMovesState, tryTransition } from './core/agentStateMachine.js';
+import { endListening as endListeningSession } from './core/listenSession.js';
 import { evaluateEcho }    from './core/voiceEchoFilter.js';
+import { voiceWhileBusy }  from './core/deterministicRoutes.js';
 import { mergePendingVoiceContinuation, shouldUseContinuationContext, accumulateContinuationFragment } from './core/voiceContinuation.js';
+import { queuedCommandMaxAgeMs, DROPPED_COMMAND_NOTICE, followUpSeconds, visionEnabled } from './core/voiceSettings.js';
 
 // Compat shim — unchanged API surface
-import { systemController, SystemState } from './core/systemController.js';
+import { systemController, SystemState } from './core/stateShim.js';
 
 // Self-healing system
 import { selfHealingManager } from './self_healing/selfHealingManager.js';
@@ -39,6 +47,8 @@ import { fsWatcher }          from './self_healing/fsWatcher.js';
 
 // NEW: Phase 1 — shutdown hook imports
 import { goalManager }           from './core/goalManager.js';
+import { approvalGate }          from './security/approvalGate.js';
+import { redact }                from './security/redactor.js';
 // NEW: Phase 2 — Runtime health dashboard
 import { runtimeDashboard }      from './monitoring/runtimeDashboard.js';
 // NEW: Phase 3 — Vector memory supervisor
@@ -46,19 +56,29 @@ import { vectorMemorySupervisor } from './memory/vectorMemorySupervisor.js';
 // NEW: PC State Observer
 import { systemStateObserver }    from './perception/systemStateObserver.js';
 import { healthManager }          from './monitoring/healthManager.js';
+import { ensureAgentSystem, shutdownAgentSystem } from './core/agents/jarvisAgents.js';
+import { startGoalRuntime, stopGoalRuntime } from './core/goalService.js';
+import { backupIntervalMs, backupRestore } from './system/backupRestore.js';
+import { goalStatusText } from './core/goalTools.js';
+import { createCrashPolicy } from './system/crashPolicy.js';
+import { runShutdownSteps } from './system/shutdownSteps.js';
+import { resourceMonitor } from './monitoring/resourceMonitor.js';
+import { CONTROL_CENTER_DEFAULT_PORT, startControlCenter, type ControlCenter } from './system/controlCenter.js';
+import { llmStatus } from './bridge/llmStatus.js';
+
+/** The local Control Center, when JARVIS_CONTROL_CENTER=1 started it. */
+let controlCenter: ControlCenter | null = null;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const VOICE_DIR  = path.join(__dirname, 'voice');
 
 // ─── Global Error Handlers ────────────────────────────────────────────────────
 
-process.on('uncaughtException', (err) => {
-  console.error('[JARVIS] UNCAUGHT EXCEPTION:', err);
-});
-
-process.on('unhandledRejection', (err) => {
-  console.error('[JARVIS] UNHANDLED PROMISE REJECTION:', err);
-});
+// REL-02: these only logged, and JARVIS went on in an unknown state. An
+// uncaught exception now saves and shuts down with exit code 1; repeated
+// unhandled rejections do the same (system/crashPolicy.ts).
+const crashPolicy = createCrashPolicy({ shutdown: (reason, code) => shutdown(reason, code) });
+process.on('uncaughtException', (err) => crashPolicy.onUncaughtException(err));
+process.on('unhandledRejection', (err) => crashPolicy.onUnhandledRejection(err));
 
 // ─── Phase 4: Mic Ownership State Machine ──────────────────────────────────────────────────────────────
 // Only one subsystem can "own" the microphone at a time:
@@ -114,7 +134,6 @@ interface QueuedVoiceInput {
   timestamp: number;
 }
 const voiceInputQueue: QueuedVoiceInput[] = [];
-let _isDraining = false; // PHASE2-QUEUE-1: drain-lock prevents concurrent races
 
 // ─── JS-Side STT Debug Logging ───────────────────────────────────────────────
 // Part B (TS side): also log STT events from the NodeBridge handler.
@@ -137,7 +156,7 @@ function sttJsLog(event: string, text: string, note?: string): void {
       ts: new Date().toISOString(),
       source: 'jarvis.ts',
       event,
-      text: text.slice(0, 200),
+      text: redact(text).slice(0, 200),
       ...(note ? { note: note.slice(0, 120) } : {}),
     });
     appendSttLogLine(entry);
@@ -171,20 +190,22 @@ function isCommandLike(text: string): boolean {
 }
 
 function drainVoiceInputQueue(): void {
-  if (_isDraining) return; // PHASE2-QUEUE-1: prevent concurrent drain
+  // REL-03: a `_isDraining` flag was set and cleared with nothing in between
+  // that could run in parallel (this function never awaits), so it guarded
+  // nothing. One item is taken per call.
   if (voiceInputQueue.length === 0) return;
-  _isDraining = true;
 
   const now = Date.now();
   const item = voiceInputQueue.shift();
-  _isDraining = false;
   if (!item) return;
 
-  // PHASE2-QUEUE-1: Reduced stale threshold 10s → 6s. Voice commands older
-  // than 6s have lost conversational context and should be discarded.
-  if (now - item.timestamp > 6000) {
+  // PHASE2-QUEUE-1: commands that waited too long are discarded. The limit
+  // was a fixed 6 s, shorter than one request on a slow PC, so a command
+  // JARVIS had promised to "get to right after this" was dropped in silence.
+  if (now - item.timestamp > queuedCommandMaxAgeMs()) {
     console.log(`[JARVIS] Dropped stale queued command: "${item.text}" (age: ${((now - item.timestamp) / 1000).toFixed(1)}s)`);
     sttJsLog('STT_QUEUE_STALE_DROPPED', item.text, `age=${((now - item.timestamp) / 1000).toFixed(1)}s`);
+    nodeBridge.speakToClients(DROPPED_COMMAND_NOTICE);
     drainVoiceInputQueue();
     return;
   }
@@ -208,9 +229,7 @@ function drainVoiceInputQueue(): void {
   console.log(`[JARVIS] Draining queued command: "${item.text}"`);
   sttJsLog('STT_QUEUE_DRAINED', item.text);
 
-  try {
-    agentStateMachine.transition(AgentState.PROCESSING_STT);
-  } catch {}
+  tryTransition(AgentState.PROCESSING_STT, 'queued voice command');
 
   orchestrator.process(item.text, 'voice').catch(err => {
     console.error('[Voice] Queued command execution error:', err);
@@ -225,6 +244,7 @@ function isEcho(sttText: string, lastTtsText: string): boolean {
     orchestrator,
     nodeBridge.lastTtsTimestamp,
     nodeBridge.ttsStartedMs,
+    nodeBridge.ttsEndedMs,
   );
   const accepted = !decision.isEcho;
   console.log(
@@ -263,6 +283,44 @@ async function startJarvis() {
   try {
     console.log('🔹 Loading configuration...');
 
+    // 0. Validate configuration BEFORE any subsystem starts (JARVIS-011).
+    // configValidator existed but was called from nowhere, so a missing
+    // GROQ_API_KEY surfaced as a 401 midway through the first request instead
+    // of as a clear message at startup.
+    const configReport = configValidator.validate();
+    console.log(configReport.summary);
+    // Warnings were counted but never shown, so a wrong model name or provider
+    // was only discovered by the first failing request.
+    for (const issue of configReport.issues.filter(i => i.level === 'WARNING' && !i.field.startsWith('REDIS'))) {
+      console.warn(`   ⚠ [${issue.field}] ${issue.message}\n     → ${issue.fix}`);
+    }
+    if (!configReport.canStart) {
+      console.error('\n❌ JARVIS cannot start with the current configuration:\n');
+      for (const issue of configReport.issues.filter(i => i.level === 'CRITICAL')) {
+        console.error(`   [${issue.field}] ${issue.message}`);
+        console.error(`   → ${issue.fix}\n`);
+      }
+      process.exit(1);
+    }
+
+    // 0b. Join the structured logger to the task graph's event stream so a
+    // request produces one traceable, correlated record (JARVIS-015).
+    wireExecutionTracing();
+
+    // 0c. Failures observed from here on are kept, deduplicated by signature, in
+    // data/repairs (core/issueStore.ts); ledger successes resolve what they prove.
+    startIssueRecording(healthLedger);
+    // A repair that JARVIS's own restart interrupted waits for you (core/repairRun.ts).
+    const { repairRunner } = await import('./core/repairRun.js');
+    repairRunner.load();
+    if (repairRunner.active()?.status === 'AWAITING_APPROVAL') console.log('[Repair] ⏸️  A repair was interrupted by a restart; say "continue the repair" or "stop healing".');
+    // The second brain in the Obsidian vault (memory/secondBrain.ts): only when JARVIS_OBSIDIAN_VAULT is set.
+    try {
+      const { startSecondBrain } = await import('./memory/secondBrain.js');
+      const { issueStore } = await import('./core/issueStore.js');
+      startSecondBrain(console.log, (fn) => { issueStore.onResolved(fn); });
+    } catch (err) { console.warn('[SecondBrain] ⚠️ not started:', (err as Error).message); }
+
     // 1. Parallel Core Systems Init (Memory + Goals)
     const tMemory = Date.now();
     console.log('🔹 Initializing memory & core systems in parallel...');
@@ -280,7 +338,14 @@ async function startJarvis() {
     );
     timings['Vector Memory Supervisor'] = Date.now() - tVector;
 
-    console.log('🔹 Active Brain Model:', process.env.JARVIS_BRAIN_MODEL);
+    if (llmConfig.primary === 'anthropic' && llmConfig.anthropic) {
+      console.log(`🔹 LLM: Claude — brain ${llmConfig.anthropic.model}, fast ${llmConfig.anthropic.fastModel}` +
+        (llmConfig.apiKey ? `; fallback ${llmConfig.provider} (${llmConfig.model}, ${llmConfig.fastModel})` : '; no fallback'));
+    } else {
+      console.log(`🔹 LLM: ${llmConfig.provider} at ${llmConfig.baseURL} — brain ${llmConfig.model}, fast ${llmConfig.fastModel}` +
+        (llmConfig.reasoningEffort ? `, reasoning_effort=${llmConfig.reasoningEffort}` : ''));
+    }
+    for (const note of llmConfig.providerNotes) console.log(`   ℹ ${note}`);
 
     // 2. WebSocket server & Brain loop
     const tBridge = Date.now();
@@ -292,6 +357,29 @@ async function startJarvis() {
     setImmediate(() => {
       systemStateObserver.start();
       runtimeDashboard.start(60_000, true);
+      // The specialist agents (core/agents); the A2A endpoint only if JARVIS_A2A_PORT is set.
+      // Then the Goal Runtime, which runs stored goals through those agents.
+      ensureAgentSystem({ startHttp: true })
+        .catch((err) => console.warn('[JARVIS] Agent system did not start:', err))
+        .then(() => startGoalRuntime())
+        .catch((err) => console.warn('[JARVIS] Goal Runtime did not start; goals are kept and run at the next start:', err));
+      // Snapshots of memory, goals and logs (data/backups); JARVIS_BACKUP_INTERVAL_HOURS=0 turns them off.
+      const every = backupIntervalMs();
+      if (every > 0) backupRestore.startScheduled(every);
+      else console.log('[BackupRestore] Scheduled backups are off (JARVIS_BACKUP_INTERVAL_HOURS=0).');
+      // CPU, event-loop lag and heap, sampled every 10 s; warns only above its
+      // thresholds (PERF-05: the readings the budgets are to be set from).
+      resourceMonitor.start();
+      // The local Control Center (OPS-01), only when asked for: JARVIS_CONTROL_CENTER=1.
+      if (process.env['JARVIS_CONTROL_CENTER'] === '1') {
+        const port = Number(process.env['JARVIS_CONTROL_CENTER_PORT']) || CONTROL_CENTER_DEFAULT_PORT;
+        startControlCenter({
+          port,
+          extraStatus: () => ({ llm: llmStatus.snapshot(), resources: resourceMonitor.getLatest(), trend: resourceMonitor.getTrend() }),
+        })
+          .then((cc) => { controlCenter = cc; })
+          .catch((err) => console.warn(`[JARVIS] Control Center did not start: ${redact(err instanceof Error ? err.message : String(err))}`));
+      }
     });
 
     // Register barge-in hook to clear voice command queue
@@ -318,7 +406,11 @@ async function startJarvis() {
     launchPythonServiceStaggered('tts.py', 'TTS', 0);
     launchPythonServiceStaggered('stt.py', 'STT', 0);
     launchPythonServiceStaggered('wakeWords.py', 'WakeWord', 500);
-    launchPythonServiceStaggered('../vision/screen_capture.py', 'Vision', 5000);
+    if (visionEnabled()) {
+      launchPythonServiceStaggered('../vision/screen_capture.py', 'Vision', 5000);
+    } else {
+      console.log('[Startup] Vision service not started (JARVIS_VISION=off).');
+    }
     timings['Python Services Launch'] = Date.now() - tServices;
 
     // ── Voice Loop Part 1: Wake word → trigger STT listen ──────────────────
@@ -431,7 +523,7 @@ async function startJarvis() {
           if (!hasCommand) {
             isSttListening = true;
             takeMic(MicOwner.STT, 'interrupt_listen');
-            try { agentStateMachine.transition(AgentState.LISTENING); } catch {}
+            tryTransition(AgentState.LISTENING, 'resume listening');
             console.log('[JARVIS] Requesting STT listen_start after interrupt');
             const listenStarted = nodeBridge.sendListenStart();
             if (!listenStarted) {
@@ -449,7 +541,7 @@ async function startJarvis() {
           if (!isSttListening) {
             isSttListening = true;
             takeMic(MicOwner.STT, 'wake_no_command');
-            try { agentStateMachine.transition(AgentState.LISTENING); } catch {}
+            tryTransition(AgentState.LISTENING, 'resume listening');
             console.log('[JARVIS] Wake word detected; requesting STT listen_start');
             const listenStarted = nodeBridge.sendListenStart();
             if (!listenStarted) {
@@ -463,11 +555,34 @@ async function startJarvis() {
       }
     });
 
+    /**
+     * A listen session that produced nothing (stt_no_speech, or the LISTENING
+     * watchdog): JARVIS goes back to waiting for the wake word. Before this,
+     * a session whose audio the VAD gate rejected sent nothing back: the state
+     * stayed LISTENING, STT kept the mic and the wake word stayed paused, so
+     * JARVIS was deaf until something unrelated resumed it (BUG-1).
+     */
+    const endListening = (reason: string, stuck = false): void => endListeningSession(reason, {
+      micOwner: () => _micOwner,
+      releaseSttMic: (why) => releaseMic(MicOwner.STT, why),
+      setListening: (on) => { isSttListening = on; },
+      resumeWakeWord: () => nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } }),
+      log: (event, why) => sttJsLog(event, '', why),
+    }, stuck);
+
+    nodeBridge.on('stt_no_speech', (msg) => {
+      const reason = String((msg.payload as any)?.reason ?? 'no_speech').slice(0, 60);
+      console.log(`[JARVIS] STT heard nothing to transcribe (${reason}); back to the wake word.`);
+      endListening(`stt_${reason}`);
+    });
+
     // ── Voice Loop Part 2: STT result → orchestrator → TTS ─────────────────
     nodeBridge.on('stt_result', async (msg) => {
       isSttListening = false;
-      // Phase 4: STT is done — release mic ownership
-      releaseMic(MicOwner.STT, 'stt_result_received');
+      // Phase 4: STT is done — release mic ownership. Results also arrive from
+      // the wake-word process (inline "Jarvis, open Chrome" and follow-ups),
+      // when STT never held the mic; releasing then only logged a warning.
+      if (_micOwner === MicOwner.STT) releaseMic(MicOwner.STT, 'stt_result_received');
 
       const rawText = (msg.payload as any).text as string | undefined;
 
@@ -477,6 +592,16 @@ async function startJarvis() {
       if (!rawText) {
         console.warn('[JARVIS] Received stt_result message with empty payload text.');
         sttJsLog('STT_DROPPED_EMPTY', '', 'stt_result arrived with no text');
+        return;
+      }
+
+      // An answer to the approval JARVIS is waiting for is not a new command.
+      // Checked before the echo filter: the request itself says "approve or
+      // confirm", so the filter would drop the user's answer as an echo; the
+      // gate ignores what it hears while JARVIS is still asking.
+      if (approvalGate.offerVoiceAnswer(rawText)) {
+        sttJsLog('STT_APPROVAL_ANSWER', rawText, 'taken as the answer to the pending approval');
+        nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
         return;
       }
 
@@ -558,8 +683,17 @@ async function startJarvis() {
       if (BUSY_STATES.includes(nextState)) {
         // Check if this is a safe deterministic command (open YouTube, stop, etc.)
         const route = orchestrator.matchDeterministicCommand(text);
+        const whileBusy = voiceWhileBusy(route);
 
-        if (route) {
+        // Voice #2: small talk ("ok thanks") is not run now: orchestrator.process()
+        // would cancel the request in progress. Nothing is said.
+        if (whileBusy === 'ignore') {
+          console.log(`[JARVIS] Small talk while ${nextState} ignored; the request in progress continues: "${text}"`);
+          sttJsLog('STT_SMALL_TALK_IGNORED_BUSY', text, `state=${nextState}`);
+          return;
+        }
+
+        if (whileBusy === 'run') {
           console.log(`[JARVIS] Voice input received during ${nextState}; using safe arbitration path.`);
           console.log(`[JARVIS] 🧠 Routing to Orchestrator (arbitrated): "${text}"`);
           orchestrator.process(text, 'voice').catch(err => {
@@ -631,25 +765,21 @@ async function startJarvis() {
       if (!agentStateMachine.is(AgentState.IDLE)) {
         agentStateMachine.transition(AgentState.IDLE);
       }
-      console.log('[JARVIS] ⏱️  Context active for follow-ups (15s)...');
-      nodeBridge.sendToRole('wakeword', {
-        type: 'command',
-        payload: { action: 'context_active', duration: 15 },
-      });
+      const followUp = followUpSeconds();
+      if (followUp > 0) {
+        console.log(`[JARVIS] ⏱️  Context active for follow-ups (${followUp}s)...`);
+        nodeBridge.sendToRole('wakeword', {
+          type: 'command',
+          payload: { action: 'context_active', duration: followUp },
+        });
+      }
     });
 
     // ── Voice Loop Part 5: Echo Prevention ────────────────────────────────
     conversationBus.on('speaking:start', () => {
       const cur = agentStateMachine.currentState;
-      const speakingAllowedFrom: AgentState[] = [
-        AgentState.IDLE,
-        AgentState.REFLECTING,
-        AgentState.INTERRUPTED,
-      ];
-      if (cur !== AgentState.SPEAKING) {
-        if (speakingAllowedFrom.includes(cur)) {
-          agentStateMachine.transition(AgentState.SPEAKING);
-        }
+      if (cur !== AgentState.SPEAKING && speechStartMovesState(cur)) {
+        agentStateMachine.transition(AgentState.SPEAKING);
       }
       console.log('[JARVIS] 🔇 TTS Started — Pausing mic to prevent echo.');
       // Phase 4: Take mic ownership; prevent WakeWord from re-enabling during playback
@@ -668,12 +798,16 @@ async function startJarvis() {
 
     agentStateMachine.on('watchdog_reset', (data) => {
       console.log(`[JARVIS] Watchdog reset from ${data.fromState} (${data.reason}) — resuming mic & draining queue.`);
+      if (data.fromState === AgentState.LISTENING) endListening('listening_watchdog', true);
       nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
       drainVoiceInputQueue();
     });
 
     agentStateMachine.on('state_changed', (state) => {
       if (state === AgentState.IDLE) {
+        // BUG-4: in IDLE nobody listens through STT; a mic STT still holds is stale
+        // (the owner's log: "WAKE_WORD tried to take mic but it is owned by STT").
+        if (_micOwner === MicOwner.STT && !isSttListening) releaseMic(MicOwner.STT, 'idle_guard');
         // Safety guard: ensure mic is resumed when system enters IDLE
         nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
         drainVoiceInputQueue();
@@ -684,33 +818,6 @@ async function startJarvis() {
     selfHealingManager.startHealthChecks();
     pipelineWatchdog.start();
     fsWatcher.start(__dirname);
-
-    // 6. Backup reflection schedule (Python — every 30 min, idle-aware)
-    //    The primary reflection is now inline in core/reflectionEngine.ts (runs every task).
-    //    This remains as a periodic summary / long-term consolidation job.
-    const REFLECTION_INTERVAL_MS = 30 * 60 * 1000;
-    const reflectionScript = path.join(VOICE_DIR, 'reflectionEngine.py');
-
-    function scheduleReflection() {
-      setTimeout(async () => {
-        if (!conversationBus.isIdle) {
-          console.log('[Reflection] ⏸  Deferred — JARVIS is not idle. Retry in 30 min.');
-        } else {
-          console.log('[JARVIS] 🧘 Running periodic Python reflection cycle...');
-          try {
-            const result = await terminalTools.runPython(reflectionScript);
-            if (!result.success) {
-              console.warn('[JARVIS] Reflection engine exited with error:', result.stderr);
-            }
-          } catch (err) {
-            console.warn('[JARVIS] Reflection engine failed:', err);
-          }
-        }
-        // DISABLED: scheduleReflection();
-      }, REFLECTION_INTERVAL_MS);
-    }
-
-    // DISABLED: scheduleReflection();
 
     const totalStartupTime = Date.now() - startTime;
 
@@ -735,9 +842,10 @@ async function startJarvis() {
     console.log('   Task Graph Engine:    ACTIVE');
     console.log('   Reflection Engine:    ACTIVE');
     console.log('   Agent Memory:         ACTIVE');
+    console.log('   Goal Runtime:         starting after the agents (see [GoalRuntime])');
     console.log('===================================');
 
-    nodeBridge.speakToClients('JARVIS version 2 is online, sir. Autonomous systems are fully operational.');
+    nodeBridge.speakToClients('JARVIS version 2 is online, sir.');
 
     startCLI();
 
@@ -756,9 +864,14 @@ function startCLI() {
     prompt: 'You: ',
   });
 
+  // Typed approval answers come through this loop, the only reader of stdin.
+  approvalGate.attachConsole();
   rl.prompt();
 
   rl.on('line', async (line) => {
+    // The answer to a displayed approval request, not a command.
+    if (approvalGate.offerConsoleAnswer(line)) return;
+
     const input = line.trim();
     if (!input) { rl.prompt(); return; }
 
@@ -780,6 +893,15 @@ function startCLI() {
     if (input.toLowerCase() === 'memory') {
       const { agentMemory } = await import('./memory/agentMemory.js');
       console.log('[JARVIS] Memory stats:', JSON.stringify(agentMemory.getStats(), null, 2));
+      rl.prompt();
+      return;
+    }
+
+    // "goals" / "goal status": every goal; "goal <id or words>": that goal in detail.
+    if (input.toLowerCase() === 'goals' || /^goal \S/i.test(input) && !/^goal (?:control|create)\b/i.test(input)) {
+      const rest = input.slice(5).trim();
+      const which = input.toLowerCase() === 'goals' || /^status$/i.test(rest) ? undefined : rest;
+      console.log(goalStatusText(which));
       rl.prompt();
       return;
     }
@@ -809,43 +931,62 @@ function startCLI() {
 // NEW: shutdown hook — double-call guard
 let isShuttingDown = false;
 
-async function shutdown(signal = 'manual') {
+async function shutdown(signal = 'manual', exitCode = 0) {
   if (isShuttingDown) return;   // Prevent double-shutdown
   isShuttingDown = true;
 
   console.log(`\n[JARVIS] 🛑 Shutdown initiated (${signal})...`);
 
   // 1. Persist critical state
+  const notSaved: string[] = [];
   try {
     console.log('[JARVIS] 💾 Persisting memory...');
     await memoryManager.flush();
   } catch (err) {
+    notSaved.push('memory');
     console.error('[JARVIS] ⚠️  Memory flush failed:', err);
   }
 
   try {
-    // Fail any in-progress goals so they don't stay stale
-    const activeGoals = goalManager.getActiveGoals();
+    // Unfinished requests are saved as paused so they do not replay by
+    // themselves. Temporary, permanent and recurring goals keep their state:
+    // the Goal Runtime released its claims when it stopped, and continues them
+    // at the next start.
+    const activeGoals = goalManager.getActiveGoals(['request']);
     for (const goal of activeGoals) {
       console.log(`[JARVIS] 💾 Saving goal "${goal.id}" as paused...`);
-      await goalManager.updateGoalStatus(goal.id, 'paused');
+      await goalManager.updateGoalStatus(goal.id, 'paused', {}, 'JARVIS shut down');
     }
-    console.log(`[JARVIS] ✅ ${activeGoals.length} goal(s) saved.`);
+    await goalManager.flush();
+    console.log(`[JARVIS] ✅ ${activeGoals.length} request goal(s) saved.`);
   } catch (err) {
+    notSaved.push('goals');
     console.error('[JARVIS] ⚠️  Goal persistence failed:', err);
   }
 
-  // 2. Stop subsystems (non-throwing)
-  try { systemStateObserver.stop(); } catch {}
-  try { selfHealingManager.stopHealthChecks(); } catch {}
-  try { pipelineWatchdog.stop(); } catch {}
-  try { fsWatcher.stop(); } catch {}
-  try { brainLoop.stop(); } catch {}
-  try { conversationBus.shutdown(); } catch {}
-  try { nodeBridge.stop(); } catch {}
+  // 2. Stop subsystems. Every step runs even when one fails; failures are
+  //    logged (ARCH-07). The Goal Runtime first: it stops its agents and
+  //    records what was interrupted before the agent system goes.
+  const failures = await runShutdownSteps([
+    { name: 'goal runtime', run: () => stopGoalRuntime() },
+    { name: 'scheduled backups', run: () => backupRestore.stopScheduled() },
+    { name: 'agent system', run: () => shutdownAgentSystem() },
+    { name: 'system state observer', run: () => systemStateObserver.stop() },
+    { name: 'health checks', run: () => selfHealingManager.stopHealthChecks() },
+    { name: 'pipeline watchdog', run: () => pipelineWatchdog.stop() },
+    { name: 'file watcher', run: () => fsWatcher.stop() },
+    { name: 'brain loop', run: () => brainLoop.stop() },
+    { name: 'conversation bus', run: () => conversationBus.shutdown() },
+    { name: 'node bridge', run: () => nodeBridge.stop() },
+    { name: 'resource monitor', run: () => resourceMonitor.stop() },
+    { name: 'control center', run: () => controlCenter?.close() },
+  ], { stepTimeoutMs: 10_000 });
+  for (const what of notSaved) failures.unshift({ name: `saving ${what}`, error: 'see above' });
 
-  console.log('[JARVIS] 👋 JARVIS shut down cleanly. Goodbye, sir.');
-  process.exit(0);
+  if (exitCode !== 0) console.log(`[JARVIS] JARVIS stopped after an error (exit code ${exitCode}).`);
+  else if (failures.length === 0) console.log('[JARVIS] 👋 JARVIS shut down cleanly. Goodbye, sir.');
+  else console.log(`[JARVIS] JARVIS stopped, but ${failures.length} part(s) did not stop cleanly: ${failures.map((f) => f.name).join(', ')}.`);
+  process.exit(exitCode);
 }
 
 // NEW: Wire process signals for graceful shutdown

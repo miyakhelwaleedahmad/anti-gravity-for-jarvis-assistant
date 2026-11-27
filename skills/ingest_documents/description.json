@@ -1,0 +1,15 @@
+{
+  "id": "ingest_documents",
+  "name": "Ingest Documents",
+  "description": "Use to add a file or a folder of documents into JARVIS's searchable document memory, so questions can later be answered from them. Supports .txt, .md, .json, .csv and .log. Required parameter: path (string file or folder path inside the project workspace). Returns an ingestion summary. DO NOT use to read a single file for immediate display (use read_file).",
+  "riskLevel": "medium",
+  "requiredLevel": 0,
+  "parameters": {
+    "path": {
+      "type": "string",
+      "description": "File or folder path to ingest. Must be inside the project workspace.",
+      "required": true
+    }
+  },
+  "fallbacks": []
+}

@@ -9,6 +9,8 @@
 import { execa } from 'execa';
 import { permissionSession } from './permissionSession.js';
 import { actionAuditLog } from './actionAuditLog.js';
+import { isPermissionDenial } from './permissionDenial.js';
+import { getAgentPath, getRequestText, getTraceId } from '../core/traceContext.js';
 import { actionQueue } from './actionQueue.js';
 import { appController } from './appController.js';
 import { windowController } from './windowController.js';
@@ -18,10 +20,12 @@ import { mouseController } from './mouseController.js';
 import { fileController } from './fileController.js';
 import { processController } from './processController.js';
 import { systemController } from './systemController.js';
-import { adminController } from './adminController.js';
+import { adminController, checkServiceName } from './adminController.js';
 import { getChromeState } from '../perception/chromeState.js';
 import { getWindowsState } from '../perception/windowsState.js';
 import { getJarvisServiceState } from '../perception/jarvisServiceState.js';
+import { childEnv } from '../system/childEnv.js';
+import { isOutcomeUnknown } from '../core/outcomeUnknown.js';
 
 export interface KernelResult {
   success: boolean;
@@ -33,14 +37,63 @@ export interface KernelResult {
   error: string | null;
 }
 
+/**
+ * The failure a controller reported in its answer, if any: a JSON object with
+ * `success: false`, or with a top-level `error`. Plain text and lists are not
+ * judged (no guessing from words); controllers throw their failures (A5c, TRA-10).
+ */
+export function reportedFailureOf(message: unknown): string | undefined {
+  const text = typeof message === 'string' ? message.trim() : '';
+  const parsed = typeof message === 'object' && message !== null ? message
+    : text.startsWith('{') ? (() => { try { return JSON.parse(text); } catch { return undefined; } })() : undefined;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const { success, error } = parsed as { success?: unknown; error?: unknown };
+  const why = typeof error === 'string' ? error.trim()
+    : error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string' ? String((error as { message: string }).message).trim() : '';
+  if (success === false) return why || 'The action reported a failure.';
+  return why || undefined;
+}
+
+/** Aborts when either signal does (the caller's budget or the action queue's timeout). */
+function either(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined {
+  const signals = [a, b].filter((x): x is AbortSignal => !!x);
+  return signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+}
+
+/**
+ * The request an action belongs to, for the action log (phase A6, TRA-13): its
+ * trace id and the owner's words, cut short (the log redacts keys). Outside a
+ * request, the action name. Inside a background agent, the agent's words and its
+ * name, without the foreground request's trace id, which is not its own (review F1).
+ */
+function requestFields(actionName: string): { userCommand: string; traceId?: string; agentPath?: string } {
+  const agentPath = getAgentPath();
+  const traceId = agentPath ? undefined : getTraceId();
+  const request = getRequestText()?.trim();
+  return {
+    userCommand: request ? (request.length > 160 ? `${request.slice(0, 157)}...` : request) : actionName,
+    ...(traceId ? { traceId } : {}),
+    ...(agentPath ? { agentPath } : {}),
+  };
+}
+
 export class PcControlKernel {
   private async executeAction(
     actionName: string,
     targetName: string,
     isReadOnly: boolean,
-    runFn: () => Promise<any>
+    /** Gets the action queue's signal (its timeout); a command passes it on to its process (REL-01). */
+    runFn: (signal?: AbortSignal) => Promise<any>,
+    /**
+     * The answer is someone else's data (a file, a command's output, PowerShell's
+     * own JSON), not a controller's report: its "error" fields are not judged (review C3).
+     */
+    options: { passThrough?: boolean } = {},
   ): Promise<KernelResult> {
     const t0 = performance.now();
+    // The request this action belongs to, taken now: the trace id is replaced by
+    // the next request, and an action can end after its request (B4).
+    const origin = requestFields(actionName);
     const permLevel = permissionSession.getCurrentLevel();
     const riskLevel = isReadOnly ? 'safe' : (permLevel === 2 ? 'medium' : 'high');
     
@@ -50,8 +103,11 @@ export class PcControlKernel {
         message = await runFn();
       } else {
         // Queue stateful mutations
-        message = await actionQueue.enqueue(actionName, () => runFn());
+        message = await actionQueue.enqueue(actionName, (queueSignal) => runFn(queueSignal));
       }
+      // A controller's own report of failure is a failure (A5c, TRA-10).
+      const reported = options.passThrough ? undefined : reportedFailureOf(message);
+      if (reported) throw new Error(reported);
       
       const durationMs = Math.round(performance.now() - t0);
       const result: KernelResult = {
@@ -65,17 +121,18 @@ export class PcControlKernel {
       };
 
       await actionAuditLog.log({
-        userCommand: actionName,
+        ...origin,
         normalizedIntent: actionName,
         action: actionName,
         target: targetName,
         permissionLevel: permLevel,
-        riskLevel: isReadOnly ? 'safe' : 'medium',
+        riskLevel,
         allowed: true,
-        confirmationRequired: false,
         result: 'success',
+        // A change may be checked afterwards: its result is a later `verification` line, and no
+        // such line means it was not checked. A read is never checked (phase A6, review F2).
+        ...(isReadOnly ? {} : { verified: 'pending' as const }),
         durationMs,
-        rollbackAvailable: true
       });
 
       return result;
@@ -94,18 +151,23 @@ export class PcControlKernel {
         error: errMsg
       };
 
+      // JARVIS refused it: a permission level, cancelled by the owner, not approved or
+      // denied, a safety rule, or a path outside the approved folders: blocked, not allowed.
+      // Anything else, a file system "EACCES: permission denied" or Windows "Access is
+      // denied." included, was allowed and failed (review F6, F11, F15).
+      const blocked = isPermissionDenial(errMsg)
+        || /cancelled by user|not approved|was denied|safety policy|^Execution Blocked:|^Access Denied: Path/i.test(errMsg);
       await actionAuditLog.log({
-        userCommand: actionName,
+        ...origin,
         normalizedIntent: actionName,
         action: actionName,
         target: targetName,
         permissionLevel: permLevel,
-        riskLevel: isReadOnly ? 'safe' : 'high',
-        allowed: false,
-        confirmationRequired: false,
-        result: errMsg.includes('cancelled') || errMsg.includes('Denied') ? 'blocked' : 'failure',
+        riskLevel,
+        allowed: !blocked,
+        // Stopped part way: part of it may have run (B4).
+        result: blocked ? 'blocked' : isOutcomeUnknown(errMsg) ? 'unknown' : 'failure',
         durationMs,
-        rollbackAvailable: false,
         error: errMsg
       });
 
@@ -118,6 +180,8 @@ export class PcControlKernel {
   public async getPcState(): Promise<KernelResult> {
     return this.executeAction('getPcState', 'system', true, async () => {
       const win = await getWindowsState();
+      // Not read is not "no windows" (A5c, owner Q3; A5a's reason).
+      if (win.unavailable) throw new Error(`The open windows could not be read: ${win.unavailable}`);
       const chrome = await getChromeState();
       const svcs = await getJarvisServiceState();
       return JSON.stringify({ activeWindow: win.activeWindow, openApps: win.openApps, chrome, jarvisServices: svcs }, null, 2);
@@ -236,6 +300,16 @@ export class PcControlKernel {
     return this.executeAction('openBrowserUrl', url, false, () => browserController.openUrl(url));
   }
 
+  /**
+   * JARVIS's own Chrome only, after the owner confirms (D3). Only the tool's
+   * own signal (its time budget) is passed on: the queue's 10 s timeout must
+   * not refuse an answer the owner gives while the question is still open
+   * (review R2-1).
+   */
+  public async closeBrowser(signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('closeBrowser', 'JARVIS Chrome', false, () => browserController.closeBrowser(signal));
+  }
+
   public async refreshBrowserTab(query: string): Promise<KernelResult> {
     return this.executeAction('refreshBrowserTab', query, false, () => browserController.refreshTab(query));
   }
@@ -313,14 +387,14 @@ export class PcControlKernel {
   public async revealFile(filePath: string): Promise<KernelResult> {
     return this.executeAction('revealFile', filePath, false, async () => {
       const { spawn } = await import('child_process');
-      const proc = spawn('explorer.exe', ['/select,', filePath], { detached: true, stdio: 'ignore' });
+      const proc = spawn('explorer.exe', ['/select,', filePath], { detached: true, stdio: 'ignore', env: childEnv() });
       proc.unref();
       return `Revealed ${filePath} in explorer`;
     });
   }
 
   public async readFile(filePath: string): Promise<KernelResult> {
-    return this.executeAction('readFile', filePath, true, () => fileController.readFile(filePath));
+    return this.executeAction('readFile', filePath, true, () => fileController.readFile(filePath), { passThrough: true });
   }
 
   public async writeFile(filePath: string, content: string): Promise<KernelResult> {
@@ -371,31 +445,32 @@ export class PcControlKernel {
 
   // ── System/Admin ───────────────────────────────────────────────────────────
 
-  public async runShellCommand(command: string): Promise<KernelResult> {
-    return this.executeAction('runShellCommand', command, false, () => adminController.runShellCommand(command));
+  public async runShellCommand(command: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('runShellCommand', command, false, (qs) => adminController.runShellCommand(command, either(signal, qs)), { passThrough: true });
   }
 
-  public async runPowerShell(command: string): Promise<KernelResult> {
-    return this.executeAction('runPowerShell', command, false, () => adminController.runPowerShell(command));
+  public async runPowerShell(command: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('runPowerShell', command, false, (qs) => adminController.runPowerShell(command, either(signal, qs)), { passThrough: true });
   }
 
   public async checkService(serviceName: string): Promise<KernelResult> {
     return this.executeAction('checkService', serviceName, true, async () => {
-      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', `Get-Service -Name ${serviceName} | Select-Object Status | ConvertTo-Json`], { reject: false });
+      const name = checkServiceName(serviceName);
+      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', `Get-Service -Name '${name}' | Select-Object Status | ConvertTo-Json`], { reject: false, env: childEnv(), extendEnv: false });
       return stdout.trim();
-    });
+    }, { passThrough: true });
   }
 
-  public async startService(serviceName: string): Promise<KernelResult> {
-    return this.executeAction('startService', serviceName, false, () => adminController.startService(serviceName));
+  public async startService(serviceName: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('startService', serviceName, false, (qs) => adminController.startService(serviceName, either(signal, qs)));
   }
 
-  public async stopService(serviceName: string): Promise<KernelResult> {
-    return this.executeAction('stopService', serviceName, false, () => adminController.stopService(serviceName));
+  public async stopService(serviceName: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('stopService', serviceName, false, (qs) => adminController.stopService(serviceName, either(signal, qs)));
   }
 
-  public async restartService(serviceName: string): Promise<KernelResult> {
-    return this.executeAction('restartService', serviceName, false, () => adminController.restartService(serviceName));
+  public async restartService(serviceName: string, signal?: AbortSignal): Promise<KernelResult> {
+    return this.executeAction('restartService', serviceName, false, (qs) => adminController.restartService(serviceName, either(signal, qs)));
   }
 
   public async getNetworkStatus(): Promise<KernelResult> {
@@ -403,18 +478,18 @@ export class PcControlKernel {
   }
 
   public async getDiskStatus(): Promise<KernelResult> {
-    return this.executeAction('getDiskStatus', 'disk', true, () => systemController.getDiskStatus());
+    return this.executeAction('getDiskStatus', 'disk', true, () => systemController.getDiskStatus(), { passThrough: true });
   }
 
   public async getBatteryStatusIfAvailable(): Promise<KernelResult> {
     return this.executeAction('getBatteryStatus', 'battery', true, async () => {
-      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining | ConvertTo-Json'], { reject: false });
+      const { stdout } = await execa('powershell', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining | ConvertTo-Json'], { reject: false, env: childEnv(), extendEnv: false });
       return stdout.trim() || 'Battery not available (likely desktop PC)';
-    });
+    }, { passThrough: true });
   }
 
   public async getStartupTasks(): Promise<KernelResult> {
-    return this.executeAction('getStartupTasks', 'startup', true, () => systemController.getStartupTasks());
+    return this.executeAction('getStartupTasks', 'startup', true, () => systemController.getStartupTasks(), { passThrough: true });
   }
 
   public async openSystemSettings(page: string): Promise<KernelResult> {

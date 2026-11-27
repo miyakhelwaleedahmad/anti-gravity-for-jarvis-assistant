@@ -26,6 +26,7 @@ import os from 'os';
 import process from 'process';
 import path from 'path';
 import { execSync } from 'child_process';
+import { childEnv } from '../system/childEnv.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ function captureProcessList(): string[] {
 
     if (platform === 'win32') {
       // Windows: tasklist output, extract only process names
-      const raw = execSync('tasklist /fo csv /nh', { timeout: 5000, encoding: 'utf8' });
+      const raw = execSync('tasklist /fo csv /nh', { timeout: 5000, encoding: 'utf8', env: childEnv() });
       const names = raw
         .split('\n')
         .map(line => line.split(',')[0]?.replace(/"/g, '').trim() ?? '')
@@ -101,7 +102,7 @@ function captureProcessList(): string[] {
     }
 
     if (platform === 'linux' || platform === 'darwin') {
-      const raw = execSync("ps -eo comm= | sort -u", { timeout: 5000, encoding: 'utf8' });
+      const raw = execSync("ps -eo comm= | sort -u", { timeout: 5000, encoding: 'utf8', env: childEnv() });
       return raw.trim().split('\n').slice(0, 30);
     }
 

@@ -1,0 +1,17 @@
+Full self-check: 2 of 12 checks verified, 5 failing (service vector_memory, service llm, service stt, service tts, service wake_word), 3 blocked (speech output, speech recognition, wake word), 2 not verified yet. No open issues are recorded.
+Full self-check (read-only; nothing was changed):
+  [BLOCKED] speech output: speech output: its service (tts) is not connected
+  [BLOCKED] speech recognition: speech recognition: its service (stt) is not connected
+  [BLOCKED] wake word: wake word: its service (wakeword) is not connected
+  [NOT_VERIFIED] language model: language model: not verified yet (no outcome observed this run)
+  [VERIFIED] tools: tools: working (list_capabilities ran, 0 s ago)
+  [VERIFIED] service redis: in-memory cache fallback
+  [FAILING] service vector_memory: probe timed out
+  [FAILING] service llm: Groq: missing GROQ_API_KEY
+  [NOT_VERIFIED] service tool_registry: no tools registered yet
+  [FAILING] service stt: not connected
+  [FAILING] service tts: not connected
+  [FAILING] service wake_word: not connected
+Open issues: 0
+Not observed by these checks: failures outside tool calls, speech, the wake word, the language model,
+the Python services and goal tasks; and a pipeline marked "not verified" has had no outcome this run.

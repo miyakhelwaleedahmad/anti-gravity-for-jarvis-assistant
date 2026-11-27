@@ -1,0 +1,4 @@
+M13 PowerShell not answering is verified [selfCheckA5bTest]: CAUGHT | FAIL: on Windows, PowerShell cannot start: failing, with the reason ([VERIFIED] PowerShell for desktop control: PowerShell did not answer (spawn powershell.exe ENOENT (te
+
+1/1 caught
+tree restored (md5): YES

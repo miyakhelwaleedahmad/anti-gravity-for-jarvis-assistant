@@ -1,0 +1,192 @@
+# JARVIS — Architecture
+
+Reconstructed from the code, not from intent. Every claim here was checked
+against the implementation; where a component is disabled or unreachable, it
+says so.
+
+## The one authoritative pipeline
+
+```
+        voice (wake → STT)                CLI
+                 │                         │
+                 └───────────┬─────────────┘
+                             ▼
+                      jarvis.ts
+        voice state machine · mic arbitration · echo filter
+        barge-in · watchdogs · process supervision
+                             │
+                             ▼
+              core/orchestrator.ts   ◄── THE BRAIN
+     ┌───────────────────────────────────────────────┐
+     │  deterministic fast-path router (no LLM)      │
+     │  PLAN → PRE-CHECK → EXECUTE → OBSERVE         │
+     │       → REFLECT → REPAIR → respond            │
+     └───────────────────────────────────────────────┘
+              │                            │
+              ▼                            ▼
+  memory/unifiedContextBuilder      core/taskGraphEngine.ts
+  token-budgeted context            parallel DAG, retries,
+                                    rollback, interrupts
+                                             │
+                                             ▼
+                                 core/toolRegistryV2.ts
+                    ┌────────────────────────────────────────┐
+                    │ AUTHORIZATION  (dispatch-layer gate)    │
+                    │ schema validation                       │
+                    │ result cache (low-risk tools only)      │
+                    │ per-tool retry policy + fallback chain  │
+                    │ health metrics, auto-degradation        │
+                    └────────────────────────────────────────┘
+                                             │
+                     ┌───────────────────────┴──────────────────┐
+                     ▼                                          ▼
+              skills/  (26)                            control/  (10 controllers)
+         dynamically loaded                     AUTHORIZATION (controller-layer)
+                                                            │
+                                                            ▼
+                                                    Windows shell / OS
+```
+
+Everything the agent does passes through `toolRegistryV2`. There is no second
+dispatch path.
+
+## Subsystem ownership
+
+| Responsibility | Owner | Notes |
+|---|---|---|
+| Orchestration | `core/orchestrator.ts` | The only brain. Single authoritative loop. |
+| Plan execution | `core/taskGraphEngine.ts` | Parallel DAG, max concurrency 3, bounded retries |
+| Tool dispatch | `core/toolRegistryV2.ts` | Single point. Authz first, then schema validation, cache, retry, fallback |
+| Authorization | `control/permissionSession.ts` | Enforced at **both** dispatch and controller layers |
+| Approval for dangerous acts | `security/approvalGate.ts` | 14 call sites |
+| Command risk | `security/commandValidator.ts` | Fails closed: unknown ⇒ HIGH_RISK |
+| File containment | `core/workspaceRoot.ts` + `security/workspacePathPolicy.ts` | Portable, host-independent |
+| Source of truth (facts) | `memory/memoryManager.ts` (LowDB) | Authoritative |
+| Cache | `memory/redisCache.ts` | Cache only, never truth |
+| Semantic search | `memory/vectorMemory.py` | FastAPI + sentence-transformers, **persisted** |
+| Episodic memory | `memory/agentMemory.ts` | Append-only JSONL |
+| Graph memory | `memory/graphMemory.ts` | **Off by default** (`JARVIS_NEO4J_ENABLED`) |
+| Context assembly | `memory/unifiedContextBuilder.ts` | Token-budgeted, cached |
+| Document RAG | `rag/` + `skills/ingest_documents`, `skills/search_documents` | Ingest → parse → chunk → embed → cited retrieval |
+| Goals | `core/goalManager.ts` | Live store `data/runtime/goals.json` (gitignored) |
+| LLM routing | `bridge/modelRouter.ts`, `bridge/groqProvider.ts` | Primary is Gemini or Groq (`config/llmconfig.ts` picks from the keys), one OpenAI-compatible client for both; optional OpenAI-compatible fallback; a failed stream is answered once through `chat()` |
+| Process supervision | `self_healing/selfHealingManager.ts` | Spawn, crash-detect, backoff, circuit-break at 3 |
+| Tracing | `monitoring/structuredLogger.ts` + `monitoring/traceWiring.ts` | One correlation id per request |
+| State | `core/agentStateMachine.ts` | `core/stateShim.ts` is a compat proxy over it |
+
+## Memory tiers
+
+| Tier | Store | Durable? | Role |
+|---|---|---|---|
+| Short-term | in-process | no | Current turn |
+| Working | `agentMemory` | no | Active task context |
+| Episodic | `data/episodes.jsonl` | **yes** | What happened, including failures |
+| Long-term facts | LowDB `memory/jarvis_memory.json` | **yes — SSOT** | Authoritative |
+| Semantic index | `data/vector/` | **yes** | Derived index over the facts. Never truth. |
+| Cache | Redis | no | Embeddings, context. Optional. |
+| Graph | Neo4j | optional | Entities/relations. Off by default. |
+| Goals | `data/runtime/goals.json` | **yes** | 100-goal rolling window. Gitignored. |
+| Document chunks | `data/rag/manifest.json` + `data/vector/` | **yes** | Chunk text and provenance; embeddings share the vector store. |
+
+Write authority for facts is LowDB alone. The vector store is a derived index
+joined back to LowDB by stable fact id, and is rebuilt from LowDB if its
+persisted form is missing or refused.
+
+## Request lifecycle
+
+1. **Deterministic router** — known commands ("open YouTube") execute with no LLM call.
+2. **Plan** — one LLM call with tool definitions, built into a DAG.
+3. **Pre-check** — structural validation, then confidence scoring. A low-confidence plan triggers a real replan, bounded by a guard.
+4. **Execute** — DAG runs with bounded parallelism; per-tool spacing; per-node retries.
+5. **Observe** — results collected; failures classified (timeout/abort/permission/transient/fatal).
+6. **Reflect** — chooses a repair strategy: `retry_same`, `retry_with_delay`, `fallback_tool` (switches tool), `replan`, or abort.
+7. **Repair** — bounded by `maxRepairCycles`; every loop in the system is bounded.
+8. **Respond** — usually assembled without a second LLM call.
+
+## Trust boundaries
+
+- The WebSocket bridge **refuses to bind to a non-localhost host** and requires a shared token unless dev mode is explicit. It is not, and cannot be, a distributed bus.
+- OCR text enters the prompt as `user` content inside `<untrusted_context source="ocr">` tags, with `<`/`>` stripped so the wrapper cannot be forged, and a system-prompt rule that such content is never instruction. **Tool output is not wrapped this way** — it is never given `system` trust, but it is not delimited either. Retrieved memory facts are still sent as a `system` message.
+- Agent file I/O is confined to the workspace root; Windows system paths are blocked on every host.
+- Unknown shell commands default to HIGH_RISK.
+
+## Document RAG
+
+Retrieval over user-supplied documents, separate from conversational fact recall.
+
+```
+path ─► rag/ingest.ts ─► rag/parse.ts ─► rag/chunk.ts ─► memoryManager.embed()
+        (workspace       (.txt .md .json   (~512 tokens,    (fact_id =
+         containment)     .csv .log)        64 overlap)      doc:<hash>:<n>)
+                                                                  │
+query ─► rag/retrieve.ts ─► vector search ─► manifest join ─► cited passages
+```
+
+- Exposed as two tools: `ingest_documents` and `search_documents` (both `requiredLevel` 0).
+- Ingest paths pass through the same workspace containment check as `read_file`.
+- `.pdf` and Office formats are refused with a clear message; no parser is installed.
+- Every returned passage names its source file and chunk. A hit with no manifest entry is dropped rather than returned uncited.
+- Document chunks and conversational facts share one vector store, distinguished by the `doc:` id prefix.
+- Retrieval depends on the sentence-transformers model. Without it the vector service answers `503`, `searchVector()` returns no hits, and `search_documents` says document search is unavailable (it asks `searchVector()` to rethrow; before, it reported "nothing matched"). Conversational fact recall still falls back to lexical search.
+
+## Self-healing (health from effects, issues, bounded repair)
+
+An addition beside the existing self-healing services (`self_healing/*`), which keep restarting crashed voice services as before.
+
+- **Health from effects** — `monitoring/healthLedger.ts`. A pipeline is healthy only after its work was seen to happen: a reply played, a transcript produced, a wake-word detection, a chat answered, a tool that ran. A connection alone is not success. No evidence means `unknown`. The dashboard (`healthManager`) reads this ledger.
+- **One failure signature** — `core/failureSignature.ts`, shared by the service classifier, reflection and goal recovery. Each keeps its own classes for its own decisions.
+- **Issues and occurrences** — `core/issueStore.ts`, under `data/repairs/`:
+  - every failure is appended to `occurrences.jsonl` with its time, correlation id, task/goal id and source location (`core/sourceLocation.ts`; `EXTERNAL`/`UNKNOWN` with a reason, never a guessed line);
+  - repeats update one issue in `issues.json`. Resolving one needs evidence; a resolved issue that returns is reopened, with a recurrence count.
+- **Read-only questions** — `core/selfCheck.ts` behind the `self_check` tool: "check yourself", "run a full self-check", "show the repair report", "why are you stuck".
+- **Bounded runtime repair** — `core/repairRun.ts` behind the `self_repair` tool: "heal yourself", "fix the last problem", "continue the repair", "stop healing", "why can't you fix it".
+  - The only action is `selfHealingManager.restartService()`, which stops the old process before starting the new one. It is then checked by the effect: a played check phrase for speech output, or a real transcript or detection for recognition and the wake word.
+  - One run at a time, 2 attempts, 20 minutes, and no model tokens. The same failure twice stops the run.
+  - A run interrupted by a restart of JARVIS waits for "continue the repair".
+  - Code defects, the language model, missing programs and tool failures end `BLOCKED` with the reason.
+- **Code repair, propose only** — `core/codeRepair.ts` and `core/worktreeExecutor.ts` behind the `propose_code_repair` tool. The command is "propose a code repair".
+  - Approval: risk 3, so it must be typed; the tool also refuses any approval not typed at the console, so voice never approves it.
+  - Only an open code defect at a known line qualifies; nothing in `security/` or `tests/`.
+  - The patch is written in a git worktree on `jarvis/repair/<id>`, beside the checkout. A diff linter rejects forbidden paths (security policy, `.env`, dependency files, `data/`, `.git`, CI) and weakened tests (deleted tests, removed assertions, skips, raised time limits).
+  - The new regression test must fail before the fix. The type check and the related tests run in the worktree with no keys; then a reviewer checks the diff.
+  - At most 2 attempts, and the same failing checks twice stops it.
+  - Result: a commit on the repair branch for you to review and merge, never merged by JARVIS. The checkout is compared before and after.
+- **Model per kind of work** — `bridge/modelCategories.ts`: intent, conversation, planning, repair_plan, coding, review; set by `JARVIS_MODEL_<KIND>` alone. Every call through `modelRouter` gets a usage record: category, provider, model, correlation id, latency, fallback, and tokens (`null` when not reported). Cost appears only from a configured price table.
+- **Claude (optional)** — `bridge/anthropicProvider.ts`, on the official SDK.
+  - Used only by a kind of work that names `anthropic`, and never in the failover, so a key in `.env` doesn't move ordinary requests.
+  - The model is looked up before its first use. A refusal is an error, never an empty answer.
+  - Not tested live here: no key.
+- **Guards**
+  - `tests/boundaryDoublesTest.ts`: every test stand-in for speech or the tool registry is listed in `tests/boundary-doubles.json` with a reason.
+  - `tests/selfHealingHonestyTest.ts`: no reply claims that everything works or that all errors are fixed.
+
+## Second brain (Obsidian vault)
+
+Off unless `JARVIS_OBSIDIAN_VAULT` names a folder holding `.obsidian`. JARVIS never picks another folder and never creates a vault.
+
+- **Where it writes** — `memory/vault.ts`.
+  - Only under `<vault>/JARVIS/`: relative paths, no `..`, no Windows-reserved names, no link out of that folder.
+  - A note JARVIS writes carries `jarvis_managed: true` and its `jarvis_id`. Only such notes are updated, moved or appended to. The owner's notes are read and searched, never changed.
+- **Spaces** — `memory/secondBrain.ts`.
+  - Initial: `00 Index` … `09 Templates`. Each has an index note, and content spaces have a template. `00 Index/JARVIS Memory Index.md` lists them all.
+  - Startup (`jarvis.ts`) initializes what is missing. A repeat creates nothing.
+- **Filing** — deterministic keyword scoring, no model call.
+  - An item goes to its best-fitting space, or to `08 Memory Inbox`. A near-duplicate updates the existing note.
+  - Three inbox notes sharing a subject over two days create a new space. At most 2 a day and 40 in all; overlapping names are refused.
+  - Redundant added spaces are merged; the old index is kept as a pointer.
+  - Decisions are kept in `data/brain/registry.json`, operations in `data/brain/operations.jsonl`.
+- **Feeds**
+  - Long-term facts JARVIS keeps: owner, lesson, research and relation facts, importance 5+ (`memoryManager.rememberFact`).
+  - One daily-log line per real task (orchestrator).
+  - A lesson for each verified issue resolution (`issueStore.onResolved`).
+- **Errors** — `core/obsidianMirror.ts` mirrors open issues to `01 Active Errors` and resolved ones to `02 Resolved Errors`. The issue record (`data/repairs/`) stays the authority.
+- **Retrieval** — on planning (heavy) contexts, at most 4 notes / 1,500 characters, wrapped as untrusted data (`memory/unifiedContextBuilder.ts`).
+- **Offline** — writes queue in `data/brain/outbox.jsonl` and are replayed at startup and every 15 minutes.
+- **Commands** — `memory_brain` tool (`core/tools/secondBrainTool.ts`): reads are risk 0, writes risk 1.
+- **Tests** — `secondBrainTest`, `secondBrainIntegrationTest`.
+
+## What is NOT here
+
+- **No Obsidian plugin or MCP server.** The second brain (below) reads and writes the vault's Markdown files directly; nothing runs inside Obsidian.
+- **No scheduler** wired into the running system.
+- **`core/brain.ts` is not the brain.** It and the whole messageBus pipeline are unreachable and now live in `_legacy/`.

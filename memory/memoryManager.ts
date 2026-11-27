@@ -18,11 +18,14 @@
 import { Low } from "lowdb";
 import { JSONFile } from "lowdb/node";
 import path from "path";
+import { dataRoot } from "../core/workspaceRoot.js";
 import { memoryConfig } from "../config/llmconfig.js";
 import { pipelineRegistry } from "../self_healing/pipelineRegistry.js";
 import { spawn, ChildProcess } from "child_process";
 import * as readline from "readline";
 import { graphMemory } from "./graphMemory.js";
+import { redact } from "../security/redactor.js";
+import { vectorHeaders } from "./vectorAuth.js";
 import {
   initRedis,
   cacheVectorResult,
@@ -32,8 +35,39 @@ import {
   cacheRecentMessages,
   getCachedRecentMessages,
   cacheEmbedding,
-  getCachedEmbedding
 } from "./redisCache.js";
+
+/**
+ * Whether search may return the fact. "Failed task: …" notes (source
+ * agent_failure) are a log, not knowledge: returned for planning they were
+ * reinforced (+0.5 importance per use) until they filled memory (BUG-15).
+ * They stay on disk; failures are recorded as episodes and on the goal.
+ */
+function recallable(f: { source?: string }): boolean {
+  return f.source !== 'agent_failure';
+}
+
+/** JARVIS_VECTOR_SEARCH_BUDGET_MS (default 1500, 100–10000): how long a search waits for the vector service. */
+export function vectorSearchBudgetMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env['JARVIS_VECTOR_SEARCH_BUDGET_MS']);
+  return Number.isFinite(n) && n >= 100 && n <= 10_000 ? n : 1500;
+}
+
+/** The result, or [] when it takes longer than `ms` (the request is left to finish). */
+async function withinBudget<T>(p: Promise<T[]>, ms: number): Promise<T[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<T[]>((resolve) => {
+    timer = setTimeout(() => {
+      console.log(`[Memory] Vector search took over ${ms} ms; using keyword search.`);
+      resolve([]);
+    }, ms);
+  });
+  try {
+    return await Promise.race([p, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +91,37 @@ export interface LongTermFact {
   // ── PHASE 2: Conflict Resolution ───────────────────────────────────────
   confidence: number;    // 0.0 to 1.0 — confidence in this fact
   version: number;       // increments on updates/merges
+  /** Decay has been applied up to this time (decayMemory runs on a schedule). */
+  decayedThrough?: number;
+  /**
+   * Where the fact came from (SEC-05): the owner said it, JARVIS inferred it,
+   * or it was gathered from outside (web pages, documents, research). Facts
+   * stored before this field existed get it from `source` (factOrigin()).
+   */
+  origin?: FactOrigin;
+}
+
+export type FactOrigin = 'user' | 'agent' | 'external';
+
+/** Sources that are the owner's own words. */
+const USER_SOURCES = new Set(['conversation', 'user', 'user_feedback', 'owner']);
+/** Sources gathered from outside JARVIS (web, documents, agents' research). */
+const EXTERNAL_SOURCES = new Set(['agents', 'research', 'web', 'document', 'documents', 'news']);
+
+/** A fact's origin: its own field, or derived from its source (older facts). */
+export function factOrigin(f: Pick<LongTermFact, 'origin' | 'source'>): FactOrigin {
+  if (f.origin) return f.origin;
+  const source = String(f.source ?? '').toLowerCase();
+  if (USER_SOURCES.has(source)) return 'user';
+  if (EXTERNAL_SOURCES.has(source)) return 'external';
+  return 'agent';
+}
+
+/** What forgetting did, store by store (OPS-03): nothing is reported as gone that was not removed. */
+export interface ForgetReport {
+  removed: Array<{ id: string; fact: string }>;
+  /** The semantic index: 'deleted', 'not running' or the error. */
+  vectorIndex: string[];
 }
 
 interface MemoryDB {
@@ -96,7 +161,12 @@ export class MemoryManager {
    * Uses dynamic import to avoid circular dependency (supervisor imports memoryManager).
    * Once resolved, the reference is cached for all subsequent calls.
    */
-  private _supervisorRef: { isStartupReady: () => boolean; waitUntilReady: (ms?: number) => Promise<boolean> } | null = null;
+  private _supervisorRef: {
+    isStartupReady: () => boolean;
+    waitUntilReady: (ms?: number) => Promise<boolean>;
+    isHealthy?: () => boolean;
+    isRunning?: () => boolean;
+  } | null = null;
   private _supervisorLoading: Promise<void> | null = null;
 
   private async getSupervisor(): Promise<typeof this._supervisorRef> {
@@ -127,7 +197,8 @@ export class MemoryManager {
       return;
     }
 
-    const dbPath = path.resolve(memoryConfig.dbPath);
+    const dbPath = path.resolve(dataRoot(process.cwd()), memoryConfig.dbPath);
+    this.cacheScope = dbPath;
     const adapter = new JSONFile<MemoryDB>(dbPath);
 
     this.db = new Low<MemoryDB>(adapter, {
@@ -199,6 +270,21 @@ export class MemoryManager {
       }
     }
 
+    // After the startup window the supervisor still knows best. While it runs
+    // the service but has not yet seen /health succeed, the model is loading
+    // (minutes on a slow PC) or the process is being restarted. Requests made
+    // then failed with "fetch failed", tripped the circuit breaker every 30 s
+    // and filled the log. Fail fast instead, without counting a failure.
+    // Probes are exempt: they are how readiness is detected.
+    if (!isStartupGrace && !isProbe) {
+      const supervisor = await this.getSupervisor();
+      if (supervisor?.isRunning?.() && supervisor.isHealthy && !supervisor.isHealthy()) {
+        const err = new Error('Vector API not ready yet (the supervisor reports it is still starting).');
+        (err as any).notReady = true;
+        throw err;
+      }
+    }
+
     const isGet = action === 'stats' || action === 'health' || action === 'liveness';
 
     let attempt = 0;
@@ -211,6 +297,8 @@ export class MemoryManager {
           method: isGet ? 'GET' : 'POST',
           headers: {
             'Content-Type': 'application/json',
+            // The service refuses requests without it (SEC-18).
+            ...vectorHeaders(),
             // Connection keep-alive — Node.js reuses the underlying TCP socket
             // instead of creating a new connection per request. Eliminates ~30ms
             // per-request overhead and prevents ephemeral port exhaustion on Windows.
@@ -293,13 +381,16 @@ export class MemoryManager {
     }
   }
 
-  async embed(text: string): Promise<number[]> {
-    const cached = await getCachedEmbedding(text);
-    if (cached) {
-      console.log(`[Memory] Redis cache hit for embedding: "${text.slice(0, 40)}"`);
-      return cached;
-    }
-    const res = await this.vectorRequest('embed', { text });
+  /**
+   * @param factId Stable LowDB id for this text. Sent to the vector service so
+   *   search hits can be joined back by id rather than by exact string equality,
+   *   which silently dropped results after any normalisation drift (JARVIS-003).
+   */
+  async embed(text: string, factId?: string): Promise<number[]> {
+    // Always sent to the service: the POST is what stores the vector. A Redis
+    // cache hit used to return here, so after the first run a rebuild said
+    // "embedded 45/45" while the store held 3 vectors (BUG-14).
+    const res = await this.vectorRequest('embed', { text, ...(factId ? { fact_id: factId } : {}) });
     if (res?.embedding) {
       cacheEmbedding(text, res.embedding).catch(() => {});
     }
@@ -307,24 +398,42 @@ export class MemoryManager {
   }
 
   async deleteVector(text: string): Promise<void> {
+    await this.deleteVectorReported(text);
+  }
+
+  /** Removes `text` from the semantic index; says what happened instead of only logging it. */
+  async deleteVectorReported(text: string): Promise<string> {
     try {
       const res = await this.vectorRequest('delete', { text });
       if (res?.error) {
         console.warn(`[Memory] Vector delete returned error: ${res.error}`);
-      } else {
-        console.log(`[Memory] Vector deleted: "${text.slice(0, 60)}" (remaining: ${res?.remaining ?? '?'})`);
+        return `error: ${String(res.error).slice(0, 120)}`;
       }
+      console.log(`[Memory] Vector deleted: "${text.slice(0, 60)}" (remaining: ${res?.remaining ?? '?'})`);
+      return 'deleted';
     } catch (err) {
       console.error(`[Memory] deleteVector failed: ${err}`);
+      return `not reachable: ${String(err instanceof Error ? err.message : err).slice(0, 120)}`;
     }
   }
 
-  async searchVector(query: string, top_k: number = 3): Promise<any[]> {
+  /**
+   * @param opts.rethrow — throw instead of returning []. Memory search wants []
+   *   (it falls back to keyword matching); document search must tell "nothing
+   *   matched" apart from "search is down".
+   */
+  async searchVector(query: string, top_k: number = 3, opts: { rethrow?: boolean } = {}): Promise<any[]> {
     try {
       const res = await this.vectorRequest('search', { query, top_k });
       return res.results || [];
     } catch (err) {
-      console.error("[Memory] Vector DB failed, semantic search bypassed.");
+      // A service that is still loading is expected, not an error worth a line per search.
+      if (!(err as { notReady?: boolean })?.notReady) {
+        console.error("[Memory] Vector DB failed, semantic search bypassed.");
+      }
+      if (opts.rethrow) {
+        throw new Error(`the vector memory service is unavailable (${err instanceof Error ? err.message : String(err)})`);
+      }
       return [];
     }
   }
@@ -342,15 +451,26 @@ export class MemoryManager {
   }
 
   private rebuildVectorIndexInBackground(): void {
+    // Previously hard-capped at 10. Combined with a vector store that had no
+    // persistence, that capped semantic recall at 10 facts across every restart
+    // no matter how many facts LowDB held. The store now persists, so this
+    // rebuild is only a fallback for a missing/refused store — and it covers
+    // every fact by default (JARVIS-002).
+    const rawLimit = Number(process.env['JARVIS_VECTOR_REBUILD_LIMIT'] ?? '0');
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : Infinity;
+
     const candidates = [...this.db.data.longTerm]
       .sort((a, b) => (b.importance - a.importance) || (b.timestamp - a.timestamp))
-      .slice(0, 10);
+      .slice(0, limit === Infinity ? undefined : limit);
 
-    console.log(`[Memory] Scheduling capped vector rebuild for ${candidates.length}/${this.db.data.longTerm.length} facts.`);
+    console.log(`[Memory] Scheduling vector rebuild for ${candidates.length}/${this.db.data.longTerm.length} facts.`);
 
     setTimeout(async () => {
       if (!(await this.isVectorHealthy())) {
-        console.log('[Memory] Vector rebuild skipped: vector service unhealthy.');
+        // Not skipped for good: the supervisor calls onVectorServiceHealthy()
+        // once the service is up. Before, the facts were simply never indexed.
+        this.vectorRebuildPending = true;
+        console.log('[Memory] Vector rebuild deferred: the vector service is not up yet; it will run when it is.');
         return;
       }
 
@@ -360,7 +480,7 @@ export class MemoryManager {
         while (index < candidates.length) {
           const fact = candidates[index++];
           try {
-            await this.embed(fact.fact);
+            await this.embed(fact.fact, fact.id);
             embedded++;
           } catch {
             // Non-fatal. Circuit breaker handles repeated failures.
@@ -368,13 +488,40 @@ export class MemoryManager {
         }
       };
 
-      await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, () => worker()));
-      console.log(`[Memory] Vector rebuild summary: embedded ${embedded}/${candidates.length} selected facts.`);
+      // One at a time: the service encodes one text at a time anyway, and three
+      // queued writes made a planning search wait behind them (BUG-16).
+      await worker();
+      // Written to disk now, not after the next 10 writes (BUG-14: the next
+      // start found no_store_on_disk and rebuilt everything again).
+      let stored = '?';
+      try {
+        if (embedded > 0) await this.vectorRequest('persist', {});
+        stored = String((await this.vectorRequest('stats', {}))?.count ?? '?');
+      } catch (err) {
+        console.warn(`[Memory] Vector store not saved after the rebuild: ${err instanceof Error ? err.message : err}`);
+      }
+      console.log(`[Memory] Vector rebuild summary: embedded ${embedded}/${candidates.length} selected facts; the store holds ${stored} vectors (duplicates are kept once).`);
     }, 500).unref?.();
   }
 
   private ensureInit(): void {
     if (!this.initialized) throw new Error("[Memory] Not initialized. Call init() first.");
+  }
+
+  /** A startup re-sync that had to wait for the vector service. */
+  private vectorRebuildPending = false;
+
+  /**
+   * Called by the supervisor on every healthy check: closes the circuit
+   * breaker and runs a re-sync that was deferred while the service loaded.
+   */
+  public onVectorServiceHealthy(): void {
+    this.resetVectorCircuit();
+    if (this.vectorRebuildPending && this.initialized) {
+      this.vectorRebuildPending = false;
+      console.log('[Memory] Vector service is up — running the deferred re-sync.');
+      this.rebuildVectorIndexInBackground();
+    }
   }
 
   /** OPT-VEC-2: Immediately reset the vector API circuit breaker.
@@ -411,7 +558,7 @@ export class MemoryManager {
           await this.db.write();
           resolve();
         } catch (err) {
-          pipelineRegistry.recordFailure("groq_to_memory", String(err));
+          pipelineRegistry.recordFailure("brain_to_memory", String(err));
           reject(err);
         }
       }, this.WRITE_DEBOUNCE_MS);
@@ -431,7 +578,8 @@ export class MemoryManager {
     const entry: MemoryEntry = {
       id: this.generateId(),
       role,
-      content,
+      // Never stored with a credential in it, whoever said it.
+      content: redact(content),
       timestamp: Date.now(),
       tags,
     };
@@ -484,10 +632,11 @@ export class MemoryManager {
     return limit ? this.shortTermBuffer.slice(-limit) : [...this.shortTermBuffer];
   }
 
-  getConversationHistory(limit = 10): { role: string; content: string }[] {
+  getConversationHistory(limit = 10): { role: string; content: string; tags?: string[] }[] {
     return this.getShortTerm(limit).map((m) => ({
       role: m.role,
       content: m.content,
+      ...(m.tags?.length ? { tags: m.tags } : {}),
     }));
   }
 
@@ -507,7 +656,8 @@ export class MemoryManager {
   async rememberFact(fact: string, source = "conversation", importance = 5, confidence = 0.8): Promise<void> {
     this.ensureInit();
 
-    const cleanFact = fact.trim();
+    // A fact is kept for good: a credential in it is replaced, not stored.
+    const cleanFact = redact(fact.trim());
     if (!cleanFact) {
       throw new Error("[Memory] rememberFact requires a non-empty fact.");
     }
@@ -516,6 +666,7 @@ export class MemoryManager {
       id: this.generateId(),
       fact: cleanFact,
       source,
+      origin: factOrigin({ source }),
       timestamp: Date.now(),
       importance,
       lastAccessed: Date.now(),
@@ -541,7 +692,9 @@ export class MemoryManager {
       console.error("[Memory] Remember fact write failed:", err);
     });
     console.log(`[Memory] Remembered immediately: "${cleanFact}"`);
-    invalidateVectorCache().catch(() => {});
+    this.factsChanged();
+    // Filed in the second brain too (Obsidian vault), when one is configured.
+    import('./secondBrain.js').then(({ ingestFact }) => ingestFact(cleanFact, source, importance)).catch(() => { /* optional */ });
     invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
     this.dedupAndIndexFactInBackground(fastEntry);
     return;
@@ -581,7 +734,7 @@ export class MemoryManager {
                // Delete old vector embedding (Python now implements this correctly),
                // then embed the updated text.
                await this.deleteVector(oldText);
-               await this.embed(existingFact.fact).catch(console.error);
+               await this.embed(existingFact.fact, existingFact.id).catch(console.error);
                
                await this.db.write(); // Persist SSOT
                return;
@@ -634,7 +787,7 @@ export class MemoryManager {
 
     // Vector index: embed the fact text (derived index, not SSOT)
     try {
-      await this.embed(fact);
+      await this.embed(fact, entry.id);
       console.log(`[Memory] Vector index updated: "${fact}"`);
     } catch (err) {
       console.error(`[Memory] Failed to embed fact (lexical fallback will be used): ${err}`);
@@ -646,7 +799,7 @@ export class MemoryManager {
 
     // REDIS: Invalidate cached search results — new fact may change rankings.
     // Fire-and-forget: cache miss is always safe (falls back to VectorPy).
-    invalidateVectorCache().catch(() => {});
+    this.factsChanged();
     invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
   }
 
@@ -672,14 +825,14 @@ export class MemoryManager {
             existingFact.confidence = Math.min(1.0, (existingFact.confidence || 0.8) + 0.05);
             this.db.data.longTerm = this.db.data.longTerm.filter(f => f.id !== entry.id);
             this.scheduledWrite().catch(err => console.error("[Memory] Background dedup write failed:", err));
-            invalidateVectorCache().catch(() => {});
+            this.factsChanged();
             invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
             console.log('[Memory] Background dedup merged a duplicate fact.');
             return;
           }
         }
 
-        await this.embed(entry.fact);
+        await this.embed(entry.fact, entry.id);
         console.log(`[Memory] Background vector index updated: "${entry.fact.slice(0, 80)}"`);
       } catch (err) {
         console.warn(`[Memory] Background vector dedup/index skipped: ${(err as Error).message}`);
@@ -700,6 +853,20 @@ export class MemoryManager {
    * Cache is invalidated on every fact write/update/delete.
    */
   private queryCache = new Map<string, { expiresAt: number; data: { fact: LongTermFact; score: number }[] }>();
+  /** The memory store's file: Redis results are cached per store. */
+  private cacheScope = 'default';
+  /** The latest cache bump (factsChanged); a search waits for it. */
+  private cacheBump: Promise<void> = Promise.resolve();
+
+  /**
+   * The stored facts changed (added, merged, trimmed, forgotten): no cached
+   * search answer from before may be served. Clears this process's 30 s
+   * cache and bumps the Redis generation (awaited by the next search).
+   */
+  private factsChanged(): void {
+    this.queryCache.clear();
+    this.cacheBump = invalidateVectorCache(this.cacheScope).catch(() => {});
+  }
 
   async searchFactsWithScores(query: string, topK = 5): Promise<{ fact: LongTermFact; score: number }[]> {
     this.ensureInit();
@@ -717,9 +884,18 @@ export class MemoryManager {
 
     let results: { fact: LongTermFact; score: number }[] = [];
 
+    // A fact remembered a moment ago: its cache bump must land before the
+    // cache is read, or the answer cached before it would be served.
+    await this.cacheBump;
+
     // ── REDIS fast path: return cached result if available ────────────────
-    const cached = await getCachedVectorResult<{ fact: LongTermFact; score: number }[]>(query, topK);
-    if (cached && cached.length > 0) {
+    const cached = (await getCachedVectorResult<{ fact: LongTermFact; score: number }[]>(query, topK, this.cacheScope))
+      ?.filter((r) => r?.fact && recallable(r.fact)) ?? null;
+    // Served only if every fact in it still exists here; otherwise it is out
+    // of date (or from another store) and the search runs again.
+    const cacheCurrent = !!cached && cached.length > 0
+      && cached.every((r) => r && r.fact && this.db.data.longTerm.some((f) => f.id === r.fact.id));
+    if (cached && cacheCurrent) {
       console.log(`[Memory] Redis cache hit for query: "${query.slice(0, 40)}"`);
       // Still apply reinforcement on cache hits — data is live LowDB refs
       const now = Date.now();
@@ -745,13 +921,19 @@ export class MemoryManager {
 
     // ── Cache miss: run full vector + lexical search ──────────────────────
 
-    // 1. Vector Search
+    // 1. Vector Search, within a time budget: a busy or slow service (a
+    // rebuild, a slow CPU) falls back to keywords instead of holding up
+    // planning (BUG-16).
     try {
-      const vectorResults = await this.searchVector(query, topK);
+      const vectorResults = await withinBudget(this.searchVector(query, topK), vectorSearchBudgetMs());
       if (vectorResults && vectorResults.length > 0) {
         for (const vr of vectorResults) {
-          const matched = this.db.data.longTerm.find(f => f.fact === vr.text);
-          if (matched) {
+          // Prefer the stable id; fall back to exact text for vectors embedded
+          // before ids were sent, so nothing already in the store is dropped.
+          const matched =
+            (vr.fact_id ? this.db.data.longTerm.find(f => f.id === vr.fact_id) : undefined)
+            ?? this.db.data.longTerm.find(f => f.fact === vr.text);
+          if (matched && recallable(matched)) {
             results.push({ fact: matched, score: vr.score });
           }
         }
@@ -764,7 +946,7 @@ export class MemoryManager {
     if (results.length === 0) {
       const tokens = query.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
       if (tokens.length === 0) {
-        results = this.getLongTermFacts(topK).map(f => ({ fact: f, score: 0.5 }));
+        results = this.getLongTermFacts(topK).filter(recallable).map(f => ({ fact: f, score: 0.5 }));
       } else {
         const scored = this.db.data.longTerm.map((f) => {
           const factLower = f.fact.toLowerCase();
@@ -772,7 +954,7 @@ export class MemoryManager {
           return { fact: f, score: score * 0.2 };
         });
         results = scored
-          .filter((s) => s.score > 0)
+          .filter((s) => s.score > 0 && recallable(s.fact))
           .sort((a, b) => b.score - a.score || b.fact.importance - a.fact.importance)
           .slice(0, topK);
       }
@@ -793,7 +975,7 @@ export class MemoryManager {
 
     // ── REDIS: store result for next hit (fire-and-forget) ────────────────
     if (results.length > 0) {
-      cacheVectorResult(query, topK, results).catch(() => {});
+      cacheVectorResult(query, topK, results, this.cacheScope).catch(() => {});
     }
 
     this.queryCache.set(cacheKey, { expiresAt: Date.now() + 30_000, data: results });
@@ -843,10 +1025,12 @@ export class MemoryManager {
       })
       .sort((a, b) => b.score - a.score);
 
+    // Gathered or inferred facts say so (SEC-05): a web page's claim stored by
+    // a research agent is not the owner's word, and the plan should know.
+    const ORIGIN_LABEL: Record<FactOrigin, string> = { user: 'from you', agent: 'inferred by JARVIS', external: 'from research, unverified' };
     const lines = ranked.map(({ fact: f }) => {
-      const age = Math.round((now - f.timestamp) / 60_000);
       const accessed = f.accessCount ?? 0;
-      return `• [imp:${f.importance.toFixed(1)}, used:${accessed}x] ${f.fact}`;
+      return `• [imp:${f.importance.toFixed(1)}, used:${accessed}x, ${ORIGIN_LABEL[factOrigin(f)]}] ${f.fact}`;
     });
 
     return [
@@ -856,19 +1040,22 @@ export class MemoryManager {
   }
 
   /**
-   * PHASE 1: Memory decay — call periodically (e.g. once per session start).
+   * PHASE 1: Memory decay — call periodically (the Goal Runtime's hourly
+   * housekeeping, and once at startup).
    * Reduces importance of facts that haven't been accessed recently.
    *
-   * Decay formula: importance -= decayAmount per day since lastAccessed
+   * Decay formula: importance -= decayPerDay for each day a fact goes unseen,
+   * counted once: each run decays only the time since the last run (or since
+   * the fact was last seen), so running it often does not decay faster.
    * Facts that drop below minImportance (1.0) are removed entirely.
    */
   async decayMemory(
     decayPerDay = 0.1,
-    minImportance = 1.0
+    minImportance = 1.0,
+    now = Date.now(),
   ): Promise<{ decayed: number; removed: number }> {
     this.ensureInit();
 
-    const now = Date.now();
     const ONE_DAY_MS = 86_400_000;
     let decayed = 0;
     let removed = 0;
@@ -885,8 +1072,11 @@ export class MemoryManager {
 
       if (daysSinceSeen < 1) return true; // Less than a day old — no decay
 
-      const decay = decayPerDay * daysSinceSeen;
+      // Only the days not yet decayed: seen again since the last run → from then.
+      const from = Math.max(lastSeen, fact.decayedThrough ?? lastSeen);
+      const decay = decayPerDay * Math.max(0, (now - from) / ONE_DAY_MS);
       fact.importance = Math.max(0, fact.importance - decay);
+      fact.decayedThrough = now;
       decayed++;
 
       if (fact.importance < minImportance) {
@@ -910,12 +1100,35 @@ export class MemoryManager {
 
       // REDIS: invalidate after decay — stale cached results must not surface
       if (removedFacts.length > 0) {
-        invalidateVectorCache().catch(() => {});
+        this.factsChanged();
         invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
       }
     }
 
     return { decayed, removed };
+  }
+
+  /**
+   * Forgets facts by id, or those containing `text` (OPS-03). Removed from the
+   * fact store (written before this returns) and from the semantic index; the
+   * report says per fact whether the index removal worked, so a fact still in
+   * the index is never reported as fully gone.
+   */
+  async forgetFacts(match: { id?: string; text?: string }, limit = 5): Promise<ForgetReport | { tooMany: number }> {
+    this.ensureInit();
+    const needle = (match.text ?? '').trim().toLowerCase();
+    const found = this.db.data.longTerm.filter((f) => (match.id && f.id === match.id) || (needle.length >= 3 && f.fact.toLowerCase().includes(needle)));
+    if (found.length > limit) return { tooMany: found.length };
+    const ids = new Set(found.map((f) => f.id));
+    this.db.data.longTerm = this.db.data.longTerm.filter((f) => !ids.has(f.id));
+    await this.db.write();
+    const vectorIndex: string[] = [];
+    for (const f of found) {
+      vectorIndex.push(await this.deleteVectorReported(f.fact));
+      this.factsChanged();
+    }
+    invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
+    return { removed: found.map((f) => ({ id: f.id, fact: f.fact })), vectorIndex };
   }
 
   async forgetFact(id: string): Promise<void> {
@@ -930,7 +1143,7 @@ export class MemoryManager {
         console.warn(`[Memory] forgetFact: vector delete failed for "${target.fact.slice(0, 40)}": ${err}`)
       );
       // REDIS: invalidate so forgotten fact can't be served from cache
-      invalidateVectorCache(target.fact).catch(() => {});
+      this.factsChanged();
       invalidateContextCache(this.db.data.sessionId ?? "default").catch(() => {});
     }
   }

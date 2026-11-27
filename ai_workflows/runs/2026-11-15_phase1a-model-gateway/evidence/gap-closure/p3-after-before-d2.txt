@@ -1,0 +1,112 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=strictModelIdentityTest,lineageInheritanceTest,modelRoutingTest,llmClientBehaviourTest,claudeProviderTest,providerHealthTest,llmCancellationTest,foregroundPriorityTest,modelRoleRoutingTest,modelRouteCorrectionsTest,modelRouteRound3Test,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest,qaModelFailureTest,reviewRound3FixesTest,strictHelperRoutingTest,finalReviewFixesTest,agentSpecialistsTest,sevenAgentTest,agentRuntimeTest,jarvisAgentIntegrationTest,goalAgentIntegrationTest,codeRepairTest,backgroundResearchTest
+
+
+=== JARVIS test suite — 25 file(s) ===
+
+  PASS    agentRuntimeTest                             2777ms
+  PASS    agentSpecialistsTest                         1238ms
+  PASS    backgroundResearchTest                       1328ms
+  PASS    claudeProviderTest                           1210ms
+  PASS    codeRepairTest                               8837ms
+  PASS    finalReviewFixesTest                         1251ms
+  PASS    foregroundPriorityTest                       1080ms
+  PASS    goalAgentIntegrationTest                     2426ms
+  PASS    jarvisAgentIntegrationTest                   3652ms
+  PASS    lineageInheritanceTest                       1208ms
+  PASS    llmCancellationTest                          2239ms
+  PASS    llmClientBehaviourTest                       1250ms
+  FAIL    modelRoleRoutingTest                         9733ms
+  FAIL    modelRouteCorrectionsTest                    5487ms
+  PASS    modelRouteRound3Test                         2072ms
+  PASS    modelRoutingTest                             705ms
+  PASS    providerCapabilitiesTest                     778ms
+  PASS    providerHealthTest                           3725ms
+  PASS    providerIsolationTest                        1225ms
+  PASS    qaModelFailureTest                           1793ms
+  FAIL    reviewRound3FixesTest                        3781ms
+  PASS    sevenAgentTest                               1690ms
+  FAIL    strictHelperRoutingTest                      1406ms
+  PASS    strictModelIdentityTest                      735ms
+  PASS    usageLedgerTest                              1186ms
+
+=== 21 passed · 4 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - modelRoleRoutingTest: === Results: 35 passed, 3 failed ===
+        FAIL: …and is sent once the conversation ends (JARVIS_MODEL_REVIEW (shared, model check) failed; this route is strict, so no other model answered: model identity not confirmed: shared did not report which model answered (asked for check))
+        FAIL: a background call to a provider the conversation does not use is not held (0 ms)
+        FAIL: a foreground call is never held (0 ms)
+        …
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+        PASS: a background call to the provider the conversation uses has not been sent yet
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+      [ModelRouter] Background call waited 81 ms for the owner's request.
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+        FAIL: …and is sent once the conversation ends (JARVIS_MODEL_REVIEW (shared, model check) failed; this route is strict, so no other model answered: model identity not confirmed: shared did not report which model answered (asked for check))
+        FAIL: a background call to a provider the conversation does not use is not held (0 ms)
+        FAIL: a foreground call is never held (0 ms)
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] shared check review: 3 in / 2 out tokens, 0 ms
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+      === Results: 35 passed, 3 failed ===
+  - modelRouteCorrectionsTest: === Results: 47 passed, 1 failed ===
+        FAIL: categoryChat: the wait does not use up the coding time limit either (StrictRouteError: JARVIS_MODEL_CODING (shared, model code) failed; this route is strict, so no other model answered: model identity not confirmed: shared did not report which model answered (asked for code))
+        …
+        PASS: default stream: a provider without image input is not asked to stream an image (seeing:chat)
+        PASS: …the image request is answered by a provider that takes images (seeing answered)
+      [ModelRouter] JARVIS_MODEL_CONVERSATION stream (blind:m) failed before any text (Provider "blind" cannot take this request: no image input.); answering with the default model.
+      [LLM usage] a (default model) conversation: ? in / ? out tokens, 1 ms, streamed
+        PASS: routed stream: the configured provider without image input is not asked (a:stream)
+        PASS: …the non-strict conversation route falls back to a provider that may take it (a streamed)
+      --- M4. Independence compares the models really used ---
+        PASS: agentIndependence: QA set to the default provider and model that coding uses is not independent (false)
+        PASS: …a different provider is independent
+        PASS: observedAgentIndependence() exists
+        PASS: the same model really used by both: not independent
+        PASS: different models really used: independent
+        PASS: QA has not run successfully: unknown, never "independent"
+        PASS: the latest successful calls are compared
+      === Results: 47 passed, 1 failed ===
+  - reviewRound3FixesTest: === Results: 19 passed, 1 failed ===
+        FAIL: …and the result says the model gave an empty answer (JARVIS_MODEL_AGENT_CODING_AGENT (codingblank, model code-model) failed; this route is strict, so no other model answered: model identity not confirmed: codingblank did not report which model answered (asked for code-model))
+        …
+      [LLM usage] b (default model) unspecified: ? in / ? out tokens, 1 ms
+        PASS: the trial stream reached the provider (1)
+      [LLM usage] can (default model) unspecified: ? in / ? out tokens, 0 ms
+        PASS: the next call is sent to the provider at once, not refused until the lease expires (2 → can answered)
+      --- L5. A fallback not sent keeps the route's failure ---
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [LLM usage] elsewhere m planning: ? in / ? out tokens, 0 ms, failed
+      [ModelRouter] JARVIS_MODEL_PLANNING (elsewhere:m) failed (elsewhere is down (500)); answered by the default model.
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: the fallback ends with the queue-wait error (QueueWaitTimeoutError: JARVIS_MODEL_PLANNING: waited 100 ms for the owner's conversation (JARVIS_MODEL_QUEUE_WAIT_MS); not sent to a, and not answered by another model)
+        PASS: …and keeps the route's own failure as its cause (elsewhere is down (500))
+      --- L6. "(provider default)" is not a model name ---
+        PASS: an unknown model on either side is never reported as independent ({"coding":{"provider":"groq","model":"(provider default)"},"qa":{"provider":"groq","model":"qwen-2.5-32b"},"independent":null,"reason":"unknown: a coding_agent call was recorded without its model"})
+        PASS: …it is reported as unknown (null) (null)
+      === Results: 19 passed, 1 failed ===
+  - strictHelperRoutingTest: [cause]: Error: model identity not confirmed: coder did not report which model answered (asked for code-model)
+        FAIL: the parent is COMPLETED, answered by the model (FAILED The coding_agent agent could not complete every part with its configured model: code_analysis_worker-1 (code_analysis_worker): failed — JARVIS_MODEL_AGENT_CODING_AGENT (codeok, model code-model) failed; this route is strict, so no other 
+        FAIL: QA is COMPLETED, answered by its model (FAILED QA could not check every part: test_runner_worker-11 (test_runner_worker): failed — JARVIS_MODEL_AGENT_QA_AGENT (qaok, model qa-model) failed; this route is strict, so no other model answered: model identity not confirmed: qaok did not report wh
+        …
+      --- 6. The router honours an inherited route only when it is configured and strict ---
+      [LLM usage] coder code-model planning: ? in / ? out tokens, 0 ms
+      /home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:66
+        const e = new Error(`${route.key} (${target}, model ${route.model}) failed; this route is strict, so no other model answered: ${String(original?.message ?? err)}`, { cause: err });
+                  ^
+      Error [StrictRouteError]: JARVIS_MODEL_AGENT_CODING_AGENT (coder, model code-model) failed; this route is strict, so no other model answered: model identity not confirmed: coder did not report which model answered (asked for code-model)
+          at strictRouteError (/home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:66:13)
+          at ModelRouter.routedChat (/home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:476:31)
+          at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/strictHelperRoutingTest.ts:182:3) {
+        [cause]: Error: model identity not confirmed: coder did not report which model answered (asked for code-model)
+            at ModelRouter.confirmIdentity (/home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:448:27)
+            at ModelRouter.routedChat (/home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:472:36)
+            at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/strictHelperRoutingTest.ts:182:3)
+      }
+      Node.js v22.23.4
+ ELIFECYCLE  Test failed. See above for more details.

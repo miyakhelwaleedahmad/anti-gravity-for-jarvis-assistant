@@ -1,0 +1,2 @@
+a6c02c4e820abfb0b47c5442f2e51153a818d77e3846b950b54a4d5fe056f862  bridge/modelCategories.ts
+47337c00b6ceac46051baef7ff632d2292aa8029e23a247f192ff3d42a067d1f  core/agents/behaviors/toolLoop.ts

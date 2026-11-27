@@ -1,0 +1,90 @@
+production hashes recorded
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=qaModelFailureTest,modelRouteRound3Test
+
+
+=== JARVIS test suite — 2 file(s) ===
+
+  FAIL    modelRouteRound3Test                         2592ms
+  FAIL    qaModelFailureTest                           2353ms
+
+=== 0 passed · 2 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - modelRouteRound3Test: === Results: 20 passed, 23 failed ===
+        FAIL: …but its fallback to the primary waits while the conversation goes on (elsewhere:m:chat,a:own:chat)
+        FAIL: cancelling while the fallback waits ends the call as an AbortError, the primary not asked (answered)
+        FAIL: a fallback that waits past JARVIS_MODEL_QUEUE_WAIT_MS fails clearly and is not sent (answered)
+        FAIL: planning: the configured model itself failed → the default model on the same provider answers (JARVIS_MODEL_PLANNING: every eligible provider failed (a); last error: The model "other-model" is not available to this key (404))
+        FAIL: …each provider/model pair asked once (a:other-model:chat)
+        FAIL: conversation on the primary's own provider: one fallback with the default model (JARVIS_MODEL_CONVERSATION: every eligible provider failed (a); last error: The model "talk" is not available to this key (404) / a:talk:chat)
+        FAIL: …the same for a stream (ERR JARVIS_MODEL_CONVERSATION: every eligible provider failed (a); last error: The model "talk" is not available to this key (404) / a:talk:chat)
+        FAIL: …the next provider answers, in order (b:other-model answered)
+        FAIL: …the next provider answers, in order (b:other-model answered)
+        FAIL: …the next provider answers, in order (b:other-model answered)
+        FAIL: …the next provider answers, in order (b:other-model answered)
+        FAIL: with the primary's breaker open, neither model is sent to it (b:other-model:chat → b:other-model answered)
+        FAIL: a cancelled trial frees the lease at once (before it would expire)
+        FAIL: an unrelated call's failure does not end the running trial's lease
+        FAIL: after the trial call was cancelled, the next call is sent to the provider at once (0 call(s); b:undefined answered)
+        FAIL: case does not make two models different ({"provider":"groq","model":"QWEN-2.5-32B"})
+        FAIL: openai:<x> and openai:<y> are the same model (the fallback provider sends its own)
+        FAIL: the same provider whose client may move to its fast model is not counted as independent
+        FAIL: two Claude models are not counted as independent (server-side fallbacks may answer with another Claude model)
+        FAIL: the result reports why (undefined)
+        FAIL: observed: model names compared regardless of case
+        FAIL: observed: two models through the OpenAI fallback are the same model
+        FAIL: observed: calls of another task are not paired with this one
+        …
+      [ModelRouter] can failed (can rate-limited locally (a trial call after the open period is still running); not sent); answered by the fallback "b".
+      [LLM usage] b (default model) unspecified: ? in / ? out tokens, 0 ms
+        FAIL: after the trial call was cancelled, the next call is sent to the provider at once (0 call(s); b:undefined answered)
+      --- Independence: the same effective model is never "independent" ---
+        FAIL: case does not make two models different ({"provider":"groq","model":"QWEN-2.5-32B"})
+        FAIL: openai:<x> and openai:<y> are the same model (the fallback provider sends its own)
+        FAIL: the same provider whose client may move to its fast model is not counted as independent
+        FAIL: two Claude models are not counted as independent (server-side fallbacks may answer with another Claude model)
+        PASS: different providers are independent
+        FAIL: the result reports why (undefined)
+        FAIL: observed: model names compared regardless of case
+        FAIL: observed: two models through the OpenAI fallback are the same model
+        FAIL: observed: calls of another task are not paired with this one
+        PASS: observed: a QA call that failed is not counted, so no claim is made
+      === Results: 20 passed, 23 failed ===
+  - qaModelFailureTest: === Results: 8 passed, 18 failed ===
+        FAIL: the QA task is FAILED, not COMPLETED (COMPLETED: dev_status: dev_status: stand-in output
+        FAIL: …with the provider's full reason, not cut short
+        FAIL: …and it says the strict route failed
+        FAIL: no keyword-rule tool ran in its place (dev_status,diagnose_app)
+        FAIL: the QA task is FAILED (COMPLETED: dev_status: dev_status: stand-in output
+        FAIL: …with the original reason
+        FAIL: no keyword-rule tool ran in its place (dev_status,diagnose_app)
+        FAIL: the QA task is FAILED, not "Stopped before a final answer" (COMPLETED: Stopped before a final answer: the model was not available (default model is dow)
+        FAIL: …with the original reason
+        FAIL: a worker answered by keyword rules makes the QA task FAILED (COMPLETED: dev_status: dev_status: stand-in output
+        FAIL: …and the reason names the worker and the keyword rules
+        FAIL: the coding task is FAILED (COMPLETED: git_overview: git_overview: stand-in output)
+        FAIL: …with the provider's reason
+        FAIL: no keyword-rule tool ran in its place (git_overview)
+        FAIL: …and the result is marked as not the model's answer ({"toolCalls":1,"taskDescription":"What changed in git recently?"})
+        FAIL: the task is FAILED with the queue-wait reason (COMPLETED: )
+        FAIL: …the model was not asked and no keyword rule ran ( / browser_state)
+        FAIL: …marked as the model's answer ({"toolCalls":0,"taskDescription":"Review the change summary"})
+        …
+        PASS: …the limitation says the model was not available, with the full reason (Model: the model was not available (default model is down (503)); keyword rules were used.)
+      --- 7. A queue-wait time-out ends the task, for any role ---
+        FAIL: …and the result is marked as not the model's answer ({"toolCalls":1,"taskDescription":"What changed in git recently?"})
+      [ConvBus] 🟢 Conversation started — autonomous tasks paused.
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+      --- 8. QA whose model answers (unchanged) ---
+        FAIL: the task is FAILED with the queue-wait reason (COMPLETED: )
+        FAIL: …the model was not asked and no keyword rule ran ( / browser_state)
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        PASS: the QA task is COMPLETED with the model's answer (COMPLETED: qa_agent model answer)
+      --- 9. A QA call cancelled while it runs (unchanged) ---
+        FAIL: …marked as the model's answer ({"toolCalls":0,"taskDescription":"Review the change summary"})
+        PASS: it ends CANCELLED (CANCELLED)
+        PASS: …and no keyword rule ran
+      === Results: 8 passed, 18 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

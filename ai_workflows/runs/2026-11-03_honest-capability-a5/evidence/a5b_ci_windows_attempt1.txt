@@ -1,0 +1,14 @@
+CI run 42033994044 (commit d9d7820), job 'windows', attempt 1 (job 127267265678): excerpt
+  PASS    browserControlAgentTest                      13935ms
+  FAIL    scenarioIntegrationTest                      41313ms
+  PASS    selfCheckA5bTest                             616ms
+  FAIL    selfCheckTest                                2843ms
+=== 216 passed · 2 failed · 0 timed out · 0 blocked · 0 environment · 6 skipped ===
+  - scenarioIntegrationTest: === 32 passed, 4 failed ===
+        FAIL: restarted (level 1, no approval) and checked: the port answers again (diagnose_app::true dev:start_server:false)
+        FAIL: stopping it is asked (level 2), with the diagnosis as WHY ({})
+        FAIL: cancelled: nothing stopped, and JARVIS says what it needed (The api server on port 57708 stopped by itself, exit code 1, sir; its last line was: Error, lost the connection to the database, DB PASSWORD a hidden value. I started it again; it answers now.)
+        FAIL: approved: the old process is gone, a new one answers (stop_server undefined: false; old pid alive now: true; new pid: 4280; answers: true | I see no fault, sir: port 57707, web, answers 200 and port 57708, api, answers 200. What looks wrong?)
+  - selfCheckTest: === Results: 76 passed, 1 failed ===
+        ❌ no issue, file or ledger entry changed
+        ❌ no issue, file or ledger entry changed

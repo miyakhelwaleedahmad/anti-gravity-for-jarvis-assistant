@@ -32,7 +32,15 @@ const EL_LAG_WARN_MS        = 200;       // event loop lag warning threshold
 const EL_LAG_CRITICAL_MS    = 1_000;    // event loop lag critical threshold
 const HEAP_GROWTH_WARN_MB   = 50;        // heap growth warning in 5 min window
 const CPU_WARN_PERCENT       = 80;       // CPU% warning threshold
-const GC_WARN_MS             = 100;      // GC pause warning threshold
+/**
+ * GC pause warning threshold, JARVIS_GC_WARN_MS (default 500). At 100 ms an
+ * ordinary major GC on a busy PC raised a warning (BUG-18).
+ */
+export function gcWarnMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env['JARVIS_GC_WARN_MS']);
+  return Number.isFinite(n) && n >= 50 && n <= 10_000 ? n : 500;
+}
+const GC_WARN_MS             = gcWarnMs();
 const MAX_HISTORY            = 60;       // keep 60 samples (~10 min at 10s)
 
 // ─── Types ────────────────────────────────────────────────────────────────────

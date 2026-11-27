@@ -22,6 +22,7 @@
  */
 
 import { EventEmitter } from "events";
+import { agentStateMachine } from "./agentStateMachine.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,12 +70,18 @@ const LEAK_AUDIT_INTERVAL_MS = 60_000;
 class ConversationBus extends EventEmitter {
   private _isActive   = false;  // true while brain is processing a user request
   private _isSpeaking = false;  // true while TTS is playing back audio
+  /** How many times "idle" was emitted (to tell whether a listener just did). */
+  private _idleCount = 0;
 
   // ── Speaking timeout guard ────────────────────────────────────────────────
   // Auto-reset isSpeaking after timeout if speaking_end never arrives
   // (e.g. TTS client disconnects mid-playback).
+  // The time allowed is the state machine's SPEAKING allowance: 12 s by
+  // default, longer for the speech actually queued. A fixed 12 s ended
+  // "speaking" while JARVIS was still talking on the owner's PC, so the mic
+  // reopened and JARVIS heard itself.
   private _speakingTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly SPEAKING_TIMEOUT_MS = 12_000;
+  private _speakingGuardMs = 0;
 
   // ── Leak detection state ──────────────────────────────────────────────────
   private _leakAuditTimer: ReturnType<typeof setInterval> | null = null;
@@ -145,16 +152,30 @@ class ConversationBus extends EventEmitter {
     console.log("[ConvBus] 🔊 Speaking started.");
 
     // Auto-reset isSpeaking after timeout in case speaking_end never fires
+    this._armSpeakingGuard();
+  }
+
+  /** More speech was queued: while speaking, stretch the guard to cover it. */
+  noteSpeechQueued(): void {
+    if (this._isSpeaking) this._armSpeakingGuard();
+  }
+
+  /** The time the speaking guard was last given, in ms (0 before the first). */
+  get speakingGuardMs(): number { return this._speakingGuardMs; }
+
+  private _armSpeakingGuard(): void {
     if (this._speakingTimer) clearTimeout(this._speakingTimer);
+    const ms = agentStateMachine.speakingWatchdogMs();
+    this._speakingGuardMs = ms;
     this._speakingTimer = setTimeout(() => {
       if (this._isSpeaking) {
         console.warn(
-          `[ConvBus] ⚠️ Speaking timeout (${this.SPEAKING_TIMEOUT_MS}ms) — ` +
+          `[ConvBus] ⚠️ Speaking timeout (${ms}ms) — ` +
           `auto-resetting isSpeaking. TTS speaking_end was never received.`
         );
         this.speakingEnded();
       }
-    }, this.SPEAKING_TIMEOUT_MS);
+    }, ms);
   }
 
   /** Call when TTS playback ends. */
@@ -165,8 +186,12 @@ class ConversationBus extends EventEmitter {
       clearTimeout(this._speakingTimer);
       this._speakingTimer = null;
     }
+    // A speaking:end listener (the Orchestrator's deferred conversation end)
+    // may already have gone idle; idle again here gave two "Context active"
+    // and two wake-word resumes per reply (BUG-19).
+    const idleBefore = this._idleCount;
     this.emit("speaking:end");
-    if (this.isIdle) {
+    if (this.isIdle && this._idleCount === idleBefore) {
       console.log("[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.");
       this._emitIdle();
     }
@@ -306,6 +331,7 @@ class ConversationBus extends EventEmitter {
    * Emit "idle" and drain any coalesced once-idle callbacks.
    */
   private _emitIdle(): void {
+    this._idleCount++;
     this.emit("idle");
   }
 

@@ -90,4 +90,6 @@ ok('Observer.stop() does not throw', true);
 try { fs.unlinkSync(tmpStateFile); } catch {}
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
-if (failed > 0) process.exit(1);
+// Exit explicitly: on Windows the PowerShell session's pipes stay open and
+// can keep a finished test running until the runner's 2-minute limit.
+process.exit(failed > 0 ? 1 : 0);

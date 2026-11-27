@@ -13,9 +13,21 @@
  *   - Mid-execution     : reflectionEngine.midExecutionCheck() after each batch
  */
 
-import { agentStateMachine, AgentState } from './agentStateMachine.js';
+import { agentStateMachine, AgentState, tryTransition } from './agentStateMachine.js';
+import { UNTRUSTED_RULE, untrusted } from '../security/untrustedText.js';
+import { asRepair, beginTrace, endTrace } from './traceContext.js';
+import { diagnose, MAX_RECOVERY_ROUNDS, observeFailure } from './stepRecovery.js';
+import {
+  continueOffer, continueQuestion, diagnosisSummary, repairSummary, runningSummary, systemStateSummary, tabsSummary, unfinishedReason,
+} from './voiceSummaries.js';
 import { taskGraphEngine, TaskGraphBuilder, type TaskGraph } from './taskGraphEngine.js';
-import { toolRegistryV2 } from './toolRegistryV2.js';
+import type { ApprovalDecision } from '../security/approvalRequest.js';
+import { verificationFailedReply, withCheck } from './verifiers.js';
+import { worldState } from './worldState.js';
+import { approvalGate } from '../security/approvalGate.js';
+import { currentTaskNode } from './taskContext.js';
+import { toolRegistryV2, type ToolResult } from './toolRegistryV2.js';
+import { APPROVAL_DENIED_REPLY, FULL_CONTROL_HINT, RATE_LIMITED_REPLY, isPermissionDenial } from '../control/permissionDenial.js';
 import { reflectionEngine, type RepairStrategy } from './reflectionEngine.js';
 import { agentMemory } from '../memory/agentMemory.js';
 import { modelRouter } from '../bridge/modelRouter.js';
@@ -24,9 +36,21 @@ import { llmConfig } from '../config/llmconfig.js';
 import { conversationBus } from './conversationBus.js';
 import { registerAllTools } from './tools/index.js';
 import { SkillLoader } from './skillLoader.js';
+import { normalizeVoiceInput } from './voiceInput.js';
+import { recordFailure } from './issueStore.js';
+import { captureInFlight, noteInFlight } from './selfCheck.js';
+import { selectPlanningToolNames, shouldUseHeavyContext } from './planningToolSelection.js';
+import {
+  describeCommandResult, desktopReply, devStatusReply, parseJson, repairFailure, systemStatusReply, trendingReply,
+} from './replyText.js';
+import { isClarifyingQuestion } from './clarification.js';
+import { matchDeterministicCommand, brainPayload, type DeterministicRoute } from './deterministicRoutes.js';
+export { capabilitiesReply, describeCommandResult, desktopReply, devStatusReply, systemStatusReply, trendingReply } from './replyText.js';
+export { normalizeVoiceInput } from './voiceInput.js';
 import type { ILLMMessage, ILLMToolCall } from '../bridge/llmTypes.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 // ── Phase 1: New module imports ───────────────────────────────────────────────
 import { goalManager, type Goal } from './goalManager.js';
@@ -36,6 +60,10 @@ import { unifiedContextBuilder } from '../memory/unifiedContextBuilder.js';
 // ── Phase 6: Adaptive planning intelligence ────────────────────────────────
 import { plannerIntelligence } from './plannerIntelligence.js';
 import { taskGraphEngine as _tge } from './taskGraphEngine.js';
+import { LOW_RISK_TOOLS, SIMPLE_REPLY_TOOLS } from './toolNameLists.js';
+import { redact } from '../security/redactor.js';
+import { CONSOLE_NOTE, SPOKEN_MAX_SENTENCES, SpokenStream, stripInternalMarkup, stripMarkdown } from './spokenText.js';
+import { NO_ACTION_NOTE, claimsAction, noActionReply, onlyLooks, requestedAction } from './actionHonesty.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -53,7 +81,47 @@ const DEFAULT_CONFIG: OrchestratorConfig = {
   voiceEnabled: true,
 };
 
+/**
+ * The request a piece of the agent loop belongs to: its process() call and
+ * that call's own abort signal (aborted by a newer request or an interrupt).
+ * Checks used to read this.currentAbortController, which by then was the
+ * newer request's: on the owner's PC a replaced request went on speaking and
+ * moving the shared state, and the newer request failed with "unexpected
+ * error" (SPEAKING -> OBSERVING).
+ */
+/** Longest the first request waits for the skill tools (HYP-02). */
+const SKILLS_WAIT_MS = 10_000;
+
+/**
+ * How a request's planning went: the outcome of its last planPhase() and the
+ * stage timings for its timing table. Kept per request (ARCH-03): on the
+ * shared orchestrator, overlapping requests wrote the same fields.
+ */
+interface PlanState {
+  outcome: 'graph' | 'answered' | 'failed' | 'interrupted';
+  timings: Record<string, number>;
+  /** The direct answer, when outcome is 'answered'. */
+  answer?: string;
+}
+const requestContext = new AsyncLocalStorage<{ callId: string; signal: AbortSignal; plan?: PlanState }>();
+
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
+
+/** History tag for a reply built from tool output: it keeps that origin (SEC-03). */
+const FROM_TOOLS = ['from_tool_output'];
+
+/**
+ * A history turn for the model. A reply that was built from tool output is
+ * replayed inside the untrusted wrapper: it may repeat what a web page or a
+ * document said, and it is evidence, not JARVIS's own instruction (SEC-03).
+ */
+function historyMessage(h: { role: string; content: string; tags?: string[] }): ILLMMessage {
+  const role = (h.role === 'user' || h.role === 'assistant' ? h.role : 'user') as ILLMMessage['role'];
+  if (h.tags?.includes(FROM_TOOLS[0]!)) {
+    return { role, content: untrusted('earlier reply built from tool results', h.content) };
+  }
+  return { role, content: h.content };
+}
 
 export class JarvisOrchestrator {
   private config: OrchestratorConfig;
@@ -65,7 +133,12 @@ export class JarvisOrchestrator {
   private _loopExecuting = false;
 
   // Phase 1: tracks the active Goal object during a request
-  private activeGoal: Goal | null = null;
+  /**
+   * The goal of each request still running, by its process() call (REL-04).
+   * One shared field was overwritten by an overlapping request and cleared by
+   * whichever finished first, so an interrupt could miss a running goal.
+   */
+  private activeGoals = new Map<string, Goal>();
   private currentProcessCallId: string | null = null;
   private currentAbortController: AbortController | null = null;
   private isConversationEndDeferred = false;
@@ -76,7 +149,28 @@ export class JarvisOrchestrator {
   // current request — ensures the finally block can always pair it with
   // conversationEnded() even on very early exceptions.
   private _conversationStarted = false;
+  /**
+   * Plan state outside a request (planPhase called directly); inside one, see
+   * planState(). Its outcome says how the last planPhase() call ended when it
+   * returned no graph: it spoke a direct answer, spoke an apology for an LLM
+   * failure, or was interrupted. The callers used to guess, and a replan that
+   * answered directly was followed by "I was unable to recover from the
+   * error, sir."
+   */
+  private planOutside: PlanState = { outcome: 'graph', timings: {} };
+  /**
+   * "Continue what I was doing" (P13): the unfinished request JARVIS offered
+   * to run again. Only a "yes" as the very next request, within a minute,
+   * runs it — as a new request, through every check; anything else drops it.
+   */
+  private continueOffer: { description: string; expires: number } | null = null;
   public onBargeIn: (() => void)[] = [];
+  /**
+   * Settles when the skills are registered (HYP-02). Loading was not awaited:
+   * a request in the first moments was planned without the skill tools
+   * (open_app, control_*, weather…), and the model picked something else.
+   */
+  private skillsReady: Promise<void> = Promise.resolve();
 
   constructor(config: Partial<OrchestratorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -87,9 +181,10 @@ export class JarvisOrchestrator {
     // Load skills from skills/ directory and register as AgentTools
     const skillsDir = path.join(__dirname, '..', 'skills');
     const skillLoader = new SkillLoader(skillsDir);
-    skillLoader.loadSkills().then(count => {
+    // HYP-02: kept, so the first requests wait for the skills (process()).
+    this.skillsReady = skillLoader.loadSkills().then(count => {
       if (count > 0) {
-        console.log(`[Orchestrator] 🎯 ${count} skill(s) loaded into ToolRegistry.`);
+        console.log(`[Orchestrator] 🎯 ${count} skill(s) loaded into ToolRegistry: ${toolRegistryV2.names().length} tools in total.`);
       }
 
       // Phase 7: Pre-warm context + tool caches immediately after skill load
@@ -110,7 +205,7 @@ export class JarvisOrchestrator {
       }).catch(() => {});
     }).catch(err => {
       console.warn('[Orchestrator] Skill loading failed (non-fatal):', err);
-    });
+    }).then(() => undefined);
 
     // OPT-8: Pre-warm the LLM definition cache immediately (before skill load completes)
     Promise.resolve().then(() => toolRegistryV2.getLLMDefinitions()).catch(() => {});
@@ -132,6 +227,13 @@ export class JarvisOrchestrator {
       console.warn('[Orchestrator] Startup init warning (non-fatal):', err);
     });
 
+    // World state (P7): the task part follows the graph's steps and the
+    // approval request on display.
+    taskGraphEngine.on('node_started', (e: { tool: string; args?: Record<string, unknown> }) => worldState.stepStarted(stepLabel(e)));
+    taskGraphEngine.on('node_completed', (e: { tool: string; args?: Record<string, unknown> }) => worldState.stepFinished(stepLabel(e), true));
+    taskGraphEngine.on('node_failed', (e: { tool: string; args?: Record<string, unknown> }) => worldState.stepFinished(stepLabel(e), false));
+    worldState.watchApprovals(() => approvalGate.pendingSummary());
+
     // Wire interrupt signal: abort active graph on interrupt
     agentStateMachine.on('interrupted', () => {
       this.currentAbortController?.abort();
@@ -143,10 +245,8 @@ export class JarvisOrchestrator {
       }
       agentMemory.clearWorkingContext();
       // Phase 1: fail the active goal on interrupt
-      if (this.activeGoal) {
-        goalManager.failGoal(this.activeGoal.id, 'Interrupted by user').catch(() => {});
-        this.activeGoal = null;
-      }
+      for (const g of this.activeGoals.values()) goalManager.failGoal(g.id, 'Interrupted by user').catch(() => {});
+      this.activeGoals.clear();
     });
 
     // Handle deferred conversation end and reset.
@@ -176,11 +276,27 @@ export class JarvisOrchestrator {
    * Called by jarvis.ts for both voice (source='voice') and CLI (source='cli').
    */
   async process(input: string, source: 'cli' | 'voice' = 'cli'): Promise<void> {
+    // The first request waits for the skills, at most SKILLS_WAIT_MS (HYP-02).
+    await this.waitForSkills();
     const callId = Math.random().toString(36).substring(7);
     this.currentProcessCallId = callId;
-    // Abort any in-flight request from a previous process() call.
-    this.currentAbortController?.abort();
-    this.currentAbortController = new AbortController();
+    // "Why are you stuck?" describes the request in flight, so that is read
+    // before this request's trace replaces it and the abort below stops it.
+    if (this.matchDeterministicCommand(input)?.type === 'investigate_stuck') {
+      try {
+        noteInFlight(captureInFlight({
+          state: String(agentStateMachine.currentState),
+          stateHistory: agentStateMachine.stateHistory,
+          graph: taskGraphEngine.getCurrentGraph(),
+          ...(approvalGate.pendingSummary() ? { approval: approvalGate.pendingSummary()! } : {}),
+        }));
+      } catch (err) {
+        console.warn('[Orchestrator] could not read the request in flight:', (err as Error).message);
+      }
+    }
+    // One correlation id per request, so the plan, every tool call and the
+    // outcome can be joined back together in the trace log (JARVIS-015).
+    beginTrace(source, input);
     this.isConversationEndDeferred = false;
     this._conversationEndHandled = false;
 
@@ -188,6 +304,14 @@ export class JarvisOrchestrator {
     if (curState === AgentState.SPEAKING || curState === AgentState.INTERRUPTED) {
       this.handleBargeInBeforeProcessing(input, source);
     }
+
+    // Abort any in-flight request from a previous process() call. Done after
+    // the barge-in handling, which aborts the current controller: created
+    // before it, this request's own LLM call was cancelled before it started,
+    // and a command typed while JARVIS was speaking was silently dropped.
+    this.currentAbortController?.abort();
+    const controller = new AbortController();
+    this.currentAbortController = controller;
 
     if (agentStateMachine.is(AgentState.INTERRUPTED)) {
       console.log('[Orchestrator] ⚠️  System interrupted — ignoring new input until reset.');
@@ -202,12 +326,28 @@ export class JarvisOrchestrator {
     if (this._loopExecuting) {
       console.warn('[Orchestrator] ⚠️  Concurrent process() call detected — previous loop aborted, proceeding.');
       agentStateMachine.reset();
+    } else if (agentStateMachine.is(AgentState.LISTENING)) {
+      // Typed while JARVIS waits for speech after "Jarvis": the typed request
+      // takes over (owner's PC, N-PC2: it crashed with LISTENING -> PLANNING).
+      // The recording finishes as usual; what it hears comes in as a voice request.
+      console.log('[Orchestrator] Typed input while listening — it takes over.');
+      agentStateMachine.transition(AgentState.IDLE);
+    } else if (source === 'cli' && !agentStateMachine.is(AgentState.IDLE) && !agentStateMachine.is(AgentState.PROCESSING_STT)) {
+      // Typed while a state is left over with no request running (REFLECTING
+      // and the like): reset, as when a request is still running (N-PC2:
+      // REFLECTING -> PLANNING). Typed text only: spoken input keeps its own
+      // path, and a spoken request waiting in the queue still runs (review N1).
+      console.warn(`[Orchestrator] ⚠️  State ${agentStateMachine.currentState} left over with no request marked running — reset to IDLE.`);
+      // A spoken request waiting in the voice queue would start on IDLE and
+      // replace the typed one: the typed text replaces it, as barge-in does (owner, R1).
+      this.runBargeInCallbacks();
+      agentStateMachine.reset();
     }
 
     console.log(`[Orchestrator] Processing input [${source}]: "${input}"`);
     const t0 = performance.now();
-    // Per-stage plan timings injected by planPhase() via (this as any)._planStageTimings
-    (this as any)._planStageTimings = {};
+    // This request's plan outcome and per-stage timings (filled by planPhase()).
+    const planState: PlanState = { outcome: 'graph', timings: {} };
 
     this._conversationStarted = true;
     conversationBus.conversationStarted();
@@ -217,32 +357,41 @@ export class JarvisOrchestrator {
     // runs concurrently with the agent loop start. We only resolve the promise
     // when we need the goal object (after the loop completes).
     let goal: Goal | null = null;
-    let goalPromise: Promise<Goal | null> | null = null;
+    let goalPromise = null as Promise<Goal | null> | null;   // set by goals.ensure() (a closure)
     const shouldCreateGoal =
       !this.matchDeterministicCommand(input) &&
       !this.isSimpleConversationalInput(input);
 
-    if (shouldCreateGoal) {
-      goalPromise = goalManager.createGoal(input, source).then(g => {
-        g.status = 'in_progress';
-        g.startedAt = Date.now();
-        g.updatedAt = Date.now();
-        goalManager.persistNow?.().catch(() => {});
-        this.activeGoal = g;
+    // BUG-10: every chat line became a goal (100 in the owner's history). A
+    // goal is now created only for work: from the start for an action request
+    // (so a failure is recorded and retried as before), otherwise only when the
+    // plan actually runs tools. Plain conversation creates none.
+    const goals: GoalHandle | null = shouldCreateGoal ? {
+      existing: () => goalPromise,
+      ensure: () => (goalPromise ??= goalManager.createGoal(input, source).then(g => {
+        goalManager.transition(g, 'in_progress', 'request started', { quiet: true });
+        this.activeGoals.set(callId, g);
         goal = g;
         return g;
       }).catch(err => {
         console.warn('[Orchestrator] GoalManager unavailable (non-fatal):', err);
         return null;
-      });
-    } else {
+      })),
+    } : null;
+    if (goals && (ACTION_REQUEST.test(input) || TASK_REQUEST.test(input))) {
+      goals.ensure();
+    } else if (!goals) {
       console.log('[Orchestrator] Skipping GoalManager for simple/deterministic request.');
     }
 
     let loopOutcome: 'success' | 'failed' | 'blocked' = 'success';
+    // What the loop learned for this request's goal: its approval decisions
+    // and, when it fails, why. The goal itself is completed or failed here only.
+    const record: LoopRecord = { approvals: [] };
+    const approvals = record.approvals;
     try {
       // Agent loop starts IMMEDIATELY — goal creation runs in background
-      loopOutcome = await this.runAgentLoop(input, source, goal);
+      loopOutcome = await requestContext.run({ callId, signal: controller.signal, plan: planState }, () => this.runAgentLoop(input, source, goals, record));
 
       // ── Phase 1: Resolve Goal based on actual outcome ──────────────────────
       // PIPELINE-OPT: Resolve the background goal promise now (it ran concurrently
@@ -251,16 +400,26 @@ export class JarvisOrchestrator {
         goal = await goalPromise;
       }
       if (goal) {
-        if (loopOutcome === 'success') {
+        if (approvals.length) goal.metadata = { ...goal.metadata, approvals };
+        if (record.askedBack) {
+          // Not done and not failed: closed, so it is never retried or resumed.
+          await goalManager.cancelGoal(goal.id, 'asked the owner a question; the answer starts a new request').catch(() => {});
+        } else if (loopOutcome === 'success') {
           await goalManager.completeGoal(goal.id);
         } else {
           // 'failed' or 'blocked' — do NOT mark as completed
           await goalManager.failGoal(
             goal.id,
-            loopOutcome === 'blocked' ? 'blocked by safety policy' : 'agent loop ended without success'
+            record.failReason ?? (loopOutcome === 'blocked' ? 'blocked by safety policy' : 'agent loop ended without success'),
           ).catch(() => {});
         }
-        this.activeGoal = null;
+        this.activeGoals.delete(callId);
+      }
+      // One line per real task in the second brain's daily log (only with a vault configured).
+      if (shouldCreateGoal) {
+        import('../memory/secondBrain.js')
+          .then(({ secondBrain }) => secondBrain.noteTaskOutcome(input, loopOutcome, loopOutcome === 'success' ? undefined : record.failReason))
+          .catch(() => { /* optional */ });
       }
     } catch (err) {
       console.error('[Orchestrator] ❌ Unhandled error in agent loop:', err);
@@ -272,7 +431,7 @@ export class JarvisOrchestrator {
       const isRateLimit    = errStr.includes('rate-limited') || errStr.includes('429');
       const isTimeout      = errStr.includes('timeout') || errStr.includes('ETIMEDOUT') || errStr.includes('AbortError');
       const isNetworkError = errStr.includes('ECONNREFUSED') || errStr.includes('ENOTFOUND') || errStr.includes('fetch failed');
-      const isAborted      = this.currentAbortController?.signal.aborted;
+      const isAborted      = controller.signal.aborted;
 
       let fallback: string;
       if (isAborted) {
@@ -286,20 +445,29 @@ export class JarvisOrchestrator {
         fallback = 'I cannot reach my reasoning backend, sir. Please check your connection.';
       } else {
         fallback = 'I encountered an unexpected error, sir. Please try again.';
+        // Rate limits, time-outs and network errors are recorded by the provider
+        // (the language model's ledger outcome); this is everything else.
+        recordFailure({ component: 'orchestrator', message: err instanceof Error ? `${err.name}: ${err.message}` : errStr, error: err });
       }
 
-      if (fallback) this.speak(fallback);
+      // Spoken as this request (it was not aborted), whatever context called process().
+      if (fallback) requestContext.run({ callId, signal: controller.signal, plan: planState }, () => this.speak(fallback));
 
       // ── Phase 1: Fail Goal on unhandled error ──────────────────────────────
       if (goalPromise) { goal = await goalPromise; }
       if (goal) {
+        if (approvals.length) goal.metadata = { ...goal.metadata, approvals };
         await goalManager.failGoal(goal.id, errStr).catch(() => {});
-        this.activeGoal = null;
+        this.activeGoals.delete(callId);
       }
     } finally {
       this._loopExecuting = false;
       if (this.currentProcessCallId === callId) {
         this.currentAbortController = null;
+        // The request is over: an approval asked later must not show its
+        // words as WHY, nor be asked by voice because it was spoken.
+        endTrace();
+        worldState.endTask();
         agentMemory.clearWorkingContext();
         if (agentStateMachine.currentState !== AgentState.SPEAKING) {
           // ── Conversation recovery guarantee ─────────────────────────────────
@@ -310,6 +478,17 @@ export class JarvisOrchestrator {
             if (this._conversationStarted) {
               conversationBus.conversationEnded();
             }
+          }
+          this._conversationStarted = false;
+          agentStateMachine.reset();
+        } else if (!nodeBridge.speechInFlight && !conversationBus.isSpeaking) {
+          // SPEAKING, but no reply is on its way to tts.py (not connected, its
+          // connection dropped, voice off): no speaking_end will come to end
+          // the request. Before, it waited for the speaking watchdog (VOICE-001).
+          console.log('[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.');
+          if (!this._conversationEndHandled) {
+            this._conversationEndHandled = true;
+            if (this._conversationStarted) conversationBus.conversationEnded();
           }
           this._conversationStarted = false;
           agentStateMachine.reset();
@@ -325,7 +504,7 @@ export class JarvisOrchestrator {
       }
       const totalMs = Math.round(performance.now() - t0);
       // ── Print per-stage timing table ────────────────────────────────────────────────
-      const planStages: Record<string, number> = (this as any)._planStageTimings ?? {};
+      const planStages: Record<string, number> = planState.timings;
       if (Object.keys(planStages).length > 0) {
         console.log('\n┌────────────────────────────────────────────┐');
         console.log('│  ⏱  JARVIS Timing Breakdown                 │');
@@ -347,17 +526,27 @@ export class JarvisOrchestrator {
       }
 
     }
+    // "Yes" to "continue what I was doing": the earlier request, as a new
+    // request of its own — planned again, every step checked and asked again.
+    if (record.followUp && this.currentProcessCallId === callId) {
+      await this.process(record.followUp, source);
+    }
   }
 
+  /**
+   * Marks the orchestrator ready for requests. It is event-driven: it runs
+   * when a request arrives. Work that continues without a request — stored
+   * goals, schedules, retries — is the Goal Runtime's (core/goalRuntime.ts).
+   */
   startLoop(): void {
     if (this.isLoopRunning) return;
     this.isLoopRunning = true;
-    console.log('[Orchestrator] ♾️  Autonomy loop active.');
+    console.log('[Orchestrator] Ready for requests (event-driven; background goals run in the Goal Runtime).');
   }
 
   stopLoop(): void {
     this.isLoopRunning = false;
-    console.log('[Orchestrator] ⏹️  Autonomy loop stopped.');
+    console.log('[Orchestrator] ⏹️  Stopped taking requests.');
   }
 
   getState(): AgentState {
@@ -391,10 +580,8 @@ export class JarvisOrchestrator {
     }
 
     // 2. Fail the active goal so it isn't left as 'in_progress'
-    if (this.activeGoal) {
-      goalManager.failGoal(this.activeGoal.id, reason).catch(() => {});
-      this.activeGoal = null;
-    }
+    for (const g of this.activeGoals.values()) goalManager.failGoal(g.id, reason).catch(() => {});
+    this.activeGoals.clear();
 
     // 3. Interrupt and abort any active task graph
     const graph = taskGraphEngine.getCurrentGraph();
@@ -429,13 +616,31 @@ export class JarvisOrchestrator {
   /**
    * The core PLAN → EXECUTE → OBSERVE → REFLECT → REPAIR cycle.
    */
-  private async runAgentLoop(input: string, source: 'cli' | 'voice', goal: Goal | null = null): Promise<'success' | 'failed' | 'blocked'> {
+  private async runAgentLoop(
+    input: string,
+    source: 'cli' | 'voice',
+    goals: GoalHandle | null = null,
+    record: LoopRecord = { approvals: [] },
+  ): Promise<'success' | 'failed' | 'blocked'> {
+    const approvals = record.approvals;
+    // The goal is created in the background while planning starts; its status
+    // is recorded once it exists. (The loop used to receive `null` every time,
+    // so planning/executing, the plan summary and the graph id were never
+    // stored.) Completing or failing it is process()'s job: the loop records
+    // why it failed in `record.failReason`.
+    const noteGoal = (status: 'planning' | 'executing', extras: Parameters<typeof goalManager.updateGoalStatus>[2] = {}) => {
+      // Running tools is work: the goal exists from here at the latest (BUG-10).
+      const goalReady = status === 'executing' ? goals?.ensure() : goals?.existing();
+      void goalReady?.then((g) => (g ? goalManager.updateGoalStatus(g.id, status, extras) : undefined)).catch(() => {});
+    };
     this._loopExecuting = true;
 
     // ── ⚡ Deterministic Pre-Router: known open/launch commands ───────────────
     // Checked FIRST — before memory writes — so memory unavailability never
     // blocks a fast-path command. Bypasses LLM to prevent Groq 429 failures.
     const route = this.matchDeterministicCommand(input);
+    // An offer to continue holds for the very next request only.
+    if (route?.type !== 'continue_confirmed' && route?.type !== 'continue_declined') this.continueOffer = null;
     if (route) {
       console.log(`[Orchestrator] ⚡ Deterministic command route: type="${route.type}"${route.target ? ` target="${route.target}"` : ''}`);
       // Transition through IDLE → PLANNING → EXECUTING only if not already there.
@@ -443,69 +648,220 @@ export class JarvisOrchestrator {
       // a new deterministic command arrives mid-execution of a previous one.
       const curSt = agentStateMachine.currentState;
       if (curSt !== AgentState.PLANNING && curSt !== AgentState.EXECUTING) {
-        try { agentStateMachine.transition(AgentState.PLANNING); } catch {}
+        tryTransition(AgentState.PLANNING, 'route to planning');
       }
       if (agentStateMachine.currentState !== AgentState.EXECUTING) {
-        try { agentStateMachine.transition(AgentState.EXECUTING); } catch {}
+        tryTransition(AgentState.EXECUTING, 'route to execution');
       }
+      // JARVIS-019: the outcome of these tool calls used to be discarded — the
+      // route always reported 'success', so a failed open_app was recorded as a
+      // completed goal. Track it without changing any spoken reply.
+      let routeSucceeded = true;
+      const runRoutedTool = async (tool: string, args: Record<string, unknown>) => {
+        const result = await toolRegistryV2.execute(tool, args);
+        if (!result?.success) routeSucceeded = false;
+        return result;
+      };
+      // A failed route says why. A permission refusal used to come out as
+      // "encountered an issue", with no hint that full control mode was needed.
+      const failureReply = (result: { error?: string; output?: string } | undefined, fallback: string): string => {
+        const reason = result?.error ?? '';
+        if (reason === 'APPROVAL_DENIED') return APPROVAL_DENIED_REPLY;
+        if (reason === 'RATE_LIMITED') return RATE_LIMITED_REPLY;
+        if (reason === 'VERIFICATION_FAILED') return verificationFailedReply(result?.output ?? '');
+        if (reason === 'RISK_REFUSED') return `I couldn't do that, sir. ${(result?.output ?? '').replace(/^Refused by safety policy:\s*/, '')}`;
+        if (isPermissionDenial(reason) || isPermissionDenial(result?.output ?? '')) return FULL_CONTROL_HINT;
+        return reason && reason.length <= 120 ? `${fallback} ${reason}` : fallback;
+      };
       try {
         if (route.type === 'open_app' && route.target) {
-          const result = await toolRegistryV2.execute('open_app', { target: route.target, source });
+          const result = await runRoutedTool('open_app', { target: route.target, source });
+          // JARVIS's own Chrome could not be used: say why and what to do, in
+          // short (owner, Q2); the whole message is in the console.
+          const opened = parseJson(result?.output ?? '');
+          const chromeReason = !result?.success && opened?.['method'] === 'jarvis-chrome'
+            ? String(opened?.['spoken'] ?? (result?.error ?? '').split(/(?<=\.)\s/)[0] ?? '') : '';
+          // Started, but nothing could check that it opened: said as such (phase A5d, owner Q1).
           const reply = result?.success
-            ? route.reply
-            : `I tried to open ${route.target} but encountered an issue, sir.`;
+            ? (result.verification?.status === 'unverifiable' ? `I started ${route.target}, sir, but I can't check from here that it opened.` : route.reply)
+            : chromeReason ? `I couldn't open ${route.target}, sir. ${chromeReason}`
+            : failureReply(result, `I tried to open ${route.target} but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_browser_tab' && route.target) {
-          const result = await toolRegistryV2.execute('control_browser', { action: 'close', target: route.target });
+          const result = await runRoutedTool('control_browser', { action: 'close', target: route.target });
           const reply = result?.success
             ? route.reply
-            : `I tried to close the tab "${route.target}" but encountered an issue, sir.`;
+            : (await import('../control/tabClose.js')).tabRouteReply(result) ?? failureReply(result, `I tried to close the tab "${route.target}" but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_current_tab') {
-          const result = await toolRegistryV2.execute('control_browser', { action: 'close_current' });
+          const result = await runRoutedTool('control_browser', { action: 'close_current' });
           const reply = result?.success
             ? route.reply
-            : `I tried to close the current tab but encountered an issue, sir.`;
+            : (await import('../control/tabClose.js')).tabRouteReply(result) ?? failureReply(result, `I tried to close the current tab but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_app' && route.target) {
-          const result = await toolRegistryV2.execute('control_app', { action: 'close', target: route.target });
+          const result = await runRoutedTool('control_app', { action: 'close', target: route.target });
           const reply = result?.success
             ? route.reply
-            : `I tried to close the application "${route.target}" but encountered an issue, sir.`;
+            : failureReply(result, `I tried to close the application "${route.target}" but encountered an issue, sir.`);
+          this.speak(reply);
+        } else if (route.type === 'close_browser') {
+          const result = await runRoutedTool('control_browser', { action: 'close_browser' });
+          const reply = result?.success
+            ? route.reply
+            : failureReply(result, `I did not close JARVIS's Chrome, sir.`);
           this.speak(reply);
         } else if (route.type === 'close_current_window') {
-          const result = await toolRegistryV2.execute('control_window', { action: 'close_current' });
+          const result = await runRoutedTool('control_window', { action: 'close_current' });
           const reply = result?.success
             ? route.reply
-            : `I tried to close the active window but encountered an issue, sir.`;
+            : failureReply(result, `I tried to close the active window but encountered an issue, sir.`);
           this.speak(reply);
         } else if (route.type === 'get_system_state') {
-          const result = await toolRegistryV2.execute('get_system_state', {});
-          this.speak(result?.success ? `Here is the current system state, sir: ${result.output}` : 'Failed to retrieve system state, sir.');
+          // A few spoken sentences; the full state goes to the console (it used to be read out as JSON).
+          const result = await runRoutedTool('get_system_state', {});
+          if (result?.success) console.log(`[Orchestrator] System state:\n${result.output}`);
+          this.speak(result?.success ? systemStateSummary(parseJson(result.output)) : 'Failed to retrieve system state, sir.');
         } else if (route.type === 'get_browser_tabs') {
-          const result = await toolRegistryV2.execute('get_browser_tabs', {});
-          this.speak(result?.success ? `Here are the open Chrome tabs, sir: ${result.output}` : 'Failed to retrieve browser tabs, sir.');
+          // The tabs with the one on screen (P8), said in at most three sentences.
+          // Read from JARVIS's Chrome now; when it cannot be read, why, never
+          // stale tabs from a snapshot (phase A5a, owner Q1, Q2).
+          const result = await runRoutedTool('get_browser_tabs', {});
+          const tabs = result?.success ? parseJson(result.output) : null;
+          if (result?.success) console.log(`[Orchestrator] Browser tabs:\n${result.output}`);
+          else console.log(`[Orchestrator] ${result?.error ?? result?.output ?? ''}`);
+          this.speak(Array.isArray(tabs)
+            ? tabsSummary(tabs)
+            : String(parseJson(result?.output ?? '')?.['spoken'] ?? 'I could not read my Chrome\'s tabs, sir.'));
+        } else if (route.type === 'whats_running') {
+          const [apps, servers] = await Promise.all([runRoutedTool('get_open_apps', {}), runRoutedTool('dev_status', {})]);
+          const appList = apps?.success ? parseJson(apps.output) : null;
+          const serverReply = servers?.success ? devStatusReply(servers.output) : 'I could not check the local servers, sir.';
+          // A window list that could not be read is said as such, not as "no apps" (A5a, TRA-07).
+          if (!apps?.success) console.log(`[Orchestrator] ${apps?.error ?? apps?.output ?? ''}`);
+          this.speak(apps?.success
+            ? runningSummary(Array.isArray(appList) ? appList : [], serverReply)
+            : `${String(parseJson(apps?.output ?? '')?.['spoken'] ?? 'I can\'t read the open windows right now, sir.')} ${serverReply}`);
         } else if (route.type === 'is_tab_open' && route.target) {
-          const result = await toolRegistryV2.execute('is_tab_open', { tabNameOrUrl: route.target });
-          this.speak(result?.success && result.output === 'true' ? `Yes, the ${route.target} tab is open, sir.` : `No, the ${route.target} tab is not open, sir.`);
+          const result = await runRoutedTool('is_tab_open', { tabNameOrUrl: route.target });
+          // "No" only when Chrome was read and the tab is not there; otherwise why (A5a, owner Q1).
+          if (!result?.success) console.log(`[Orchestrator] ${result?.error ?? result?.output ?? ''}`);
+          this.speak(result?.success
+            ? (result.output === 'true' ? `Yes, the ${route.target} tab is open, sir.` : `No, the ${route.target} tab is not open, sir.`)
+            : String(parseJson(result?.output ?? '')?.['spoken'] ?? 'I could not read my Chrome\'s tabs, sir.'));
         } else if (route.type === 'enable_full_control_session') {
-          const result = await toolRegistryV2.execute('enable_full_control_session', { source });
-          this.speak(result?.success ? `Full control mode enabled, sir.` : 'Failed to enable full control, sir.');
+          const result = await runRoutedTool('enable_full_control_session', { source });
+          // Why it was not turned on (not approved, …), not only that it failed.
+          this.speak(result?.success ? `Full control mode enabled, sir.` : failureReply(result, 'I did not turn on full control mode, sir.'));
+        } else if (route.type === 'status') {
+          // One sentence from a real reading; no LLM request.
+          const result = await runRoutedTool('system_overview', {});
+          this.speak(result?.success ? systemStatusReply(result.output) : 'I could not read the system state, sir.');
+        } else if (route.type === 'dev_status') {
+          const result = await runRoutedTool('dev_status', {});
+          this.speak(result?.success ? devStatusReply(result.output) : 'I could not check the local servers, sir.');
+        } else if (route.type === 'diagnose_app') {
+          this.speak(await this.diagnoseAndRepair(runRoutedTool));
+        } else if (route.type === 'continue_work') {
+          this.speak(await this.continueWork(runRoutedTool));
+        } else if (route.type === 'continue_confirmed') {
+          const offer = this.continueOffer;
+          this.continueOffer = null;
+          if (offer) {
+            console.log(`[Orchestrator] ▶️  Continuing "${offer.description}" as a new request.`);
+            record.followUp = offer.description;
+          }
+        } else if (route.type === 'continue_declined') {
+          this.continueOffer = null;
+          this.speak(route.reply);
+        } else if (route.type === 'agent_status') {
+          // First line is said; the tree and details go to the console.
+          const [question, agent] = (route.target ?? 'summary').split('|');
+          const result = await runRoutedTool('agent_status', { question, ...(agent ? { agent } : {}) });
+          const [first, ...rest] = (result?.output ?? '').split('\n');
+          if (rest.length) console.log(`[Orchestrator] Agents:\n${rest.join('\n')}`);
+          this.speak(result?.success && first ? first : 'I could not read what the agents are doing, sir.');
+        } else if (route.type === 'agent_stop') {
+          const result = await runRoutedTool('cancel_agent_task', { which: route.target ?? 'latest' });
+          const message = result?.success ? parseJson(result.output)?.message : undefined;
+          this.speak(typeof message === 'string' ? message : failureReply(result, 'I could not stop the agents, sir.'));
+        } else if (route.type === 'delegate' && route.target) {
+          const result = await runRoutedTool('delegate_task', { task: route.target, ...(route.specialist ? { specialist: route.specialist } : {}) });
+          const message = result?.success ? parseJson(result.output)?.message : undefined;
+          this.speak(typeof message === 'string' ? `On it, sir. ${message}` : failureReply(result, 'I could not start the agents, sir.'));
+        } else if (route.type === 'goal_status') {
+          const result = await runRoutedTool('goal_status', {});
+          const [first, ...rest] = (result?.output ?? '').split('\n');
+          if (rest.length) console.log(`[Orchestrator] Goals:\n${rest.join('\n')}`);
+          this.speak(result?.success && first ? first : 'I could not read the goals, sir.');
+        } else if (route.type === 'goal_control' && route.target) {
+          const [action, goalRef] = route.target.split('|');
+          const result = await runRoutedTool('goal_control', { action, goal: goalRef });
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? `${body.error} Sir.` : failureReply(result, 'I could not change that goal, sir.'));
+        } else if (route.type === 'goal_create' && route.target) {
+          const g = JSON.parse(route.target) as { kind: string; objective: string; scheduleText?: string };
+          const result = await runRoutedTool('goal_create', { objective: g.objective, kind: g.kind, ...(g.scheduleText ? { schedule: g.scheduleText } : {}) });
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? `I could not record that goal: ${body.error}` : failureReply(result, 'I could not record that goal, sir.'));
+        } else if ((route.type === 'youtube_search' || route.type === 'youtube_play' || route.type === 'site_search') && route.target) {
+          const d = JSON.parse(route.target) as Record<string, string>;
+          const args = route.type === 'youtube_search' ? { query: d['query'], open: d['open'] }
+            : route.type === 'youtube_play' ? { action: d['action'] } : { site: d['site'], query: d['query'] };
+          const result = await runRoutedTool(route.type, args);
+          this.speak(desktopReply(route.type, d, result));
+        } else if (route.type === 'youtube_trending' && route.target) {
+          const d = JSON.parse(route.target) as { region?: string; category?: string };
+          const result = await runRoutedTool('youtube_trending', { ...(d.region ? { region: d.region } : {}), ...(d.category ? { category: d.category } : {}) });
+          if (result?.success && !/^\s*Error/.test(result.output)) console.log(`[Orchestrator] YouTube:\n${result.output}`);
+          this.speak(trendingReply(result));
+        } else if (route.type === 'health_check' || route.type === 'self_check_full' || route.type === 'repair_report' || route.type === 'investigate_stuck') {
+          // Read-only questions about JARVIS itself (core/selfCheck.ts): nothing is repaired here.
+          const mode = { health_check: 'quick', self_check_full: 'full', repair_report: 'report', investigate_stuck: 'stuck' }[route.type];
+          const result = await runRoutedTool('self_check', { mode });
+          const report = result?.success ? parseJson(result.output) : undefined;
+          if (Array.isArray(report?.details)) console.log(`[Orchestrator] ${(report.details as string[]).join('\n')}`);
+          this.speak(typeof report?.spoken === 'string' ? report.spoken : failureReply(result, 'I could not check myself, sir.'));
+        } else if (route.type === 'heal' || route.type === 'repair_last' || route.type === 'repair_continue' || route.type === 'repair_stop' || route.type === 'repair_explain_block') {
+          // Bounded runtime repair (core/repairRun.ts), through the registry like any action.
+          const action = { heal: 'heal', repair_last: 'last', repair_continue: 'continue', repair_stop: 'stop', repair_explain_block: 'explain' }[route.type];
+          const result = await runRoutedTool('self_repair', { action });
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.spoken === 'string' ? body.spoken : failureReply(result, 'I could not start the repair, sir.'));
+        } else if (route.type === 'memory_brain') {
+          // The second brain (Obsidian vault) and error history, through the registry like any action.
+          const action = route.target ?? 'status';
+          const value = brainPayload(input, action) || route.value || '';
+          const result = await runRoutedTool('memory_brain', { action, value });
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.message === 'string' ? body.message : failureReply(result, 'I could not reach my second brain, sir.'));
+        } else if (route.type === 'propose_code_repair') {
+          // Risk 3: the registry asks for a typed approval; the tool refuses any other kind.
+          const result = await runRoutedTool('propose_code_repair', {});
+          const body = result?.success ? parseJson(result.output) : undefined;
+          this.speak(typeof body?.spoken === 'string' ? body.spoken : failureReply(result, 'I could not start the code repair, sir.'));
+        } else if (route.type === 'list_capabilities') {
+          // Through the registry like any tool call; the full list goes to the console.
+          const result = await runRoutedTool('list_capabilities', {});
+          if (result?.success) console.log(`[Orchestrator] Capabilities:\n${result.output}`);
+          this.speak(result?.success ? route.reply : 'I could not read my tool list, sir.');
         } else {
+          if (route.type === 'what_can_you_do') {
+            console.log(`[Orchestrator] Capabilities:\n${toolRegistryV2.capabilitySummary()}`);
+          }
           if (route.type === 'stop') {
             nodeBridge.sendToRole('tts', { type: 'command', payload: { action: 'stop' } });
             (nodeBridge as any).pendingTTS = [];
-            for (const cb of this.onBargeIn) {
-              try { cb(); } catch {}
-            }
+            this.runBargeInCallbacks();
           }
           this.speak(route.reply);
         }
       } catch (err) {
         console.error('[Orchestrator] Deterministic command execution error:', err);
         this.speak(`Sorry, I could not process the command, sir.`);
+        routeSucceeded = false;
       }
-      return 'success'; // deterministic commands complete the goal
+      return routeSucceeded ? 'success' : 'failed';
     }
 
     // Record user input to memory — fire-and-forget (non-blocking).
@@ -528,27 +884,30 @@ export class JarvisOrchestrator {
     }
 
     agentStateMachine.transition(AgentState.PLANNING);
-    if (goal) {
-      goalManager.updateGoalStatus(goal.id, 'planning').catch(() => {});
-    }
+    noteGoal('planning');
 
     if (this.isInterrupted()) return 'failed';
 
     const planResult = await this.planPhase(input);
 
     if (!planResult) {
-      const isActionRequest = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i.test(input);
-      const isAborted = this.isInterrupted() || this.currentAbortController?.signal.aborted;
-
-      if (isAborted || isActionRequest) {
-        console.warn(`[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "${input}". Goal marked FAILED.`);
-        if (goal) {
-          await goalManager.failGoal(
-            goal.id,
-            isAborted ? 'Planning interrupted by watchdog/abort' : 'Planning produced no tool execution graph'
-          ).catch(() => {});
-        }
+      const isActionRequest = ACTION_REQUEST.test(input);
+      const isAborted = this.isInterrupted() || this.requestSignal()?.aborted;
+      const noAnswer = this.planState().outcome !== 'answered';
+      // BUG-9: the model asked a question back. That ends the turn cleanly:
+      // not a failure, so no retry, and no goal waiting to run again.
+      if (!isAborted && !noAnswer && isClarifyingQuestion(this.planState().answer)) {
+        console.log(`[Orchestrator] ❓ Asked the owner a question; the answer comes as a new request.`);
+        record.askedBack = true;
         agentStateMachine.transition(AgentState.IDLE);
+        return 'success';
+      }
+
+      if (isAborted || isActionRequest || noAnswer) {
+        console.warn(`[Orchestrator] ⚠️ Planning failed or returned no actionable graph for "${input}". Goal marked FAILED.`);
+        record.failReason = isAborted ? 'Planning interrupted by watchdog/abort' : 'Planning produced no tool execution graph';
+        // A replaced request leaves the state to the newer one.
+        if (!this.isSuperseded()) agentStateMachine.transition(AgentState.IDLE);
         return 'failed';
       }
 
@@ -564,27 +923,37 @@ export class JarvisOrchestrator {
     if (preCheck.verdict === 'rejected') {
       const msg = `My plan was invalid before it started, sir. ${preCheck.issues[0] ?? 'Unknown issue.'}`;
       this.speak(msg);
-      if (goal) await goalManager.failGoal(goal.id, preCheck.summary);
+      record.failReason = preCheck.summary;
       return 'failed';
     }
 
     // ── Phase 6: PLANNER INTELLIGENCE ANALYSIS ─────────────────────────────
     // Runs after structural preCheck — adds confidence scoring, failure
     // prediction, and plan validation on top of the structural check.
+    let replanRequest: { reason: string } | null = null;
+    let activePlan = planResult;
     try {
       const intelligence = plannerIntelligence.analyzeGraph(planResult);
 
       if (intelligence.recommendation === 'replan') {
         const highRisk = intelligence.predictions.filter(p => p.riskLevel === 'high');
         const topIssue = highRisk[0];
+        // The prediction is about failing, not danger: "high-risk steps" read
+        // like the safety levels, for a step that had merely failed before (P13).
+        const why = topIssue?.reasons.find((r) => /failure rate|not registered|missing required/i.test(r)) ?? topIssue?.reasons[0];
         const msg = topIssue
-          ? `My plan has high-risk steps, sir. I'll reconsider. (${topIssue.reasons[0] ?? 'low confidence'})`
-          : `My plan confidence is too low to proceed safely, sir. Replanning.`;
+          ? `Part of my plan is likely to fail, sir: the ${topIssue.tool} step${why ? ` (${why})` : ''}. I'll plan it again.`
+          : `I am not confident in this plan, sir. I'll plan it again.`;
 
-        console.warn(`[Orchestrator] ⚠️ PlannerIntelligence: recommendation=replan. Failing plan.`);
-        this.speak(msg);
-        if (goal) await goalManager.failGoal(goal.id, 'PlannerIntelligence: low confidence plan rejected');
-        return 'failed';
+        // The message promised a replan, but the code called failGoal() and
+        // returned 'failed' without ever replanning (JARVIS-007). Record the
+        // intent here and act on it after this analysis block, so a genuine
+        // replan attempt happens and the guard still bounds it.
+        console.warn(`[Orchestrator] ⚠️ PlannerIntelligence: recommendation=replan.`);
+        this.announce(msg);
+        replanRequest = {
+          reason: topIssue?.reasons.join('; ') ?? 'plan confidence below threshold',
+        };
       }
 
       if (intelligence.recommendation === 'proceed_with_caution') {
@@ -600,15 +969,29 @@ export class JarvisOrchestrator {
       console.warn('[Orchestrator] PlannerIntelligence analysis failed (non-fatal):', err);
     }
 
-    if (goal) {
-      goalManager.updateGoalStatus(goal.id, 'executing', {
-        planSummary: preCheck.summary,
-        taskGraphId: planResult.id,
-      }).catch(() => {});
+    // ── Act on a low-confidence plan by actually replanning (JARVIS-007) ────
+    if (replanRequest) {
+      if (!taskGraphEngine.canReplan(input)) {
+        console.warn('[Orchestrator] ⛔ Replan guard: budget exhausted for this goal.');
+        record.failReason = 'PlannerIntelligence: low confidence plan rejected';
+        return 'failed';
+      }
+
+      const replanned = await this.repairPhase('replan', { context: replanRequest.reason }, activePlan, input);
+      if (!replanned) {
+        // A direct answer finishes the request; an LLM failure or interrupt does not.
+        if (this.planState().outcome !== 'answered') return 'failed';
+        return 'success';
+      }
+      activePlan = replanned;
     }
 
-    let graph = planResult;
+    noteGoal('executing', { planSummary: preCheck.summary, taskGraphId: planResult.id });
+    worldState.startTask(input, [...activePlan.nodes.values()].map(stepLabel));
+
+    let graph = activePlan;
     let repairCycles = 0;
+    let recoveryRounds = 0;
 
     // ── Repair Loop ──────────────────────────────────────────────────────────
     while (repairCycles <= this.config.maxRepairCycles) {
@@ -618,6 +1001,7 @@ export class JarvisOrchestrator {
       agentStateMachine.transition(AgentState.EXECUTING);
 
       graph = await taskGraphEngine.execute(graph, this.makeMidMonitoredExecutor(graph));
+      collectApprovals(graph, approvals);
 
       if (this.isInterrupted()) return 'failed';
 
@@ -634,17 +1018,10 @@ export class JarvisOrchestrator {
       // costing 200-800ms even on success. For read/open/info operations that all
       // succeeded, we know the outcome and skip directly to handleSuccess.
       const allNodes = [...graph.nodes.values()];
-      const LOW_RISK_TOOLS = new Set([
-        'open_app', 'get_time', 'get_date', 'get_weather', 'weather',
-        'get_system_info', 'system_info', 'get_system_state', 'get_pc_state',
-        'get_active_window', 'get_browser_tabs', 'get_open_apps', 'is_app_open',
-        'is_tab_open', 'search_memory', 'read_clipboard', 'set_clipboard',
-        'get_volume', 'set_volume', 'get_brightness', 'set_brightness',
-        'calculator', 'calc', 'math', 'web_search', 'deep_search',
-        'read_file', 'explain_code',
-      ]);
+      const lowRisk = new Set(LOW_RISK_TOOLS);
       const allSucceeded = allNodes.every(n => n.status === 'done');
-      const allLowRisk   = allNodes.every(n => LOW_RISK_TOOLS.has(n.tool));
+      // Any step whose metadata says it only reads (risk 0) counts too (P8).
+      const allLowRisk   = allNodes.every(n => lowRisk.has(n.tool) || toolRegistryV2.riskOf(n.tool, n.args) === 0);
 
       if (allSucceeded && allLowRisk) {
         console.log(`[Orchestrator] ⚡ OPT-3: Skipping full reflection for low-risk successful graph.`);
@@ -662,6 +1039,20 @@ export class JarvisOrchestrator {
         return 'success';
       }
 
+      // ── P11: a failure JARVIS knows gets a concrete repair first ──────────
+      // Each repair step goes through the registry (risk engine, approval with
+      // the failure as WHY, after-action check); then the failed step runs again.
+      const recovery = await this.recoverPhase(graph, recoveryRounds);
+      if (recovery.kind === 'repaired') {
+        recoveryRounds++;
+        continue;
+      }
+      if (recovery.kind === 'stop') {
+        this.speak(recovery.message);
+        record.failReason = recovery.reason;
+        return recovery.blocked ? 'blocked' : 'failed';
+      }
+
       // ── Abort path ─────────────────────────────────────────────────────────
       if (reflection.repairStrategy === 'abort' || repairCycles >= this.config.maxRepairCycles) {
         if (reflection.shouldSpeak && reflection.voiceMessage) {
@@ -669,18 +1060,15 @@ export class JarvisOrchestrator {
         }
         console.log(`[Orchestrator] ⛔ Aborting after ${repairCycles} repair cycle(s).`);
 
-        // Store failure as long-term memory
-        await agentMemory.rememberFact(
-          `Failed task: "${input.substring(0, 100)}" — ${reflection.failureClass ?? 'unknown error'}`,
-          7, 'agent_failure'
-        );
+        // Not stored as a long-term fact (BUG-15): the reflection's task_failed
+        // episode and the goal's failReason record it.
 
         // Detect safety-blocked scenarios to report accurate goal outcome
         const isBlocked = reflection.failureClass === 'tool_error' &&
           reflection.summary?.toLowerCase().includes('safety policy');
 
-        // Phase 1: fail the goal
-        if (goal) await goalManager.failGoal(goal.id, reflection.summary).catch(() => {});
+        // Phase 1: the goal fails with this reason (process() records it)
+        record.failReason = reflection.summary;
         return isBlocked ? 'blocked' : 'failed';
       }
 
@@ -703,7 +1091,7 @@ export class JarvisOrchestrator {
         if (!allowed) {
           console.warn(`[Orchestrator] ⛔ Phase 6 replan guard: max replans reached for this goal.`);
           this.speak('I have attempted multiple strategies and was unable to complete the task, sir.');
-          if (goal) await goalManager.failGoal(goal.id, 'max replans exceeded').catch(() => {});
+          record.failReason = 'max replans exceeded';
           return 'failed';
         }
         // Generate and log alternative strategies for failed nodes
@@ -728,8 +1116,13 @@ export class JarvisOrchestrator {
       if (!repaired) {
         // Repair produced no actionable plan
         console.log('[Orchestrator] ⛔ Repair failed — no recovery possible.');
-        const msg = reflection.voiceMessage ?? 'I was unable to recover from the error, sir.';
-        this.speak(msg);
+        // A replan that ended without a graph has already spoken (its answer, or
+        // the LLM-failure apology) or was interrupted; a second message here
+        // contradicted it ("<answer>. I was unable to recover from the error").
+        const replanSpoke = reflection.repairStrategy === 'replan' && this.planState().outcome !== 'graph';
+        if (!replanSpoke) {
+          this.speak(reflection.voiceMessage ?? 'I was unable to recover from the error, sir.');
+        }
         return 'failed';
       }
 
@@ -742,6 +1135,111 @@ export class JarvisOrchestrator {
   }
 
   // ── Phase Implementations ─────────────────────────────────────────────────
+
+  /**
+   * "Why isn't my application working?" (P13, core/diagnosis.ts): the
+   * diagnosis from real readings; the repairs it proposes, each through the
+   * registry (risk engine, approval gate with the fault as WHY); then a second
+   * diagnosis, which is what the reply says about the result.
+   */
+  private async diagnoseAndRepair(run: (tool: string, args: Record<string, unknown>) => Promise<ToolResult>): Promise<string> {
+    const first = await run('diagnose_app', {});
+    const report = first?.success ? parseJson(first.output) : null;
+    if (!report) return 'I could not check the application, sir.';
+    console.log(`[Orchestrator] Diagnosis:\n${first.output}`);
+    type Step = { tool: string; args: Record<string, unknown>; says: string; did: string };
+    const faults: Array<{ text: string; repairs?: Step[] }> = Array.isArray(report.faults) ? report.faults : [];
+    const repairs = faults.flatMap((f) => f.repairs ?? []);
+    if (!repairs.length) return diagnosisSummary(report);
+
+    const why = `To get your application working, JARVIS needs to repair this: ${faults.filter((f) => f.repairs?.length).map((f) => f.text).join('; ')}.`;
+    const done: string[] = [];
+    let reloadedTab: string | undefined;
+    for (const step of repairs) {
+      console.log(`[Orchestrator] 🩹 Repair: ${step.says} via ${step.tool}`);
+      agentMemory.pushEpisode('repair', `Repair: ${step.says}`, { tool: step.tool }, 7);
+      const result = await asRepair(why, () => run(step.tool, step.args));
+      if (!result?.success) return repairSummary(report, done, { says: step.says, reason: repairFailure(result) }, null);
+      if (step.tool === 'browser_navigate') reloadedTab = String(step.args['tab'] ?? '');
+      done.push(step.did);
+    }
+    const second = await run('diagnose_app', {});
+    const after = second?.success ? parseJson(second.output) : null;
+    if (after) console.log(`[Orchestrator] Diagnosis after the repair:\n${second.output}`);
+    return repairSummary(report, done, null, after, reloadedTab);
+  }
+
+  /**
+   * "Continue what I was doing" (P13): the newest request, when it is recent
+   * and did not finish, is named with why it stopped and offered again (a
+   * "yes" runs it as a new request). Otherwise JARVIS asks, saying what is on
+   * screen.
+   */
+  private async continueWork(run: (tool: string, args: Record<string, unknown>) => Promise<ToolResult>): Promise<string> {
+    const last = goalManager.getRecentGoals(1).find((g) => Date.now() - g.createdAt < CONTINUE_WINDOW_MS);
+    if (last && last.status !== 'completed' && last.status !== 'cancelled') {
+      this.continueOffer = { description: last.description, expires: Date.now() + CONTINUE_OFFER_MS };
+      return continueOffer(last.description, unfinishedReason(last.status, last.lastError));
+    }
+    const [browser, active] = await Promise.all([run('browser_state', {}), run('get_active_window', {})]);
+    const state = browser?.success ? parseJson(browser.output.replace(/^<untrusted_context[^>]*>\n?|\n?<\/untrusted_context>$/g, '')) : null;
+    const activeWindow = active?.success ? parseJson(active.output) : null;
+    const onScreen = state?.visibleTab?.title || activeWindow?.title || undefined;
+    return continueQuestion(last ? { description: last.description, done: last.status === 'completed' } : undefined, onScreen);
+  }
+
+  /**
+   * RECOVERY (P11, core/stepRecovery.ts): for each failed step, read again
+   * the part of the PC it touched and diagnose it. A known failure is repaired
+   * through the tool registry — so the risk engine, the approval gate and the
+   * after-action check apply — and the step is reset to run again; at most
+   * MAX_RECOVERY_ROUNDS rounds. A failure that needs the user, or a repair
+   * that is refused or not approved, stops with an honest message.
+   */
+  private async recoverPhase(graph: TaskGraph, rounds: number): Promise<
+    | { kind: 'none' }
+    | { kind: 'repaired' }
+    | { kind: 'stop'; message: string; reason: string; blocked: boolean }
+  > {
+    const failed = [...graph.nodes.values()].filter((n) => n.status === 'failed');
+    for (const node of failed) {
+      await observeFailure(node).catch(() => undefined);
+      const diagnosis = diagnose(node);
+      if (diagnosis.kind === 'none') continue;
+      if (diagnosis.kind === 'ask') return { kind: 'stop', message: diagnosis.message, reason: diagnosis.failure, blocked: false };
+      if (rounds >= MAX_RECOVERY_ROUNDS) {
+        return {
+          kind: 'stop',
+          message: `I repaired it ${rounds} times, sir, but the step still fails: ${diagnosis.failure}.`,
+          reason: `still failing after ${rounds} repairs: ${diagnosis.failure}`,
+          blocked: false,
+        };
+      }
+      const why = `To finish your request, JARVIS needs to repair this: ${diagnosis.failure}.`;
+      agentStateMachine.transition(AgentState.REPAIRING);
+      for (const step of diagnosis.steps) {
+        console.log(`[Orchestrator] 🩹 Repair (${rounds + 1}/${MAX_RECOVERY_ROUNDS}): ${step.says} via ${step.tool}`);
+        agentMemory.pushEpisode('repair', `Repair: ${step.says}`, { tool: step.tool, failure: diagnosis.failure }, 7);
+        const result = await asRepair(why, () => toolRegistryV2.execute(step.tool, step.args));
+        if (!result.success) {
+          const refused = result.error === 'RISK_REFUSED' || result.error === 'PERMISSION_DENIED';
+          const reason = result.error === 'APPROVAL_DENIED' ? 'it was not approved'
+            : refused ? `the safety policy refused it (${result.output.replace(/^Refused by safety policy: /, '').slice(0, 160)})`
+            : `that failed as well (${(result.verification?.evidence ?? result.output).slice(0, 160)})`;
+          return {
+            kind: 'stop',
+            message: `I could not finish, sir: ${diagnosis.failure}. I wanted to ${step.says}, but ${reason}.`,
+            reason: `${diagnosis.failure}; repair not done: ${reason}`,
+            blocked: refused,
+          };
+        }
+      }
+      this.announce(`I ${diagnosis.steps.map((s) => s.did).join(' and ')} first, because ${diagnosis.failure}, sir.`);
+      reflectionEngine.resetFailedNodes(graph, [node.id]);
+      return { kind: 'repaired' };
+    }
+    return { kind: 'none' };
+  }
 
   /**
    * PLANNING PHASE
@@ -763,11 +1261,15 @@ export class JarvisOrchestrator {
 
   private async planPhase(input: string): Promise<TaskGraph | null> {
     console.log('[Orchestrator] 🧠 PLANNING — calling LLM...');
+    this.planState().outcome = 'interrupted';
     const planPrepStart = performance.now();
 
     // ── 1. Fast Pre-Warmed System Prompt ──────────────────────────────────────
     const { prompt: systemPrompt, tokens: sysTokens } = this.getPrewarmedSystemPrompt();
     const messages: ILLMMessage[] = [{ role: 'system', content: systemPrompt }];
+    // What exists beyond the few tools offered with this request (≈40 tokens).
+    const toolOverview = capabilityOverview();
+    if (toolOverview) messages.push({ role: 'system', content: toolOverview });
 
     // ── 2. Optimized Tool Selection & Fast Token Estimate (Zero Serialization) 
     const selectedToolNames = this.selectPlanningToolNames(input);
@@ -791,17 +1293,21 @@ export class JarvisOrchestrator {
       const ctxMs = Math.round(performance.now() - ctxStart);
       console.log(`[Timing] buildContext: ${ctxMs}ms (heavy=${includeHeavyContext})`);
       
-      const pt = (this as any)._planStageTimings ?? {};
-      pt['ContextBuild'] = ctxMs;
-      (this as any)._planStageTimings = pt;
+      this.planState().timings['ContextBuild'] = ctxMs;
 
       unifiedCtxText = unifiedCtx.mergedContext;
       uniTokens = unifiedCtxText.length >> 2;
-      messages.push({ role: 'system', content: unifiedCtxText });
+      // Memory and recent conversation hold text that came from outside (web
+      // pages, documents, agents' research): data for the plan, in a user
+      // message, never a system message (SEC-03).
+      if (unifiedCtxText.trim()) {
+        messages.push({ role: 'system', content: UNTRUSTED_RULE });
+        messages.push({ role: 'user', content: untrusted('memory and recent conversation', unifiedCtxText, 12_000) });
+      }
 
       const recentGoals = goalManager.getRecentGoalContext(4);
       if (recentGoals) {
-        messages.push({ role: 'system', content: recentGoals.length > 800 ? recentGoals.substring(0, 800) + '...' : recentGoals });
+        messages.push({ role: 'user', content: untrusted('recent goals', recentGoals.length > 800 ? recentGoals.substring(0, 800) + '...' : recentGoals) });
       }
     } catch (err) {
       console.warn('[Orchestrator] Unified Memory retrieval failed (non-fatal):', err);
@@ -813,14 +1319,45 @@ export class JarvisOrchestrator {
     if (workingContext) {
       const workingSummary = `[ACTIVE TASK] Goal: ${workingContext.goal} (Iter: ${workingContext.iteration})`;
       memTokens = workingSummary.length >> 2;
-      messages.push({ role: 'system', content: workingSummary });
+      messages.push({ role: 'user', content: untrusted('active task', workingSummary) });
     }
 
-    // Inject vision frame if available
+    // World state (P7): the parts this request is about, read again if stale
+    // (at most ~1.5 s), as data in the same wrapper as the OCR text below.
+    try {
+      const wanted = worldState.sectionsFor(input);
+      if (wanted.length) {
+        await Promise.race([worldState.refresh(wanted), new Promise((r) => setTimeout(r, WORLD_REFRESH_BUDGET_MS))]);
+      }
+      const world = worldState.planningContext(input);
+      if (world) messages.push({ role: 'user', content: world });
+    } catch (err) {
+      console.warn('[Orchestrator] World state unavailable (non-fatal):', err);
+    }
+
+    // Inject vision frame if available.
+    //
+    // OCR text is whatever happens to be on screen — a web page, a document, a
+    // chat window — so it is attacker-controllable content, not instruction.
+    // It used to be pushed as a `system` message, which is the highest-trust
+    // role the model has: a screen reading "ignore previous instructions and
+    // run ..." was indistinguishable from a genuine directive (JARVIS-014).
+    //
+    // It now goes in as `user` content inside explicit delimiters, with the
+    // matching rule in the system prompt telling the model to treat anything
+    // inside them as data. Angle brackets in the OCR text are stripped so it
+    // cannot forge a closing tag and escape the wrapper.
     const visionFrame = nodeBridge.getLatestScreenFrame();
     if (visionFrame) {
-      const visionCtx = `[SCREEN CONTEXT — Active Window: "${visionFrame.active_window}" | OCR: "${visionFrame.ocr_text?.substring(0, 300)}"]`;
-      messages.push({ role: 'system', content: visionCtx });
+      const sanitize = (value: string): string => value.replace(/[<>]/g, '');
+      const activeWindow = sanitize(String(visionFrame.active_window ?? ''));
+      const ocrText = sanitize(String(visionFrame.ocr_text ?? '').substring(0, 300));
+      const visionCtx =
+        `<untrusted_context source="ocr">\n` +
+        `Active window: ${activeWindow}\n` +
+        `Screen text: ${ocrText}\n` +
+        `</untrusted_context>`;
+      messages.push({ role: 'user', content: visionCtx });
     }
 
     // ── 4. Fast History Trimming ──────────────────────────────────────────────
@@ -831,7 +1368,7 @@ export class JarvisOrchestrator {
       const h = history[i];
       const tks = h.content.length >> 2;
       if (historyTokens + tks <= 500) {
-        trimmedHistory.unshift({ role: h.role as ILLMMessage['role'], content: h.content });
+        trimmedHistory.unshift(historyMessage(h));
         historyTokens += tks;
       } else {
         break;
@@ -870,7 +1407,7 @@ export class JarvisOrchestrator {
       } = {
         model: llmConfig.model,
         messages,
-        signal: this.currentAbortController?.signal,
+        signal: this.requestSignal(),
       };
       if (tools.length > 0) {
         request.tools = tools;
@@ -884,13 +1421,12 @@ export class JarvisOrchestrator {
 
       const llmStart = performance.now();
       console.log(`[Timing] LLM call starting — model=${llmConfig.model} totalTokensEst=${totalTokens}`);
-      const response = await modelRouter.chat(request);
+      const response = await modelRouter.chat({ ...request, category: 'planning' });
       const llmMs = Math.round(performance.now() - llmStart);
       // Record in plan stage timings for the outer table
-      const planTimings = (this as any)._planStageTimings ?? {};
+      const planTimings = this.planState().timings;
       planTimings['LLM Network'] = llmMs;
       planTimings['TokensEstimated'] = totalTokens;
-      (this as any)._planStageTimings = planTimings;
       console.log(`[Timing] LLM returned in ${llmMs}ms — tokens_used=${response.usage?.totalTokens ?? '?'} prompt_tokens=${response.usage?.promptTokens ?? '?'}`);
       // Strip <think> tags from reasoning models
       let reply = (response.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
@@ -899,18 +1435,26 @@ export class JarvisOrchestrator {
 
       // ── Tool call extraction fallback & handling ──────────────────────────
       if (!response.tool_calls || response.tool_calls.length === 0) {
-        const extracted = this.extractToolCallsFromContent(reply);
+        const extracted = this.extractToolCallsFromContent(reply, selectedToolNames);
         if (extracted.length > 0) {
           console.log(`[Orchestrator] 🔧 Extracted ${extracted.length} tool call(s) from LLM text response.`);
           response.tool_calls = extracted;
         } else {
-          // Direct answer text
+          // Direct answer text. No tool ran: it may not say an action was done.
+          reply = stripInternalMarkup(reply).trim();
+          const asked = requestedAction(input);
+          if (asked && !isClarifyingQuestion(reply) && claimsAction(reply, asked)) {
+            console.log(`[Orchestrator] The answer said it was done, but no tool ran: "${reply}"`);
+            reply = noActionReply(asked, false);
+          }
           console.log(`\n🤖 JARVIS: ${reply}\n`);
           await agentMemory.addConversationMessage('assistant', reply);
           agentMemory.pushEpisode('task_complete', `Direct answer: ${reply.substring(0, 100)}`, {}, 3);
 
           agentStateMachine.transition(AgentState.SPEAKING);
           this.speak(reply);
+          this.planState().outcome = 'answered';
+          this.planState().answer = reply;
           return null;
         }
       }
@@ -930,12 +1474,15 @@ export class JarvisOrchestrator {
       }, 5);
 
       const graph = TaskGraphBuilder.fromToolCalls(input, toolCalls);
+      limitRetriesToReadOnlyTools(graph);
       console.log(`[Orchestrator] 📊 Task graph built: ${graph.nodes.size} node(s)`);
+      this.planState().outcome = 'graph';
       return graph;
 
     } catch (err) {
       const planningAborted =
-        this.currentAbortController?.signal.aborted ||
+        this.isInterrupted() ||
+        this.requestSignal()?.aborted ||
         agentStateMachine.currentState === AgentState.IDLE;
       if (planningAborted) {
         console.warn('[Orchestrator] Planning aborted by watchdog or interrupt. Returning safely to IDLE.');
@@ -949,7 +1496,9 @@ export class JarvisOrchestrator {
       console.log('[Orchestrator] ⚠️ Attempting rule-based fallback recovery...');
       
       try {
-          const lowerInput = input.toLowerCase();
+          // A replan appends "[SYSTEM NOTE: ...]" (with failed tool names such as
+          // search_memory); matching on it always picked the "system" graph.
+          const lowerInput = input.replace(/\n\n\[SYSTEM NOTE:[\s\S]*$/, '').toLowerCase();
           if (lowerInput.includes('search') || lowerInput.includes('lookup') || lowerInput.includes('find')) {
               console.log('[Orchestrator] Fallback: Engaging emergency web search task graph.');
               const graph = new TaskGraphBuilder(input);
@@ -958,15 +1507,18 @@ export class JarvisOrchestrator {
                   args: { query: input },
                   description: 'Emergency fallback search'
               });
+              this.planState().outcome = 'graph';
               return graph.build();
           } else if (lowerInput.includes('system') || lowerInput.includes('status')) {
               console.log('[Orchestrator] Fallback: Engaging emergency system tool graph.');
               const graph = new TaskGraphBuilder(input);
               graph.addTask({
-                  tool: 'system_info',
+                  // Was 'system_info', which is not a registered tool.
+                  tool: 'get_system_info',
                   args: {},
                   description: 'Emergency fallback system status'
               });
+              this.planState().outcome = 'graph';
               return graph.build();
           }
       } catch (fallbackErr) {
@@ -981,6 +1533,7 @@ export class JarvisOrchestrator {
       if (fallback) {
         this.speak(fallback);
         await agentMemory.addConversationMessage('assistant', fallback);
+        this.planState().outcome = 'failed';
       }
       return null;
     }
@@ -994,6 +1547,8 @@ export class JarvisOrchestrator {
   private makeMidMonitoredExecutor(graph: TaskGraph) {
     return async (tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string> => {
       const result = await toolRegistryV2.execute(tool, args, signal);
+      const node = currentTaskNode();
+      if (node && result.verification) node.verification = result.verification;
 
       // Record in working context
       agentMemory.addObservation(
@@ -1007,7 +1562,10 @@ export class JarvisOrchestrator {
       );
 
       if (!result.success) {
-        throw new Error(result.error ?? result.output);
+        // Keep the dispatch gate's explanation with its code, so the reply can
+        // say that full control mode is needed.
+        const explained = ['PERMISSION_DENIED', 'APPROVAL_DENIED', 'RISK_REFUSED', 'RATE_LIMITED', 'VERIFICATION_FAILED'].includes(result.error ?? '');
+        throw new Error(explained ? `${result.error}: ${result.output}` : (result.error ?? result.output));
       }
 
       // ── Phase 1: Mid-execution check after each settled node ──────────────
@@ -1015,7 +1573,7 @@ export class JarvisOrchestrator {
       if (midCheck.signal === 'abort') {
         console.error(`[Orchestrator] 💥 Mid-execution abort: ${midCheck.reason}`);
         taskGraphEngine.interrupt(graph);
-        this.speak(`I detected a critical failure mid-execution and stopped, sir.`);
+        this.announce(`I detected a critical failure mid-execution and stopped, sir.`);
       } else if (midCheck.signal === 'replan') {
         console.warn(`[Orchestrator] ⚠️  Mid-execution replan suggested: ${midCheck.reason}`);
         // Let the repair loop handle it after execution completes
@@ -1050,27 +1608,35 @@ export class JarvisOrchestrator {
     const nodes = [...graph.nodes.values()];
     const toolsUsed = nodes.map(n => n.tool);
 
+    // An action was asked for and only read-only tools ran: nothing was done.
+    // The reply model says what was found, and a reply that still claims the
+    // action is replaced (core/actionHonesty.ts).
+    const verb = requestedAction(originalInput);
+    const noAction = !!verb && !nodes.some(n => n.status === 'done' && !onlyLooks(toolRegistryV2.getMeta(n.tool), toolRegistryV2.riskOf(n.tool, n.args ?? {})));
+    if (noAction) console.log(`[Orchestrator] Only read-only tools ran (${toolsUsed.join(', ') || 'none'}) for "${originalInput}": the reply may not say "${verb}" was done.`);
+
     // OPT-SYNTH-1: Expanded bypass list — all single-action tools that produce
     // self-contained output don't need a second LLM call to "explain" the result.
-    const simpleTools = [
-      'open_app', 'close_app', 'get_system_info', 'system_info', 'search_memory',
-      'read_file', 'get_weather', 'weather', 'time', 'help', 'stop', 'cancel',
-      'pause', 'resume', 'type_text', 'press_key', 'click', 'scroll', 'move_mouse',
-      'take_screenshot', 'get_clipboard', 'set_clipboard', 'run_command',
-      'get_volume', 'set_volume', 'get_battery', 'get_wifi', 'list_files',
-      'open_url', 'close_tab', 'switch_tab', 'search_web', 'get_active_window',
-      'minimize_window', 'maximize_window', 'focus_window',
-    ];
+    const simpleTools = SIMPLE_REPLY_TOOLS;
     const onlySimpleTools = toolsUsed.every(t => simpleTools.includes(t));
 
-    if (onlySimpleTools) {
+    if (onlySimpleTools && !noAction) {
       console.log('[Orchestrator] Simple tool(s) succeeded. Bypassing LLM synthesis.');
       const firstNode = nodes[0];
       let reply = 'Task completed, sir.';
 
       if (firstNode && firstNode.tool === 'open_app') {
-        const target = String(firstNode.args?.target ?? '');
-        reply = `Opening ${this.formatTargetName(target)}, sir.`;
+        // What happened, not "Opening" for every success (phase A5e, owner Q3; A5d review D1).
+        const name = this.formatTargetName(String(firstNode.args?.target ?? ''));
+        const opened = parseJson(firstNode.result ?? '');
+        reply = opened?.['dryRun'] === true || firstNode.args?.['dryRun'] === true
+          ? `I checked that ${name} can be opened, sir; I did not open it.`
+          : firstNode.verification?.status === 'unverifiable'
+            ? `I started ${name}, sir, but I can't check from here that it opened.`
+            : `Opening ${name}, sir.`;
+      } else if (firstNode && firstNode.tool === 'run_command' && firstNode.result) {
+        console.log(`[Orchestrator] run_command output:\n${firstNode.result}`);
+        reply = describeCommandResult(firstNode.result);
       } else if (firstNode && firstNode.result) {
         try {
           const parsed = JSON.parse(firstNode.result);
@@ -1090,15 +1656,17 @@ export class JarvisOrchestrator {
         }
       }
 
-      console.log(`\n🤖 JARVIS: ${reply}\n`);
-      await agentMemory.addConversationMessage('assistant', reply);
+      // What was checked is shown and remembered, not read out (owner, 2026-11-14).
+      const checked = withCheck(reply, firstNode?.verification);
+      console.log(`\n🤖 JARVIS: ${checked}\n`);
+      await agentMemory.addConversationMessage('assistant', checked, FROM_TOOLS);
       this.speak(reply);
       return;
     }
 
     const toolOutputs = nodes
       .filter(n => n.status === 'done' && n.result)
-      .map(n => `[${n.tool}]: ${n.result}`)
+      .map(n => `[${n.tool}]: ${n.result}${n.verification?.status === 'verified' ? ` (checked: ${n.verification.evidence})` : ''}`)
       .join('\n');
 
     // OPT-SYNTH-2: Smart short-output bypass.
@@ -1107,7 +1675,7 @@ export class JarvisOrchestrator {
     // it directly and skip the second LLM round-trip entirely.
     // Saves 500–3000ms on the majority of single-tool non-complex requests.
     const completedNodes = nodes.filter(n => n.status === 'done' && n.result);
-    if (completedNodes.length === 1) {
+    if (completedNodes.length === 1 && !noAction) {
       const singleResult = completedNodes[0].result!;
       const looksNatural = (
         singleResult.length <= 280 &&
@@ -1118,8 +1686,10 @@ export class JarvisOrchestrator {
       );
       if (looksNatural) {
         console.log('[Orchestrator] OPT-SYNTH-2: Short natural output — bypassing synthesis LLM.');
-        console.log(`\n🤖 JARVIS: ${singleResult}\n`);
-        await agentMemory.addConversationMessage('assistant', singleResult);
+        // What was checked is shown and remembered, not read out (owner, 2026-11-14).
+        const checked = withCheck(singleResult, completedNodes[0].verification);
+        console.log(`\n🤖 JARVIS: ${checked}\n`);
+        await agentMemory.addConversationMessage('assistant', checked, FROM_TOOLS);
         // speak() calls safeTransitionToSpeaking() internally — do NOT also
         // call transition(SPEAKING) here or we get a double-transition crash.
         this.speak(singleResult);
@@ -1131,15 +1701,18 @@ export class JarvisOrchestrator {
     // instead of the full JARVIS system prompt (~350 tokens). Synthesis only converts
     // tool output to a natural sentence — it doesn't need tool rules or persona details.
     // Saves ~320 tokens per synthesis call.
+    // Tool output (web pages, files, search results) is data: it goes in a
+    // user message inside the untrusted wrapper, never in a system message
+    // where it would read as JARVIS's own instructions (SEC-03).
     const synthesisMessages: ILLMMessage[] = [
       {
         role: 'system',
-        content: 'You are JARVIS. Convert the following tool results into a single concise natural-language response. Address the user as "sir". Be brief and direct.',
+        content: `You are JARVIS. Convert the tool results into a single concise natural-language response. Address the user as "sir". Be brief and direct. Say only what the tool results show was done; never write tool results, tags or tool names yourself.${noAction ? ` ${NO_ACTION_NOTE}` : ''} ${UNTRUSTED_RULE}`,
       },
       { role: 'user', content: originalInput },
       {
-        role: 'system',
-        content: `Tool results:\n\n${toolOutputs}\n\nRespond naturally in 1-2 sentences.`,
+        role: 'user',
+        content: `${untrusted('tool results', toolOutputs, 12_000)}\n\nRespond naturally in 1-2 sentences.`,
       },
     ];
 
@@ -1151,19 +1724,24 @@ export class JarvisOrchestrator {
         // OPT-SYNTH-3: Use fast 8B model for synthesis — it only needs to convert
         // structured tool output into a natural sentence, not call tools or plan.
         // Saves ~400–1500ms vs the 32B planning model.
-        model: process.env.JARVIS_FAST_MODEL ?? 'llama-3.1-8b-instant',
+        model: llmConfig.fastModel,
         messages: synthesisMessages,
-        signal: this.currentAbortController?.signal,
+        signal: this.requestSignal(),
         max_tokens: 200,  // OPT-SYNTH-4: cap synthesis at 200 tokens — just a sentence or two
       };
 
-      if (this.config.streamingEnabled) {
+      // Not streamed when nothing acted: the reply is checked before it is said.
+      if (this.config.streamingEnabled && !noAction) {
         await this.streamSynthesis(synthesisRequest, originalInput);
       } else {
-        const resp = await modelRouter.chat(synthesisRequest);
-        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        const resp = await modelRouter.chat({ ...synthesisRequest, category: 'conversation' });
+        let reply = stripInternalMarkup((resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '')).trim();
+        if (noAction && verb && claimsAction(reply, verb)) {
+          console.log(`[Orchestrator] The reply said it was done, but nothing acted: "${reply}"`);
+          reply = noActionReply(verb);
+        }
         console.log(`\n🤖 JARVIS: ${reply}\n`);
-        await agentMemory.addConversationMessage('assistant', reply);
+        await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
         // speak() calls safeTransitionToSpeaking() internally — do NOT also
         // call transition(SPEAKING) here or we get a double-transition crash.
         this.speak(reply);
@@ -1172,6 +1750,11 @@ export class JarvisOrchestrator {
     } catch (err) {
       console.error('[Orchestrator] Synthesis error:', err);
       // Fall back to raw tool output
+      // Nothing acted: the fallback below would claim it was done.
+      if (noAction && verb) {
+        this.speak(noActionReply(verb));
+        return;
+      }
       const raw = toolOutputs.substring(0, 500);
       this.speak(`I completed the task. Here are the results: ${raw}`);
     }
@@ -1183,15 +1766,15 @@ export class JarvisOrchestrator {
    */
   private async streamSynthesis(request: any, originalInput: string): Promise<void> {
     let fullReply = '';
-    let speakBuffer = '';
-    let lastIndex = 0;
+    // BUG-13: markers removed, and the sentence cap is for the whole reply.
+    const spoken = new SpokenStream((text) => this.speak(text), (text) => process.stdout.write(text));
     const t0 = performance.now();
     let firstChunkTime: number | null = null;
 
     try {
       process.stdout.write('\n🤖 JARVIS: ');
 
-      for await (let chunk of modelRouter.streamChat(request)) {
+      for await (let chunk of modelRouter.streamChat({ ...request, category: 'conversation' })) {
         if (this.isInterrupted()) {
           console.log('\n[Orchestrator] 🛑 Stream interrupted.');
           break;
@@ -1209,55 +1792,28 @@ export class JarvisOrchestrator {
           .replace(/[""]/g, '"');
 
         fullReply += chunk;
-
-        // Strip <think> blocks from what gets spoken and printed
-        const clean = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/, '').trimStart();
-        const newPart = clean.substring(lastIndex);
-
-        if (newPart) {
-          process.stdout.write(newPart);
-          speakBuffer += newPart;
-          lastIndex = clean.length;
-
-          // Send to TTS at sentence boundaries
-          if (/[.!?\n]\s/.test(speakBuffer)) {
-            const parts = speakBuffer.split(/(?<=[.!?\n])\s+/);
-            speakBuffer = parts.pop() ?? '';
-
-            let chunk2Send = '';
-            for (const part of parts) {
-              chunk2Send += part + ' ';
-              if (chunk2Send.length > 25 || parts.length === 1) {
-                this.speak(chunk2Send.trim());
-                chunk2Send = '';
-              }
-            }
-            if (chunk2Send.trim()) speakBuffer = chunk2Send + speakBuffer;
-          }
-        }
+        spoken.push(chunk);
       }
 
       // Send remaining buffer
-      if (speakBuffer.trim() && !this.isInterrupted()) {
-        this.speak(speakBuffer.trim());
-      }
+      if (!this.isInterrupted()) spoken.end();
 
       console.log('\n');
       console.log(`[Timing] Synthesis stream total: ${(performance.now() - t0).toFixed(2)}ms`);
 
       if (!this.isInterrupted()) {
-        const cleanReply = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-        await agentMemory.addConversationMessage('assistant', cleanReply);
+        const cleanReply = stripInternalMarkup(fullReply.replace(/<think>[\s\S]*?<\/think>/g, '')).trim();
+        await agentMemory.addConversationMessage('assistant', cleanReply, FROM_TOOLS);
         agentMemory.pushEpisode('task_complete', `Synthesized: ${cleanReply.substring(0, 100)}`, {}, 3);
       }
 
     } catch (err) {
       console.error('[Orchestrator] Synthesis stream failed, fallback to direct synthesis:', err);
       try {
-        const resp = await modelRouter.chat(request);
-        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        const resp = await modelRouter.chat({ ...request, category: 'conversation' });
+        const reply = stripInternalMarkup((resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '')).trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
-        await agentMemory.addConversationMessage('assistant', reply);
+        await agentMemory.addConversationMessage('assistant', reply, FROM_TOOLS);
         this.speak(reply);
       } catch (fallbackErr) {
         console.error('[Orchestrator] Fallback synthesis also failed:', fallbackErr);
@@ -1294,7 +1850,41 @@ export class JarvisOrchestrator {
       }
 
       case 'fallback_tool': {
+        // Previously byte-identical to 'retry_same': it reset the failed nodes
+        // and re-ran them under the *same* tool, so the strategy never did what
+        // its name says (JARVIS-006). Now each failed node is rewritten to the
+        // best registered alternative before the reset; nodes with no usable
+        // alternative simply fall through to a plain retry, as before.
         const nodeIds = (repairArgs['nodeIds'] as string[]) ?? [];
+
+        let switched = 0;
+        for (const nodeId of nodeIds) {
+          const node = graph.nodes.get(nodeId);
+          if (!node) continue;
+
+          const alternative = plannerIntelligence
+            .generateAlternatives(node)
+            .filter((a) => a.type === 'use_fallback' && a.replacementTool)
+            .sort((a, b) => a.priority - b.priority)[0];
+
+          const replacement = alternative?.replacementTool;
+          if (!replacement || replacement === node.tool) continue;
+          if (!toolRegistryV2.get(replacement)) continue;
+
+          console.log(
+            `[Orchestrator] 🔀 fallback_tool: node "${node.id}" "${node.tool}" → "${replacement}"`,
+          );
+          node.tool = replacement;
+          if (alternative.replacementArgs) node.args = alternative.replacementArgs;
+          node.error = undefined;
+          node.errorType = undefined;
+          switched++;
+        }
+
+        if (switched === 0) {
+          console.log('[Orchestrator] fallback_tool: no alternative tool available — plain retry.');
+        }
+
         reflectionEngine.resetFailedNodes(graph, nodeIds);
         return graph;
       }
@@ -1329,173 +1919,9 @@ export class JarvisOrchestrator {
 
   // ── Deterministic Pre-Router ─────────────────────────────────────────────
 
-  /**
-   * ⚡ Fast-path for known "open/launch/start X", greetings, status, time commands.
-   * Returns a DeterministicRoute structure if matched; null means fall through to LLM.
-   */
-  public matchDeterministicCommand(input: string): { type: string; target?: string; reply: string } | null {
-    const normalized = normalizeVoiceInput(input);
-    const clean = normalized.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-
-    // 1. Stop / Interrupt commands
-    if (clean === 'stop' || clean === 'cancel' || clean === 'jarvis stop' || clean === 'jarvis cancel') {
-      return { type: 'stop', reply: 'Stopped, sir.' };
-    }
-    if (clean === 'pause') {
-      return { type: 'stop', reply: 'Paused, sir.' };
-    }
-    if (clean === 'resume') {
-      return { type: 'stop', reply: 'Resuming, sir.' };
-    }
-    if (clean === 'shutdown') {
-      return { type: 'stop', reply: 'Shutting down, sir.' };
-    }
-
-    // ── Pre-defined Mappings ──────────────────────────────────────────────────
-    if (clean === 'close youtube') {
-      return { type: 'close_browser_tab', target: 'youtube', reply: 'Closing YouTube, sir.' };
-    }
-    if (clean === 'close current tab') {
-      return { type: 'close_current_tab', reply: 'Closing current tab, sir.' };
-    }
-    if (clean === 'close notepad') {
-      return { type: 'close_app', target: 'notepad', reply: 'Closing Notepad, sir.' };
-    }
-    if (clean === 'close current window') {
-      return { type: 'close_current_window', reply: 'Closing current window, sir.' };
-    }
-    if (clean === 'what is open') {
-      return { type: 'get_system_state', reply: 'Checking what is open, sir.' };
-    }
-    if (clean === 'what is open in chrome') {
-      return { type: 'get_browser_tabs', reply: 'Checking open Chrome tabs, sir.' };
-    }
-    if (clean === 'is youtube open') {
-      return { type: 'is_tab_open', target: 'youtube', reply: 'Checking if YouTube is open, sir.' };
-    }
-    if (clean === 'enable full control mode') {
-      return { type: 'enable_full_control_session', reply: 'Enabling full control mode, sir.' };
-    }
-
-    // 2. Simple conversational phrases (no Groq)
-    const simplePhrases: Record<string, string> = {
-      'how are you': 'Operational and ready, sir.',
-      'thank you': 'Anytime, sir.',
-      'thanks': 'Anytime, sir.',
-      'good morning': 'Good morning, sir.',
-      'good evening': 'Good evening, sir.',
-      'good night': 'Good night, sir.',
-      'okay': 'Understood.',
-      'ok': 'Understood.',
-      'yes': 'Confirmed.',
-      'no': 'Understood.',
-    };
-    if (clean in simplePhrases) {
-      return { type: 'simple_reply', reply: simplePhrases[clean] };
-    }
-
-    const greetings = ['hello', 'hi', 'hey', 'are you there', 'jarvis hello', 'jarvis hi'];
-    if (greetings.includes(clean)) {
-      return { type: 'greeting', reply: 'Hello, sir. How may I assist you today?' };
-    }
-
-    // 3. Capabilities / Identity
-    if (clean === 'what can you do' || clean === 'who are you') {
-      return {
-        type: 'what_can_you_do',
-        reply: 'I am JARVIS, your cognitive assistant, sir. I can launch applications, search the web, manage system files, and run commands.'
-      };
-    }
-
-    // 4. Time
-    if (clean === 'what time is it' || clean === 'time' || clean === 'what is the time') {
-      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      return { type: 'time', reply: `It is ${timeStr}, sir.` };
-    }
-
-    // 5. System Status
-    if (clean === 'status' || clean === 'system status') {
-      return { type: 'status', reply: 'All systems are operational, sir.' };
-    }
-
-    // 6. Help
-    if (clean === 'help') {
-      return { type: 'help', reply: 'I can assist you with local automation, calculations, and general queries. Just say the word, sir.' };
-    }
-
-    // 7. open_app aliases
-    const ALIASES: Record<string, string> = {
-      'youtube':          'youtube',
-      'you tube':         'youtube',   // FIX: Whisper split-word fallback
-      'google':           'google',
-      'gmail':            'gmail',
-      'github':           'github',
-      'git hub':          'github',    // FIX: Whisper split-word fallback
-      'whatsapp':         'whatsapp',
-      'whats app':        'whatsapp',
-      'vscode':           'vscode',
-      'vs code':          'vscode',
-      'code':             'vscode',
-      'visual studio code': 'vscode',
-      'notepad':          'notepad',
-      'cmd':              'cmd',
-      'command prompt':   'cmd',
-      'terminal':         'cmd',
-      'calculator':       'calculator',
-      'calc':             'calculator',
-      'spotify':          'spotify',
-      'chrome':           'chrome',
-      'firefox':          'firefox',
-      'edge':             'edge',
-      'browser':          'chrome',
-      'settings':         'settings',
-      'ms-settings':      'settings',
-      'downloads':        'downloads',
-    };
-
-    const triggers = ['open', 'launch', 'start'];
-    for (const trigger of triggers) {
-      const idx = clean.indexOf(trigger);
-      if (idx === -1) continue;
-      // Ensure trigger is a whole word at start or preceded by space
-      if (idx > 0 && clean[idx - 1] !== ' ') continue;
-
-      const afterTrigger = clean.substring(idx + trigger.length).trim();
-      // Strip filler words — extended list to handle natural speech variants:
-      // "open youtube for me" / "open youtube now" / "open youtube right now"
-      const stripped = afterTrigger
-        .replace(/\bfor me\b/g, '')
-        .replace(/\bplease\b/g, '')
-        .replace(/\bthe\b/g, '')
-        .replace(/\ba\b/g, '')
-        .replace(/\bright now\b/g, '')
-        .replace(/\bnow\b/g, '')
-        .replace(/\bquickly\b/g, '')
-        .replace(/\bimmediately\b/g, '')
-        .replace(/\basap\b/g, '')
-        .replace(/\bup\b/g, '')
-        .trim();
-
-      for (const [alias, target] of Object.entries(ALIASES)) {
-          // Exact match: stripped is exactly the alias
-          if (stripped === alias) {
-            return { type: 'open_app', target, reply: `Opening ${target}, sir.` };
-          }
-          // Prefix match: alias followed by a space
-          if (stripped.startsWith(alias + ' ')) {
-            const remainder = stripped.substring(alias.length).trim()
-              .replace(/\bfor me\b/g, '')
-              .replace(/\bplease\b/g, '')
-              .replace(/\bthe\b/g, '')
-              .replace(/\ba\b/g, '')
-              .trim();
-            if (remainder === '') {
-              return { type: 'open_app', target, reply: `Opening ${target}, sir.` };
-            }
-          }
-        }
-    }
-    return null;
+  /** The deterministic pre-router (core/deterministicRoutes.ts), with this orchestrator's "try again?" offer. */
+  public matchDeterministicCommand(input: string): DeterministicRoute | null {
+    return matchDeterministicCommand(input, !!this.continueOffer && Date.now() < this.continueOffer.expires);
   }
 
   // ── Safe Direct Streaming Path ────────────────────────────────────────────
@@ -1524,7 +1950,7 @@ export class JarvisOrchestrator {
     let history = agentMemory.getConversationHistory(5);
     const messages: ILLMMessage[] = [
       { role: 'system', content: systemPrompt },
-      ...history.map(h => ({ role: h.role as ILLMMessage['role'], content: h.content })),
+      ...history.map(historyMessage),
       { role: 'user', content: input }
     ];
 
@@ -1532,7 +1958,7 @@ export class JarvisOrchestrator {
       model: llmConfig.model,
       messages,
       // no tools mapped, ensuring it only converses
-      signal: this.currentAbortController?.signal,
+      signal: this.requestSignal(),
     };
 
     let firstChunkTime: number | null = null;
@@ -1540,12 +1966,12 @@ export class JarvisOrchestrator {
 
     try {
       let fullReply = '';
-      let speakBuffer = '';
-      let lastIndex = 0;
+      // BUG-13: markers removed, and the sentence cap is for the whole reply.
+      const spoken = new SpokenStream((text) => this.speak(text), (text) => process.stdout.write(text));
 
       process.stdout.write('\n🤖 JARVIS (Direct Stream): ');
 
-      for await (let chunk of modelRouter.streamChat(request)) {
+      for await (let chunk of modelRouter.streamChat({ ...request, category: 'conversation' })) {
         if (this.isInterrupted()) {
           console.log('\n[Orchestrator] 🛑 Stream interrupted.');
           break;
@@ -1562,40 +1988,15 @@ export class JarvisOrchestrator {
           .replace(/[""]/g, '"');
 
         fullReply += chunk;
-
-        const clean = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/, '').trimStart();
-        const newPart = clean.substring(lastIndex);
-
-        if (newPart) {
-          process.stdout.write(newPart);
-          speakBuffer += newPart;
-          lastIndex = clean.length;
-
-          if (/[.!?\n]\s/.test(speakBuffer)) {
-            const parts = speakBuffer.split(/(?<=[.!?\n])\s+/);
-            speakBuffer = parts.pop() ?? '';
-
-            let chunk2Send = '';
-            for (const part of parts) {
-              chunk2Send += part + ' ';
-              if (chunk2Send.length > 25 || parts.length === 1) {
-                this.speak(chunk2Send.trim());
-                chunk2Send = '';
-              }
-            }
-            if (chunk2Send.trim()) speakBuffer = chunk2Send + speakBuffer;
-          }
-        }
+        spoken.push(chunk);
       }
 
-      if (speakBuffer.trim() && !this.isInterrupted()) {
-        this.speak(speakBuffer.trim());
-      }
+      if (!this.isInterrupted()) spoken.end();
       console.log('\n');
       console.log(`[Timing] Direct conversational stream total: ${(performance.now() - t0).toFixed(2)}ms`);
 
       if (!this.isInterrupted()) {
-        const cleanReply = fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '').trim();
+        const cleanReply = stripInternalMarkup(fullReply.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '')).trim();
         await agentMemory.addConversationMessage('assistant', cleanReply);
         agentMemory.pushEpisode('task_complete', `Direct chat response: ${cleanReply.substring(0, 100)}`, {}, 4);
       }
@@ -1604,8 +2005,8 @@ export class JarvisOrchestrator {
     } catch (err) {
       console.error('[DirectStream] Streaming failed, falling back to blocking chat:', err);
       try {
-        const resp = await modelRouter.chat(request);
-        const reply = (resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '').trim();
+        const resp = await modelRouter.chat({ ...request, category: 'conversation' });
+        const reply = stripInternalMarkup((resp.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*/g, '')).trim();
         console.log(`\n🤖 JARVIS: ${reply}\n`);
         await agentMemory.addConversationMessage('assistant', reply);
         this.speak(reply);
@@ -1620,161 +2021,95 @@ export class JarvisOrchestrator {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  /** Interrupted, or this request was replaced by a newer one (its own signal aborted). */
+  /** Waits for the skill tools, at most 10 s (a hung import must not block every request). */
+  private async waitForSkills(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const started = Date.now();
+    const finished = await Promise.race([
+      this.skillsReady.then(() => true),
+      new Promise<boolean>((r) => { timer = setTimeout(() => r(false), SKILLS_WAIT_MS); }),
+    ]);
+    if (timer) clearTimeout(timer);
+    const waited = Date.now() - started;
+    if (!finished) console.warn(`[Orchestrator] Skills still loading after ${SKILLS_WAIT_MS} ms; planning without the rest.`);
+    else if (waited > 50) console.log(`[Orchestrator] Waited ${waited} ms for the skills before the first request.`);
+  }
+
   private isInterrupted(): boolean {
-    return agentStateMachine.is(AgentState.INTERRUPTED);
+    return agentStateMachine.is(AgentState.INTERRUPTED) || requestContext.getStore()?.signal.aborted === true;
+  }
+
+  /**
+   * This request's own abort signal (REL-05). Model calls read
+   * this.currentAbortController, the newest request's: a call made by an
+   * older request after a newer one began was tied to the wrong request.
+   */
+  /** This request's plan state (ARCH-03); outside a request, the orchestrator's own. */
+  private planState(): PlanState {
+    const scope = requestContext.getStore();
+    if (!scope) return this.planOutside;
+    return (scope.plan ??= { outcome: 'graph', timings: {} });
+  }
+
+  private requestSignal(): AbortSignal | undefined {
+    return requestContext.getStore()?.signal ?? this.currentAbortController?.signal;
+  }
+
+  /** A newer process() call has started since this request began. */
+  private isSuperseded(): boolean {
+    const request = requestContext.getStore();
+    return request !== undefined && request.callId !== this.currentProcessCallId;
   }
 
   private shouldUseHeavyContext(input: string): boolean {
-    const clean = normalizeVoiceInput(input).toLowerCase();
-    if (!clean) return false;
-
-    const simplePatterns = [
-      /^(open|launch|start)\s+[a-z0-9 ]{1,40}$/,
-      /^(close|stop|pause|resume)\b/,
-      /^(what time is it|time|status|system status|help)$/,
-      /^(is .+ open|what is open|what is open in chrome)$/,
-    ];
-
-    return !simplePatterns.some((pattern) => pattern.test(clean));
+    return shouldUseHeavyContext(input);
   }
 
+  /** The tools offered to the planner (core/planningToolSelection.ts). */
   private selectPlanningToolNames(input: string): string[] {
-    const clean = normalizeVoiceInput(input).toLowerCase();
-    const requested = new Set<string>();
-
-    const addIfRegistered = (...names: string[]) => {
-      for (const name of names) {
-        if (toolRegistryV2.has(name)) requested.add(name);
-      }
-    };
-
-    const isKillOrClose = /\b(close|kill|stop|terminate|exit|minimize|maximize)\b/i.test(clean);
-    const isLaunchIntent = !isKillOrClose && /\b(open|launch|start|run|app|application|desktop|whatsapp|youtube|chrome|calculator|vscode|code|notepad|spotify|browser|gmail|github)\b/i.test(clean);
-    const isExplicitSearch = /\b(search|lookup|find|internet|online|research)\b/i.test(clean);
-
-    // 1. App / Desktop launch requests: ALWAYS include open_app & control_app at top priority
-    if (isLaunchIntent) {
-      addIfRegistered('open_app', 'control_app');
-    }
-
-    // 2. Web search: ONLY if explicit search intent or not a pure app launch request
-    if (isExplicitSearch || (!isLaunchIntent && /\b(google|web|internet|online|research)\b/i.test(clean))) {
-      addIfRegistered('web_search', 'deep_search');
-    }
-
-    if (/\b(weather|forecast|temperature|rain|humidity)\b/.test(clean)) {
-      addIfRegistered('get_weather', 'weather');
-    }
-
-    if (/\b(file|folder|read|write|save|edit|create)\b/.test(clean)) {
-      addIfRegistered('read_file', 'write_file', 'control_file');
-    }
-
-    if (/\b(keyboard|type|press|key|hotkey|shortcut)\b/.test(clean)) {
-      addIfRegistered('control_keyboard');
-    }
-
-    if (/\b(mouse|click|right click|double click|scroll|drag|cursor)\b/.test(clean)) {
-      addIfRegistered('control_mouse');
-    }
-
-    if (/\b(kill|process|task|pid|stop app|terminate)\b/.test(clean)) {
-      addIfRegistered('control_process');
-    }
-
-    if (/\b(screenshot|screen|volume|mute|service|network|disk|powershell|settings|system control)\b/.test(clean)) {
-      addIfRegistered('control_system');
-    }
-
-    if (/\b(window|minimize|maximize|resize|move window|close window)\b/.test(clean)) {
-      addIfRegistered('control_window');
-    }
-
-    if (/\b(tab|browser|url|open url|close tab|refresh)\b/.test(clean)) {
-      addIfRegistered('control_browser');
-    }
-
-    if (/\b(cancel|abort|stop action)\b/.test(clean)) {
-      addIfRegistered('cancel_current_action');
-    }
-
-    if (/\b(full control|admin|permission|level 2|session)\b/.test(clean)) {
-      addIfRegistered('enable_full_control_session', 'disable_full_control_session', 'get_permission_status');
-    }
-
-    if (/\b(system|status|pc|computer|windows|chrome|browser|app|running|open apps|active window)\b/.test(clean)) {
-      addIfRegistered(
-        'get_system_info',
-        'get_system_state',
-        'get_pc_state',
-        'get_open_apps',
-        'get_active_window',
-        'get_browser_tabs',
-        'is_app_open',
-        'is_tab_open'
-      );
-    }
-
-    if (/\b(memory|remember|recall|forget|relation|preference)\b/.test(clean)) {
-      addIfRegistered('search_memory', 'save_relation');
-    }
-
-    if (/\b(code|explain|debug|typescript|javascript|python|error|stack trace)\b/.test(clean)) {
-      addIfRegistered('explain_code', 'read_file');
-    }
-
-    if (/\b(command|terminal|shell|npm|pnpm|npx|git|test|build|tsc)\b/.test(clean)) {
-      addIfRegistered('run_command');
-    }
-
-    // Default fallback: if no tool selected, provide general utility tools so LLM is never given 0 tools
-    if (requested.size === 0) {
-      addIfRegistered('open_app', 'web_search', 'get_system_info', 'run_command');
-    }
-
-    return [...requested].slice(0, 8);
+    return selectPlanningToolNames(input);
   }
 
-  private extractToolCallsFromContent(content: string): ILLMToolCall[] {
+  /**
+   * Tool calls written as text by models without native tool calling. Only a
+   * reply that is nothing but JSON (bare, or one fenced block) counts, and only
+   * for tools offered in this planning call: an answer that merely contained
+   * an example call, or JSON echoed from a web page or the screen, used to be
+   * executed as a command, with any registered tool.
+   */
+  private extractToolCallsFromContent(content: string, allowedTools?: string[]): ILLMToolCall[] {
     if (!content || !content.trim()) return [];
 
-    const jsonMatches: string[] = [];
-    const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
-    let match;
-    while ((match = codeBlockRegex.exec(content)) !== null) {
-      if (match[1]) jsonMatches.push(match[1].trim());
-    }
-
-    if (jsonMatches.length === 0 && (content.includes('{') || content.includes('['))) {
-      jsonMatches.push(content.trim());
-    }
+    const trimmed = content.trim();
+    const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+    const body = fenced ? fenced[1]!.trim() : trimmed;
+    if (!/^[\[{]/.test(body) || body.includes('```')) return [];
 
     const toolCalls: ILLMToolCall[] = [];
+    try {
+      const parsed = JSON.parse(body);
+      const items = Array.isArray(parsed) ? parsed : (parsed.tool_calls || [parsed]);
 
-    for (const jsonStr of jsonMatches) {
-      try {
-        const parsed = JSON.parse(jsonStr);
-        const items = Array.isArray(parsed) ? parsed : (parsed.tool_calls || [parsed]);
+      for (const item of items) {
+        const toolName = item.tool || item.name || item.function?.name;
+        const rawArgs = item.args || item.arguments || item.parameters || item.function?.arguments || {};
+        const offered = !allowedTools || allowedTools.includes(toolName);
 
-        for (const item of items) {
-          const toolName = item.tool || item.name || item.function?.name;
-          const rawArgs = item.args || item.arguments || item.parameters || item.function?.arguments || {};
-
-          if (toolName && toolRegistryV2.has(toolName)) {
-            const argsString = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs);
-            toolCalls.push({
-              id: item.id || `extracted_${Date.now()}_${toolCalls.length}`,
-              type: 'function',
-              function: {
-                name: toolName,
-                arguments: argsString,
-              },
-            });
-          }
+        if (toolName && toolRegistryV2.has(toolName) && offered) {
+          const argsString = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs);
+          toolCalls.push({
+            id: item.id || `extracted_${Date.now()}_${toolCalls.length}`,
+            type: 'function',
+            function: {
+              name: toolName,
+              arguments: argsString,
+            },
+          });
         }
-      } catch {
-        // Ignore non-JSON or invalid snippets
       }
+    } catch {
+      // Not JSON after all: a plain answer.
     }
 
     return toolCalls;
@@ -1796,51 +2131,108 @@ export class JarvisOrchestrator {
     return names[clean] ?? (target.trim() || 'that');
   }
 
+  /**
+   * The request's reply: the state machine moves to SPEAKING, and the request
+   * ends after it. For a message while the task goes on, use announce().
+   */
   public speak(text: string): void {
-    if (!text || !text.trim()) return;
+    const cleanText = this.spokenForm(text);
+    if (!cleanText) return;
+    try {
+      agentStateMachine.safeTransitionToSpeaking();
+    } catch (err) {
+      console.warn(`[Orchestrator] speak() safe state transition failed:`, err);
+    }
+    this.sendSpeech(cleanText);
+  }
+
+  /**
+   * A progress message while the task goes on ("I'll plan it again", "I
+   * restarted the server first"): spoken, but the state machine stays in its
+   * loop state. Moving it to SPEAKING here made the next step's transition
+   * (SPEAKING → EXECUTING / PLANNING) illegal, and a repair that worked ended
+   * in "unexpected error" (BUG-02).
+   */
+  public announce(text: string): void {
+    const cleanText = this.spokenForm(text);
+    if (cleanText) this.sendSpeech(cleanText);
+  }
+
+  /** The text as it is spoken, or '' when nothing should be said. */
+  private spokenForm(text: string): string {
+    if (!text || !text.trim()) return '';
     if (this.isInterrupted()) {
-      console.log(`[Orchestrator] 🛑 speak() blocked: system interrupted. Text: "${text.substring(0, 30)}..."`);
-      return;
+      console.log(`[Orchestrator] 🛑 speech blocked: interrupted or replaced by a newer request. Text: "${text.substring(0, 30)}..."`);
+      return '';
     }
 
-    // 1. Sanitize <think>...</think> and partial <think> blocks
-    let cleanText = text
-      .replace(/<think>[\s\S]*?<\/think>/g, '')
-      .replace(/<think>[\s\S]*/g, '')
-      .trim();
+    // 1. <think> blocks, list and heading markers, **bold** (BUG-13: a list is read as sentences)
+    let cleanText = stripMarkdown(text);
+
+    // 1b. A web address is said as its site ("https://www.youtube.com/watch?v=…"
+    // → "youtube.com"), not read out character by character (owner's PC,
+    // 2026-11-14). Done before the underscore rule below, which would split
+    // "search_query" in the middle of an address.
+    cleanText = cleanText.replace(/\b(?:https?:\/\/|www\.)[^\s<>"']+/gi, (address) => {
+      const tail = /[.,!?;:)\]]+$/.exec(address)?.[0] ?? '';
+      const host = address.slice(0, address.length - tail.length)
+        .replace(/^https?:\/\//i, '').split(/[/?#]/)[0]!.replace(/:\d+$/, '').replace(/^www\./i, '').toLowerCase();
+      return host ? `${host}${tail}` : address;
+    });
+    // Without a scheme, an address is shortened only when a port or a path
+    // follows the host ("127.0.0.1:34759/about" → "127.0.0.1"), so "github.com"
+    // and "notes.txt" stay as they are. Not inside a file path, an e-mail address
+    // or a longer word (the lookbehind).
+    cleanText = cleanText.replace(
+      /(?<![\w./\\@:-])(localhost|\d{1,3}(?:\.\d{1,3}){3}|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})((?::\d{1,5})?(?:[/?#][^\s<>"']*)?)/gi,
+      (address: string, host: string, rest: string) => {
+        const tail = /[.,!?;:)\]]+$/.exec(rest)?.[0] ?? '';
+        if (!rest.slice(0, rest.length - tail.length)) return address;
+        return `${host.replace(/^www\./i, '').toLowerCase()}${tail}`;
+      });
 
     // 2. Remove markdown formatting characters for clean spoken output
     cleanText = cleanText
+      .replace(/(\w)_(?=\w)/g, '$1 ')         // tool_name -> "tool name", not "toolname"
       .replace(/[*_`#~]/g, '')                // formatting characters
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links -> raw text
       .replace(/-\s+/g, '')                   // list hyphens
       .replace(/^\s*[-*+]\s+/gm, '')          // bullet points
       .trim();
 
-    if (!cleanText) return;
+    if (!cleanText) return '';
 
     // 3. Apply concise personality rule: limit verbal response to max 3 sentences
     const sentences = cleanText.split(/(?<=[.!?])\s+/);
-    if (sentences.length > 3) {
-      cleanText = sentences.slice(0, 3).join(' ') + ' I have printed the full details to the console, sir.';
+    if (sentences.length > SPOKEN_MAX_SENTENCES) {
+      cleanText = `${sentences.slice(0, SPOKEN_MAX_SENTENCES).join(' ')} ${CONSOLE_NOTE}`;
     }
+    return cleanText;
+  }
 
-    // 4. Ensure the state is SPEAKING
-    try {
-      agentStateMachine.safeTransitionToSpeaking();
-    } catch (err) {
-      console.warn(`[Orchestrator] speak() safe state transition failed:`, err);
-    }
-
-    // 5. Track last spoken text in NodeBridge
+  private sendSpeech(cleanText: string): void {
+    // Track last spoken text in NodeBridge
     nodeBridge.lastTtsText = cleanText;
 
-    // 6. Pause wake word immediately to prevent echo
+    // Pause wake word immediately to prevent echo
     nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'pause' } });
 
-    // 7. Send text to clients via WebSocket
+    // Send text to clients via WebSocket
     if (this.config.voiceEnabled) {
       nodeBridge.speakToClients(cleanText);
+    }
+  }
+
+  /**
+   * Barge-in listeners clear the voice queue and similar. One that throws is
+   * logged (ARCH-07): before, a failure was swallowed and stale speech could
+   * play after "stop" with nothing in the log.
+   */
+  private runBargeInCallbacks(): void {
+    for (const cb of this.onBargeIn) {
+      try { cb(); } catch (err) {
+        console.warn(`[Orchestrator] Barge-in listener failed: ${redact(err instanceof Error ? err.message : String(err)).slice(0, 200)}`);
+      }
     }
   }
 
@@ -1856,9 +2248,7 @@ export class JarvisOrchestrator {
     (nodeBridge as any).pendingTTS = [];
 
     // 3. Clear stale voice queue
-    for (const cb of this.onBargeIn) {
-      try { cb(); } catch {}
-    }
+    this.runBargeInCallbacks();
 
     // 4. Transition SPEAKING -> INTERRUPTED if needed
     if (curState === AgentState.SPEAKING) {
@@ -1888,11 +2278,17 @@ export class JarvisOrchestrator {
       console.warn('[Orchestrator] PLANNING watchdog reset received — invoking safeReset().');
       // Route through safeReset() so all state is torn down atomically.
       this.safeReset(data.reason);
+      // VOICE-002: the reset aborts the request, and an aborted request may not
+      // speak, so it ended in silence. Say why, past that check: this is not
+      // the old request's reply but the reason it has none.
+      console.log(`[Orchestrator] JARVIS: ${PLANNING_TIMEOUT_REPLY}`);
+      this.sendSpeech(PLANNING_TIMEOUT_REPLY);
       return;
     }
 
     if (data.fromState === AgentState.SPEAKING) {
       console.warn('[Orchestrator] SPEAKING watchdog reset received. Forcing TTS recovery cleanup.');
+      nodeBridge.noteSpeechTimedOut();
       nodeBridge.sendToRole('tts', { type: 'command', payload: { action: 'stop' } });
       nodeBridge.sendToRole('wakeword', { type: 'command', payload: { action: 'resume' } });
       if (this.isConversationEndDeferred) {
@@ -1913,50 +2309,81 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** How recent a request must be for "continue" to offer it, and how long the offer holds. */
+const CONTINUE_WINDOW_MS = 12 * 60 * 60_000;
+const CONTINUE_OFFER_MS = 60_000;
+
+/** How long planning waits for stale world-state parts to be read again. */
+const WORLD_REFRESH_BUDGET_MS = 1_500;
+
+/** Said when the PLANNING watchdog ends a request (VOICE-002). */
+const PLANNING_TIMEOUT_REPLY = 'That took too long, sir. Please ask me again.';
+
+/** A task step as the world state shows it: "control_app close". */
+function stepLabel(node: { tool: string; args?: Record<string, unknown> }): string {
+  const action = typeof node.args?.['action'] === 'string' ? ` ${node.args['action']}` : '';
+  return `${node.tool}${action}`;
+}
+
+/** What one request's agent loop reports back for its goal. */
+/** A request to do something (as opposed to conversation). */
+const ACTION_REQUEST = /\b(open|launch|start|run|close|delete|search|find|read|write|set|get|create|exec|build)\b/i;
+
+/**
+ * Work the owner asks for in other words ("figure out why X fails and plan
+ * the next steps"): a goal from the start, as an action request gets, even
+ * when the answer is given in words (BUG-10 follow-up). Not used to decide
+ * whether a plan without tools failed; ACTION_REQUEST does that.
+ */
+const TASK_REQUEST = /\b(plan|figure out|fix|debug|investigate|diagnose|research|analy[sz]e|install|update|download|send|schedule|remind)\b/i;
+
+/** The request's goal, created on first need (BUG-10). */
+interface GoalHandle {
+  existing(): Promise<Goal | null> | null;
+  ensure(): Promise<Goal | null>;
+}
+
+interface LoopRecord {
+  approvals: ApprovalDecision[];
+  /** Why the loop failed, in its own words, for the goal. */
+  failReason?: string;
+  /** A request to process once this one has finished (a confirmed "continue"). */
+  followUp?: string;
+  /** The reply asked the owner a question (BUG-9): the goal is closed, not failed or completed. */
+  askedBack?: boolean;
+}
+
+/** The approval decisions made in `graph`, each added once. */
+function collectApprovals(graph: TaskGraph, into: ApprovalDecision[]): void {
+  for (const node of graph.nodes.values()) {
+    for (const decision of node.approvals ?? []) {
+      if (!into.some((d) => d.requestId === decision.requestId)) into.push(decision);
+    }
+  }
+}
+
+/** One system line for planning: which tool groups exist and how many tools each has. */
+export function capabilityOverview(): string {
+  const groups = toolRegistryV2.describeCapabilities();
+  if (groups.length === 0) return '';
+  const parts = groups.map((g) => `${g.category} ${g.tools.length}`).join(', ');
+  return `JARVIS tool groups (${groups.reduce((n, g) => n + g.tools.length, 0)} tools): ${parts}. ` +
+    'Only the tools offered with this request can be called.';
+}
+
+/**
+ * Steps that change something on the PC (click, type, close, write, kill, run)
+ * are not re-run automatically: the task graph retried any failure it did not
+ * recognise twice, so a partial failure could type the text three times or
+ * close more windows. Read-only steps keep their retries.
+ */
+export function limitRetriesToReadOnlyTools(graph: TaskGraph): void {
+  for (const node of graph.nodes.values()) {
+    const tool = toolRegistryV2.get(node.tool);
+    if (tool && tool.riskLevel !== 'low') node.maxRetries = 0;
+  }
+}
+
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
 export const orchestrator = new JarvisOrchestrator();
-
-export function normalizeVoiceInput(text: string): string {
-  if (!text) return "";
-
-  // 1. Lowercase and replace punctuation (keeping hyphens for now to handle "you-tube")
-  let result = text.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim();
-
-  // Collapse spaces
-  result = result.replace(/\s+/g, ' ');
-
-  // 2. Normalize brand names
-  result = result.replace(/\byou tube\b/g, 'youtube');
-  result = result.replace(/\byou-tube\b/g, 'youtube');
-  result = result.replace(/\bgit-hub\b/g, 'github');
-  result = result.replace(/\bgit hub\b/g, 'github');
-
-  // Strip remaining hyphens
-  result = result.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-
-  // 3. Strip wake word prefixes
-  const wakePrefixes = ['hey jarvis', 'jarvis'];
-  for (const prefix of wakePrefixes) {
-    if (result.startsWith(prefix + ' ')) {
-      result = result.substring(prefix.length).trim();
-      break;
-    } else if (result === prefix) {
-      result = '';
-      break;
-    }
-  }
-
-  // 4. Strip filler words/phrases
-  const fillers = ['for me', 'please', 'can you', 'could you', 'would you'];
-  for (const filler of fillers) {
-    const regex = new RegExp(`\\b${filler}\\b`, 'g');
-    result = result.replace(regex, '');
-  }
-  result = result.replace(/\bfor\b$/g, '');
-
-  // Collapse spaces and trim one last time
-  result = result.replace(/\s+/g, ' ').trim();
-
-  return result;
-}

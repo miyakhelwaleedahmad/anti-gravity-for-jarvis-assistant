@@ -1,0 +1,85 @@
+--- before/core/tools/memoryTool.ts
++++ after/core/tools/memoryTool.ts
+@@ -10,6 +10,37 @@
+ import { factOrigin, memoryManager } from '../../memory/memoryManager.js';
+ import { hasSecret } from '../../security/redactor.js';
+ import { relationFact } from '../verifiers.js';
++import { getGoalContext, getRequestText } from '../traceContext.js';
++
++/** Words that name the owner or JARVIS rather than a claim, and words too common to show where a fact came from. */
++const GENERIC = new Set(['user', 'owner', 'me', 'my', 'myself', 'jarvis', 'sir']);
++const COMMON = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'are', 'was', 'were', 'has', 'have', 'had', 'its', 'you', 'your', 'our', 'not', 'but', 'about', 'into', 'over']);
++const significant = (s: string): string[] => s.toLowerCase().split(/[^a-z0-9]+/)
++  .filter((w) => (w.length >= 3 || /\d/.test(w)) && !COMMON.has(w) && !GENERIC.has(w))
++  .map((w) => (w.length > 3 ? w.replace(/s$/, '') : w));
++
++/**
++ * Why a relation must not be stored (owner, 2026-11-17, L-5; LR2_L5_PLAN.md §10):
++ * unverified information never enters trusted long-term memory. Inside a goal,
++ * its facts come from other agents' results, which are not verified. With a
++ * request in flight, a fact that is not in that request's own words came from
++ * somewhere else (an agent's result, a page, a document). Undefined: it may be
++ * stored. With no request in flight (code calling the registry) nothing changes.
++ */
++export function unverifiedRelation(entity1: string, entity2: string): string | undefined {
++  const goal = getGoalContext();
++  if (goal) {
++    return `inside the goal "${goal.title.slice(0, 80)}" facts come from other agents' results, which are not verified, so nothing was stored `
++      + '(the result stays in the goal\'s record). Say the fact yourself to keep it';
++  }
++  const request = getRequestText();
++  if (request === undefined) return undefined;
++  const said = new Set(significant(request));
++  const unsaid = [entity1, entity2].filter((e) => significant(e).some((w) => !said.has(w)));
++  return unsaid.length
++    ? `"${unsaid.join('" and "')}" is not in the words of this request, so it may come from a result that was not verified; nothing was stored. Say the fact yourself to keep it`
++    : undefined;
++}
+ 
+ // ─── Save Graph Relation ──────────────────────────────────────────────────────
+ 
+@@ -48,6 +79,8 @@
+     if ([entity1, relation, entity2].some(hasSecret)) {
+       return "Error: save_relation refused - I don't store passwords, keys or tokens, sir.";
+     }
++    const unverified = unverifiedRelation(entity1, entity2);
++    if (unverified) return `Error: save_relation refused - ${unverified}.`;
+ 
+     if (signal?.aborted) throw new Error('ABORTED');
+ 
+--- before/core/goalRuntime.ts
++++ after/core/goalRuntime.ts
+@@ -645,7 +645,8 @@
+       `Goal: ${g.objective ?? g.description}`,
+       g.constraints?.length ? `Constraints: ${g.constraints.join('; ')}` : '',
+       // A result that was not verified is marked, so it is not stored as a fact (owner, 2026-11-17, L-5b).
+-      deps.length ? `Results it builds on:\n${deps.map((d) => `- ${d.title}: ${d.result!.summary.slice(0, 400)}${d.result!.verification?.verdict === 'verified' ? '' : ' (not verified; do not store it as a fact)'}`).join('\n')}` : '',
++      // The label comes first, so cutting the context never cuts it (review L-B).
++      deps.length ? `Results it builds on:\n${deps.map((d) => `- ${d.title}${d.result!.verification?.verdict === 'verified' ? '' : ' (not verified; do not store it as a fact)'}: ${d.result!.summary.slice(0, 400)}`).join('\n')}` : '',
+       t.checkpoint?.partial?.length ? `An earlier attempt found (not verified; check before relying on it):\n${t.checkpoint.partial.slice(0, 5).map((p) => `- ${p}`).join('\n')}` : '',
+       advice.length ? `Change from the last attempt: ${advice.join('; ')}` : '',
+       lessons.length ? `Lessons from earlier goals: ${lessons.map((l) => l.text).join('; ')}` : '',
+--- before/.env.example
++++ after/.env.example
+@@ -134,12 +134,15 @@
+ #     results that were verified; anything else waits for review. A goal
+ #     task whose verification is inconclusive, or did not finish, pauses the
+ #     goal for your review (VERIFICATION_INCONCLUSIVE). An agent result goes
+-#     into long-term memory only when it was verified: with
+-#     JARVIS_AGENT_VERIFY=0, or from an agent whose results are not verified
+-#     (browser, PC, memory, QA), nothing is stored. The full result is still
+-#     reported and kept in the task archive (data/agents/<task>.json). In a
+-#     goal, a result a later step builds on is marked "not verified" when it
+-#     was not verified.
++#     into long-term memory only when the Verification agent verified it:
++#     with JARVIS_AGENT_VERIFY=0 nothing is stored, and a browser, PC, memory
++#     or QA result is stored only when it was verified (one with conflicts
++#     is). The full result is still reported, and kept in the task archive
++#     (data/agents/<task>.json) unless JARVIS_AGENT_ARCHIVE=0. In a goal, a
++#     result a later step builds on is marked "not verified" when it was not
++#     verified. save_relation stores nothing inside a goal, and otherwise
++#     only a fact in the words of the request it serves (a fact read from an
++#     agent's result, a page or a document is refused).
+ #   - A split request whose parts failed for different reasons keeps every
+ #     cause; recovery acts on the identity failure first, then a model that
+ #     did not answer, and waits for budget only when every part ran out of

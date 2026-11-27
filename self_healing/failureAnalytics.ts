@@ -17,6 +17,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,7 +27,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAX_EVENTS_PER_PIPELINE = 100;
 const SLIDING_WINDOW_MS       = 60 * 60 * 1000;    // 1 hour
 const RECURRENCE_WINDOW_MS    = 10 * 60 * 1000;    // 10 minutes
-const ANALYTICS_LOG_PATH      = path.join(__dirname, '..', 'data', 'logs', 'failure_analytics.jsonl');
+const ANALYTICS_LOG_PATH      = path.join(dataRoot(path.resolve(__dirname, '..')), 'data', 'logs', 'failure_analytics.jsonl');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

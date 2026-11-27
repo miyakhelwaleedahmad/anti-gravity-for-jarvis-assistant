@@ -58,7 +58,12 @@ export function initRedis(): void {
 
   const c = client; // narrow type to non-null for event registrations
 
-  c.on("connect", () => {
+  // "ready", not "connect": ioredis emits "connect" when the socket opens but
+  // only accepts commands once it is "ready". With enableOfflineQueue off, a
+  // command sent in between is rejected ("Stream isn't writeable and
+  // enableOfflineQueue options is false") — the startup health probe hit
+  // exactly that window.
+  c.on("ready", () => {
     redisAvailable = true;
     console.log(`[Redis] Connected at ${REDIS_HOST}:${REDIS_PORT}`);
   });
@@ -84,6 +89,50 @@ export function initRedis(): void {
 /** Returns true only if Redis is currently reachable. */
 export function isRedisAvailable(): boolean {
   return redisAvailable;
+}
+
+export interface RedisProbe {
+  /** `fallback`: not connected, so the in-memory path is in use (by design, not a fault). */
+  state: "ok" | "fallback" | "failed";
+  latencyMs: number;
+  detail: string;
+}
+
+/**
+ * The one Redis health check, used by both the dashboard
+ * (monitoring/healthManager.ts) and self-healing (self_healing/healthChecker.ts)
+ * so they cannot disagree (ARCH-02). A write and a read of a fresh value, with
+ * a time limit: a connected Redis can still refuse writes (full memory or
+ * disk) or stop answering. Never throws.
+ */
+export async function probeRedis(timeoutMs = 2_000): Promise<RedisProbe> {
+  const t0 = Date.now();
+  const c = client;
+  if (!redisAvailable || !c) return { state: "fallback", latencyMs: 0, detail: "in-memory cache fallback" };
+  // A key of its own per probe: the two health systems probe at the same time,
+  // and with one shared key each read back the other's value.
+  const value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const key = `__health_probe__:${value}`;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const roundTrip = (async () => {
+      await c.set(key, value, "EX", 10);
+      return c.get(key);
+    })();
+    roundTrip.catch(() => { /* a failure after the time limit was already reported */ });
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
+    });
+    const got = await Promise.race([roundTrip, timeout]);
+    const latencyMs = Date.now() - t0;
+    return got === value
+      ? { state: "ok", latencyMs, detail: "round-trip OK" }
+      : { state: "failed", latencyMs, detail: "the value read back is not the value written" };
+  } catch (err) {
+    return { state: "failed", latencyMs: Date.now() - t0, detail: (err as Error).message.slice(0, 120) };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** Gracefully disconnect (call on process exit). */
@@ -271,41 +320,61 @@ export async function cacheTTLRefresh(key: string, ttlSeconds: number): Promise<
  * Cache a vector search result.
  * Uses adaptive TTL based on hit ratio — hot caches get 48h, cold 12h.
  */
+/**
+ * Vector results are cached per memory store (`scope`: the store's file) and
+ * per generation. Every change to the stored facts bumps the generation, so
+ * results cached before the change can no longer be found (they expire by
+ * TTL). Before, "invalidation" without a query did nothing: a fact remembered
+ * after a search stayed hidden behind the cached answer for up to 48 h, and
+ * stores in different data folders (tests, a second install) shared answers.
+ */
+const generationKey = (scope: string) => `vector:gen:${hashKey(scope)}`;
+
+async function vectorGeneration(scope: string): Promise<string> {
+  if (!redisAvailable || !client) return '0';
+  try { return (await client.get(generationKey(scope))) ?? '0'; } catch { return '0'; }
+}
+
+function vectorResultKey(scope: string, generation: string, query: string, topK: number): string {
+  return RedisKeys.vectorResult(hashKey(`${scope}::${generation}::${query}::${topK}`));
+}
+
+/** Cache a vector search result for this store's current generation. */
 export async function cacheVectorResult(
   query: string,
   topK: number,
-  results: unknown
+  results: unknown,
+  scope = 'default',
 ): Promise<void> {
-  const key = RedisKeys.vectorResult(hashKey(`${query}::${topK}`));
+  if (!redisAvailable || !client) return;
+  const key = vectorResultKey(scope, await vectorGeneration(scope), query, topK);
   await cacheSet(key, results, adaptiveVectorTtl());
 }
 
 /**
- * Retrieve a cached vector search result.
+ * Retrieve a cached vector search result of this store's current generation.
  * Returns null on miss.
  */
 export async function getCachedVectorResult<T>(
   query: string,
-  topK: number
+  topK: number,
+  scope = 'default',
 ): Promise<T | null> {
-  const key = RedisKeys.vectorResult(hashKey(`${query}::${topK}`));
-  return cacheGet<T>(key);
+  if (!redisAvailable || !client) return null;
+  return cacheGet<T>(vectorResultKey(scope, await vectorGeneration(scope), query, topK));
 }
 
 /**
- * Invalidate all cached vector results for a query.
- * Call this after a fact is added/updated/deleted to prevent stale hits.
+ * The store's facts changed: results cached so far are no longer served.
+ * O(1) (one INCR); no key scan.
  */
-export async function invalidateVectorCache(query?: string): Promise<void> {
+export async function invalidateVectorCache(scope = 'default'): Promise<void> {
   if (!redisAvailable || !client) return;
-  if (query) {
-    // Invalidate specific known query variants
-    for (const topK of [1, 3, 5, 8, 10, 15]) {
-      await cacheDel(RedisKeys.vectorResult(hashKey(`${query}::${topK}`)));
-    }
+  try {
+    await client.incr(generationKey(scope));
+  } catch (err) {
+    console.warn(`[Redis] invalidateVectorCache failed: ${(err as Error).message}`);
   }
-  // Note: full pattern-based flush (SCAN + DEL) avoided deliberately —
-  // it would be expensive and is unnecessary for single-user load.
 }
 
 /**

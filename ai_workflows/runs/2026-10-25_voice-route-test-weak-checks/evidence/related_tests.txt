@@ -1,0 +1,21 @@
+# typecheck + target and related tests (repository working tree, cloud Linux); fake xdg-open on PATH
+> tsc --noEmit
+
+typecheck exit=0
+
+  PASS    bargeInEchoTest                              512ms
+  PASS    boundaryDoublesTest                          483ms
+  PASS    bridgeSecurityTest                           10101ms
+  PASS    deterministicCommandRouteTest                2414ms
+  PASS    docsHygieneTest                              1485ms
+  PASS    healthLedgerTest                             5164ms
+  PASS    nodeBridgeSingletonTest                      552ms
+  PASS    testScriptIsolationTest                      3383ms
+  PASS    voiceContinuationFallbackTest                1406ms
+  PASS    voiceRouteMockTest                           1448ms
+  PASS    voiceYouTubeIntegrationTest                  1363ms
+
+=== 11 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.
+opener calls: 0

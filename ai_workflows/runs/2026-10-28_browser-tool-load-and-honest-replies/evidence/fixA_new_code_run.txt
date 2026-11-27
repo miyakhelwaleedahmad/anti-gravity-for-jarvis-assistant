@@ -1,0 +1,14 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=skillImportTimeoutTest,skillLoadOrderTest,skillTrustTest
+
+
+=== JARVIS test suite — 3 file(s) ===
+
+  PASS    skillImportTimeoutTest                       1231ms
+  PASS    skillLoadOrderTest                           3325ms
+  PASS    skillTrustTest                               630ms
+
+=== 3 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

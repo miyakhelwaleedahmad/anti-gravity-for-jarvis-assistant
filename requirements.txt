@@ -3,7 +3,7 @@
 # Or inside venv: python -m pip install -r requirements.txt
 
 # ── Voice / Audio ─────────────────────────────────────────────────────────────
-edge-tts>=6.1.9              # Microsoft neural TTS (tts.py)
+edge-tts>=7.3.1,<8           # Microsoft neural TTS (tts.py); <=7.2.8 sends Sec-MS-GEC-Version=1-… and gets HTTP 403 (BUG-5)
 pygame>=2.6.0                # Audio playback for TTS output (tts.py)
 pyaudio>=0.2.14              # Microphone capture for STT and wake word
 SpeechRecognition>=3.10.0   # Wake word recognition + Google STT (wakeWords.py)
@@ -20,9 +20,6 @@ sentence-transformers>=2.2.2
 
 # ── WebSocket Bridge ──────────────────────────────────────────────────────────
 websockets>=13.0             # WS client connecting to NodeBridge (all voice modules)
-
-# ── Reflection / Self-Learning ───────────────────────────────────────────────
-requests>=2.31.0             # HTTP client for Groq API calls (reflectionEngine.py)
 
 # ── Optional: Offline Wake Word Fallback ─────────────────────────────────────
 # Uncomment to enable offline wake word recognition via pocketsphinx

@@ -1,6 +1,7 @@
 # Change Log — [Replace with Bug Name]
 
-> Stage: 04_implementation
+> Stage: 04_implementation · Template. Copy to `ai_workflows/runs/<run>/change_log.md`
+> and fill in the copy; leave this file blank.
 > Status: [ ] Complete / [ ] In Progress
 > Date: [fill in]
 
@@ -30,7 +31,7 @@
 ## TypeScript Compile Check
 
 ```
-npx tsc --noEmit
+pnpm run typecheck        (runs tsc --noEmit)
 Result: [ ] 0 errors  [ ] Errors (list below)
 ```
 
@@ -54,5 +55,5 @@ Errors (if any):
 
 - [ ] All approved changes applied
 - [ ] No unplanned changes made
-- [ ] npx tsc --noEmit → 0 errors
+- [ ] pnpm run typecheck → 0 errors
 - [ ] Change log complete

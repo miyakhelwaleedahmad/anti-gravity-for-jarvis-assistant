@@ -1,0 +1,59 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=gapReviewFixesTest,claudePrimaryStrictTest
+
+
+=== JARVIS test suite — 2 file(s) ===
+
+  FAIL    claudePrimaryStrictTest                      839ms
+  FAIL    gapReviewFixesTest                           1477ms
+
+=== 0 passed · 2 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - claudePrimaryStrictTest: [cause]: Error: Anthropic API error 401: unauthorized (check ANTHROPIC_API_KEY)
+        FAIL: a strict route naming a bare non-Claude model is not sent as Claude's model (claude-opus-5-5)
+        FAIL: …it fails as a strict route, saying which model would have been sent (: )
+        FAIL: the target list shows the model that would really be sent ([{"provider":"anthropic","model":"gpt-5-mini","exact":true}])
+        FAIL: coding on Claude's brain model, QA "gpt-5-mini" (really the same model): not independent before any call (independent: coding may use anthropic claude-opus-5-5; QA may use anthropic gpt-5-mini)
+        …
+          at strictRouteError (/home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:66:13)
+          at ModelRouter.routedChat (/home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:522:31)
+          at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+          at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/claudePrimaryStrictTest.ts:63:15) {
+        [cause]: Error: Anthropic API error 401: unauthorized (check ANTHROPIC_API_KEY)
+            at describe (/home/user/anti-gravity-for-jarvis-assistant/bridge/anthropicProvider.ts:119:60)
+            at <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/bridge/anthropicProvider.ts:172:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+            at async AnthropicProvider.params (/home/user/anti-gravity-for-jarvis-assistant/bridge/anthropicProvider.ts:193:5)
+            at async AnthropicProvider.chat (/home/user/anti-gravity-for-jarvis-assistant/bridge/anthropicProvider.ts:210:20)
+            at async ModelRouter.callNamed (/home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:269:24)
+            at async ModelRouter.routedChat (/home/user/anti-gravity-for-jarvis-assistant/bridge/modelRouter.ts:517:19)
+            at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/claudePrimaryStrictTest.ts:63:15)
+      }
+      Node.js v22.23.4
+  - gapReviewFixesTest: === Results: 4 passed, 7 failed ===
+        FAIL: an alias and its dated id are one model: not independent (independent: coding may use anthropic claude-opus-5-5; QA may use anthropic claude-opus-5-5-20261101)
+        FAIL: a model whose identity cannot be looked up: not independent (independent: coding may use anthropic claude-opus-5-5; QA may use anthropic claude-unknown-9)
+        FAIL: QA on the dated id of coding's Claude model: FAILED "independent QA unavailable" (COMPLETED  {"status":"independent","required":true,"qaModels":["claude-opus-5-5-20261101"],"reason":"independent: coding may use anthropic claude-opus-5-5; QA may use anthropic claude-opus-5-5-20261101; every r
+        FAIL: …before QA asked any model (qa_agent:claude-opus-5-5-20261101)
+        FAIL: the research worker ran out of model calls: the coding task is FAILED (COMPLETED )
+        FAIL: …naming the budget
+        FAIL: the reported model is recorded as servedModel ({"model":"asked-model"})
+        …
+      --- L3. A used-up budget on a strict coding lineage fails the coding task ---
+      [LLM usage] codeok code-model planning: ? in / ? out tokens, 0 ms
+        FAIL: the research worker ran out of model calls: the coding task is FAILED (COMPLETED )
+        FAIL: …naming the budget
+      --- L4. Usage records keep the reported model ---
+      [LLM usage] reports asked-model planning: ? in / ? out tokens, 1 ms
+        FAIL: the reported model is recorded as servedModel ({"model":"asked-model"})
+      [LLM usage] silent asked-model planning: ? in / ? out tokens, 0 ms
+        PASS: …and nothing when the provider reports none (the requested model is not copied over) ({"model":"asked-model"})
+      --- L6. Gemini/Groq client: tool-call replies and strict streams ---
+      [LLM:gemini] 🔧 Model called 1 tool(s): dev_status
+      [PipelineRegistry] 🟢 Pipeline 'brain_to_llm' is now healthy.
+        PASS: a tool-call reply carries the model the server reported (gemini-3.5-flash)
+        PASS: a strict stream is not moved to the fast model after a 429 (gemini-3.5-flash | Gemini rate-limited (429): quota exceeded)
+      === Results: 4 passed, 7 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

@@ -1,0 +1,5 @@
+MB the finder ignores the tab on screen (several matches): CAUGHT | FAIL: two YouTube tabs, neither on screen: JARVIS asks which, naming both (Closing the youtube tab, sir.)
+MD the close check always says verified: CAUGHT | FAIL: the tab never closes: not "verified", JARVIS says it is still open (mutation MD) ( { "success": true, "action": "closeBrowserTab", "target": "youtube", "permissionL
+ME browser_tab close does nothing: CAUGHT | FAIL: two YouTube tabs, one on screen: that one closes (MB) (VERIFICATION_FAILED browser_tab reported success, but the check found that the tab is still open. the tab is
+
+3/3 caught

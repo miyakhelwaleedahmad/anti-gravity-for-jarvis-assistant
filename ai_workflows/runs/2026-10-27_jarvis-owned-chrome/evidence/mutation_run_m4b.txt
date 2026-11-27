@@ -1,0 +1,3 @@
+M4b openUrl falls back to the platform opener directly: CAUGHT | FAIL: control_browser open_url without Chrome: an error that names the fix, no default browser ( xdg-open https://example.com)
+
+1/1 caught

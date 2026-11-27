@@ -1,10 +1,14 @@
 import { systemStateObserver } from '../../perception/systemStateObserver.js';
+import { windowsFailure } from '../../perception/readTools.js';
 
 export async function execute(args: Record<string, unknown>): Promise<string> {
   const appName = String(args['appName'] ?? '').toLowerCase().trim();
   if (!appName) return 'false';
   
   const state = systemStateObserver.getState();
+  // Not read is not "not open" (A5a, TRA-07).
+  const unread = windowsFailure(state);
+  if (unread) return unread;
   const openApps = state.openApps || [];
   
   const found = openApps.some((app: any) => 

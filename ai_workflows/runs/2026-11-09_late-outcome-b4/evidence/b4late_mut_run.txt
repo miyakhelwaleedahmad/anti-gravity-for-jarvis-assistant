@@ -1,0 +1,45 @@
+K1 late_result takes the identity when the tool ends, not at the start: CAUGHT | 4 failing; first: FAIL: 1.4 one `late_result` line when the tool ended: the same call id and request, its real completion time, success ({"timestamp":"2026-11-09T17:47:10.397Z","type":"lat
+K2 outcome_unknown takes the identity when JARVIS gives up, not at the start: CAUGHT | 3 failing; first: FAIL: 1.4 one `late_result` line when the tool ended: the same call id and request, its real completion time, success ({"timestamp":"2026-11-09T17:47:45.197Z","type":"lat
+K3 the identity is not frozen: MISSED | 0 failing; first:
+K4 the kernel takes the request when the action ends: CAUGHT | 1 failing; first: FAIL: 2.3 …with the request it started in, never the one running when it ended (line trace_mw9k2rpt_39liw0, started trace_mw9k2rn0_1ur8rf, ended in trace_mw9k2rpt_39liw0)
+K5 no outcome_unknown line: CAUGHT | 6 failing; first: FAIL: 1.4 one `outcome_unknown` line when JARVIS gave up, with a call id and the request's id ({})
+K6 no late_result line: CAUGHT | 4 failing; first: FAIL: 1.4 one `late_result` line when the tool ended: the same call id and request, its real completion time, success ({})
+K7 the result is returned before the outcome_unknown line is written: CAUGHT | 3 failing; first: FAIL: 1.4 one `outcome_unknown` line when JARVIS gave up, with a call id and the request's id ({"timestamp":"2026-11-09T17:50:38.166Z","type":"outcome_unknown","callId":"
+K8 late_result not ordered after outcome_unknown: MISSED | 0 failing; first:
+K9 a failed or overdue audit write is not reported: CAUGHT | 2 failing; first: FAIL: 1.9 …the write that fails is reported on its own, and the tool ran once
+K10 no limit on the audit wait: CAUGHT | 2 failing; first: FAIL: 1.9 an audit write that hangs: the result is still the unknown outcome, returned within 4400 ms (10004 ms: still running)
+K11 a tool ending during the audit wait turns the result into its real result: MISSED | 0 failing; first:
+K12 the gave-up text has no outcome-unknown marker: CAUGHT | 13 failing; first: FAIL: 1.1 the result says the outcome is unknown, with the time JARVIS waited (Error: TIMEOUT: Tool "b4_slow_a" ran past its 1 s budget and did not stop within 1 s; JARVI
+K13 the gave-up text has no time waited: CAUGHT | 3 failing; first: FAIL: 1.1 the result says the outcome is unknown, with the time JARVIS waited (Error: TIMEOUT (outcome unknown): Tool "b4_slow_a" ran past its 1 s budget and did not stop
+K14 always plural seconds: CAUGHT | 1 failing; first: FAIL: 2.1 …"1 second" in the singular (TIMEOUT (outcome unknown): The command was stopped after 1 seconds; part of it may already have run.)
+K15 the registry tries a fallback after an unknown outcome: CAUGHT | 1 failing; first: FAIL: 1.3 …and no fallback tool ran (fallback started 1)
+K16 the registry retries a thrown unknown outcome: MISSED | 0 failing; first:
+K17 the task graph re-runs an unknown outcome: CAUGHT | 1 failing; first: FAIL: 1.3 the step ran once: no retry by the registry or the task-graph engine (started 3)
+K18 no outcome_unknown pattern (override kept): MISSED | 0 failing; first:
+K19 no outcome_unknown override (pattern kept): MISSED | 0 failing; first:
+K20 neither the pattern nor the override: CAUGHT | 1 failing; first: FAIL: 1.2 one-step request: class `outcome_unknown`, strategy abort (network_error / abort)
+K21 the owner's sentence is not used: CAUGHT | 3 failing; first: FAIL: 1.2 …said as the owner's sentence, with the request in quotes (I stopped waiting for that, sir. It may still finish, so check before asking me to try again.)
+K22 several steps named like one: CAUGHT | 1 failing; first: FAIL: 1.2 several steps: the exact tool and action step is named (I stopped waiting for "open the page and close the fake thing" after 2 seconds, sir. It may still finish
+K23 a stopped command said like a tool JARVIS stopped waiting for: CAUGHT | 1 failing; first: FAIL: 2.1 what the owner hears for a stopped command (I stopped waiting for "run the backup command", sir. It may still finish, so check before asking me to try again.)
+K24 a command that never started said to have maybe run: CAUGHT | 1 failing; first: FAIL: 2.1 a command that never started: a definite failure, never "may have run" (TIMEOUT (outcome unknown): The command was stopped after 0 seconds; part of it may alrea
+K25 the admin seconds not measured (always 10): MISSED | 0 failing; first:
+K26 runProcess says a never-started process started: CAUGHT | 1 failing; first: FAIL: 2.2 a signal already aborted: nothing started (`started` false) (started true)
+K27 the kernel logs a stopped command as failure: CAUGHT | 1 failing; first: FAIL: 2.3 a stopped command's kernel line is `unknown`, not `failure` (failure)
+K28 goal classification misses the marker (budget/transient win): CAUGHT | 1 failing; first: FAIL: 3.2 goal runtime: classified as its own class `outcome_unknown`, counted apart from `interrupted` (budget)
+K29 goal recovery schedules an unknown outcome again: CAUGHT | 1 failing; first: FAIL: 3.2 goal runtime: an unknown outcome is never retried; it waits for review (retry / continue: retry at 2026-11-09T18:04:49.923Z: TIMEOUT (outcome unknown): Tool "b4
+
+22/29 caught
+tree restored (md5): YES
+exit=0
+jarvis-b4late folders left: 0
+core/toolExecutionSandbox.ts: OK
+core/outcomeUnknown.ts: OK
+control/actionAuditLog.ts: OK
+control/pcControlKernel.ts: OK
+core/toolRegistryV2.ts: OK
+core/taskGraphEngine.ts: OK
+core/reflectionEngine.ts: OK
+control/adminController.ts: OK
+system/processRunner.ts: OK
+core/goalRecovery.ts: OK
+test processes left: 0

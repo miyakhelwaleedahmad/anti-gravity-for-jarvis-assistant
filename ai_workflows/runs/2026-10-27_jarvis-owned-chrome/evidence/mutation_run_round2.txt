@@ -1,0 +1,6 @@
+M15 (R1) control_app open sends pages to the platform opener: CAUGHT | FAIL: control_app open "https://github.com": a tab in JARVIS's Chrome, no opener (Opened "https://github.com" successfully. xdg-open https://github.com)
+M16 (R3) a late yes still closes: CAUGHT | FAIL: a "yes" that comes after the request timed out closes nothing, and says so
+M19 (R2-1) the kernel passes the queue's 10 s timeout signal: CAUGHT | FAIL: the kernel hands closeBrowser the tool's own signal (not one the queue's 10 s timeout aborts) ([object AbortSignal])
+M20 (R2-4) chrome.exe by its full path goes to the opener: CAUGHT | FAIL: control_app open with the full path to chrome.exe: JARVIS's Chrome, no opener (Opened "C:\Program Files\Google\Chrome\Application\chrome.exe" successfully. xdg-open C:\Program Files\Google\Chrom
+
+4/4 caught

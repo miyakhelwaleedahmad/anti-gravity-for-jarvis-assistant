@@ -7,9 +7,10 @@
  * a live health snapshot. Designed to be polled by runtimeDashboard.ts.
  *
  * Probes:
- *   - Redis (ioredis ping)
- *   - Vector Memory (HTTP GET /stats on port 8000)
- *   - LLM (reads env config — no live ping to avoid cost)
+ *   - Redis (memory/redisCache.ts probeRedis, shared with self-healing)
+ *   - Vector Memory (the supervisor's state; HTTP GET /stats on port 8000 once ready)
+ *   - LLM (bridge/llmStatus.ts: the last request or probe to the configured
+ *     provider; a background model-list check when nothing recent is known)
  *   - Tool Registry (count check)
  *   - STT / TTS / WakeWord (process existence via pipelineRegistry)
  *   - Memory (process.memoryUsage)
@@ -19,18 +20,29 @@
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
+import { vectorHeaders } from '../memory/vectorAuth.js';
+import { healthLedger, LEDGER_PIPELINES, type LedgerPipeline } from './healthLedger.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ServiceStatus = 'online' | 'offline' | 'degraded' | 'unknown';
+/** `loading`: starting up and expected to come online (e.g. a model loading); not a failure. */
+export type ServiceStatus = 'online' | 'offline' | 'degraded' | 'loading' | 'unknown';
 
 export interface ServiceHealth {
   name: string;
   status: ServiceStatus;
   latencyMs?: number;
   detail?: string;
+  /** Redis only: not connected, so the in-memory cache is in use (phase A5b). */
+  fallback?: boolean;
   checkedAt: number;
 }
+
+/** Redis's own check, so tests can stand in for it (phase A5b). Nothing else changes it. */
+export const redisProbeDeps = {
+  load: () => import('../memory/redisCache.js'),
+};
 
 export interface SystemMetrics {
   heapUsedMB: number;
@@ -52,6 +64,11 @@ export interface HealthSnapshot {
   activeAgents: string[];
   overallStatus: ServiceStatus;
 }
+
+/** How old the last LLM result may be before the dashboard starts a fresh check. */
+const LLM_RECHECK_MS = 3 * 60_000;
+/** How long the first probe waits for the first LLM check (the check itself gives up at 5 s). */
+const LLM_FIRST_CHECK_WAIT_MS = 6_000;
 
 // ─── HealthManager ────────────────────────────────────────────────────────────
 
@@ -75,27 +92,26 @@ class HealthManager {
   private async probeRedis(): Promise<ServiceHealth> {
     const start = Date.now();
     try {
-      const { isRedisAvailable, cacheSet, cacheGet, initRedis } = await import('../memory/redisCache.js');
+      // The same check self-healing uses (ARCH-02), with a time limit: this
+      // waited for ever on a Redis that stopped answering, and read back an
+      // earlier probe's value as "round-trip OK" when writes were refused.
+      const { initRedis, probeRedis } = await redisProbeDeps.load();
       initRedis();
-      if (!isRedisAvailable()) {
-        return { name: 'redis', status: 'online', detail: 'in-memory cache fallback', checkedAt: Date.now() };
-      }
-      await cacheSet('__health_probe__', { ts: Date.now() }, 10);
-      const val = await cacheGet<{ ts: number }>('__health_probe__');
-      const latencyMs = Date.now() - start;
+      const p = await probeRedis();
       return {
         name: 'redis',
-        status: val !== null ? 'online' : 'degraded',
-        latencyMs,
-        detail: val !== null ? 'round-trip OK' : 'in-memory fallback active',
+        status: p.state === 'failed' ? 'degraded' : 'online',
+        ...(p.state === 'fallback' ? { fallback: true } : { latencyMs: p.latencyMs }),
+        detail: p.state === 'failed' ? `cache not working: ${p.detail}` : p.detail,
         checkedAt: Date.now(),
       };
     } catch (err) {
+      // The check itself failed: that is not a working cache (phase A5b).
       return {
         name: 'redis',
-        status: 'online',
+        status: 'degraded',
         latencyMs: Date.now() - start,
-        detail: 'in-memory cache fallback',
+        detail: `the cache check failed: ${err instanceof Error ? err.message : String(err)}`,
         checkedAt: Date.now(),
       };
     }
@@ -114,6 +130,26 @@ class HealthManager {
         memoryManager.resetVectorCircuit();
       }
 
+      // While the embedding model loads the server answers /stats with "0
+      // vectors", which used to show as online before search worked.
+      if (vectorMemorySupervisor.state() === 'loading') {
+        return {
+          name: 'vector_memory',
+          status: 'loading',
+          detail: `embedding model loading (${vectorMemorySupervisor.loadingSeconds()} s); lexical search meanwhile`,
+          checkedAt: Date.now(),
+        };
+      }
+
+      if (vectorMemorySupervisor.state() === 'failed') {
+        return {
+          name: 'vector_memory',
+          status: 'degraded',
+          detail: `embedding model failed to load (${vectorMemorySupervisor.getModelError()}); lexical search fallback`,
+          checkedAt: Date.now(),
+        };
+      }
+
       if (memoryManager.isVectorCircuitOpen && !vectorMemorySupervisor.isHealthy()) {
         return {
           name: 'vector_memory',
@@ -127,6 +163,7 @@ class HealthManager {
       // Probe timeout of 2000ms prevents false timeouts on Windows/CPU-constrained environments
       const t = setTimeout(() => controller.abort(), 2000);
       const res = await fetch('http://127.0.0.1:8000/stats', {
+        headers: vectorHeaders(),
         signal: controller.signal,
       });
       clearTimeout(t);
@@ -166,7 +203,7 @@ class HealthManager {
             checkedAt: Date.now(),
           };
         }
-      } catch {}
+      } catch { /* unreachable or refused: reported as offline below */ }
 
       return {
         name: 'vector_memory',
@@ -180,16 +217,44 @@ class HealthManager {
 
   // ── Probe: LLM ─────────────────────────────────────────────────────────────
 
+  /** The LLM check in flight, if any. */
+  private llmCheck: Promise<void> | null = null;
+
+  /**
+   * The configured provider's real state: the last request or probe that
+   * worked or failed (bridge/llmStatus.ts). It used to say "online" whenever a
+   * key was set, so a rejected key or an exhausted quota still showed online.
+   * When nothing is known from the last LLM_RECHECK_MS, a model-list check
+   * (no generation quota) starts in the background; this probe never waits
+   * for the network.
+   */
   private async probeLLM(): Promise<ServiceHealth> {
     try {
-      const { llmConfig } = await import('../config/llmconfig.js');
-      const hasKey = !!(process.env.GROQ_API_KEY || process.env.XAI_API_KEY);
-      return {
-        name: 'llm',
-        status: hasKey ? 'online' : 'degraded',
-        detail: hasKey ? `model: ${llmConfig.model ?? 'groq'}` : 'missing API key',
-        checkedAt: Date.now(),
-      };
+      const { llmStatus } = await import('../bridge/llmStatus.js');
+      const neverChecked = llmStatus.isStale(Number.POSITIVE_INFINITY);
+      if (llmStatus.snapshot().hasKey && llmStatus.isStale(LLM_RECHECK_MS) && !this.llmCheck) {
+        this.llmCheck = import('../bridge/groqProvider.js')
+          .then(({ groqProvider }) => groqProvider.ping(AbortSignal.timeout(5_000)))
+          .then(() => undefined, () => undefined) // the result is recorded in llmStatus
+          .finally(() => { this.llmCheck = null; });
+      }
+      // Never checked yet: wait for that first check (at most LLM_FIRST_CHECK_WAIT_MS)
+      // instead of reporting "unknown". The first probe after start always said
+      // "unknown", so the system read as offline until a later poll. Later
+      // re-checks stay in the background, as before.
+      if (neverChecked && this.llmCheck) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([this.llmCheck, new Promise<void>((r) => { timer = setTimeout(r, LLM_FIRST_CHECK_WAIT_MS); })]);
+        if (timer) clearTimeout(timer);
+      }
+      const h = llmStatus.health();
+      // The model list answering (a ping) does not prove chat works: when the
+      // last chat request failed, the language model is not "online".
+      const chat = healthLedger.status(LEDGER_PIPELINES.llm);
+      if (h.status === 'online' && (chat.state === 'degraded' || chat.state === 'failing')) {
+        return { name: 'llm', status: 'degraded', detail: `${h.detail}; but ${chat.detail}`, checkedAt: Date.now() };
+      }
+      return { name: 'llm', status: h.status, detail: h.detail, checkedAt: Date.now() };
     } catch {
       return { name: 'llm', status: 'unknown', detail: 'config unavailable', checkedAt: Date.now() };
     }
@@ -200,12 +265,13 @@ class HealthManager {
   private async probeToolRegistry(): Promise<ServiceHealth> {
     try {
       const { toolRegistryV2 } = await import('../core/toolRegistryV2.js');
-      try { await import('../core/terminalTools.js'); } catch {}
+      try { await import('../core/terminalTools.js'); } catch { /* the count below then shows the tools are missing */ }
       const count = toolRegistryV2.names().length;
+      // No tools yet: still starting, not "online" with nothing to run.
       return {
         name: 'tool_registry',
-        status: 'online',
-        detail: `${count} tools registered`,
+        status: count > 0 ? 'online' : 'loading',
+        detail: count > 0 ? `${count} tools registered` : 'no tools registered yet',
         checkedAt: Date.now(),
       };
     } catch (err) {
@@ -217,7 +283,7 @@ class HealthManager {
 
   private async probePipelines(): Promise<ServiceHealth[]> {
     try {
-      const { nodeBridge } = await import('../bridge/nodeBridge.js');
+      const { nodeBridge, isSpeechFailure } = await import('../bridge/nodeBridge.js');
       const readyRoles = nodeBridge.getReadyClients();
       
       const results: ServiceHealth[] = [];
@@ -226,11 +292,27 @@ class HealthManager {
       for (const svc of expectedServices) {
         const isReady = readyRoles.includes(svc);
         const displayName = svc === 'wakeword' ? 'wake_word' : svc;
-        if (isReady) {
+        // Self-healing Phase 1: connected (transport) is not the same as
+        // working (effect). The ledger holds what each service last produced:
+        // a played reply, a transcript, a detection.
+        const pipeline: LedgerPipeline = svc === 'tts' ? LEDGER_PIPELINES.tts : svc === 'stt' ? LEDGER_PIPELINES.stt : LEDGER_PIPELINES.wake;
+        const effect = healthLedger.status(pipeline, readyRoles);
+        const heard = svc === 'tts' ? nodeBridge.lastSpeechOutcome : null;
+        if (isReady && (effect.state === 'degraded' || effect.state === 'failing')) {
+          const what = svc === 'tts' && heard && isSpeechFailure(heard.outcome)
+            ? `the last reply was not played: ${heard.outcome.replace(/_/g, ' ')}${heard.detail ? ` (${heard.detail.slice(0, 80)})` : ''}`
+            : effect.detail;
+          results.push({ name: displayName, status: 'degraded', detail: `connected, but ${what}`, checkedAt: Date.now() });
+        } else if (isReady && (effect.state === 'unknown' || effect.state === 'stale')) {
+          // Connected, but nothing proves it works yet (or not recently).
+          results.push({ name: displayName, status: 'unknown', detail: `connected; ${effect.state === 'unknown' ? 'not verified yet' : effect.detail}`, checkedAt: Date.now() });
+        } else if (isReady) {
+          // Stopped by the user (cancelled) or queued while disconnected is not a fault.
+          const last = heard ? `; last reply: ${heard.outcome.replace(/_/g, ' ')}${heard.engine ? ` (${heard.engine})` : ''}` : '';
           results.push({
             name: displayName,
             status: 'online',
-            detail: 'connected via bridge',
+            detail: `connected via bridge; ${effect.detail}${last}`,
             checkedAt: Date.now()
           });
         } else {
@@ -302,7 +384,7 @@ class HealthManager {
 
     // Memory components (redis + vector_memory) - online or active fallback
     const memoryServices = [services.redis, services.vector_memory];
-    const isCoreMemoryFunctional = memoryServices.every(s => s && (s.status === 'online' || s.status === 'degraded'));
+    const isCoreMemoryFunctional = memoryServices.every(s => s && (s.status === 'online' || s.status === 'degraded' || s.status === 'loading'));
 
     let overallStatus: ServiceStatus = 'degraded';
     if (isCoreOnline && isCoreMemoryFunctional) {
@@ -333,7 +415,7 @@ class HealthManager {
 
   // ── JSON Lines log output ──────────────────────────────────────────────────
 
-  async writeLog(logPath = 'logs/jarvis-health.jsonl'): Promise<void> {
+  async writeLog(logPath = path.join(dataRoot(process.cwd()), 'logs', 'jarvis-health.jsonl')): Promise<void> {
     try {
       const dir = path.dirname(logPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

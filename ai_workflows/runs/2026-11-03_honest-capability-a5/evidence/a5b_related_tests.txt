@@ -1,0 +1,67 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=boundaryDoublesTest,childEnvCoverageTest,dashboardAccuracyTest,dashboardHealthSystemTest,dashboardLabelTest,docsHygieneTest,healthLedgerTest,healthStatusTest,honestReadToolsA5aTest,issueStoreTest,jarvisAgentIntegrationTest,kernelOutcomeA5cTest,listeningRecoveryTest,memoryCacheTest,openAppHonestA5dTest,parallelizationTimeoutAuditTest,providerHealthTest,redisHealthAgreementTest,redisReadyRaceTest,repairRunTest,resourceUsageAuditTest,routeGoldenTest,scenarioIntegrationTest,selfCheckA5bTest,selfCheckTest,selfHealingHonestyTest,speechOutcomeHealthTest,speechRequestCorrelationTest,vectorReadinessTest,vectorRebuildStoreTest,vectorSupervisorDashboardTest,voiceRouteMockTest
+
+
+=== JARVIS test suite — 32 file(s) ===
+
+  PASS    boundaryDoublesTest                          399ms
+  PASS    childEnvCoverageTest                         931ms
+  FAIL    dashboardAccuracyTest                        1616ms  (expected here: needs a running Redis and a reachable LLM API)
+  FAIL    dashboardHealthSystemTest                    6287ms  (expected here: needs Windows PowerShell, a reachable LLM API and Redis)
+  PASS    dashboardLabelTest                           807ms
+  PASS    docsHygieneTest                              1340ms
+  PASS    healthLedgerTest                             5003ms
+  PASS    healthStatusTest                             7704ms
+  PASS    honestReadToolsA5aTest                       3206ms
+  PASS    issueStoreTest                               698ms
+  PASS    jarvisAgentIntegrationTest                   3831ms
+  PASS    kernelOutcomeA5cTest                         2361ms
+  PASS    listeningRecoveryTest                        3910ms
+  PASS    memoryCacheTest                              494ms
+  PASS    openAppHonestA5dTest                         5649ms
+  PASS    parallelizationTimeoutAuditTest              1481ms
+  PASS    providerHealthTest                           3638ms
+  PASS    redisHealthAgreementTest                     2622ms
+  PASS    redisReadyRaceTest                           732ms
+  PASS    repairRunTest                                6427ms
+  PASS    resourceUsageAuditTest                       438ms
+  PASS    routeGoldenTest                              1312ms
+  PASS    scenarioIntegrationTest                      46578ms
+  PASS    selfCheckA5bTest                             470ms
+  FAIL    selfCheckTest                                1611ms
+  PASS    selfHealingHonestyTest                       490ms
+  PASS    speechOutcomeHealthTest                      2584ms
+  PASS    speechRequestCorrelationTest                 3420ms
+  PASS    vectorReadinessTest                          1009ms
+  PASS    vectorRebuildStoreTest                       1853ms
+  PASS    vectorSupervisorDashboardTest                5760ms
+  PASS    voiceRouteMockTest                           1381ms
+
+=== 29 passed · 1 failed · 0 timed out · 0 blocked · 2 environment · 0 skipped ===
+
+Failed for a missing prerequisite, not a defect:
+  - dashboardAccuracyTest (needs a running Redis and a reachable LLM API)
+  - dashboardHealthSystemTest (needs Windows PowerShell, a reachable LLM API and Redis)
+
+Real failures:
+  - selfCheckTest: === Results: 76 passed, 1 failed ===
+        ❌ everything observed working: the reply counts, it does not claim
+        …
+      Open issues: 0
+      [AgentStateMachine] EXECUTING → OBSERVING
+      [AgentStateMachine] OBSERVING → REFLECTING
+      [AgentStateMachine] REFLECTING → SPEAKING
+      [Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+      [AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+      [Timing] Total request processing time: 6ms
+      [NodeBridge] RX type=speaking_start role=tts
+      [ConvBus] 🔊 Speaking started.
+      [NodeBridge] RX type=speaking_end role=tts
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        ✅ "why are you stuck": describes the request that was in flight
+        ✅ …with no language-model request
+      === Results: 76 passed, 1 failed ===
+ ELIFECYCLE  Test failed. See above for more details.
+EXIT=1

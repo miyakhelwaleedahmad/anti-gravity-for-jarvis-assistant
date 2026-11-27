@@ -35,6 +35,11 @@ Thumbs.db
 # Runtime and logs
 
 data/runtime/*.json
+# Browser screenshots (P9) and the file tools' trash and backups (P10): user data
+data/screenshots/
+data/trash/
+# The test project pnpm verify:windows makes for one run (P14)
+data/verify-windows-*/
 logs/*.jsonl
 logs/*.log
 
@@ -67,3 +72,51 @@ Untitled.canvas
 ai_workflows/_config/github my persnal tokens.txt
 .env
 .env.*
+
+# Runtime security state (permission sessions) — created at runtime, never commit.
+data/security/
+
+# Atomic-write scratch files left behind by interrupted writes — never commit.
+*.json.tmp
+.*.json.tmp
+
+# Persisted vector store — runtime data, never commit.
+data/vector/*
+!data/vector/.gitkeep
+
+# Episodic memory log — runtime data, never commit.
+data/episodes.jsonl
+
+# Agent task archives (requests and results; read by the goal runtime on restart) — runtime data, never commit.
+data/agents/
+
+# Issue records and failure occurrences (core/issueStore.ts) — runtime data, never commit.
+data/repairs/
+
+# Model usage records (bridge/usageLedger.ts) — runtime data, never commit.
+data/usage/
+
+# Live runtime state is written ONLY under data/runtime/, which is ignored.
+#
+# data/goals.json, memory/taskHistory.json, memory/userMemory.json and
+# environment/systemInfo.json stay TRACKED, byte-identical to main. Untracking
+# them (git rm --cached) records a deletion that removes them from every
+# working copy that merges it — including one holding live goals. The app no
+# longer writes to data/goals.json; it migrates it once into data/runtime/.
+data/runtime/
+
+# Stale generated tree dumps (~42 MB of them were committed once).
+project_structure.txt
+project_tree.txt
+jarvis_structure*.txt
+fresh_structure*.txt
+*-tree*.txt
+folder_structure.txt
+clean_structure.txt
+tsc_output.txt
+analysis.json
+temp_stt_*.wav
+*.ts.bak
+
+# Ingested document manifest — runtime data.
+data/rag/

@@ -1,0 +1,26 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=lowReviewFixesTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  PASS    lowReviewFixesTest                           1409ms
+
+=== 1 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.
+  PASS: QA split, helpers out of tool calls: TOOL_BUDGET_EXHAUSTED, the goal waits for budget (TOOL_BUDGET_EXHAUSTED → budget → ready/wait)
+  PASS: QA split, helpers answered by another model: MODEL_IDENTITY_UNCONFIRMED, blocked (MODEL_IDENTITY_UNCONFIRMED → configuration → blocked/block)
+  PASS: strict coding split, helpers out of tool calls: TOOL_BUDGET_EXHAUSTED, never a model failure (TOOL_BUDGET_EXHAUSTED → budget)
+  PASS: a Bedrock id is the same model as its plain name (claude-opus-5-5 vs claude-opus-5-5)
+  PASS: a Vertex id with a version and date is the same model (claude-opus-5-5)
+  PASS: a dotted version is the same model as the dashed one (claude-opus-5-5 vs claude-opus-5-5)
+  PASS: an Ollama ":latest" tag is a floating alias
+  PASS: …and a plain model name is not
+  PASS: two genuinely different models keep different keys (gpt-4-1 vs gpt-4o)
+  PASS: mostSpecificFailure exists
+  PASS: unavailable then identity: identity is kept
+  PASS: unavailable then budget: budget is kept, with its kind
+  PASS: no known code: none
+=== Results: 13 passed, 0 failed ===

@@ -1,0 +1,34 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=skillImportTimeoutTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    skillImportTimeoutTest                       975ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - skillImportTimeoutTest: 8 passed, 4 failed
+        FAIL: …with a short reason the voice can say ("still loading") ((no reason))
+        FAIL: the skill is not marked degraded (Test slow)
+        FAIL: the next call waits for the same load and runs (Error: Skill "Test slow" is degraded and cannot execute. Check logs for import e)
+        FAIL: later calls run at once (1 ms)
+        …
+          at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+          at async getOrImportModule (/home/user/anti-gravity-for-jarvis-assistant/core/skillLoader.ts:156:15)
+          at async Object.execute (/home/user/anti-gravity-for-jarvis-assistant/core/skillLoader.ts:209:21)
+          at async ToolRegistryV2._executeRaw (/home/user/anti-gravity-for-jarvis-assistant/core/toolRegistryV2.ts:1024:22)
+          at async ToolRegistryV2.executeWithFallbacks (/home/user/anti-gravity-for-jarvis-assistant/core/toolRegistryV2.ts:929:22)
+          at async runUnderLock (/home/user/anti-gravity-for-jarvis-assistant/core/toolRegistryV2.ts:832:32)
+          at async <anonymous> (/home/user/anti-gravity-for-jarvis-assistant/tests/skillImportTimeoutTest.ts:76:16)
+        PASS: the call fails (Error: Skill "Test broken" module could not be loaded.)
+        PASS: the skill is marked degraded (Test slow,Test broken)
+        PASS: the next call fails at once with "degraded" (Error: Skill "Test broken" is degraded and cannot execute. Check logs for import)
+      --- 3. A module without execute() is degraded ---
+      [SkillLoader] Test noexec: module loaded but missing execute() export.
+        PASS: the call fails (Error: Skill "Test noexec" module could not be loaded.)
+        PASS: the skill is marked degraded (Test slow,Test broken,Test noexec)
+      8 passed, 4 failed
+ ELIFECYCLE  Test failed. See above for more details.

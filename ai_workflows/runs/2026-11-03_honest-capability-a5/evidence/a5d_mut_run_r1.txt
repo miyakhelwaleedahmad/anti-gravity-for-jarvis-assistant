@@ -1,0 +1,16 @@
+M1 launcher exit code ignored [openAppHonestA5dTest]: CAUGHT | FAIL: launcher exits 1 after 300 ms (later than the old 50 ms): a failure with the exit code ({"target":"notepad","resolvedTarget":"notepad.exe","platform":"win32","metho
+M2 success after 50 ms again [openAppHonestA5dTest]: CAUGHT | FAIL: launcher exits 1 after 300 ms (later than the old 50 ms): a failure with the exit code ({"target":"notepad","resolvedTarget":"notepad.exe","platform":"win32","metho
+M3 launcher start failure not caught [openAppHonestA5dTest]: CAUGHT | FAIL: launcher fails to start after 120 ms: a failure with the reason ({"target":"notepad","resolvedTarget":"notepad.exe","platform":"win32","method":"cmd-start","success
+M4 still-running wait not bounded (30 s) [openAppHonestA5dTest]: CAUGHT | FAIL: launcher still running: "started", after a bounded wait (30011 ms {"target":"notepad","resolvedTarget":"notepad.exe","platform":"win32","method":"cmd-start","succes
+M5 off-Windows gate removed (Q2) [openAppHonestA5dTest]: CAUGHT | FAIL: "open notepad" off Windows: refused, needs Windows, nothing launched ({"target":"notepad","resolvedTarget":"notepad.exe","platform":"linux","method":"xdg-open","suc
+M6 gate also refuses a dry run [openAppHonestA5dTest]: CAUGHT | FAIL: a dry run still shows the resolution (unchanged; the protected smoke test) ({"success":false,"error":"needs Windows"})
+M7 Settings pages not Windows-only [openAppHonestA5dTest]: CAUGHT | FAIL: "open settings" (ms-settings:) off Windows: refused too ({"target":"settings","resolvedTarget":"ms-settings:","platform":"linux","method":"xdg-open","success":true}
+M8 .exe not Windows-only [openAppHonestA5dTest]: CAUGHT | FAIL: "open notepad" off Windows: refused, needs Windows, nothing launched ({"target":"notepad","resolvedTarget":"notepad.exe","platform":"linux","method":"xdg-open","suc
+M9 gate reads the real platform [openAppHonestA5dTest]: CAUGHT | FAIL: launcher exits 0: a success ({"success":false,"target":"notepad","resolvedTarget":"notepad.exe","platform":"win32","error":"notepad needs Windows: \"notepad.exe\" i
+M10 route: unverifiable said as 'Opening' (Q1) [openAppHonestA5dTest]: CAUGHT | FAIL: "open settings", launched but not checkable: says it could not check (Q1) (Opening settings, sir.)
+M11 route: every success said as unverifiable [openAppHonestA5dTest]: CAUGHT | FAIL: "open youtube", shown and checked in JARVIS's Chrome: "Opening youtube, sir." as before (I started youtube, sir, but I can't check from here that it opened.)
+M12 spawn bound at load (patched child_process missed) [openAppHonestA5dTest]: CAUGHT | FAIL: the real launcher calls child_process.spawn as patched after load (seen="")
+M13 launcher wrapper drops the filtered environment (SEC-101) [childEnvCoverageTest]: CAUGHT | FAIL: every one passes the filtered environment (skills/automation/skill.ts:31 spawn (no env))
+
+13/13 caught
+tree restored (md5): YES

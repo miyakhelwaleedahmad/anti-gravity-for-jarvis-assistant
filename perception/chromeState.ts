@@ -1,5 +1,8 @@
 import axios from 'axios';
 import { execa } from 'execa';
+import { cdpPort } from './cdpClient.js';
+import { chromeStartHint } from './chromeProfile.js';
+import { childEnv } from '../system/childEnv.js';
 
 export interface ChromeTab {
   title: string;
@@ -22,7 +25,7 @@ async function isChromeProcessRunning(): Promise<boolean> {
     return false;
   }
   try {
-    const result = await execa('tasklist', ['/FI', 'IMAGENAME eq chrome.exe', '/NH'], { reject: false });
+    const result = await execa('tasklist', ['/FI', 'IMAGENAME eq chrome.exe', '/NH'], { reject: false, env: childEnv(), extendEnv: false });
     return result.stdout.toLowerCase().includes('chrome.exe');
   } catch {
     return false;
@@ -30,7 +33,7 @@ async function isChromeProcessRunning(): Promise<boolean> {
 }
 
 export async function getChromeState(): Promise<ChromeState> {
-  const debugPort = 9222;
+  const debugPort = cdpPort();
   const endpoint = `http://127.0.0.1:${debugPort}/json`;
   
   try {
@@ -66,7 +69,7 @@ export async function getChromeState(): Promise<ChromeState> {
       running,
       debugPort,
       tabs: [],
-      error: 'Chrome DevTools endpoint unavailable. Suggest starting Chrome with: start chrome.exe --remote-debugging-port=9222 --user-data-dir="W:\\jarvis-chrome-profile"'
+      error: `Chrome DevTools endpoint unavailable on port ${debugPort}. ${chromeStartHint()}`
     };
   }
 }

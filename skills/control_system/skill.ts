@@ -1,6 +1,6 @@
 import { pcControlKernel } from '../../control/pcControlKernel.js';
 
-export async function execute(args: Record<string, unknown>): Promise<string> {
+export async function execute(args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
   const action = String(args['action'] ?? '').toLowerCase();
   const target = String(args['target'] ?? '');
 
@@ -14,15 +14,15 @@ export async function execute(args: Record<string, unknown>): Promise<string> {
   } else if (action === 'restart_jarvis') {
     res = await pcControlKernel.restartJarvisServices();
   } else if (action === 'shell') {
-    res = await pcControlKernel.runShellCommand(target);
+    res = await pcControlKernel.runShellCommand(target, signal);
   } else if (action === 'powershell') {
-    res = await pcControlKernel.runPowerShell(target);
+    res = await pcControlKernel.runPowerShell(target, signal);
   } else if (action === 'start_service') {
-    res = await pcControlKernel.startService(target);
+    res = await pcControlKernel.startService(target, signal);
   } else if (action === 'stop_service') {
-    res = await pcControlKernel.stopService(target);
+    res = await pcControlKernel.stopService(target, signal);
   } else if (action === 'restart_service') {
-    res = await pcControlKernel.restartService(target);
+    res = await pcControlKernel.restartService(target, signal);
   } else {
     throw new Error(`Unknown system action: "${action}"`);
   }

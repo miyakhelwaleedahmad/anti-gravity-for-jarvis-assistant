@@ -81,10 +81,10 @@ These are auto-generated tree/structure files. They are reference only.
 
 | File | Category | Notes |
 |---|---|---|
-| `report.md` | **generated audit report** | Output of report.ts — re-generable |
-| `jarvis_system_audit.md` | **generated audit report** | System audit report |
-| `jarvis_production_hardening_report.md` | **generated audit report** | Production hardening report |
-| `jarvis_stability_report_2026-06-11T05-04-59-262Z.json` | **generated audit report** | Timestamped stability JSON report |
+| `report.md` | **generated audit report** | Output of report.ts — re-generable (moved to `docs/history/`, ARCH-08) |
+| `jarvis_system_audit.md` | **generated audit report** | System audit report (moved to `docs/history/`, ARCH-08) |
+| `jarvis_production_hardening_report.md` | **generated audit report** | Production hardening report (moved to `docs/history/`, ARCH-08) |
+| `jarvis_stability_report_2026-06-11T05-04-59-262Z.json` | **generated audit report** | Timestamped stability JSON report (moved to `docs/history/`, ARCH-08) |
 
 ---
 
@@ -129,7 +129,7 @@ These are test scripts living at the root instead of in `tests/`. They are funct
 | File | Category | Notes |
 |---|---|---|
 | `architecture of jarvis in antigravity` | **needs human review** | No extension — likely a text/notes file. Review contents. |
-| `scaffold.ps1` | **needs human review** | PowerShell scaffold generator — verify what it creates before running |
+| `_legacy/scaffold.ps1` | **quarantined** | PowerShell scaffold generator; it created the dead Python stubs, which are in `_legacy/` with it (ARCH-08) |
 | `open this one.txt` | **needs human review** | Unusual filename — review contents |
 
 ---

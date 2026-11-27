@@ -1,6 +1,7 @@
 import { isRedisAvailable } from '../memory/redisCache.js';
 import { nodeBridge } from '../bridge/nodeBridge.js';
 import axios from 'axios';
+import { vectorHeaders } from '../memory/vectorAuth.js';
 
 export interface JarvisServicesState {
   redis: 'online' | 'offline' | 'unknown';
@@ -26,13 +27,13 @@ export async function getJarvisServiceState(): Promise<JarvisServicesState> {
   // 2. Vector Memory
   let vectorMemoryStatus: 'online' | 'offline' | 'unknown' = 'offline';
   try {
-    const res = await axios.get('http://127.0.0.1:8000/stats', { timeout: 800 });
+    const res = await axios.get('http://127.0.0.1:8000/stats', { timeout: 800, headers: vectorHeaders() });
     if (res.status === 200) {
       vectorMemoryStatus = 'online';
     }
   } catch {
     try {
-      const resHealth = await axios.get('http://127.0.0.1:8000/health', { timeout: 800 });
+      const resHealth = await axios.get('http://127.0.0.1:8000/health', { timeout: 800, headers: vectorHeaders() });
       if (resHealth.status === 200) {
         vectorMemoryStatus = 'online';
       }

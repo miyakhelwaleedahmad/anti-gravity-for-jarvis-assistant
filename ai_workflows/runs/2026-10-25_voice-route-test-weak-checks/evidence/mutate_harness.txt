@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Apply one named mutation to the scratchpad export, run a test through the runner, restore. Usage: mutate.py <export> <repo> <test> <mutation|none>..."""
+import subprocess, sys, os, pathlib
+ROUTE = "const result = await runRoutedTool('open_app', { target: route.target, source });"
+MUT = {
+  'M1_no_listen_send': ('bridge/nodeBridge.ts', 'sttClient.send(JSON.stringify({ type: "listen_start" }));', '/* M1 */'),
+  'M2_no_handler_dispatch': ('bridge/nodeBridge.ts', 'for (const handler of typeHandlers) {', 'for (const handler of (msg.type === "stt_result" ? [] : typeHandlers)) {'),
+  'M3_no_ready_register': ('bridge/nodeBridge.ts', 'this.readyClients.set(role, ws);', '/* M3 */'),
+  'M4_route_skips_tool': ('core/orchestrator.ts', "const result = await runRoutedTool('open_app', { target: route.target, source });", "const result = { success: true, output: '', error: undefined } as any; /* M4 */"),
+  'M5a_extra_tool': ('core/orchestrator.ts', "const result = await runRoutedTool('open_app', { target: route.target, source });", "await toolRegistryV2.execute('browser_state', {}).catch(() => undefined); /* M5a */ const result = await runRoutedTool('open_app', { target: route.target, source });"),
+  'M5b_direct_spawn': ('core/orchestrator.ts', "const result = await runRoutedTool('open_app', { target: route.target, source });", "(await import('child_process')).spawn(process.platform === 'win32' ? 'cmd.exe' : 'xdg-open', process.platform === 'win32' ? ['/c','start','','https://www.youtube.com'] : ['https://www.youtube.com'], { stdio: 'ignore' }).on('error', () => {}); /* M5b */ const result = await runRoutedTool('open_app', { target: route.target, source });"),
+  'M6_skill_ignores_dryrun': ('skills/automation/skill.ts', "const dryRun = !!args['dryRun'];", "const dryRun = false; /* M6 */"),
+  'M8_empty_counts_as_transcript': ('bridge/nodeBridge.ts', 'if (msg.type === "stt_result" && msg.payload?.text) {', 'if (msg.type === "stt_result") { /* M8 */'),
+  'M7_engine_not_set': ('bridge/nodeBridge.ts', 'if (role === "wakeword") this.lastTranscriptEngine = "Google STT";', 'if (role === "wakeword") { /* M7 */ }'),
+  # Round 2: the reviewer's mutations (review.md, Experiments), same anchors
+  'X1_bridge_spawns_on_stt': ('bridge/nodeBridge.ts', 'this._bridgeEvents.emit("stt_text", text);',
+     "(await import('child_process')).spawn('xdg-open', ['https://www.youtube.com'], { stdio: 'ignore' }).on('error', () => {}); /* X1 */ this._bridgeEvents.emit(\"stt_text\", text);"),
+  'X2_tool_via_registry_get': ('core/orchestrator.ts', ROUTE,
+     "await (toolRegistryV2.get('browser_state') as any)?.execute({}).catch(() => undefined); /* X2 */ " + ROUTE),
+  'X3_sh_c_opener_other_url': ('core/orchestrator.ts', ROUTE,
+     "(await import('child_process')).spawn('sh', ['-c', 'xdg-open https://www.google.com'], { stdio: 'ignore' }).on('error', () => {}); /* X3 */ " + ROUTE),
+  'X3b_bare_start_string': ('core/orchestrator.ts', ROUTE,
+     "(await import('child_process')).exec('start \"\" \"https://www.google.com\"', () => {}); /* X3b */ " + ROUTE),
+  'X4_engine_any_role': ('bridge/nodeBridge.ts', 'if (role === "wakeword") this.lastTranscriptEngine = "Google STT";',
+     'if (true) this.lastTranscriptEngine = "Google STT"; /* X4 */'),
+  'X5_wrong_resolved_url': ('security/openAppPolicy.ts', "'youtube': 'https://www.youtube.com',", "'youtube': 'https://www.example.com', /* X5 */"),
+  'X6_timer_deferred_launch': ('core/orchestrator.ts', ROUTE,
+     "setTimeout(async () => { (await import('child_process')).spawn('xdg-open', ['https://www.youtube.com'], { stdio: 'ignore' }).on('error', () => {}); }, 0); /* X6 */ " + ROUTE),
+  'X7_browser_exe_no_url': ('core/orchestrator.ts', ROUTE,
+     "(await import('child_process')).spawn('firefox', [], { stdio: 'ignore' }).on('error', () => {}); /* X7 */ " + ROUTE),
+  # Round 3: the reviewer's round-2 mutations, copied from its harness
+  'X9_slow_skill_load': ('core/skillLoader.ts', "    try {\n      toolRegistryV2.register(tool);", "    await new Promise((r) => setTimeout(r, 400)); /* X9 */\n    try {\n      toolRegistryV2.register(tool);"),
+  'X10_late_tool_direct_call': ('core/orchestrator.ts', ROUTE,
+     "{ try { toolRegistryV2.register({ name: 'x_late_tool', description: 'reviewer late tool', inputSchema: { type: 'object', properties: {} }, riskLevel: 'low', execute: async () => 'ok' } as any); } catch (e) { console.log('X10 register failed ' + e); } await (toolRegistryV2.get('x_late_tool') as any)?.execute({}); } /* X10 */ " + ROUTE),
+  # X11 (a captured execute) and X12 (a worker thread) are not re-run here: the test cannot see them by design (review.md, round 2, N2).
+}
+export, repo, test = sys.argv[1], sys.argv[2], sys.argv[3]
+log = os.environ['OPENER_LOG']
+for name in sys.argv[4:]:
+    target = None
+    if name != 'none':
+        rel, old, new = MUT[name]
+        target = pathlib.Path(export, rel)
+        src = target.read_text()
+        assert src.count(old) == 1, f'{name}: anchor found {src.count(old)} times'
+        target.write_text(src.replace(old, new))
+    open(log, 'w').close()
+    try:
+        out = subprocess.run(['pnpm', 'test', '--', f'--only={test}'], cwd=export, capture_output=True, text=True, timeout=600).stdout
+    finally:
+        if target is not None:
+            target.write_bytes(subprocess.run(['git', '-C', repo, 'show', f'HEAD:{rel}'], capture_output=True, check=True).stdout)
+    verdict = next((l.split()[0] for l in out.splitlines() if l.strip().endswith('ms') and test in l), '?')
+    fails = list(dict.fromkeys(l.strip() for l in out.splitlines() if 'FAIL:' in l))
+    calls = sum(1 for _ in open(log))
+    print(f'{name:26} {verdict:8} opener_calls={calls} failing_checks={len(fails)}')
+    for f in fails: print('      ', f[:150])

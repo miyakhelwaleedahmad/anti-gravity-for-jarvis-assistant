@@ -1,14 +1,26 @@
 import * as path from 'path';
 import { securityAuditLogger } from './securityAuditLogger.js';
+import {
+  getWorkspaceRoot,
+  isForeignWindowsAbsolute,
+  isPathInside,
+  isProtectedSystemPath,
+} from '../core/workspaceRoot.js';
 
-export const WORKSPACE_ROOT = path.resolve('W:\\anti gravity for jarvis assistant');
-
-const WINDOWS_SYSTEM_FOLDERS = [
-  /^c:\\windows(?:\\|$)/i,
-  /^c:\\program files(?:\\|$)/i,
-  /^c:\\program files \(x86\)(?:\\|$)/i,
-  /^c:\\users\\[^\\]+\\appdata(?:\\|$)/i,
-];
+/**
+ * The containment boundary for all agent file I/O.
+ *
+ * Previously a hard-coded `W:\anti gravity for jarvis assistant` literal, which
+ * resolved to a nonsense path relative to the CWD on any other host — so the
+ * guard silently failed open (JARVIS-001). Now derived once, portably, from
+ * `JARVIS_WORKSPACE_ROOT` or the module's own location.
+ *
+ * Exposed as a function rather than a `const` so that the environment variable
+ * is honoured even when it is set after this module is first imported.
+ */
+export function getWorkspaceRootPath(): string {
+  return getWorkspaceRoot();
+}
 
 const UNSAFE_EXECUTABLE_EXTENSIONS = new Set([
   '.exe',
@@ -47,19 +59,40 @@ export function resolveWorkspacePath(
     return { allowed: false, reason };
   }
 
+  // Protected system locations are tested against the RAW input, before any
+  // host-native resolution. On Linux, `path.resolve()` would turn
+  // `C:\Windows\Temp\x` into a path *inside* the workspace and these patterns —
+  // which are anchored at the start — would never fire (JARVIS-001b).
+  if (isProtectedSystemPath(trimmed)) {
+    const reason = 'Windows system folder access is blocked.';
+    securityAuditLogger.denied(trimmed, 'CRITICAL_RISK', reason, toolName);
+    return { allowed: false, reason };
+  }
+
+  // A path that is absolute for a *different* platform than the host cannot be
+  // meaningfully resolved here, and is by definition not inside this workspace.
+  // Without this, `path.isAbsolute('C:\\x')` is false on POSIX and the path is
+  // silently treated as relative to the workspace root.
+  if (isForeignWindowsAbsolute(trimmed)) {
+    const reason = 'Path is outside the project workspace.';
+    securityAuditLogger.denied(trimmed, 'HIGH_RISK', reason, toolName);
+    return { allowed: false, reason };
+  }
+
+  const workspaceRoot = getWorkspaceRoot();
   const resolvedPath = path.isAbsolute(trimmed)
     ? path.resolve(trimmed)
-    : path.resolve(WORKSPACE_ROOT, trimmed);
+    : path.resolve(workspaceRoot, trimmed);
 
-  const normalized = resolvedPath.toLowerCase();
-  if (WINDOWS_SYSTEM_FOLDERS.some((pattern) => pattern.test(normalized))) {
+  // Re-check after resolution: catches host-native system paths (e.g. `/etc`)
+  // and anything resolution turned into one.
+  if (isProtectedSystemPath(resolvedPath)) {
     const reason = 'Windows system folder access is blocked.';
     securityAuditLogger.denied(resolvedPath, 'CRITICAL_RISK', reason, toolName);
     return { allowed: false, reason };
   }
 
-  const relative = path.relative(WORKSPACE_ROOT, resolvedPath);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+  if (!isPathInside(workspaceRoot, resolvedPath)) {
     const reason = 'Path is outside the project workspace.';
     securityAuditLogger.denied(resolvedPath, 'HIGH_RISK', reason, toolName);
     return { allowed: false, reason };

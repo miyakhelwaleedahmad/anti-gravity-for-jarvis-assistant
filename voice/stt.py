@@ -148,9 +148,37 @@ STT_MIN_ENERGY_RATIO = float(os.environ.get("JARVIS_STT_MIN_ENERGY_RATIO", "1.5"
 # Phase 4: Shared calibrated energy threshold — updated per-session by calibrate_energy()
 _calibrated_energy: float = 300.0  # fallback if calibration hasn't run yet
 
+# BUG-2: calibration runs right after the wake word, so its 0.5 s sample can
+# hold the owner's own voice (580 measured, gate 870, the owner's loudest frame
+# 688: rejected). The room's baseline is the quietest calibration seen, allowed
+# to rise 10% a session; a session's level never exceeds it × this factor.
+STT_MAX_FLOOR_RISE = max(1.0, float(os.environ.get("JARVIS_STT_MAX_FLOOR_RISE", "2.0")))
+
+# BUG-17: importing faster_whisper took 123 s on the owner's PC. A command
+# spoken meanwhile waited up to 60 s for Whisper and was lost. Now it waits
+# this long, then Google STT (what the wake word process uses) transcribes it.
+STT_MODEL_WAIT_S = max(0.0, float(os.environ.get("JARVIS_STT_MODEL_WAIT_S", "5")))
+_ambient_baseline: float | None = None
+
+
+def _bounded_energy(measured: float) -> float:
+    """The level to use for a session: the measurement, capped by the room's baseline."""
+    global _ambient_baseline
+    if measured <= 0:
+        return _ambient_baseline or measured
+    _ambient_baseline = measured if _ambient_baseline is None else min(measured, _ambient_baseline * 1.1)
+    bounded = min(measured, _ambient_baseline * STT_MAX_FLOOR_RISE)
+    if bounded < measured:
+        log.info(f"[STT] Calibration heard {measured:.0f} (likely speech); using {bounded:.0f} (room baseline {_ambient_baseline:.0f} × {STT_MAX_FLOOR_RISE}).")
+    return bounded
+
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format="[STT] %(message)s")
 log = logging.getLogger(__name__)
+# huggingface_hub logs every HTTP request at INFO through httpx ("HTTP Request:
+# GET https://huggingface.co/..." on each start), as memory/vectorMemory.py does.
+for _noisy in ("httpx", "httpcore", "huggingface_hub", "urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 stt_lock = threading.Lock()
 
@@ -174,7 +202,7 @@ def _calibrate_energy() -> float:
         _recognizer.dynamic_energy_threshold = True
         with sr.Microphone() as source:
             _recognizer.adjust_for_ambient_noise(source, duration=STT_CALIBRATION_DURATION)
-        _calibrated_energy = _recognizer.energy_threshold
+        _calibrated_energy = _bounded_energy(_recognizer.energy_threshold)
         log.info(f"[STT] Calibrated energy threshold: {_calibrated_energy:.0f}")
         return _calibrated_energy
     except Exception as e:
@@ -182,22 +210,53 @@ def _calibrate_energy() -> float:
         return _calibrated_energy
 
 
+def _startup_calibration(wait_s: float = 120.0) -> None:
+    """The room baseline (BUG-2), once the audio libraries are loaded; skipped
+    if a listen session already holds the mic (it calibrates itself)."""
+    if not _imports_ready_event.wait(timeout=wait_s) or sr is None:
+        return
+    if not stt_lock.acquire(blocking=False):
+        return
+    try:
+        _calibrate_energy()
+    except Exception as exc:
+        log.debug(f"[STT] Startup calibration skipped: {exc}")
+    finally:
+        stt_lock.release()
+
+
+VAD_FRAME_SAMPLES = 320     # 20 ms at 16 kHz
+VAD_MIN_VOICED_FRAMES = 5   # 100 ms of frames above the threshold
+
+
 def _vad_gate(audio_data, noise_floor: float) -> bool:
     """
-    Phase 4: Voice Activity Gate — simple RMS energy check.
-    Returns True if the audio passes (is likely real speech).
-    Returns False if the audio is below the noise floor × STT_MIN_ENERGY_RATIO,
-    indicating silence or electronic noise.
+    Phase 4: Voice Activity Gate — energy check before Whisper.
+    Returns True if the audio passes (is likely real speech): at least 100 ms
+    of 20 ms frames whose RMS reaches noise_floor × STT_MIN_ENERGY_RATIO.
+
+    VOICE-009: it used one RMS over the whole recording, which includes the
+    pause the recogniser waits for after speech. A short, soft "yes" averaged
+    below the threshold and was dropped; a single loud click averaged above it.
     """
     try:
         import numpy as np
         raw = audio_data.get_raw_data(convert_rate=16000, convert_width=2)
         samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
-        rms = float(np.sqrt(np.mean(samples ** 2))) if len(samples) > 0 else 0.0
         threshold = noise_floor * STT_MIN_ENERGY_RATIO
-        passes = rms >= threshold
+        frames = len(samples) // VAD_FRAME_SAMPLES
+        if frames == 0:
+            log.info("[STT] VAD gate rejected audio: shorter than one 20 ms frame. Suppressing Whisper call.")
+            return False
+        frame_rms = np.sqrt(np.mean(samples[: frames * VAD_FRAME_SAMPLES].reshape(frames, VAD_FRAME_SAMPLES) ** 2, axis=1))
+        voiced = int(np.count_nonzero(frame_rms >= threshold))
+        passes = voiced >= VAD_MIN_VOICED_FRAMES
         if not passes:
-            log.info(f"[STT] VAD gate rejected audio: RMS={rms:.0f} < threshold={threshold:.0f} (noise_floor={noise_floor:.0f}×{STT_MIN_ENERGY_RATIO}). Suppressing Whisper call.")
+            log.info(
+                f"[STT] VAD gate rejected audio: {voiced * 20} ms above threshold={threshold:.0f} "
+                f"(noise_floor={noise_floor:.0f}×{STT_MIN_ENERGY_RATIO}; needs {VAD_MIN_VOICED_FRAMES * 20} ms; "
+                f"loudest frame RMS={float(frame_rms.max()):.0f}). Suppressing Whisper call."
+            )
         return passes
     except Exception as e:
         log.debug(f"[STT] VAD gate error ({e}) — passing audio through.")
@@ -402,12 +461,13 @@ class STTEngine:
         OPT-STT-4: Accepts either a filename (str) or an AudioData object.
         If AudioData is provided, transcribes in-memory via numpy without
         writing to disk — eliminates one file write + read per command.
-        Waits up to 60s for Whisper model to finish loading, with late fallback.
+        While Whisper is still loading (BUG-17), waits STT_MODEL_WAIT_S and then
+        uses Google STT; self._last_engine names the engine that answered.
         """
         global model
-        # Block until the background loader has finished (max 60s)
-        if not _model_ready_event.wait(timeout=60):
-            log.warning("[STT] Whisper model did not load within 60s deadline — attempting direct load...")
+        self._last_engine = "Whisper"
+        if not _model_ready_event.wait(timeout=STT_MODEL_WAIT_S):
+            return self._transcribe_while_loading(audio_input)
 
         if model is None:
             try:
@@ -465,6 +525,21 @@ class STTEngine:
             log.error(f"Whisper transcription failed: {e}")
             return ""
 
+    def _transcribe_while_loading(self, audio_input) -> str:
+        """Google STT for a command spoken before Whisper is loaded; '' if it cannot."""
+        if sr is None or not hasattr(audio_input, "get_raw_data"):
+            log.warning("[STT] Whisper is still loading and Google STT is not available for this audio.")
+            return ""
+        log.info(f"[STT] Whisper is still loading after {STT_MODEL_WAIT_S:.0f}s; transcribing with Google STT.")
+        try:
+            text = (sr.Recognizer().recognize_google(audio_input) or "").strip()
+        except Exception as e:   # no network, nothing understood
+            log.warning(f"[STT] Google STT fallback failed: {e}")
+            return ""
+        if text:
+            self._last_engine = "Google STT"
+        return text
+
     async def _send_result(self, text: str) -> None:
         """
         Send normalized STT result to NodeBridge.
@@ -496,10 +571,11 @@ class STTEngine:
             # Send the NORMALIZED text to keep routing deterministic (Part C)
             msg = json.dumps({
                 "type": "stt_result",
-                "payload": {"text": normalized if normalized else text}
+                "payload": {"text": normalized if normalized else text, "engine": getattr(self, "_last_engine", "Whisper")}
             })
             try:
                 await self.websocket.send(msg)
+                self._result_sent = True
                 log.info(f"STT result sent. raw='{raw[:80]}' normalized='{normalized[:80]}'")
             except Exception as exc:
                 log.error(f"Send error: {exc}")
@@ -535,13 +611,31 @@ class STTEngine:
                 self._pending_stt_queue.insert(0, text)  # put back for next attempt
                 break
 
+    async def _send_no_speech(self, reason: str) -> None:
+        """
+        End a listen session that produced no transcript (BUG-1): NodeBridge
+        returns to IDLE, frees the mic and resumes the wake word. Without it
+        the session ended in silence and JARVIS stayed deaf in LISTENING.
+        """
+        stt_log("STT_NO_SPEECH", raw="", note=reason)
+        if not self.websocket:
+            return
+        try:
+            await self.websocket.send(json.dumps({"type": "stt_no_speech", "payload": {"reason": reason}}))
+            log.info(f"[STT] No speech to send ({reason}); told NodeBridge.")
+        except Exception as exc:
+            log.error(f"[STT] Could not send stt_no_speech: {exc}")
+
     async def listen_and_transcribe(self) -> None:
         """
         Record audio, transcribe, normalize, and send result.
         Phase 4: Runs energy calibration before recording; applies VAD gate
         before invoking Whisper to eliminate phantom transcriptions.
+        Every session ends with an stt_result or an stt_no_speech (BUG-1).
         """
         self._timed_out = False
+        self._result_sent = False
+        no_speech = "no_result"
 
         try:
             # Phase 4: calibrate energy threshold in the recording thread
@@ -553,6 +647,7 @@ class STTEngine:
                 if getattr(self, '_timed_out', False):
                     log.info("[STT] Listen timed out (no speech detected) — suppressing empty transcript.")
                     stt_log("STT_TIMEOUT", raw="", note="no speech detected within timeout")
+                    no_speech = "timeout"
                 elif not self._hardware_ok and self.websocket:
                     try:
                         msg = json.dumps({"type": "hardware_error", "payload": {"device": "stt"}})
@@ -560,6 +655,7 @@ class STTEngine:
                         stt_log("STT_HARDWARE_ERROR", raw="", note="microphone unavailable")
                     except Exception:
                         pass
+                    no_speech = "hardware_error"
                 return
 
             audio_data, noise_floor = result
@@ -567,6 +663,7 @@ class STTEngine:
             # Phase 4: Voice Activity Gate — reject electronic/ambient noise
             if not _vad_gate(audio_data, noise_floor):
                 stt_log("STT_VAD_REJECTED", raw="", note=f"below noise floor×{STT_MIN_ENERGY_RATIO}")
+                no_speech = "vad_rejected"
                 return
 
             text = await asyncio.to_thread(self._transcribe, audio_data)
@@ -574,15 +671,21 @@ class STTEngine:
             if not text:
                 log.info("[STT] Empty transcription from Whisper — suppressing empty result.")
                 stt_log("STT_EMPTY", raw="", note="Whisper returned empty string")
+                no_speech = "empty_transcript"
             else:
                 log.debug(f"Whisper raw result: '{text}'")
                 normalized = normalize_stt(text)
                 log.debug(f"Normalized result:  '{normalized}'")
                 stt_log("STT_TRANSCRIBED", raw=text, normalized=normalized)
                 await self._send_result(text)
+                no_speech = "not_sent"   # used only if _send_result did not deliver it
 
         except Exception as e:
             log.error(f"Exception in listen_and_transcribe: {e}")
+            no_speech = "error"
+        finally:
+            if not self._result_sent:
+                await self._send_no_speech(no_speech)
             
     async def _locked_listen(self) -> None:
         if self.session_lock.locked():
@@ -602,6 +705,13 @@ class STTEngine:
         burning 60-120s in exponential backoff sleep.
         """
         _startup_deadline = time.time() + 30.0  # fast-retry window
+
+        # BUG-2: one ambient sample while nobody is talking to JARVIS, so the
+        # first session's calibration (taken right after the wake word) has a
+        # room baseline to be checked against. In the background: it needs the
+        # audio libraries, which are still loading, and must not hold up the
+        # connection to NodeBridge.
+        self._startup_calibration_task = asyncio.create_task(asyncio.to_thread(_startup_calibration))
 
         while True:
             try:

@@ -8,8 +8,35 @@ import * as os from 'os';
 import { execa } from 'execa';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
+import { childEnv } from '../system/childEnv.js';
+
+/** One Windows PowerShell command; tests give a stand-in (A5c). */
+export interface SystemControllerDeps {
+  powershell: (script: string) => Promise<{ exitCode?: number; stdout: string; stderr: string }>;
+}
+
+const systemDeps: SystemControllerDeps = {
+  powershell: async (script) => {
+    const r = await execa('powershell', ['-NoProfile', '-Command', script], { reject: false, env: childEnv(), extendEnv: false });
+    if (r.failed && r.exitCode === undefined) throw new Error(`PowerShell could not start: ${r.shortMessage ?? r.message ?? 'no reason given'}`);
+    return { exitCode: r.exitCode, stdout: String(r.stdout ?? ''), stderr: String(r.stderr ?? '') };
+  },
+};
+
+/**
+ * A PowerShell list, or why it could not be read: never an empty answer as
+ * success when PowerShell failed (A5c, owner Q2). Exit 0 with nothing printed
+ * is a list that is really empty.
+ */
+async function powershellList(deps: SystemControllerDeps, what: string, script: string): Promise<string> {
+  const r = await deps.powershell(script);
+  if (r.exitCode !== 0) throw new Error(`PowerShell could not read the ${what}: ${r.stderr.trim().slice(0, 300) || `exit ${r.exitCode ?? 'unknown'}`}`);
+  return r.stdout.trim() || '[]';
+}
 
 export class SystemController {
+  constructor(private readonly deps: SystemControllerDeps = systemDeps) {}
+
   public async getSystemStatus(): Promise<string> {
     if (!permissionSession.checkPermission(0, 'Get system status')) {
       throw new Error('Permission denied.');
@@ -43,15 +70,7 @@ export class SystemController {
       throw new Error('Permission denied.');
     }
 
-    try {
-      const { stdout } = await execa('powershell', [
-        '-NoProfile', '-Command',
-        'Get-Volume | Select-Object DriveLetter, FriendlyName, SizeRemaining, Size | ConvertTo-Json'
-      ], { reject: false });
-      return stdout.trim();
-    } catch (err: any) {
-      return JSON.stringify({ error: err.message });
-    }
+    return powershellList(this.deps, 'disks', 'Get-Volume | Select-Object DriveLetter, FriendlyName, SizeRemaining, Size | ConvertTo-Json');
   }
 
   public async getStartupTasks(): Promise<string> {
@@ -59,15 +78,7 @@ export class SystemController {
       throw new Error('Permission denied.');
     }
 
-    try {
-      const { stdout } = await execa('powershell', [
-        '-NoProfile', '-Command',
-        'Get-CimInstance Win32_StartupCommand | Select-Object Name, Command, Location | ConvertTo-Json'
-      ], { reject: false });
-      return stdout.trim();
-    } catch (err: any) {
-      return JSON.stringify({ error: err.message });
-    }
+    return powershellList(this.deps, 'startup programs', 'Get-CimInstance Win32_StartupCommand | Select-Object Name, Command, Location | ConvertTo-Json');
   }
 
   public async openSystemSettings(page: string): Promise<string> {
@@ -88,7 +99,7 @@ export class SystemController {
     const uri = pageMap[page.toLowerCase()] || 'ms-settings:';
     
     const { spawn } = await import('child_process');
-    const proc = spawn('cmd.exe', ['/c', 'start', '', uri], { detached: true, stdio: 'ignore' });
+    const proc = spawn('cmd.exe', ['/c', 'start', '', uri], { detached: true, stdio: 'ignore', env: childEnv() });
     proc.unref();
 
     return `Opened system settings page: ${page}`;

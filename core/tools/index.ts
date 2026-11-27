@@ -9,7 +9,27 @@ import { toolRegistryV2 } from '../toolRegistryV2.js';
 import { webSearchTool } from '../../tools/webSearchTool.js';
 import { fileReadTool, fileWriteTool } from '../../tools/fileTool.js';
 import { runCommandTool, getSystemInfoTool } from '../../tools/terminalTool.js';
-import { saveRelationTool, searchMemoryTool } from './memoryTool.js';
+import { forgetMemoryTool, saveRelationTool, searchMemoryTool } from './memoryTool.js';
+import { listCapabilitiesTool } from './capabilityTool.js';
+import { actionHistoryTool } from './historyTool.js';
+import { devStatusTool, gitOverviewTool, systemOverviewTool } from './observationTools.js';
+import { browserPageStructureTool, browserReadPageTool, browserStateTool } from './browserTools.js';
+import { browserActionTools } from './browserActionTools.js';
+import { filesTool } from '../../tools/fsTools.js';
+import { gitPushTool, gitTool } from '../../tools/gitTools.js';
+import { devTool } from '../../tools/devTools.js';
+import { diagnoseAppTool } from './diagnosisTools.js';
+import { windowsTools } from './windowsTools.js';
+import { githubRepoTool, githubSearchTool } from '../../tools/githubTools.js';
+import { dataTool } from './dataTools.js';
+import { agentTools } from '../agents/jarvisAgents.js';
+import { goalTools } from '../goalTools.js';
+import { youtubeTools } from './youtubeTools.js';
+import { webResearchTools } from './webResearchTools.js';
+import { selfCheckTool } from './selfCheckTool.js';
+import { selfRepairTool } from './selfRepairTool.js';
+import { codeRepairTool } from './codeRepairTool.js';
+import { secondBrainTool } from './secondBrainTool.js';
 
 export function registerAllTools(): void {
   toolRegistryV2.registerMany([
@@ -20,8 +40,36 @@ export function registerAllTools(): void {
     getSystemInfoTool,
     saveRelationTool,
     searchMemoryTool,
+    forgetMemoryTool,
+    listCapabilitiesTool,
+    actionHistoryTool,
+    systemOverviewTool,
+    devStatusTool,
+    gitOverviewTool,
+    browserStateTool,
+    browserReadPageTool,
+    browserPageStructureTool,
+    ...browserActionTools,
+    filesTool,
+    gitTool,
+    gitPushTool,
+    devTool,
+    diagnoseAppTool,
+    ...windowsTools,
+    githubSearchTool,
+    githubRepoTool,
+    dataTool,
+    ...agentTools,
+    ...goalTools,
+    ...youtubeTools,
+    ...webResearchTools,
+    selfCheckTool,
+    selfRepairTool,
+    codeRepairTool,
+    secondBrainTool,
   ]);
 
-  console.log(`[ToolRegistry] All built-in tools registered. Total: ${toolRegistryV2.names().length}`);
+  // Skills (skills/*) register later, so the dashboard's count is higher (e.g. 48 here, 74 there).
+  console.log(`[ToolRegistry] ${toolRegistryV2.names().length} built-in tools registered; skills load next.`);
   console.log(`[ToolRegistry] Tools: ${toolRegistryV2.names().join(', ')}`);
 }

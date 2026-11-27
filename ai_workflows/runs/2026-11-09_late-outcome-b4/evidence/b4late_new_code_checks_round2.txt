@@ -1,0 +1,131 @@
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+
+=== An action that ends after JARVIS stopped waiting (B4) ===
+
+--- 1. The sandbox gave up on a tool that ignores its signal ---
+[ToolSandbox] ⚠️ "b4_slow_a" did not stop after its signal; its slot stays taken until it ends.
+  PASS: 1.1 the result says the outcome is unknown, with the time JARVIS waited (Error: TIMEOUT (outcome unknown): Tool "b4_slow_a" ran past its 1 s budget and did not stop within 1 s; JARVIS stopped waiting for it after 2 seconds. It may st)
+  PASS: 1.1 …it is not reported as a plain TIMEOUT failure (Error: TIMEOUT (outcome unknown): Tool ")
+  PASS: 1.4 one `outcome_unknown` line when JARVIS gave up, with a call id and the request's id ({"timestamp":"2026-11-09T18:12:27.167Z","type":"outcome_unknown","callId":"call_mw9kwf79_ede7b134","traceId":"trace_mw9kwf79_dq21yn","userCommand":"close the fa)
+  PASS: 1.4 one `late_result` line when the tool ended: the same call id and request, its real completion time, success ({"timestamp":"2026-11-09T18:12:28.063Z","type":"late_result","callId":"call_mw9kwf79_ede7b134","traceId":"trace_mw9kwf79_dq21yn","userCommand":"close the fake thing","tool":"b4_slow_a","completedAt":")
+  PASS: 1.4 …the timeout line is kept as it was (append-only)
+[Reflection] 🔍 Analyzing graph "graph_1794247948379_ov2d6": 0 done, 1 failed, 0 skipped
+[Reflection] 📋 All tasks failed: 0/1 nodes completed.
+Failure class: outcome_unknown
+Repair strategy: abort
+Failed nodes:
+  - b4_slow_a [task_1_b4_slow_a]: Error: TIMEOUT (outcome unknown): Tool "b4_slow_a" ran past its 1 s budget and did not stop within 1 s; JARVIS stopped w
+  PASS: 1.2 one-step request: class `outcome_unknown`, strategy abort (outcome_unknown / abort)
+  PASS: 1.2 …said as the owner's sentence, with the request in quotes (I stopped waiting for "close the fake thing" after 2 seconds, sir. It may still finish, so check before asking me to try again.)
+[Reflection] 🔍 Analyzing graph "graph_1794247948384_lty8n": 1 done, 1 failed, 0 skipped
+[Reflection] 📋 Partial success: 1/2 nodes completed.
+Failure class: outcome_unknown
+Repair strategy: abort
+Failed nodes:
+  - b4_slow_a [task_2_b4_slow_a]: Error: TIMEOUT (outcome unknown): Tool "b4_slow_a" ran past its 1 s budget and did not stop within 1 s; JARVIS stopped w
+  PASS: 1.2 several steps: the exact tool and action step is named (I stopped waiting for the b4_slow_a close step after 2 seconds, sir. It may still finish, so check before asking me to try again.)
+  PASS: 1.2 …never "couldn't reach a service"
+[ToolSandbox] ⚠️ "b4_slow_b" did not stop after its signal; its slot stays taken until it ends.
+  PASS: 1.5 a late result during another request keeps its own request (A), never the current one (B) (unknown trace_mw9kwhgi_hxgce7, late trace_mw9kwhgi_hxgce7, B trace_mw9kwirt_ifahnu)
+[ToolSandbox] ⚠️ "b4_slow_c1" did not stop after its signal; its slot stays taken until it ends.
+[ToolSandbox] ⚠️ "b4_slow_c2" did not stop after its signal; its slot stays taken until it ends.
+  PASS: 1.6 two calls in one request have different call ids, and each late line matches its own call (call_mw9kwjpa_0f3f550f call_mw9kwjpa_f4b6d4ea | call_mw9kwjpa_0f3f550f call_mw9kwjpa_f4b6d4ea)
+[ToolSandbox] ⚠️ "b4_slow_d" did not stop after its signal; its slot stays taken until it ends.
+  PASS: 1.7 a background agent's call: both lines carry the agent's path and no foreground request id ({"timestamp":"2026-11-09T18:12:37.207Z","type":"late_result","callId":"call_mw9kwm9a_e85658c2","agentPath":"Test Agent","userCommand":"the agent's words","tool")
+[ToolSandbox] ⚠️ "b4_slow_e" did not stop after its signal; its slot stays taken until it ends.
+  PASS: 1.8 cancelled by its caller and still running: an unknown outcome, "stopped waiting", never "was stopped" (Error: TIMEOUT (outcome unknown): Tool "b4_slow_e" was cancelled and did not stop within 1 s; JARVIS stopped waiting for it after 1 second. It may still finish.)
+[ToolSandbox] ⚠️ The action log did not record that JARVIS stopped waiting for "b4_slow_audit_fails" (call call_mw9kwqip_cbf87672): the write failed. The outcome is still unknown.
+[ToolSandbox] ⚠️ "b4_slow_audit_fails" did not stop after its signal; its slot stays taken until it ends.
+  PASS: 1.9 an audit write that fails: the result is still the unknown outcome, returned within 2400 ms (1703 ms: Error: TIMEOUT (outcome unknown): Tool "b4_slow_audit_fails")
+  PASS: 1.9 …the write that fails is reported on its own, and the tool ran once ([ToolSandbox] ⚠️ The action log did not record that JARVIS stopped waiting for "b4_slow_audit_fails" (call call_mw9kwqip_cbf87672): the write failed. The outcom)
+[ToolSandbox] ⚠️ The action log did not record that JARVIS stopped waiting for "b4_slow_audit_hangs" (call call_mw9kwu0c_5787d507): the write did not finish within 2000 ms. The outcome is still unknown.
+[ToolSandbox] ⚠️ "b4_slow_audit_hangs" did not stop after its signal; its slot stays taken until it ends.
+  PASS: 1.9 an audit write that hangs: the result is still the unknown outcome, returned within 4400 ms (3706 ms: Error: TIMEOUT (outcome unknown): Tool "b4_slow_audit_hangs")
+  PASS: 1.9 …the write that hangs is reported on its own, and the tool ran once ([ToolSandbox] ⚠️ The action log did not record that JARVIS stopped waiting for "b4_slow_audit_hangs" (call call_mw9kwu0c_5787d507): the write did not finish wit)
+[ToolRegistry] ⚠️  High-risk tool "b4_slow_fb" declares no requiredLevel — dispatch-layer authorization is not enforced for it; it relies entirely on its own controller checks.
+[ToolRegistry] ⚠️  High-risk tool "b4_slow_main" declares no requiredLevel — dispatch-layer authorization is not enforced for it; it relies entirely on its own controller checks.
+[TaskGraph] ▶️  Starting graph "graph_1794247969163_9c3yj" — goal: "do the slow fake thing"
+[TaskGraph]    Nodes: 1 | Parallel root tasks: 1
+[TaskGraph] 🔄 Iteration 1: dispatching 1 node(s) in parallel
+[TaskGraph]   → Queuing node "task_1_b4_slow_main" (tool: b4_slow_main)
+[ToolSandbox] ⚠️ "b4_slow_main" did not stop after its signal; its slot stays taken until it ends.
+[TaskGraph]   ❌ Node "task_1_b4_slow_main" failed [fatal] (attempt 1/3): Error: TIMEOUT (outcome unknown): Tool "b4_slow_main" ran past its 1 s budget and did not stop within 1 s; JARVIS stopped waiting for it after 2 seconds. It may still finish.
+[TaskGraph]   ⛔ Node "task_1_b4_slow_main" marked fatal [fatal] — no retry.
+[TaskGraph] ✅ Graph "graph_1794247969163_9c3yj" finished with status: failed
+  PASS: 1.3 the step ran once: no retry by the registry or the task-graph engine (started 1)
+  PASS: 1.3 …and no fallback tool ran (fallback started 0)
+  PASS: 1.3 …the step is failed with the unknown-outcome text (failed: Error: TIMEOUT (outcome unknown): Tool "b4_slow_main" ran past its 1 s budget an)
+
+--- 2. An admin command stopped part way ---
+  PASS: 2.1 a started command that was stopped: the unknown-outcome text with the measured seconds (TIMEOUT (outcome unknown): The command was stopped after 10 seconds; part of it may already have run.)
+  PASS: 2.1 …"1 second" in the singular (TIMEOUT (outcome unknown): The command was stopped after 1 second; part of it may already have run.)
+  PASS: 2.1 a command that never started: a definite failure, never "may have run" (The command was not started: the request had already been stopped.)
+  PASS: 2.1 a command that ran to the end: no stop text ("")
+[Reflection] 🔍 Analyzing graph "graph_1794247974077_9112s": 0 done, 1 failed, 0 skipped
+[Reflection] 📋 All tasks failed: 0/1 nodes completed.
+Failure class: outcome_unknown
+Repair strategy: abort
+Failed nodes:
+  - control_system [task_1_control_system]: TIMEOUT (outcome unknown): The command was stopped after 10 seconds; part of it may already have run.
+  PASS: 2.1 what the owner hears for a stopped command (The command was stopped after 10 seconds, sir. Part of it may already have run, so please check before trying again.)
+[Reflection] 🔍 Analyzing graph "graph_1794247974078_z2v2o": 0 done, 1 failed, 0 skipped
+[Reflection] 📋 All tasks failed: 0/1 nodes completed.
+Failure class: unknown
+Repair strategy: abort
+Failed nodes:
+  - control_system [task_1_control_system]: The command was not started: the request had already been stopped.
+  PASS: 2.1 …and for one that never started: no "may have run", not an unknown outcome (I encountered an unexpected error and have been unable to complete the task, sir. The command was not started: the request had already been stopped.)
+  PASS: 2.2 a process stopped after 1 s: cancelled, and `started` is true (returned once it had exited) (started true, 1007 ms)
+  PASS: 2.2 a signal already aborted: nothing started (`started` false) (started false)
+  PASS: 2.3 a stopped command's kernel line is `unknown`, not `failure` (unknown)
+  PASS: 2.3 …with the request it started in, never the one running when it ended (line trace_mw9kx227_f35rky, started trace_mw9kx227_f35rky, ended in trace_mw9kx251_uuzf5v)
+[ActionQueue] Action "b4NotStarted" failed (attempt 1/2). Retrying... Error: The command was not started: the request had already been stopped.
+  PASS: 2.3 a command that never started stays a definite `failure` (failure)
+  PASS: 2.4 the action queue runs an unknown-outcome action once (no retry) (1 call(s))
+  ℹ️  2.5 and 4.6 skipped: the real cmd.exe path runs only on Windows (platform: linux).
+
+--- 3. Behaviour that must stay ---
+[ToolRegistry] Tool "b4_read" threw (attempt 1/3): fetch failed: ETIMEDOUT. Retrying...
+[ToolRegistry] Retry 1/2 for "b4_read" in 500ms...
+[ToolRegistry] Tool "b4_read" threw (attempt 2/3): fetch failed: ETIMEDOUT. Retrying...
+[ToolRegistry] Retry 2/2 for "b4_read" in 1000ms...
+  PASS: 3.1 a low-risk network read that times out is retried by the registry, as before (3 call(s), success true)
+[Reflection] 🔍 Analyzing graph "graph_1794247977708_4xhvk": 0 done, 1 failed, 0 skipped
+[Reflection] 📋 All tasks failed: 0/1 nodes completed.
+Failure class: network_error
+Repair strategy: retry_with_delay
+Failed nodes:
+  - b4_read [task_1_b4_read]: TIMEOUT: request timed out
+  PASS: 3.1 …and a read's TIMEOUT is still a network error with "retry with delay" (network_error / retry_with_delay)
+  PASS: 3.2 goal runtime: classified as its own class `outcome_unknown`, counted apart from `interrupted` (outcome_unknown)
+  PASS: 3.2 goal runtime: an unknown outcome is never retried; it waits for review (needs_review / block: needs review: JARVIS stopped waiting for it or stopped it part way, so it may ha)
+  PASS: 3.2 …a network timeout on a read is still retried (retry)
+[Reflection] 🔍 Analyzing graph "graph_1794247977710_5q07k": 0 done, 1 failed, 0 skipped
+[Reflection] 📋 All tasks failed: 0/1 nodes completed.
+Failure class: unknown
+Repair strategy: abort
+Failed nodes:
+  - b4_slow_a [task_1_b4_slow_a]: The fake thing was not closed: not approved.
+  PASS: 3.3 a refusal is not an unknown outcome and says nothing about "may still finish" (unknown: I encountered an unexpected error and have been unable to complete the task, sir. The fake thing was not closed: not approved.)
+[ToolSandbox] "b4_slow_f" finished after its 1200 ms budget.
+  PASS: 3.4 a tool that ends after its budget but before JARVIS gives up: its real result, no unknown-outcome line (Did the slow thing b4_slow_f.)
+
+--- 4. Checks added after the mutation check ---
+  PASS: 4.1 (K3) the call identity is frozen: changing it has no effect ({"callId":"call_mw9kx5d0_ff5d7254","traceId":"trace_mw9kx5d0_kaejc7","userCommand":"a frozen request"})
+[ToolSandbox] ⚠️ "b4_slow_race" did not stop after its signal; its slot stays taken until it ends.
+  PASS: 4.2 (K11) the tool ends while the timeout line is being written: the result is still the unknown outcome (Error: TIMEOUT (outcome unknown): Tool "b4_slow_race" ran past its 1 s budget and did not stop withi)
+  PASS: 4.3 (K8) …and its `late_result` line comes after the `outcome_unknown` line (outcome_unknown at 18, late_result at 19)
+  PASS: 4.4 (K16) a thrown unknown outcome: one attempt, no retry, no fallback, reported as the unknown outcome (main 1, fallback 0: TIMEOUT (outcome unknown): The command was stopped after 1 second; part of it ma)
+[Reflection] 🔍 Analyzing graph "graph_1794247981971_gmj3j": 0 done, 3 failed, 0 skipped
+[Reflection] 📋 All tasks failed: 0/3 nodes completed.
+Failure class: outcome_unknown
+Repair strategy: abort
+Failed nodes:
+  - b4_read [task_1_b4_read]: fetch failed: ETIMEDOUT
+  - b4_read [task_2_b4_read]: fetch failed: ETIMEDOUT
+  - b4_slow_a [task_3_b4_slow_a]: Error: TIMEOUT (outcome unknown): Tool "b4_slow_a" ran past its 1 s budget and did not stop within 1 s; JARVIS stopped w
+  PASS: 4.5 (K19) an unknown step among two failed reads with retries left: class `outcome_unknown`, strategy abort (never re-run) (outcome_unknown / abort: I stopped waiting for the b4_slow_a close step after 2 seconds, sir. It may stil)
+
+44 passed, 0 failed
+EXIT=0

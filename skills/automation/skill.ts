@@ -3,129 +3,66 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Automation skill: opens apps, URLs, files on the local OS.
  * Uses platform-native open commands (start on Windows, open on macOS, xdg-open on Linux).
+ * Web pages and Chrome itself open in JARVIS's own Chrome instead (owner
+ * decision D1 and answer Q1, 2026-10-27; control/jarvisChrome.ts), never in
+ * the default browser: JARVIS can see, check and close only that Chrome.
  */
 
 import { spawn } from 'child_process';
 import { securityAuditLogger } from '../../security/securityAuditLogger.js';
 import { approvalGate } from '../../security/approvalGate.js';
+import { childEnv } from '../../system/childEnv.js';
+import { getRequestSource } from '../../core/traceContext.js';
+import { resolveTargetUrl, windowsOnlyTarget } from '../../security/openAppPolicy.js';
+import { showInJarvisChrome } from '../../control/jarvisChrome.js';
+
+// open_app's allow-lists and checks live in security/openAppPolicy.ts (ARCH-04).
+export { resolveTargetUrl };
 
 type OpenAppSource = 'voice' | 'text' | 'llm';
 
-interface ResolvedOpenTarget {
-  allowed: boolean;
-  requestedTarget: string;
-  resolvedTarget: string;
-  reason?: string;
-  requiresApproval?: boolean;
-}
-
-const WEBSITE_ALLOWLIST: Record<string, string> = {
-  'youtube': 'https://www.youtube.com',
-  'https://www.youtube.com': 'https://www.youtube.com',
-  'google': 'https://www.google.com',
-  'https://www.google.com': 'https://www.google.com',
-  'gmail': 'https://mail.google.com',
-  'https://mail.google.com': 'https://mail.google.com',
-  'github': 'https://github.com',
-  'https://github.com': 'https://github.com',
-  'whatsapp': 'https://web.whatsapp.com',
-  'whats app': 'https://web.whatsapp.com',
-  'https://web.whatsapp.com': 'https://web.whatsapp.com',
+/**
+ * The launcher and the platform, so tests can stand in for them on any OS
+ * (phase A5d). Nothing else changes them.
+ */
+export const openAppDeps = {
+  // Calls the live binding, as the code did before: a patched child_process.spawn still applies.
+  // Always with the filtered environment (SEC-101).
+  spawn: ((cmd: string, args: string[], options: Record<string, unknown>) => spawn(cmd, args, { ...options, env: childEnv() } as any)) as (cmd: string, args: string[], options: Record<string, unknown>) => { on(event: string, fn: (...a: any[]) => void): unknown; unref(): void },
+  platform: (): NodeJS.Platform => process.platform,
 };
 
-const APP_ALLOWLIST: Record<string, string> = {
-  'chrome': 'chrome.exe',
-  'notepad': 'notepad.exe',
-  'calculator': 'calc.exe',
-  'calc': 'calc.exe',
-  'vscode': 'code',
-  'vs code': 'code',
-  'code': 'code',
-  'visual studio code': 'code',
-  'settings': 'ms-settings:',
-  'downloads': 'shell:Downloads',
-};
+/**
+ * How long the answer waits for the launcher to finish (phase A5d, TRA-19).
+ * A launcher that has handed the open on exits at once. One still running then
+ * (some `xdg-open`s stay with the app; on Windows, `start` may wait on a "cannot
+ * find" dialog) counts as started, and the verifier checks apps afterwards.
+ */
+const LAUNCHER_WAIT_MS = 3_000;
 
-const APPROVAL_REQUIRED_APPS: Record<string, string> = {
-  'cmd': 'cmd.exe',
-  'command prompt': 'cmd.exe',
-};
-
-const BLOCKED_FILE_EXTENSION_RE = /\.(bat|cmd|ps1|vbs|js|exe)$/i;
-const SHELL_METACHAR_RE = /[&|^%><;]/;
-const WINDOWS_ABSOLUTE_PATH_RE = /^[a-zA-Z]:[\\/]/;
-const POSIX_ABSOLUTE_PATH_RE = /^\//;
-const UNC_PATH_RE = /^\\\\/;
-
-export function resolveTargetUrl(target: string): ResolvedOpenTarget {
-  const requestedTarget = target.trim();
-  const targetLower = target.toLowerCase().trim();
-
-  if (!requestedTarget) {
-    return { allowed: false, requestedTarget, resolvedTarget: '', reason: 'Target is empty.' };
+/**
+ * A web page in a new tab of JARVIS's Chrome, or (for "chrome") that Chrome
+ * brought forward; started first when needed. When it cannot be, the result
+ * says why and what to do, and nothing is opened elsewhere (owner, Q2).
+ */
+async function openInJarvisChrome(target: string, resolvedTarget: string): Promise<string> {
+  const url = /^https?:\/\//i.test(resolvedTarget) ? resolvedTarget : undefined;
+  try {
+    const shown = await showInJarvisChrome(url);
+    console.log(`[open_app] target="${target}" shown in JARVIS's Chrome (port ${shown.port}, tab ${shown.tabId})`);
+    return JSON.stringify({ success: true, target, resolvedTarget, method: 'jarvis-chrome', port: shown.port, tabId: shown.tabId });
+  } catch (err) {
+    const spoken = (err as { spoken?: unknown })?.spoken;
+    return JSON.stringify({
+      success: false, target, resolvedTarget, method: 'jarvis-chrome', error: err instanceof Error ? err.message : String(err),
+      ...(typeof spoken === 'string' ? { spoken } : {}),
+    });
   }
-
-  if (
-    SHELL_METACHAR_RE.test(requestedTarget) ||
-    UNC_PATH_RE.test(requestedTarget) ||
-    WINDOWS_ABSOLUTE_PATH_RE.test(requestedTarget) ||
-    POSIX_ABSOLUTE_PATH_RE.test(requestedTarget)
-  ) {
-    return {
-      allowed: false,
-      requestedTarget,
-      resolvedTarget: requestedTarget,
-      reason: 'Target contains a path or shell metacharacter blocked by open_app policy.',
-    };
-  }
-
-  if (BLOCKED_FILE_EXTENSION_RE.test(requestedTarget) && !APP_ALLOWLIST[targetLower] && !APPROVAL_REQUIRED_APPS[targetLower]) {
-    return {
-      allowed: false,
-      requestedTarget,
-      resolvedTarget: requestedTarget,
-      reason: 'Executable/script targets are blocked unless explicitly allowlisted.',
-    };
-  }
-
-  if (WEBSITE_ALLOWLIST[targetLower]) {
-    return { allowed: true, requestedTarget, resolvedTarget: WEBSITE_ALLOWLIST[targetLower] };
-  }
-
-  if (APP_ALLOWLIST[targetLower]) {
-    return { allowed: true, requestedTarget, resolvedTarget: APP_ALLOWLIST[targetLower] };
-  }
-
-  if (APPROVAL_REQUIRED_APPS[targetLower]) {
-    return {
-      allowed: false,
-      requestedTarget,
-      resolvedTarget: APPROVAL_REQUIRED_APPS[targetLower],
-      reason: 'Opening Command Prompt requires explicit approval.',
-      requiresApproval: true,
-    };
-  }
-
-  if (/^https?:\/\//i.test(requestedTarget) || /^www\./i.test(requestedTarget)) {
-    return {
-      allowed: false,
-      requestedTarget,
-      resolvedTarget: requestedTarget,
-      reason: 'Raw URLs are blocked unless they exactly match the open_app allowlist.',
-    };
-  }
-
-  return {
-    allowed: false,
-    requestedTarget,
-    resolvedTarget: requestedTarget,
-    reason: 'Target is not in the open_app allowlist.',
-  };
 }
 
 function openTarget(target: string, resolvedTarget: string): Promise<string> {
   return new Promise((resolve) => {
-    const platform = process.platform;
+    const platform = openAppDeps.platform();
 
     console.log(`[open_app] target="${target}" resolved="${resolvedTarget}"`);
 
@@ -149,59 +86,47 @@ function openTarget(target: string, resolvedTarget: string): Promise<string> {
 
     console.log(`[open_app] platform=${platform} command=${cmd} args=${args.join(',')}`);
 
+    // The answer waits for the launcher's own outcome (phase A5d, TRA-19): it
+    // used to be "success" 50 ms after the spawn, whatever the launcher did next.
+    let settled = false;
+    const answer = (body: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(JSON.stringify({ target, resolvedTarget, platform, method, ...body }));
+    };
+    const timer = setTimeout(() => answer({ success: true, launcherStillRunning: true }), LAUNCHER_WAIT_MS);
+
     try {
-      const proc = spawn(cmd, args, {
+      const proc = openAppDeps.spawn(cmd, args, {
         detached: true,
         stdio: 'ignore',
         shell: false,
+        // The app JARVIS opens does not get JARVIS's keys and tokens (SEC-06).
+        env: childEnv(),
         ...(platform === 'win32' ? { windowsHide: true } : {})
       });
 
-      let errorOccurred = false;
-      proc.on('error', (err) => {
-        errorOccurred = true;
-        resolve(JSON.stringify({
-          success: false,
-          target,
-          resolvedTarget,
-          platform,
-          method,
-          error: err.message
-        }));
-      });
+      proc.on('error', (err: Error) => answer({ success: false, error: err.message }));
+      proc.on('exit', (code: number | null) => answer(code === 0 || code === null
+        ? { success: true }
+        : { success: false, error: `The launcher (${cmd}) exited with code ${code}, so ${target} may not have opened.` }));
 
       proc.unref();
-
-      // Give Node event loop a tick to register immediate spawn failures
-      setTimeout(() => {
-        if (!errorOccurred) {
-          resolve(JSON.stringify({
-            success: true,
-            target,
-            resolvedTarget,
-            platform,
-            method
-          }));
-        }
-      }, 50);
     } catch (err: any) {
-      resolve(JSON.stringify({
-        success: false,
-        target,
-        resolvedTarget,
-        platform,
-        method,
-        error: String(err)
-      }));
+      answer({ success: false, error: String(err) });
     }
   });
 }
 
 export async function execute(args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
   const target = String(args['target'] ?? '').trim();
-  const source = (['voice', 'text', 'llm'].includes(String(args['source'] ?? ''))
-    ? String(args['source'])
-    : 'llm') as OpenAppSource;
+  // How the request really arrived wins over the `source` the model wrote:
+  // it decides how approval is asked and what the audit records.
+  const arrived = getRequestSource();
+  const source: OpenAppSource = arrived === 'voice' ? 'voice'
+    : arrived === 'cli' ? 'text'
+    : (['voice', 'text', 'llm'].includes(String(args['source'] ?? '')) ? String(args['source']) as OpenAppSource : 'llm');
   if (!target) {
     return JSON.stringify({
       success: false,
@@ -255,6 +180,17 @@ export async function execute(args: Record<string, unknown>, signal?: AbortSigna
     });
   }
 
+  if (/^https?:\/\//i.test(resolved.resolvedTarget) || resolved.resolvedTarget === 'chrome.exe') {
+    return openInJarvisChrome(target, resolved.resolvedTarget);
+  }
+  // A Windows program or page cannot be opened elsewhere: say so, launch nothing
+  // (phase A5d, owner Q2). A dry run above still shows what it resolves to.
+  if (openAppDeps.platform() !== 'win32' && windowsOnlyTarget(resolved.resolvedTarget)) {
+    return JSON.stringify({
+      success: false, target, resolvedTarget: resolved.resolvedTarget, platform: openAppDeps.platform(),
+      error: `${target} needs Windows: "${resolved.resolvedTarget}" is a Windows program or page, and this computer is not running Windows.`,
+    });
+  }
   return openTarget(target, resolved.resolvedTarget);
 }
 

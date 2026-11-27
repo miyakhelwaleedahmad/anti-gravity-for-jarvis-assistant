@@ -1,0 +1,6 @@
+# pnpm -s typecheck — final tree after the review round-3 fixes (T1, T2, T5, T6), 2026-11-09T15:16:29Z
+TC=0
+
+# Earlier: after the round-2 fixes, TC=0 (2026-11-09T12:13:56Z); after the round-1 fixes, TC=0 (2026-11-09T10:12:09Z).
+# Correction (review F1): the first TC=0 in this file was recorded at 2026-11-08 16:51:36, before the test's last edit (16:55:56).
+# On that tree the typecheck gave TC=2: tests/approvalBudgetR31Test.ts(413,54): error TS2339: Property 'request' does not exist on type 'ApprovalRequest'.

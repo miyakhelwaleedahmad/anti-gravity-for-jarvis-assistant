@@ -20,6 +20,7 @@ import { orchestrator } from '../core/orchestrator.js';
 import { goalManager } from '../core/goalManager.js';
 import { agentMemory } from '../memory/agentMemory.js';
 import { systemStateObserver } from '../perception/systemStateObserver.js';
+import { requireLiveProvider } from './livePreflight.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,6 +42,8 @@ async function runLifecycleAudit() {
   console.log('🔄 TASK 7 AUDIT: SUCCESSFUL EXECUTION & GOAL LIFECYCLE AUDIT');
   console.log('=============================================================\n');
 
+  // A live test (pnpm test:live): blocked, not passed, without a provider.
+  await requireLiveProvider();
   await goalManager.init();
 
   const testCommands = [

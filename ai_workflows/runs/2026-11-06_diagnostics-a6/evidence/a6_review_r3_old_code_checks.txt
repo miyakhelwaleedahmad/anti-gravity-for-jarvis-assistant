@@ -1,0 +1,77 @@
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[36m[INFO][0m 13:16:35.843 [JARVIS] [startup] Execution tracing wired: task graph, state changes, security events and tool calls. {}
+
+=== Diagnostics (phase A6) ===
+
+--- 1. the action log line ---
+  PASS: (setup) the stood-in action ran ({"success":true,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":1,"message":"Focused window: \"n)
+  PASS: the line carries the request's trace id (trace_mw500fif_ykkrvr vs trace_mw500fif_ykkrvr)
+  PASS: …and the owner's request, not the action name (please bring notepad to the front)
+  PASS: it does not claim the effect was checked: verified "pending" ({"timestamp":"2026-11-06T13:16:35.848Z","userCommand":"please bring notepad to the front","traceId":"trace_mw500fif_ykkrvr","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"success","verified":"pending","durationMs":1})
+  PASS: the risk level is the one the kernel computed (level 1, not read-only: "high") (high)
+  PASS: no fixed rollbackAvailable / confirmationRequired (Q2) ({"timestamp":"2026-11-06T13:16:35.848Z","userCommand":"please bring notepad to the front","traceId":"trace_mw500fif_ykkrvr","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"success","verified":"pending","durationMs":1})
+  PASS: outside a request: no trace id, and the action name as the command ({"timestamp":"2026-11-06T13:16:35.851Z","userCommand":"focusApp","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"success","verified":"pending","durationMs":0})
+  PASS: a request with a key: the key is not written (focus notepad, my key is [REDACTED:openai-key] and xxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
+  PASS: …and a long request is cut short (138 chars)
+  PASS: inside an agent: the agent's words and its name, not the foreground's trace id (F1) ({"timestamp":"2026-11-06T13:16:35.854Z","userCommand":"BACKGROUND GOAL: tidy windows","agentPath":"Research Agent","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"success","verified":"pending","durationMs":0})
+  PASS: a read: no "verified: pending" (it is never checked) (F2) ({"timestamp":"2026-11-06T13:16:35.858Z","userCommand":"read my notes","traceId":"trace_mw500fin_zdnh2e","normalizedIntent":"readFile","action":"readFile","target":"/tmp/jarvis-diagnostics-a6-HTszvE/notes.txt","permissionLevel":1,"riskLevel":"safe","allowed":true,"result":"success","durationMs":3})
+  PASS: a failure line: the trace id, the request, the computed risk level, no "pending" (F3) ({"timestamp":"2026-11-06T13:16:35.860Z","userCommand":"bring the calculator to the front","traceId":"trace_mw500fiq_t0inx3","normalizedIntent":"focusApp","action":"focusApp","target":"calculator","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"failure","durationMs":1,"error":"No running window found for app \"calculator\"."})
+  PASS: …allowed (permission was given; the action itself failed) (F6) ({"timestamp":"2026-11-06T13:16:35.860Z","userCommand":"bring the calculator to the front","traceId":"trace_mw500fiq_t0inx3","normalizedIntent":"focusApp","action":"focusApp","target":"calculator","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"failure","durationMs":1,"error":"No running window found for app \"calculator\"."})
+  PASS: a permission refusal: blocked, not allowed (F6) ({"timestamp":"2026-11-06T13:16:35.862Z","userCommand":"focusApp","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":false,"result":"blocked","durationMs":1,"error":"Permission denied."})
+  PASS: "EACCES: permission denied, open 'C:\x'": a failure of an allowed action (F11) (failure allowed=true EACCES: permission denied, open 'C:\x')
+  PASS: "Access is denied.": a failure of an allowed action (F11) (failure allowed=true Access is denied.)
+  PASS: "Permission Level 2 required for keyboard action": blocked, not allowed (F11) (blocked allowed=false Permission Level 2 required for keyboard action)
+  PASS: "Action cancelled by user.": blocked, not allowed (F11) (blocked allowed=false Action cancelled by user.)
+  PASS: "Not closed: the window "Notes" was not approved.": blocked, not allowed (F11) (blocked allowed=false Not closed: the window "Notes" was not approved.)
+  PASS: "Access Denied: Path "C:\x" is not allowed outside approved directories for action "read".": blocked, not allowed (F11) (blocked allowed=false Access Denied: Path "C:\x" is not allowed outside approved d)
+  FAIL: "Dangerous shortcut requires explicit confirmation and was denied: alt+f4": blocked, not allowed (F11) (failure allowed=true Dangerous shortcut requires explicit confirmation and was de)
+  FAIL: "Execution Blocked: Terminating critical system process "lsass" is forbidden.": blocked, not allowed (F11) (failure allowed=true Execution Blocked: Terminating critical system process "lsas)
+  FAIL: "Blocked by safety policy: JARVIS does not stop or restart the security service "WinDefend".": blocked, not allowed (F11) (failure allowed=true Blocked by safety policy: JARVIS does not stop or restart th)
+  FAIL: "Refused by safety policy: "a&b" contains characters Command Prompt would run as a command.": blocked, not allowed (F11) (failure allowed=true Refused by safety policy: "a&b" contains characters Command )
+  PASS: "Close cancelled: closing windows matching "notes" was not approved.": blocked, not allowed (F11) (blocked allowed=false Close cancelled: closing windows matching "notes" was not ap)
+[ActionQueue] Action "focusApp" failed (attempt 1/2). Retrying... Error: Chrome cancelled the download
+  FAIL: "Chrome cancelled the download": a failure of an allowed action (F11) (blocked allowed=false Chrome cancelled the download)
+--- 2. every check that ran, in both logs (Q1) ---
+[36m[INFO][0m 13:16:36.379 [Tool] [trace_mw] tool_call {"tool":"a6_probe_ok","success":true,"durationMs":0,"attempt":0}
+[ToolRegistry] ✓ a6_probe_ok: checked — the probe saw it.
+[36m[INFO][0m 13:16:36.379 [Tool] [trace_mw] verification {"tool":"a6_probe_ok","status":"verified","evidence":"the probe saw it"}
+[36m[INFO][0m 13:16:36.380 [Tool] [trace_mw] tool_call {"tool":"a6_probe_bad","success":true,"durationMs":0,"attempt":0}
+[33m[WARN][0m 13:16:36.380 [Tool] [trace_mw] verification {"tool":"a6_probe_bad","status":"failed","evidence":"nothing changed"}
+[ToolRegistry] ✗ a6_probe_bad reported success, but nothing changed.
+[33m[WARN][0m 13:16:36.384 [Tool] [trace_mw] tool_call {"tool":"a6_probe_bad","success":false,"durationMs":0,"attempt":0,"error":"VERIFICATION_FAILED: nothing changed"}
+[36m[INFO][0m 13:16:36.385 [Tool] [trace_mw] tool_call {"tool":"a6_probe_none","success":true,"durationMs":0,"attempt":0}
+[36m[INFO][0m 13:16:36.385 [Tool] [trace_mw] tool_call {"tool":"a6_probe_unknown","success":true,"durationMs":0,"attempt":0}
+  PASS: (setup) one check passed, one failed (true VERIFICATION_FAILED)
+  PASS: the trace has the passed check, with the request's trace id ({"message":"verification","data":{"tool":"a6_probe_ok","status":"verified","evidence":"the probe saw it"},"correlationId":"trace_mw500fx4_ohoob1"})
+  PASS: the trace has the failed check, with its evidence ({"message":"verification","data":{"tool":"a6_probe_bad","status":"failed","evidence":"nothing changed"},"correlationId":"trace_mw500fx4_ohoob1"})
+  PASS: the action log has the passed check, with the same trace id ({"timestamp":"2026-11-06T13:16:36.380Z","type":"verification","traceId":"trace_mw500fx4_ohoob1","tool":"a6_probe_ok","status":"verified","evidence":"the probe saw it"})
+  PASS: the action log has the failed check, with its evidence: the logs agree after a VERIFICATION_FAILED ({"timestamp":"2026-11-06T13:16:36.380Z","type":"verification","traceId":"trace_mw500fx4_ohoob1","tool":"a6_probe_bad","status":"failed","evidence":"nothing changed"})
+  PASS: a call with no check writes no check line
+[ToolRegistry] ⚠️  Tool "deep_search" declares fallback "web_search" which is not yet registered.
+[ToolRegistry] ⚠️  Tool "search_documents" declares fallback "search_memory" which is not yet registered.
+[ToolRegistry] ⚠️  Tool "get_weather" declares fallback "web_search" which is not yet registered.
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[36m[INFO][0m 13:16:36.610 [Tool] [trace_mw] tool_call {"tool":"control_app","success":true,"durationMs":11,"attempt":0}
+[33m[WARN][0m 13:16:36.610 [Tool] [trace_mw] verification {"tool":"control_app","status":"failed","evidence":"notepad is not in front (test)"}
+[ToolRegistry] ✗ control_app reported success, but notepad is not in front (test).
+[33m[WARN][0m 13:16:36.613 [Tool] [trace_mw] tool_call {"tool":"control_app","success":false,"durationMs":0,"attempt":0,"error":"VERIFICATION_FAILED: notepad is not in front (test)"}
+[36m[INFO][0m 13:16:36.817 [Tool] [trace_mw] tool_call {"tool":"control_app","success":true,"durationMs":1,"attempt":0}
+[33m[WARN][0m 13:16:36.818 [Tool] [trace_mw] verification {"tool":"control_app","status":"failed","evidence":"agent check failed (test)","agentPath":"Desk Agent"}
+[ToolRegistry] ✗ control_app reported success, but agent check failed (test).
+[33m[WARN][0m 13:16:36.819 [Tool] [trace_mw] tool_call {"tool":"control_app","success":false,"durationMs":0,"attempt":0,"error":"VERIFICATION_FAILED: agent check failed (test)"}
+  PASS: an agent's check line: the agent's name, not the foreground's trace id (F10) ({"timestamp":"2026-11-06T13:16:36.818Z","type":"verification","agentPath":"Desk Agent","tool":"control_app","status":"failed","evidence":"agent check failed (test)"})
+  PASS: end to end: the kernel's action line and the failed check, same trace id (F3) (VERIFICATION_FAILED | {"timestamp":"2026-11-06T13:16:36.607Z","userCommand":"focus notepad","traceId":"trace_mw500g3a_8ncvld","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"high","allowed":true,"result":"success","verified":"pending","durationMs":0} | {"timestamp":"2026-11-06T13:16:36.611Z","type":"verification","traceId":"trace_mw500g3a_8ncvld","tool":"control_app","status":"failed","evidence":"notepad is not in front (test)"})
+  PASS: a check that could not be done ("unverifiable") writes no check line either: only checks that ran (Q1) (null)
+--- 3. the test helper's Chrome (TRA-15) ---
+  PASS: the helper says how it ends Chrome (treeKillCommand)
+  PASS: Windows: the whole process tree, by force (["taskkill","/PID","4242","/T","/F"])
+  PASS: elsewhere: the process itself, as before (its children end with it)
+  PASS: the helper's ending can be stood in for (endChrome)
+  PASS: Windows: taskkill on the tree, and no parent-only kill ([["taskkill","/PID","4242","/T","/F"]] killed=0)
+  PASS: Windows, taskkill failed: the process is still ended (killed=1)
+  PASS: elsewhere: the process is ended, no taskkill (killed=2 ran=0)
+  PASS: Windows, Chrome already exited: no taskkill on its old process id (F12) ([])
+
+38 passed, 5 failed
+EXIT=1

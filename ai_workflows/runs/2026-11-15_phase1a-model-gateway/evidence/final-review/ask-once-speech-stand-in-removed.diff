@@ -1,0 +1,29 @@
+--- /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/askOnce.v2.ts	2026-11-17 11:57:56.231995342 +0000
++++ /home/user/anti-gravity-for-jarvis-assistant/tests/saveRelationAskOnceTest.ts	2026-11-17 11:57:56.261130096 +0000
+@@ -5,7 +5,8 @@
+  * orchestrator, the owner is asked once whether to keep a fact. A "no" or no
+  * answer is final: the task graph does not ask the same question again.
+  * "Yes" stores it once. Based on the reviewer's probe r4.
+- * Stand-in memory store, planner model, speaker and owner; no network.
++ * Stand-in memory store, planner model and owner; the real speech path (no
++ * client is connected, so nothing is spoken); no network.
+  */
+ 
+ import * as fs from 'fs';
+@@ -74,7 +75,6 @@
+ const { registerAllTools } = await import('../core/tools/index.js');
+ const { orchestrator } = await import('../core/orchestrator.js');
+ { const { worldState } = await import('../core/worldState.js'); (worldState as any).refresh = async () => {}; }
+-const { installFakeTts } = await import('./fakeTts.js');
+ registerAllTools();
+ await memoryManager.init();
+ 
+@@ -87,8 +87,6 @@
+   return { content: '{"failureClass":"unknown","repairStrategy":"abort","context":""}' } as any;
+ };
+ modelRouter.streamChat = async function* () { yield 'Done, sir.'; } as any;
+-const spoken: string[] = [];
+-installFakeTts(orchestrator, (await import('../bridge/nodeBridge.js')).nodeBridge, 5, spoken, true);
+ 
+ async function ask(answer: 'no' | 'timeout' | 'yes') {
+   mode = answer;

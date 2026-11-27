@@ -1,0 +1,13 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=boundaryDoublesTest,typedWhileBusyB4Test
+
+
+=== JARVIS test suite — 2 file(s) ===
+
+  PASS    boundaryDoublesTest                          460ms
+  PASS    typedWhileBusyB4Test                         6616ms
+
+=== 2 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

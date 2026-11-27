@@ -1,0 +1,18 @@
+M1 no pause while the owner answers [approvalBudgetR31Test]: CAUGHT | FAIL: "yes" at 1.8 s, after the 1.5 s budget: the action runs once, as a success (acted 0: The fake thing one-1800 was not closed: not approved.)
+M2 no resume after the answer [approvalBudgetR31Test]: CAUGHT | FAIL: after the answer, only the 0.9 s that was left: the budget ends 0.9 s after it (±0.15 s) (NaN ms after the answer)
+M3 resume with the full budget, not what was left [approvalBudgetR31Test]: CAUGHT | FAIL: after the answer, only the 0.9 s that was left: the budget ends 0.9 s after it (±0.15 s) (1502 ms after the answer)
+M4 no pause counter (restart after the first of two questions) [approvalBudgetR31Test]: CAUGHT | FAIL: two questions open in one call: the budget stays paused until the last is answered (not approved; aborted at second: true)
+M5 a resume after a cancellation restarts the budget [approvalBudgetR31Test]: CAUGHT | FAIL: cancelled with budget left: the budget is not resumed (the call ends as cancelled, not as over its budget) (Error: TIMEOUT: Tool "no-resume" ran past its 2 s budget
+M6 the deadline not moved on resume (a second question counts stale time) [approvalBudgetR31Test]: CAUGHT | FAIL: two questions one after the other: each deducts only running time; 0.7 s is left after the second (±0.15 s) (2 ms after the second answer)
+M7 a question is not withdrawn when its call is stopped [approvalBudgetR31Test]: CAUGHT | FAIL: cancelled while its question is open: the question is withdrawn at once (the pending request removed) (511 ms (49))
+M8 a call already stopped is asked anyway [approvalBudgetR31Test]: MISSED |
+M9 a call stopped while waiting its turn is still asked (box shown) [approvalBudgetR31Test]: CAUGHT | FAIL: …its question box is never shown (1 line(s))
+M10 a stopped call keeps waiting its turn [approvalBudgetR31Test]: CAUGHT | FAIL: cancelled while waiting its turn: it stops waiting at once, recorded as cancelled, never acted (501 ms: Error: TIMEOUT: Tool "wait-b" was cancelled and did not stop
+M11 the turn passes on before the earlier question is done [approvalBudgetR31Test]: CAUGHT | FAIL: …a third question asked meanwhile still waits for the one on display (false)
+M12 a yes as the call is stopped is taken [approvalBudgetR31Test]: CAUGHT | FAIL: a yes and the cancellation in the same instant: recorded as cancelled, never acted (console: Closed the fake thing same-instant.)
+M13 a cancellation recorded as a timeout [approvalBudgetR31Test]: CAUGHT | FAIL: …recorded as cancelled, a denial ("timeout")
+M14 a withdrawn spoken question is not handled [approvalBudgetR31Test]: CAUGHT | FAIL: cancelled while JARVIS is saying the question: the voice wait stops and the call ends at once (96 ms: Error: raw.startsWith is not a function)
+
+13/14 caught
+tree restored (md5): YES
+EXIT=0

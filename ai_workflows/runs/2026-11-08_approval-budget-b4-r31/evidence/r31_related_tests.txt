@@ -1,0 +1,58 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=adminControlTest,agentRuntimeTest,approvalBudgetR31Test,approvalGateStructuredTest,approvalPathsTest,approvalTypeAheadTest,browserContractsB2Test,browserControlAgentTest,capabilityA5eTest,childEnvTest,closeByNameTest,codeRepairTest,commandObfuscationTest,controlCenterTest,dataRootIsolationTest,errorRecoveryTest,filesAndDevToolsTest,finalIntegrationSuiteTest,fullControlLimitTest,goalAgentIntegrationTest,goalApprovalTest,jarvisChromeTest,kernelOutcomeA5cTest,memoryForgetTest,nestedApprovalTest,projectScriptPolicyTest,promptInjectionFlowTest,registryRepairHonestyTest,remoteAccessTest,requestTraceLogTest,riskEngineTest,routingA3Test,scenarioIntegrationTest,secretSinksTest,securityBypassTest,selfCheckTest,selfHealInstallTest,sevenAgentTest,tabTargetingA4Test,toolTimeoutTest,verifyAfterActTest,voiceApprovalTest,worldStateTest
+
+
+=== JARVIS test suite — 43 file(s) ===
+
+  PASS    adminControlTest                             531ms
+  PASS    agentRuntimeTest                             2777ms
+  PASS    approvalBudgetR31Test                        47049ms
+  PASS    approvalGateStructuredTest                   11428ms
+  PASS    approvalPathsTest                            400ms
+  PASS    approvalTypeAheadTest                        1828ms
+  PASS    browserContractsB2Test                       37892ms
+  PASS    browserControlAgentTest                      8474ms
+  PASS    capabilityA5eTest                            2578ms
+  PASS    childEnvTest                                 1770ms
+  PASS    closeByNameTest                              11458ms
+  PASS    codeRepairTest                               9222ms
+  PASS    commandObfuscationTest                       674ms
+  PASS    controlCenterTest                            626ms
+  PASS    dataRootIsolationTest                        885ms
+  PASS    errorRecoveryTest                            11650ms
+  PASS    filesAndDevToolsTest                         3003ms
+  SKIP  finalIntegrationSuiteTest                    live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  PASS    fullControlLimitTest                         565ms
+  PASS    goalAgentIntegrationTest                     2495ms
+  PASS    goalApprovalTest                             554ms
+  PASS    jarvisChromeTest                             13326ms
+  PASS    kernelOutcomeA5cTest                         2389ms
+  PASS    memoryForgetTest                             1598ms
+  PASS    nestedApprovalTest                           630ms
+  PASS    projectScriptPolicyTest                      1652ms
+  PASS    promptInjectionFlowTest                      1424ms
+  PASS    registryRepairHonestyTest                    1419ms
+  PASS    remoteAccessTest                             525ms
+  PASS    requestTraceLogTest                          1841ms
+  PASS    riskEngineTest                               1662ms
+  PASS    routingA3Test                                1528ms
+  PASS    scenarioIntegrationTest                      44868ms
+  PASS    secretSinksTest                              5235ms
+  PASS    securityBypassTest                           2020ms
+  PASS    selfCheckTest                                1514ms
+  PASS    selfHealInstallTest                          596ms
+  PASS    sevenAgentTest                               1779ms
+  PASS    tabTargetingA4Test                           12690ms
+  PASS    toolTimeoutTest                              4567ms
+  PASS    verifyAfterActTest                           6457ms
+  PASS    voiceApprovalTest                            38625ms
+  PASS    worldStateTest                               9557ms
+
+=== 42 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 1 skipped ===
+
+Skipped (not run, so not passed):
+  - finalIntegrationSuiteTest: live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+
+No unexpected failures.
+EXIT=0

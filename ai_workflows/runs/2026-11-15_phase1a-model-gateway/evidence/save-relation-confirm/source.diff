@@ -1,0 +1,131 @@
+--- before/core/tools/memoryTool.ts
++++ after/core/tools/memoryTool.ts
+@@ -10,38 +10,42 @@
+ import { factOrigin, memoryManager } from '../../memory/memoryManager.js';
+ import { hasSecret } from '../../security/redactor.js';
+ import { relationFact } from '../verifiers.js';
+-import { getGoalContext, getRequestText } from '../traceContext.js';
+-
+-/** Words that name the owner or JARVIS rather than a claim, and words too common to show where a fact came from. */
+-const GENERIC = new Set(['user', 'owner', 'me', 'my', 'myself', 'jarvis', 'sir']);
+-const COMMON = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'are', 'was', 'were', 'has', 'have', 'had', 'its', 'you', 'your', 'our', 'not', 'but', 'about', 'into', 'over']);
+-const significant = (s: string): string[] => s.toLowerCase().split(/[^a-z0-9]+/)
+-  .filter((w) => (w.length >= 3 || /\d/.test(w)) && !COMMON.has(w) && !GENERIC.has(w))
+-  .map((w) => (w.length > 3 ? w.replace(/s$/, '') : w));
++import { approvalGate } from '../../security/approvalGate.js';
++import { getAgentPath, getGoalContext, getRequestText } from '../traceContext.js';
+ 
+ /**
+- * Why a relation must not be stored (owner, 2026-11-17, L-5; LR2_L5_PLAN.md §10):
+- * unverified information never enters trusted long-term memory. Inside a goal,
+- * its facts come from other agents' results, which are not verified. With a
+- * request in flight, a fact that is not in that request's own words came from
+- * somewhere else (an agent's result, a page, a document). Undefined: it may be
+- * stored. With no request in flight (code calling the registry) nothing changes.
++ * Unverified information never enters trusted long-term memory (owner,
++ * 2026-11-17, L-5; LR2_L5_PLAN.md §10): save_relation stores what the owner
++ * confirms. Inside a goal nothing is stored and nobody is asked: a goal's
++ * facts come from other agents' results, which are not verified, and the goal
++ * runs while the owner may be away. Undefined: the call may go on to ask.
+  */
+-export function unverifiedRelation(entity1: string, entity2: string): string | undefined {
++export function relationRefusedInGoal(): string | undefined {
+   const goal = getGoalContext();
+-  if (goal) {
+-    return `inside the goal "${goal.title.slice(0, 80)}" facts come from other agents' results, which are not verified, so nothing was stored `
+-      + '(the result stays in the goal\'s record). Say the fact yourself to keep it';
+-  }
+-  const request = getRequestText();
+-  if (request === undefined) return undefined;
+-  const said = new Set(significant(request));
+-  const unsaid = [entity1, entity2].filter((e) => significant(e).some((w) => !said.has(w)));
+-  return unsaid.length
+-    ? `"${unsaid.join('" and "')}" is not in the words of this request, so it may come from a result that was not verified; nothing was stored. Say the fact yourself to keep it`
++  return goal
++    ? `inside the goal "${goal.title.slice(0, 80)}" facts come from other agents' results, which are not verified, so nothing was stored `
++      + '(the result stays in the goal\'s record). Say the fact yourself to keep it'
+     : undefined;
+ }
+ 
++/**
++ * During a request (the owner's, or an agent's root task), the owner confirms
++ * the exact fact, relation included, before it is kept: a fact the model chose,
++ * took from an agent's result, a page or a document is never stored on its own
++ * (review M-1, M-2). With no request in flight (code calling the registry) it
++ * is not asked. False: not confirmed.
++ */
++async function ownerConfirms(fact: string): Promise<boolean> {
++  if (getRequestText() === undefined) return true;
++  const agent = getAgentPath();
++  return approvalGate.requestApproval(
++    'Keep in long-term memory',
++    `"${fact}"`,
++    'LOW_RISK',
++    `Only what you confirm is kept in long-term memory${agent ? ` (asked by ${agent})` : ''}. Say no unless you said it yourself or have checked it.`,
++  );
++}
++
+ // ─── Save Graph Relation ──────────────────────────────────────────────────────
+ 
+ export const saveRelationTool: AgentTool = {
+@@ -79,16 +83,19 @@
+     if ([entity1, relation, entity2].some(hasSecret)) {
+       return "Error: save_relation refused - I don't store passwords, keys or tokens, sir.";
+     }
+-    const unverified = unverifiedRelation(entity1, entity2);
+-    if (unverified) return `Error: save_relation refused - ${unverified}.`;
++    const inGoal = relationRefusedInGoal();
++    if (inGoal) return `Error: save_relation refused - ${inGoal}.`;
+ 
+     if (signal?.aborted) throw new Error('ABORTED');
++    const fact = relationFact(args);
++    if (!(await ownerConfirms(fact))) return `Error: save_relation refused - you did not confirm "${fact}", so nothing was stored.`;
++    if (signal?.aborted) throw new Error('ABORTED');
+ 
+     try {
+       // Also a long-term fact: search_memory reads facts, not the graph, and
+       // with graph memory off (the default) the graph write does nothing — the
+       // relation was reported saved and could never be recalled.
+-      await memoryManager.rememberFact(relationFact(args), 'relation', 6);
++      await memoryManager.rememberFact(fact, 'relation', 6);
+       await graphMemory.saveRelation(entity1, relation, entity2);
+       const where = graphMemory.isAvailable() ? 'long-term memory and the graph' : 'long-term memory';
+       return `Saved relation: (${entity1})-[${relation.toUpperCase()}]->(${entity2}) in ${where}.`;
+--- before/core/goalExecutor.ts
++++ after/core/goalExecutor.ts
+@@ -185,6 +185,11 @@
+       return { ok: false, result, usage, failure: { message: err?.message ?? (r.answer || 'the agent could not finish'), ...(code ? { code } : {}), ...(causes.length > 1 ? { causes } : {}) } };
+     }
+     if (!result.summary) return { ok: false, result, usage, failure: { class: 'evidence', message: 'the agent finished without a result' } };
++    // A step that tried to keep a fact and could not did not keep it, whatever its text says (owner, 2026-11-17, L-3).
++    const notStored = r.limitations.find((l) => /\bsave_relation\b/.test(l) && /\b(refused|failed)\b/i.test(l));
++    if (notStored) {
++      return { ok: false, result, usage, failure: { class: 'inconclusive', code: 'MEMORY_NOT_STORED', message: `the fact was not stored in long-term memory: ${notStored.replace(/^Tool refused or failed:\s*/, '').slice(0, 200)}` } };
++    }
+ 
+     if (this.opts.verify !== false) {
+       const { shouldVerify, verifyRootResult } = await import('./agents/jarvisAgents.js');
+--- before/.env.example
++++ after/.env.example
+@@ -135,14 +135,15 @@
+ #     task whose verification is inconclusive, or did not finish, pauses the
+ #     goal for your review (VERIFICATION_INCONCLUSIVE). An agent result goes
+ #     into long-term memory only when the Verification agent verified it:
+-#     with JARVIS_AGENT_VERIFY=0 nothing is stored, and a browser, PC, memory
+-#     or QA result is stored only when it was verified (one with conflicts
+-#     is). The full result is still reported, and kept in the task archive
++#     with JARVIS_AGENT_VERIFY=0 nothing is stored. Browser, PC and memory
++#     results are verified only when they have conflicts; QA results never
++#     are. The full result is still reported, and kept in the task archive
+ #     (data/agents/<task>.json) unless JARVIS_AGENT_ARCHIVE=0. In a goal, a
+ #     result a later step builds on is marked "not verified" when it was not
+-#     verified. save_relation stores nothing inside a goal, and otherwise
+-#     only a fact in the words of the request it serves (a fact read from an
+-#     agent's result, a page or a document is refused).
++#     verified. save_relation keeps only what you confirm: during a request
++#     (yours, or an agent's task) it shows you the exact fact and stores it
++#     only on "yes"; inside a goal it stores nothing and does not ask, and a
++#     goal step that tried to keep a fact waits for your review.
+ #   - A split request whose parts failed for different reasons keeps every
+ #     cause; recovery acts on the identity failure first, then a model that
+ #     did not answer, and waits for budget only when every part ran out of

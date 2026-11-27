@@ -1,0 +1,40 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=lineageInheritanceTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    lineageInheritanceTest                       1275ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - lineageInheritanceTest: === Results: 7 passed, 10 failed ===
+        FAIL: the deep-analysis worker (a grandchild) used the coding model (codeok:coding_agent,default:project_deep_analysis_worker)
+        FAIL: the default/planning model was never asked (codeok:coding_agent,default:project_deep_analysis_worker)
+        FAIL: the coding model fails: the task is FAILED, not answered by rules (COMPLETED )
+        FAIL: …with the provider's reason
+        FAIL: …and the default model was never asked (codefail:coding_agent,default:project_deep_analysis_worker)
+        FAIL: the deep-analysis worker's model fails: the coding task is FAILED (COMPLETED )
+        FAIL: …naming the worker and the reason
+        FAIL: …and the default model was never asked (codefaildeep:coding_agent,default:project_deep_analysis_worker)
+        FAIL: an unusable answer from the coding model: FAILED, not answered by rules (COMPLETED )
+        FAIL: a helper of a specialist without a strict setting, given inheritModelRoute=qa_agent, is not moved onto QA's model (COMPLETED  calls=checker:test_runner_worker)
+        …
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        FAIL: an unusable answer from the coding model: FAILED, not answered by rules (COMPLETED )
+      --- Unchanged: a coding agent without its own setting ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 1 ms
+        PASS: the research flow runs on the default model (COMPLETED default:coding_agent,default:project_deep_analysis_worker)
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms, failed
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 1 ms, failed
+        PASS: with the default model down it still answers by rules (unchanged) (COMPLETED )
+      --- N1. Task input never moves an agent onto another agent's model ---
+      [LLM usage] checker qa-model planning: ? in / ? out tokens, 0 ms
+        FAIL: a helper of a specialist without a strict setting, given inheritModelRoute=qa_agent, is not moved onto QA's model (COMPLETED  calls=checker:test_runner_worker)
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        PASS: a root task given inheritModelRoute=coding_agent is not moved onto the coding model (default:pc_agent)
+      === Results: 7 passed, 10 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

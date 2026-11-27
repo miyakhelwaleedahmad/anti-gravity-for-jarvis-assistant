@@ -1,0 +1,40 @@
+# Round 3: isBrowserLaunch (copied from tests/voiceRouteMockTest.ts) on sample command lines
+ok    flagged     cmd.exe /c start  https://www.youtube.com
+ok    flagged     C:\Windows\System32\cmd.exe /c start  https://x
+ok    flagged     start "" "https://www.google.com"
+ok    flagged     xdg-open https://a
+ok    flagged     /usr/bin/xdg-open a
+ok    flagged     bin/xdg-open a
+ok    flagged     ./node_modules/open/xdg-open https://a
+ok    flagged     sh -c xdg-open https://www.google.com
+ok    flagged     open -a Safari
+ok    flagged     powershell -NoProfile -Command Start-Process https://x
+ok    flagged     powershell -Command Start-Process('https://x')
+ok    flagged     rundll32 url.dll,FileProtocolHandler https://x
+ok    flagged     "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" https://x
+ok    flagged     "C:\Windows\explorer.exe" /select, f
+ok    flagged     explorer x
+ok    flagged     firefox
+ok    flagged     firefox-esr
+ok    flagged     google-chrome https://x
+ok    flagged     chromium-browser
+ok    flagged     microsoft-edge
+ok    flagged     brave-browser
+ok    flagged     wslview https://x
+ok    flagged     chrome --new-window
+ok    flagged     node x youtube
+ok    not flagged powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command -
+ok    not flagged powershell.exe -NoProfile -File C:\jarvis\scripts\get_windows_state.ps1
+ok    not flagged openssl version
+ok    not flagged git status
+ok    not flagged cmd.exe /c dir
+ok    not flagged cmd /c dir C:\start
+ok    not flagged pwsh -Command -
+ok    not flagged tasklist /fo csv
+ok    not flagged /usr/bin/python3 voice/tts.py
+33 cases, 0 wrong
+known false positive (accepted, not spawned in this test): "git log youtube-fix" -> flagged
+known false positive (accepted, not spawned in this test): "npm start" -> flagged
+known false positive (accepted, not spawned in this test): "systemctl start redis" -> flagged
+known false positive (accepted, not spawned in this test): "curl https://api.example.com/v1/start" -> flagged
+known false negative (accepted): powershell -EncodedCommand <base64> -> not flagged

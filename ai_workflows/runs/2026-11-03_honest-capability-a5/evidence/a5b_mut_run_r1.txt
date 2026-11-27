@@ -1,0 +1,29 @@
+M1 tools item not relabelled [selfCheckA5bTest]: CAUGHT | FAIL: …and says it is not a check of what the tools can do ([VERIFIED] last tool call: tools: working (list_capabilities ran, 0 s ago))
+M2 tools item without the disclaimer [selfCheckA5bTest]: CAUGHT | FAIL: …and says it is not a check of what the tools can do ([VERIFIED] last tool call: list_capabilities ran 0 s ago)
+M3 Redis fallback flag ignored (Q1) [selfCheckA5bTest]: CAUGHT | FAIL: Redis on its in-memory fallback: not verified ([VERIFIED] service redis: in-memory cache fallback)
+M4 the real service list drops the flag [selfCheckA5bTest]: CAUGHT | FAIL: through the real service list: Redis on its fallback is not verified ([VERIFIED] service redis: in-memory cache fallback)
+M5 the probe does not mark the fallback [selfCheckA5bTest]: CAUGHT | FAIL: the probe marks the fallback; the dashboard still reads "online, fallback" ({"name":"redis","status":"online","detail":"in-memory cache fallback","checkedAt":179388
+M6 a probe that throws is 'online' again [selfCheckA5bTest]: CAUGHT | FAIL: a probe that throws: degraded with the reason, not "online" ({"name":"redis","status":"online","latencyMs":0,"detail":"the cache check failed: the cache module fail
+M7 Chrome running not verified [selfCheckA5bTest]: CAUGHT | FAIL: running and answering: verified, with its port ([NOT_VERIFIED] Chrome for web pages: Chrome is running and answers on port 9333)
+M8 Chrome not running is failing (Q2) [selfCheckA5bTest]: CAUGHT | FAIL: installed but not running: not verified, starts when JARVIS opens a page ([FAILING] Chrome for web pages: not running; it starts when JARVIS opens a page (Chrome fo
+M9 JARVIS_CDP_PORT not answering ignored [selfCheckA5bTest]: CAUGHT | FAIL: JARVIS_CDP_PORT set and nothing answers there: failing, with the port ([NOT_VERIFIED] Chrome for web pages: not running; it starts when JARVIS opens a page (Chrome 
+M10 Chrome check failure not failing [selfCheckA5bTest]: CAUGHT | FAIL: the check itself fails: failing, with the reason ([NOT_VERIFIED] Chrome for web pages: the check failed: profile unreadable (test))
+M11 Chrome and PowerShell in every self-check (Q3) [selfCheckA5bTest]: CAUGHT | FAIL: not in the quick self-check (Q3) ([NOT_VERIFIED] Chrome for web pages: not running; it starts when JARVIS opens a page (Chrome found: /opt/chrome/chrome))
+M12 PowerShell asked off Windows [selfCheckA5bTest]: CAUGHT | FAIL: not Windows: blocked, desktop control needs Windows ([VERIFIED] PowerShell for desktop control: PowerShell 5.1.19041.5007 answers)
+M13 PowerShell not answering is verified: NOT APPLIED [('core/selfCheck.ts', 0)]
+M14 permission not spoken [selfCheckA5bTest]: CAUGHT | FAIL: quick: the level is said (Self-check: 0 of 5 checks verified, 5 not verified yet. No open issues are recorded.)
+M15 full-control minutes counted as seconds [selfCheckA5bTest]: CAUGHT | FAIL: full control: with the time left (Full self-check: 1 of 7 checks verified, 6 not verified yet. No open issues are recorded. Permission: full control, 720 min left.)
+M16 an unreadable level said as safe control [selfCheckA5bTest]: CAUGHT | FAIL: the level cannot be read: said so, with the reason (Full self-check: 1 of 7 checks verified, 6 not verified yet. No open issues are recorded. Permission: level 1, s
+M17 the real Chrome check starts Chrome [selfCheckA5bTest]: CAUGHT | FAIL: the real check, autostart off (as here): blocked, nothing started ([FAILING] Chrome for web pages: the check failed: JARVIS's Chrome is not running, and JARVIS_CHRO
+M18 the real PowerShell check without the filtered environment (SEC-101) [childEnvCoverageTest]: CAUGHT | FAIL: every one passes the filtered environment (core/selfCheck.ts:158 execFile (no env))
+M20 autostart off said as 'starts when needed' (B1) [selfCheckA5bTest]: CAUGHT | FAIL: installed, not running, JARVIS_CHROME_AUTOSTART off: blocked, JARVIS will not start it (review B1) ([NOT_VERIFIED] Chrome for web pages: not running; it starts when
+M21 the real check ignores JARVIS_CHROME_AUTOSTART (B1) [selfCheckA5bTest]: CAUGHT | FAIL: the real check, autostart off (as here): blocked, nothing started ([NOT_VERIFIED] Chrome for web pages: not running; it starts when JARVIS opens a page (Chrome foun
+M22 tools detail says 'working' again (B2) [selfCheckA5bTest]: CAUGHT | FAIL: …and says it is not a check of what the tools can do ([VERIFIED] last tool call: working (list_capabilities ran, 0 s ago))
+M23 why stuck says 'tools' (B6) [selfCheckA5bTest]: CAUGHT | FAIL: why stuck: a failing last tool call is named as such when spoken (Failing: tools.)
+M24 slow PowerShell said as cannot work (B3) [selfCheckA5bTest]: CAUGHT | FAIL: on Windows, PowerShell slower than 5 s: not verified, not "cannot work" (review B3) ([FAILING] PowerShell for desktop control: PowerShell did not answer (no answer 
+M25 under a minute said as N min (B8) [selfCheckA5bTest]: CAUGHT | FAIL: full control under a minute: "less than 1 min left" (review B8) (Full self-check: 1 of 7 checks verified, 6 not verified yet. No open issues are recorded. Permissio
+M26 nested brackets in the item names (B8) [selfCheckA5bTest]: CAUGHT | FAIL: no nested brackets in what is said (review B8) (Full self-check: 0 of 7 checks verified, 2 blocked (Chrome for web pages, PowerShell (desktop control)), 5 not verif
+M19 the 'checked only for whether they answer' line removed [selfCheckA5bTest]: CAUGHT | FAIL: the details say what the Chrome and PowerShell checks look at (Open issues: 0 | Not observed by these checks: failures outside tool calls, speech, the wake word, th
+
+25/26 caught
+tree restored (md5): YES

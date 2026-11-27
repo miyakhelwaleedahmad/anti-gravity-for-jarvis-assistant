@@ -1,0 +1,16 @@
+M1 no named-tab route: CAUGHT | FAIL: "close youtube tab" → close_browser_tab youtube (none)
+M2 'this' / 'current' accepted as a tab name: CAUGHT | FAIL: "close every tab" is not a named-tab route (close_browser_tab every)
+M3 one-letter words and 4 words accepted: CAUGHT | FAIL: "close the cmd /c del * tab" is not a named-tab route (close_browser_tab cmd c del)
+M4 exact full-control words only: CAUGHT | FAIL: "enable full controll mode" → enable_full_control_session (none)
+M5 'disable' counted as enabling: CAUGHT | FAIL: "disable full control mode" does not enable full control (enable_full_control_session)
+M6 any word accepted for 'control': CAUGHT | FAIL: "enable full screen mode" does not enable full control (enable_full_control_session)
+M7 planner not offered full control for near-misses: CAUGHT | FAIL: "enable full controll mode" offers enable_full_control_session (open_app,web_search,get_system_info,run_command)
+M8 the skill asks again inside the approved call: CAUGHT | FAIL: "enable full control mode" asks for approval once (2 question(s))
+M9 'Failed to enable' without the reason: CAUGHT | FAIL: …and the reply says it was not approved, not just "Failed" (Failed to enable full control, sir.)
+M10 mixed request not offered the app tool: CAUGHT | FAIL: "close notepad and chrome" offers control_app and control_browser (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_inf
+M11 dots removed again: CAUGHT | FAIL: "close the github.com tab" → close_browser_tab github.com (close_browser_tab githubcom)
+M12 filler words accepted as a tab name (R1): CAUGHT | FAIL: "close the tab" is not a named-tab route (close_browser_tab the)
+M13 tab name read without its dot (R2): CAUGHT | FAIL: "close the github.com tab" → close_browser_tab github.com (close_browser_tab githubcom)
+M14 any approval of this tool skips the question (R5): CAUGHT | FAIL: inside an approval of this tool with other arguments, the skill still asks
+
+14/14 caught

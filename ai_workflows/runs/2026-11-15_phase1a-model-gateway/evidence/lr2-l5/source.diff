@@ -1,0 +1,243 @@
+--- before/core/agents/behaviors/toolLoop.ts
++++ after/core/agents/behaviors/toolLoop.ts
+@@ -23,7 +23,7 @@
+ import type { AgentContext, ChildHandle } from '../agentContextApi.js';
+ import { BudgetExceededError, SpawnRejectedError } from '../agentContextApi.js';
+ import { parseEntry } from '../permissions.js';
+-import { agentModel, mostSpecificFailure, PropagatedFailure, strictRouteRole, UNTRUSTED_RULE, untrusted } from './common.js';
++import { agentModel, failureCauses, leadingCause, PropagatedFailure, strictRouteRole, UNTRUSTED_RULE, untrusted } from './common.js';
+ import { modelRouter } from '../../../bridge/modelRouter.js';
+ import { identityKey, isFloatingAlias, qaIndependenceRequired } from '../../../bridge/modelCategories.js';
+ 
+@@ -299,9 +299,13 @@
+               const message = ctx.agent.role === 'qa_agent'
+                 ? `QA could not check every part: ${list}`
+                 : `The ${ctx.agent.role} agent could not complete every part with its configured model: ${list}`;
+-              // A helper's own condition (identity not confirmed, a budget, its model down) is kept on the parent (review M1).
+-              const carried = mostSpecificFailure(unchecked.map((r) => r.error));
+-              if (carried) throw new PropagatedFailure(message, carried.code, carried.budget);
++              // A helper's own condition is kept on the parent (review M1), and every distinct
++              // cause with it; a budget leads only when every failed part failed for a budget (review LR-2).
++              const causes = failureCauses([...unchecked.map((r) => r.error), ...(ownByModel ? [] : [undefined])]);
++              const lead = leadingCause(causes);
++              if (causes.length > 1 || lead.code !== 'MODEL_UNAVAILABLE' || unchecked.some((r) => r.error?.code === 'MODEL_UNAVAILABLE')) {
++                throw new PropagatedFailure(message, lead.code, lead.budget, causes.length > 1 ? causes : undefined);
++              }
+               const e = new Error(message);
+               e.name = 'ModelUnavailableError';
+               throw e;
+--- before/core/agents/behaviors/common.ts
++++ after/core/agents/behaviors/common.ts
+@@ -61,13 +61,49 @@
+  * budget that ran out), so the parent is recorded as the same condition, not
+  * as a different one (owner, 2026-11-16).
+  */
++export type FailureCause = { code: string; budget?: 'llmCalls' | 'toolCalls' | 'tokens' };
++
+ export class PropagatedFailure extends Error {
+-  constructor(message: string, readonly code: string, readonly budget?: 'llmCalls' | 'toolCalls' | 'tokens') {
++  constructor(message: string, readonly code: string, readonly budget?: 'llmCalls' | 'toolCalls' | 'tokens',
++    /** Every distinct cause, when the parts failed for more than one (review LR-2). */
++    readonly causes?: FailureCause[]) {
+     super(message);
+     this.name = 'PropagatedFailure';
+   }
+ }
+ 
++/**
++ * The order recovery acts on causes (review LR-2): the provider did not confirm
++ * the model (the owner fixes the setting), the model did not answer, then a
++ * budget, model budgets before the tool budget.
++ */
++const CAUSE_RANK = ['MODEL_IDENTITY_UNCONFIRMED', 'MODEL_UNAVAILABLE', 'BUDGET_EXCEEDED:llmCalls', 'BUDGET_EXCEEDED:tokens', 'BUDGET_EXCEEDED:toolCalls', 'BUDGET_EXCEEDED:'];
++const causeRank = (c: FailureCause): number => {
++  const i = CAUSE_RANK.indexOf(c.code === 'BUDGET_EXCEEDED' ? `BUDGET_EXCEEDED:${c.budget ?? ''}` : c.code);
++  return i < 0 ? CAUSE_RANK.length : i;
++};
++
++/**
++ * The distinct causes of a split request's failed parts, in recovery order. A
++ * part with no carried code (answered by keyword rules, unfinished, the
++ * parent's own part, or another failure) is the model not answering.
++ */
++export function failureCauses(parts: ReadonlyArray<FailureCause | undefined>): FailureCause[] {
++  const out = new Map<string, FailureCause>();
++  for (const p of parts) {
++    const c: FailureCause = p?.code === 'MODEL_IDENTITY_UNCONFIRMED' ? { code: p.code }
++      : p?.code === 'BUDGET_EXCEEDED' ? { code: p.code, ...(p.budget ? { budget: p.budget } : {}) }
++      : { code: 'MODEL_UNAVAILABLE' };
++    out.set(`${c.code}:${c.budget ?? ''}`, c);
++  }
++  return [...out.values()].sort((a, b) => causeRank(a) - causeRank(b));
++}
++
++/** The cause recovery acts on first: identity, then the model not answering, then a budget. */
++export function leadingCause(causes: FailureCause[]): FailureCause {
++  return [...causes].sort((a, b) => causeRank(a) - causeRank(b))[0] ?? { code: 'MODEL_UNAVAILABLE' };
++}
++
+ /** Carried codes, most specific first: the provider did not confirm the model, a budget ran out, the model did not answer. */
+ const FAILURE_ORDER = ['MODEL_IDENTITY_UNCONFIRMED', 'BUDGET_EXCEEDED', 'MODEL_UNAVAILABLE'] as const;
+ 
+--- before/core/agents/types.ts
++++ after/core/agents/types.ts
+@@ -339,8 +339,10 @@
+    * code: AGENT_ERROR, MODEL_UNAVAILABLE, MODEL_IDENTITY_UNCONFIRMED,
+    * BUDGET_EXCEEDED, … budget: which budget ran out, with BUDGET_EXCEEDED
+    * ("toolCalls" is a tool budget, never a model failure; owner, 2026-11-16).
++   * causes: every distinct cause when the parts of a split request failed for
++   * more than one (review LR-2); code is the one recovery acts on first.
+    */
+-  error?: { code: string; message: string; budget?: 'llmCalls' | 'toolCalls' | 'tokens' };
++  error?: { code: string; message: string; budget?: 'llmCalls' | 'toolCalls' | 'tokens'; causes?: { code: string; budget?: 'llmCalls' | 'toolCalls' | 'tokens' }[] };
+   usage: ResourceUsage;
+   durationMs: number;
+ }
+--- before/core/agents/agentManager.ts
++++ after/core/agents/agentManager.ts
+@@ -154,6 +154,18 @@
+   return MODEL_FAILURES.has(String(e?.name)) ? 'MODEL_UNAVAILABLE' : 'AGENT_ERROR';
+ }
+ 
++/** A worker's distinct causes carried with its code (review LR-2): only carried codes and known budgets. */
++function carriedCauses(value: unknown): NonNullable<ChildResult['error']>['causes'] {
++  if (!Array.isArray(value)) return undefined;
++  type Cause = NonNullable<NonNullable<ChildResult['error']>['causes']>[number];
++  const out = value.flatMap((c: { code?: unknown; budget?: unknown } | null): Cause[] => {
++    if (typeof c?.code !== 'string' || !CARRIED_CODES.has(c.code)) return [];
++    const b = c.budget;
++    return [b === 'llmCalls' || b === 'toolCalls' || b === 'tokens' ? { code: c.code, budget: b } : { code: c.code }];
++  });
++  return out.length > 1 ? out : undefined;
++}
++
+ function isAbort(err: unknown): boolean {
+   return err instanceof Error && err.name === 'AbortError';
+ }
+@@ -724,7 +736,8 @@
+       } else {
+         status = 'FAILED';
+         const budget = (err as { budget?: unknown } | null)?.budget;
+-        error = { code: failureCode(err), message: errorMessage(err), ...(budget === 'llmCalls' || budget === 'toolCalls' || budget === 'tokens' ? { budget } : {}) };
++        const causes = carriedCauses((err as { causes?: unknown } | null)?.causes);
++        error = { code: failureCode(err), message: errorMessage(err), ...(budget === 'llmCalls' || budget === 'toolCalls' || budget === 'tokens' ? { budget } : {}), ...(causes ? { causes } : {}) };
+       }
+     } finally {
+       this.heldSlots.get(task.taskId)?.();
+--- before/core/agents/jarvisAgents.ts
++++ after/core/agents/jarvisAgents.ts
+@@ -295,14 +295,13 @@
+ 
+ export async function promoteToMemory(result: RootResult, request: string, verification?: Verification, verificationRequired: boolean = shouldVerify(result)): Promise<number> {
+   if (result.status !== 'COMPLETED' || process.env['JARVIS_AGENT_MEMORY'] === '0') return 0;
+-  // Unverified information never becomes trusted long-term memory (owner, 2026-11-16, L2):
+-  // a result that needed verification is kept only when the Verification agent verified it.
+-  if (verification && verification.verdict !== 'verified') {
+-    console.log(`[Agents] Not stored in long-term memory: the verification was ${verification.verdict}, not verified.`);
+-    return 0;
+-  }
+-  if (!verification && verificationRequired) {
+-    console.log('[Agents] Not stored in long-term memory: it needed verification and the check did not finish.');
++  // Unverified information never becomes trusted long-term memory (owner, 2026-11-16 L2, 2026-11-17 L-5):
++  // a result is kept only when the Verification agent verified it. Anything else stays in the task archive.
++  if (verification?.verdict !== 'verified') {
++    const why = verification ? `the verification was ${verification.verdict}, not verified`
++      : verificationRequired ? 'it needed verification and the check did not finish'
++      : 'it was not verified (verification is off, or this agent\'s results are not verified)';
++    console.log(`[Agents] Not stored in long-term memory: ${why}. The full result is in the task archive (data/agents/${result.rootTaskId}.json).`);
+     return 0;
+   }
+   let stored = 0;
+--- before/core/goalRecovery.ts
++++ after/core/goalRecovery.ts
+@@ -34,6 +34,8 @@
+   tool?: string;
+   /** The thrown value, when there was one: its stack gives the source location. */
+   error?: unknown;
++  /** Every distinct cause, when parts of the work failed for more than one (review LR-2); code leads. */
++  causes?: string[];
+ }
+ 
+ /**
+@@ -50,9 +52,10 @@
+ 
+ /** The shared signature (core/failureSignature.ts) of a goal-task failure. */
+ export function goalFailureSignature(f: FailureInfo): FailureSignature {
++  const others = (f.causes ?? []).filter((c) => c !== f.code).sort();
+   return failureSignature({
+     component: f.tool ? `tool:${f.tool}` : 'goal_task',
+-    message: `${f.code && CODE_CLASS[f.code] ? `${f.code}: ` : ''}${withErrorName(f.message, f.error)}`,
++    message: `${f.code && CODE_CLASS[f.code] ? `${f.code}${others.length ? ` (+${others.join('+')})` : ''}: ` : ''}${withErrorName(f.message, f.error)}`,
+     ...(f.tool ? { tool: f.tool } : {}),
+     ...(f.code ? { code: f.code } : {}),
+   });
+@@ -76,6 +79,9 @@
+   // An action that may have happened (B4): before the budget and transient
+   // patterns ("ran past its 15 s budget", TIMEOUT), which would schedule it again.
+   if (isOutcomeUnknown(text)) return 'outcome_unknown';
++  // Several causes: a model cause decides the class, never a budget next to it (review LR-2).
++  const modelCause = f.causes?.includes('MODEL_IDENTITY_UNCONFIRMED') ? 'MODEL_IDENTITY_UNCONFIRMED' : f.causes?.includes('MODEL_UNAVAILABLE') ? 'MODEL_UNAVAILABLE' : undefined;
++  if (modelCause) return CODE_CLASS[modelCause]!;
+   if (f.code && CODE_CLASS[f.code]) return CODE_CLASS[f.code]!;
+   for (const [re, cls] of PATTERNS) if (re.test(text)) return cls;
+   return 'unrecoverable';
+@@ -128,9 +134,19 @@
+ 
+ /** Bounded, explicit recovery for one failed attempt, with the failure's signature. */
+ export function decideRecovery(input: DecideInput): RecoveryDecision {
+-  return { ...decide(input), signature: goalFailureSignature(input.failure) };
++  const d = decide(input);
++  // The other causes stay on the record, so what recovery acts on never hides them (review LR-2).
++  const also = (input.failure.causes ?? []).filter((c) => c !== input.failure.code).map((c) => CAUSE_TEXT[c] ?? c);
++  return { ...d, ...(also.length ? { action: `${d.action}; also: ${also.join('; ')}` } : {}), signature: goalFailureSignature(input.failure) };
+ }
+ 
++const CAUSE_TEXT: Readonly<Record<string, string>> = {
++  MODEL_UNAVAILABLE: 'a part\'s model did not answer',
++  MODEL_IDENTITY_UNCONFIRMED: 'the provider did not confirm the configured model',
++  TOOL_BUDGET_EXHAUSTED: 'the agents\' tool budget ran out (JARVIS_AGENT_BUDGET_TOOL_CALLS)',
++  BUDGET_EXCEEDED: 'an agent\'s model-call budget ran out',
++};
++
+ function decide({ task, failure, cls, toolCalls, now, retry = DEFAULT_RETRY }: DecideInput): RecoveryDecision {
+   const attemptsLeft = task.attempts < task.maxAttempts;
+   const actedOutside = task.sideEffects === 'possible' && toolCalls !== 0;
+--- before/core/goalExecutor.ts
++++ after/core/goalExecutor.ts
+@@ -178,8 +178,11 @@
+     if (r.status !== 'COMPLETED') {
+       const err = r.specialist?.error;
+       // A used-up tool budget is its own condition, not a model failure (owner, 2026-11-16).
+-      const code = err?.code === 'BUDGET_EXCEEDED' && err.budget === 'toolCalls' ? 'TOOL_BUDGET_EXHAUSTED' : err?.code;
+-      return { ok: false, result, usage, failure: { message: err?.message ?? (r.answer || 'the agent could not finish'), ...(code ? { code } : {}) } };
++      const goalCode = (c: { code: string; budget?: string }) => (c.code === 'BUDGET_EXCEEDED' && c.budget === 'toolCalls' ? 'TOOL_BUDGET_EXHAUSTED' : c.code);
++      const code = err ? goalCode(err) : undefined;
++      // Every distinct cause is passed on (review LR-2).
++      const causes = [...new Set((err?.causes ?? []).map(goalCode))];
++      return { ok: false, result, usage, failure: { message: err?.message ?? (r.answer || 'the agent could not finish'), ...(code ? { code } : {}), ...(causes.length > 1 ? { causes } : {}) } };
+     }
+     if (!result.summary) return { ok: false, result, usage, failure: { class: 'evidence', message: 'the agent finished without a result' } };
+ 
+--- before/core/goalRuntime.ts
++++ after/core/goalRuntime.ts
+@@ -644,7 +644,8 @@
+     return [
+       `Goal: ${g.objective ?? g.description}`,
+       g.constraints?.length ? `Constraints: ${g.constraints.join('; ')}` : '',
+-      deps.length ? `Results it builds on:\n${deps.map((d) => `- ${d.title}: ${d.result!.summary.slice(0, 400)}`).join('\n')}` : '',
++      // A result that was not verified is marked, so it is not stored as a fact (owner, 2026-11-17, L-5b).
++      deps.length ? `Results it builds on:\n${deps.map((d) => `- ${d.title}: ${d.result!.summary.slice(0, 400)}${d.result!.verification?.verdict === 'verified' ? '' : ' (not verified; do not store it as a fact)'}`).join('\n')}` : '',
+       t.checkpoint?.partial?.length ? `An earlier attempt found (not verified; check before relying on it):\n${t.checkpoint.partial.slice(0, 5).map((p) => `- ${p}`).join('\n')}` : '',
+       advice.length ? `Change from the last attempt: ${advice.join('; ')}` : '',
+       lessons.length ? `Lessons from earlier goals: ${lessons.map((l) => l.text).join('; ')}` : '',
+--- before/tests/memoryTrustTest.ts
++++ after/tests/memoryTrustTest.ts
+@@ -48,7 +48,7 @@
+ ok('verification inconclusive: not stored', await count(() => promoteToMemory(result('research_agent'), 'best tool', verification('inconclusive'))) === 0);
+ ok('result unverified: not stored', await count(() => promoteToMemory(result('research_agent'), 'best tool', verification('unverified'))) === 0);
+ ok('verification needed but it did not finish: not stored', await count(() => promoteToMemory(result('research_agent'), 'best tool', undefined)) === 0);
+-ok('a result that did not need verification: stored as before', await count(() => promoteToMemory(result('memory_agent'), 'what do you remember', undefined)) > 0);
++ok('a result that was never verified: not stored (owner, 2026-11-17, L-5 option S)', await count(() => promoteToMemory(result('memory_agent'), 'what do you remember', undefined)) === 0);
+ 
+ console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
+ if (failed > 0) process.exit(1);

@@ -1,0 +1,36 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=strictModelIdentityTest,lineageInheritanceTest,modelRoutingTest,llmClientBehaviourTest,claudeProviderTest,providerHealthTest,llmCancellationTest,foregroundPriorityTest,modelRoleRoutingTest,modelRouteCorrectionsTest,modelRouteRound3Test,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest,qaModelFailureTest,reviewRound3FixesTest,strictHelperRoutingTest,finalReviewFixesTest,agentSpecialistsTest,sevenAgentTest,agentRuntimeTest,jarvisAgentIntegrationTest,goalAgentIntegrationTest,codeRepairTest,backgroundResearchTest
+
+
+=== JARVIS test suite — 25 file(s) ===
+
+  PASS    agentRuntimeTest                             2830ms
+  PASS    agentSpecialistsTest                         1269ms
+  PASS    backgroundResearchTest                       1347ms
+  PASS    claudeProviderTest                           1289ms
+  PASS    codeRepairTest                               9195ms
+  PASS    finalReviewFixesTest                         1373ms
+  PASS    foregroundPriorityTest                       1205ms
+  PASS    goalAgentIntegrationTest                     2598ms
+  PASS    jarvisAgentIntegrationTest                   3759ms
+  PASS    lineageInheritanceTest                       1308ms
+  PASS    llmCancellationTest                          2254ms
+  PASS    llmClientBehaviourTest                       1188ms
+  PASS    modelRoleRoutingTest                         9688ms
+  PASS    modelRouteCorrectionsTest                    5493ms
+  PASS    modelRouteRound3Test                         2058ms
+  PASS    modelRoutingTest                             699ms
+  PASS    providerCapabilitiesTest                     809ms
+  PASS    providerHealthTest                           3732ms
+  PASS    providerIsolationTest                        1349ms
+  PASS    qaModelFailureTest                           1714ms
+  PASS    reviewRound3FixesTest                        3987ms
+  PASS    sevenAgentTest                               1541ms
+  PASS    strictHelperRoutingTest                      1371ms
+  PASS    strictModelIdentityTest                      742ms
+  PASS    usageLedgerTest                              1330ms
+
+=== 25 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

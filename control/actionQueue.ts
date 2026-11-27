@@ -5,6 +5,20 @@
  * handles transient retries, and supports emergency pause/stop.
  */
 
+/**
+ * Failures a second attempt cannot fix. A cancelled approval in particular:
+ * retrying it asked the user the same question again.
+ */
+// A command stopped for taking too long may have done part of its work: never run it again (REL-01, REL-06).
+// The browser refusals and kill outcomes (control/appMatch.ts, processController) are final too: a retry asked again.
+// So are JARVIS's Chrome outcomes (control/jarvisChrome.ts): a retry asked again, or waited for Chrome again.
+// And "which tab?" (perception/tabResolver.ts, phase A4): the answer comes from the owner, not a retry.
+// And phase A5c's failures: an unread window list costs a long read and a retry loses its reason;
+// a tab or app that is not there is not there a moment later either (review C4).
+// And a tab change Chrome did not answer in time (perception/cdpClient.ts, phase B2): Chrome may have made it, so a
+// second try could open a second tab.
+const FINAL_FAILURE = /could not be read|is not open, so nothing was closed|No running window found|safety policy|blocked|ABORTED|TIMEOUT|was stopped|User did not confirm|cancelled by user|denied|not approved|Permission Level \d required|through app, window or process control|is a page open in|still running after Stop-Process|Could not terminate|could not confirm it ended|could not start it again|was not closed: |JARVIS's Chrome is (?:not|still) open|Chrome was not found|its debugging port|JARVIS_CHROME_AUTOSTART is off|JARVIS_CDP_PORT is set|^Which tab, sir\?|^No tab is on screen|JARVIS's own Chrome is not running, so no tab was changed|does not know whether the tab .{1,30}; it was not tried again/i;
+
 export class ActionQueue {
   private queue: Promise<any> = Promise.resolve();
   private isPaused: boolean = false;
@@ -53,8 +67,8 @@ export class ActionQueue {
             } catch (err: any) {
               lastError = err;
               
-              // Do NOT retry safety blocks or abort errors
-              if (err.message.includes('safety policy') || err.message.includes('blocked') || err.message.includes('ABORTED') || err.message.includes('User did not confirm')) {
+              // Do NOT retry safety blocks, refusals, cancellations or aborts
+              if (FINAL_FAILURE.test(String(err?.message ?? err))) {
                 break;
               }
               

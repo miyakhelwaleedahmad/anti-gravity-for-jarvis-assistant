@@ -1,0 +1,33 @@
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[36m[INFO][0m 12:13:52.958 [JARVIS] [startup] Execution tracing wired: task graph, state changes, security events and tool calls. {}
+
+=== Diagnostics (phase A6) ===
+
+--- 1. the action log line ---
+  PASS: (setup) the stood-in action ran ({"success":true,"action":"focusApp","target":"notepad","permissionLevel":1,"durationMs":1,"message":"Focused window: \"n)
+  FAIL: the line carries the request's trace id (undefined vs trace_mw4xrs1y_5gh670)
+  FAIL: …and the owner's request, not the action name (focusApp)
+  FAIL: it does not claim the effect was checked: verified "pending" ({"timestamp":"2026-11-06T12:13:52.967Z","userCommand":"focusApp","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"medium","allowed":true,"confirmationRequired":false,"result":"success","durationMs":1,"rollbackAvailable":true})
+  FAIL: the risk level is the one the kernel computed (level 1, not read-only: "high") (medium)
+  FAIL: no fixed rollbackAvailable / confirmationRequired (Q2) ({"timestamp":"2026-11-06T12:13:52.967Z","userCommand":"focusApp","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"medium","allowed":true,"confirmationRequired":false,"result":"success","durationMs":1,"rollbackAvailable":true})
+  PASS: outside a request: no trace id, and the action name as the command ({"timestamp":"2026-11-06T12:13:52.970Z","userCommand":"focusApp","normalizedIntent":"focusApp","action":"focusApp","target":"notepad","permissionLevel":1,"riskLevel":"medium","allowed":true,"confirmationRequired":false,"result":"success","durationMs":0,"rollbackAvailable":true})
+  PASS: a request with a key: the key is not written (focusApp)
+  PASS: …and a long request is cut short (8 chars)
+--- 2. every check that ran, in both logs (Q1) ---
+[36m[INFO][0m 12:13:52.976 [Tool] [trace_mw] tool_call {"tool":"a6_probe_ok","success":true,"durationMs":0,"attempt":0}
+[ToolRegistry] ✓ a6_probe_ok: checked — the probe saw it.
+[36m[INFO][0m 12:13:52.977 [Tool] [trace_mw] tool_call {"tool":"a6_probe_bad","success":true,"durationMs":0,"attempt":0}
+[ToolRegistry] ✗ a6_probe_bad reported success, but nothing changed.
+[33m[WARN][0m 12:13:52.983 [Tool] [trace_mw] tool_call {"tool":"a6_probe_bad","success":false,"durationMs":0,"attempt":0,"error":"VERIFICATION_FAILED: nothing changed"}
+[36m[INFO][0m 12:13:52.984 [Tool] [trace_mw] tool_call {"tool":"a6_probe_none","success":true,"durationMs":0,"attempt":0}
+  PASS: (setup) one check passed, one failed (true VERIFICATION_FAILED)
+  FAIL: the trace has the passed check, with the request's trace id
+  FAIL: the trace has the failed check, with its evidence
+  FAIL: the action log has the passed check, with the same trace id
+  FAIL: the action log has the failed check, with its evidence: the logs agree after a VERIFICATION_FAILED
+  PASS: a call with no check writes no check line
+--- 3. the test helper's Chrome (TRA-15) ---
+  FAIL: the helper says how it ends Chrome (treeKillCommand)
+
+6 passed, 10 failed

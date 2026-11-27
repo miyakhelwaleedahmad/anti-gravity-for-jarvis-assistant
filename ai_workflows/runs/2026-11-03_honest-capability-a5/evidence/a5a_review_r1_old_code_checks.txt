@@ -1,0 +1,211 @@
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[Orchestrator] 🎯 26 skill(s) loaded into ToolRegistry: 79 tools in total.
+[UnifiedContext] Building context heavy=false depth=fast budget=2400tok [PARALLEL]
+[GoalManager] ✅ Initialized. 0 historical goal(s) found.
+[Orchestrator] 🎯 GoalManager initialized.
+[Memory] Initialized. Short-term: 0 Long-term: 0
+[Redis] Initial connection failed — running without cache.
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 79 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain, open_app, cancel_current_action, explain_code, control_app, control_browser, control_file, control_keyboard, control_mouse, control_process, control_system, control_window, disable_full_control_session, enable_full_control_session, get_active_window, get_browser_tabs, get_jarvis_service_status, get_open_apps, get_pc_state, get_permission_status, get_system_state, ingest_documents, is_app_open, is_tab_open, deep_search, search_documents, get_weather
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+
+=== Honest read tools (phase A5a) ===
+
+--- 1. tab tools, JARVIS's Chrome not running ---
+  PASS: is_tab_open: a failure, not "false" (false {"success":false,"error":"JARVIS's own Chrome is not running, so its tabs cannot be read (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).","spoken":"My Chrome is not running, sir, so I can't see its tabs."})
+  PASS: …with the reason: JARVIS's Chrome is not running (JARVIS's own Chrome is not running, so its tabs cannot be read (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).)
+  PASS: get_browser_tabs: a failure, not [] (false {"success":false,"error":"JARVIS's own Chrome is not running, so its tabs cannot)
+  PASS: …with the reason (JARVIS's own Chrome is not running, so its tabs cannot be read (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).)
+--- 2. tab tools, JARVIS's Chrome running: read live ---
+  PASS: is_tab_open youtube: "true", read from Chrome (the snapshot has no YouTube) (true true)
+  PASS: …a tab only in the stale snapshot: "false" (true false)
+  PASS: …a tab that is not open: "false", a success (true false)
+  PASS: get_browser_tabs: the live tabs ([
+  {
+    "id": "T0",
+    "title": "YouTube",
+    "url": "https://www.youtube.com/",
+    "visible": false
+  },
+  {
+    "id": "T1",
+    "title": "Inbox - Gmail",)
+  FAIL: 22 tabs: the 22nd is found ("true") (true false)
+  FAIL: …and get_browser_tabs lists all 22 (20)
+  PASS: …no tab open: [] and a success (really empty) (true [])
+  PASS: Chrome running but its tab list fails: is_tab_open is a failure, not "false" (false JARVIS's Chrome did not list its tabs: DevTools /json/list answered 500)
+  PASS: a stale profile file (another Chrome on that port): not read, "not running" (JARVIS's own Chrome is not running, so its tabs cannot be read (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).)
+  PASS: JARVIS's Chrome from its profile file: read ("true") (true true)
+  FAIL: JARVIS_CDP_PORT set, nothing on it: a failure that names JARVIS_CDP_PORT, not "JARVIS's own Chrome" (JARVIS's own Chrome is not running, so its tabs cannot be read (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).)
+--- 3. the routes ---
+[Orchestrator] Processing input [cli]: "is youtube open"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="is_tab_open" target="youtube"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 18ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: "is youtube open", a YouTube tab open: "Yes…" (Yes, the youtube tab is open, sir.)
+[Orchestrator] Processing input [cli]: "is youtube open"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="is_tab_open" target="youtube"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 6ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: …no YouTube tab: "No…" (No, the youtube tab is not open, sir.)
+[Orchestrator] Processing input [cli]: "what tabs are open"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="get_browser_tabs"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[Orchestrator] Browser tabs:
+[
+  {
+    "id": "T0",
+    "title": "Inbox - Gmail",
+    "url": "https://mail.google.com/",
+    "visible": false
+  }
+]
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 5ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: "what tabs are open": the live tab (One tab is open, sir. They are: Inbox Gmail.)
+[Orchestrator] Processing input [cli]: "is youtube open"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="is_tab_open" target="youtube"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[Orchestrator] JARVIS's own Chrome is not running, so its tabs cannot be read (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 2ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[Redis] Cannot connect after 3 retries — running without cache.
+  PASS: JARVIS's Chrome down: "is youtube open" says so (Q1), not "No" (My Chrome is not running, sir, so I can't see its tabs.)
+  PASS: …nor "Yes" from the stale snapshot (My Chrome is not running, sir, so I can't see its tabs.)
+[Orchestrator] Processing input [cli]: "what tabs are open"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="get_browser_tabs"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[Orchestrator] JARVIS's own Chrome is not running, so its tabs cannot be read (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome of its own (a separate profile, not your everyday Chrome). If it cannot start it, install google-chrome or chromium, or set JARVIS_CHROME_PATH in .env to its program (for example /usr/bin/chromium).
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 1ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: "what tabs are open" with Chrome down: says so, lists no stale tab (My Chrome is not running, sir, so I can't see its tabs.)
+  PASS: …and no model call for these routes (0 call(s))
+--- 4. window tools, the window list cannot be read ---
+[windowsState] Poll failed (non-fatal): PowerShell did not answer (test)
+  PASS: getWindowsState says why it has no windows (PowerShell did not answer (test))
+  PASS: get_open_apps: a failure, not [] (false {"success":false,"error":"The open windows could not be read: PowerShell did not answer (test)","spo)
+  PASS: …with the reason of this read (not only "not read yet") (The open windows could not be read: PowerShell did not answer (test))
+  PASS: is_app_open: a failure, not "false", with the reason (false The open windows could not be read: PowerShell did not answer (test))
+  PASS: get_active_window: a failure, not an empty window, with the reason (false The open windows could not be read: PowerShell did not answer (test))
+  FAIL: the planner's world state says the windows could not be read, not "open: none" (review R4) (apps (0s ago): active "none"; open: none)
+[Orchestrator] Processing input [cli]: "whats running"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="whats_running"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[Orchestrator] The open windows could not be read: PowerShell did not answer (test)
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 3ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: "whats running": says the windows could not be read, lists no apps (I can't read the open windows right now, sir. No development server is running on the usual ports, sir (3000, 3001, 4200, 5000, 5173, 8000, 8080, 8081, 8888).)
+--- 5. unchanged ---
+  PASS: (setup) a reading with Notepad ([{"name":"notepad","pid":7,"windowTitle":"notes.txt - Notepad","hwnd":""}])
+[windowsState] Poll failed (non-fatal): no current window list for an action: PowerShell did not answer (test); a fresh one failed too: a fresh PowerShell failed too (test) (1 more since the last report)
+  PASS: an action never gets the stale list when the read fails (no Notepad), and it says why ([] no current window list for an action: PowerShell did not answer (test); a fresh one failed too: a fresh PowerShell failed too (test))
+  PASS: a list that was read and is really empty: [] and a success (true [])
+  PASS: …and an app in a read list is found ("true") (true true)
+[Orchestrator] Processing input [cli]: "whats running"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="whats_running"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[Orchestrator] State is SPEAKING but no reply is in flight — ending the request now.
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+[AgentStateMachine] ✅ SPEAKING watchdog cleared (normal transition).
+[Timing] Total request processing time: 2ms
+[NodeBridge] RX type=speaking_start role=tts
+[ConvBus] 🔊 Speaking started.
+[NodeBridge] RX type=speaking_end role=tts
+[ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+  PASS: "whats running" with a read list: the apps, as before (1 app open, sir: notepad. No development server is running on the usual ports, sir (3000, 3001, 4200, 5000, 5173, 8000, 8080, 8081, 8888).)
+
+30 passed, 4 failed

@@ -1,0 +1,13 @@
+R3 closing tag not held back: CAUGHT | FAIL: a stray closing tag, streamed: not printed or spoken, nothing after it lost (said: Done, sir.</untrusted_contextpty. | Nothing else is open. / printed: "Done, sir.</untrusted
+R1 every reply replaced when nothing acted: CAUGHT | FAIL: streamed: "close the youtube tab" with none open: the reply model's correct answer is kept (I didn't close anything, sir. I only checked what is there.)
+R2 web lookups count as actions: CAUGHT | FAIL: streamed: "close the youtube tab" + web_search: no "closed" claim (Results: 1. YouTube Wikipedia)
+R4 direct answer not checked: NOT APPLIED (0)
+R5 still loading not recognised: CAUGHT | FAIL: "still loading" is spoken as "not yet", without "unexpected error" (I encountered an unexpected error and have been unable to complete the task, sir. Control Browser is still
+Fix A: import not shared (each call imports anew, slow skill degraded): MISSED | 
+N1 -ing / will forms not claims: CAUGHT | FAIL: claimsAction("Closing the YouTube tab now, sir.", close) is true
+N1 'no worries' counted as a negation: CAUGHT | FAIL: claimsAction("No worries sir I have closed the YouTube tab.", close) is true
+N2 failed reply model claims the task was completed: CAUGHT | FAIL: "close the youtube tab" + browser_state + the reply model down: no "I completed the task" (I completed the task. Here are the results: [browser state]:)
+N3 clarifying question replaced: CAUGHT | FAIL: "open the file", no tool, a clarifying question: kept (I didn't open anything, sir.)
+
+8/10 caught
+TREE_RESTORED

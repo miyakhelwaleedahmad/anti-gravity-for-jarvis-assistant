@@ -19,15 +19,33 @@
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
+import { canonicalPipeline, pipelineLabel } from './pipelineRegistry.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ALERT_LOG_PATH = path.join(__dirname, '..', 'data', 'logs', 'alerts.jsonl');
+const ALERT_LOG_PATH = path.join(dataRoot(path.resolve(__dirname, '..')), 'data', 'logs', 'alerts.jsonl');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const COOLDOWN_MS        = 5 * 60 * 1000;  // 5 min cooldown per unique alert key
 const VOICE_COOLDOWN_MS  = 30_000;          // 30s between any two voice alerts
+
+/**
+ * The lowest severity that is spoken (JARVIS_VOICE_ALERT_LEVEL: critical,
+ * the default; warning; off). Warnings were spoken too: "Sir, I've detected
+ * a warning in my resource::gc pause system" in the middle of a reply (BUG-18).
+ * Every alert is still logged and on the dashboard.
+ */
+export function spokenAlertLevel(env: NodeJS.ProcessEnv = process.env): 'critical' | 'warning' | 'off' {
+  const v = (env['JARVIS_VOICE_ALERT_LEVEL'] ?? '').trim().toLowerCase();
+  return v === 'warning' || v === 'off' ? v : 'critical';
+}
+
+function spoken(severity: AlertSeverity, level = spokenAlertLevel()): boolean {
+  if (level === 'off' || severity === 'info') return false;
+  return level === 'warning' || severity === 'critical';
+}
 const MAX_ALERT_HISTORY  = 200;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -81,6 +99,7 @@ export class AlertManager extends EventEmitter {
     message: string,
     source = 'unknown'
   ): Alert {
+    pipeline = canonicalPipeline(pipeline); // old names (brain_to_groq, groq_to_memory) still accepted
     const key      = this._key(severity, pipeline, message);
     const now      = Date.now();
     const cooldown = this.cooldowns.get(key) ?? 0;
@@ -124,8 +143,8 @@ export class AlertManager extends EventEmitter {
     // Async disk log
     this._appendLog(alert);
 
-    // Voice delivery for warning+ (rate-limited to 1 per 30s)
-    if (severity !== 'info' && (now - this.lastVoiceAlertAt) > VOICE_COOLDOWN_MS) {
+    // Voice delivery for critical alerts by default (rate-limited to 1 per 30s)
+    if (spoken(severity) && (now - this.lastVoiceAlertAt) > VOICE_COOLDOWN_MS) {
       this._deliverVoice(alert, message);
     }
 
@@ -157,7 +176,7 @@ export class AlertManager extends EventEmitter {
   /** Get alerts for a specific pipeline */
   getForPipeline(pipeline: string, n = 10): Alert[] {
     return this.history
-      .filter(a => a.pipeline === pipeline)
+      .filter(a => a.pipeline === canonicalPipeline(pipeline))
       .slice(-n)
       .reverse();
   }
@@ -208,8 +227,8 @@ export class AlertManager extends EventEmitter {
     }
 
     const voiceMsg = alert.severity === 'critical'
-      ? `Sir, a critical failure has been detected in my ${alert.pipeline} pipeline. ${message}`
-      : `Sir, I've detected a warning in my ${alert.pipeline} system.`;
+      ? `Sir, a critical failure has been detected in my ${pipelineLabel(alert.pipeline)} system. ${message}`
+      : `Sir, I've detected a warning in my ${pipelineLabel(alert.pipeline)} system.`;
 
     try {
       this._bridge!.speakToClients(voiceMsg);

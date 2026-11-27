@@ -2,6 +2,9 @@
 
 > This file defines the contractual log output and behavior for the JARVIS voice pipeline.
 > If any log line is missing during live testing, that step is a failure point.
+> Written in 2026-06. On 2026-10-23 three lines below no longer matched the
+> code (wake word, deterministic route, ToolRegistry): see the comparison
+> table in `ARCH_VOICE.md` before treating a missing line as a failure.
 
 ---
 

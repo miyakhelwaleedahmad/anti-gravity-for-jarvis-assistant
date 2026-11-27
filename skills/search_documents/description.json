@@ -1,0 +1,20 @@
+{
+  "id": "search_documents",
+  "name": "Search Documents",
+  "description": "Use to answer a question from documents that have been ingested into JARVIS's document memory (notes, reports, manuals, transcripts). Returns the matching passages with the file each came from. DO NOT use for web searches, for reading one known file by path (use read_file), or for recalling conversational facts (that happens automatically). Required parameter: query (string question or topic).",
+  "riskLevel": "low",
+  "requiredLevel": 0,
+  "parameters": {
+    "query": {
+      "type": "string",
+      "description": "The question or topic to look for in the ingested documents.",
+      "required": true
+    },
+    "topK": {
+      "type": "number",
+      "description": "How many passages to return. Defaults to 4.",
+      "required": false
+    }
+  },
+  "fallbacks": ["search_memory"]
+}

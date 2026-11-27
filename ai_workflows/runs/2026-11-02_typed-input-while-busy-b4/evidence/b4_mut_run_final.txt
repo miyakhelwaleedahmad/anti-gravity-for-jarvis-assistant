@@ -1,0 +1,22 @@
+M1 typed input in LISTENING not handled: MISSED | 
+M2 a left-over state not reset: CAUGHT | FAIL: left in EXECUTING: the typed request runs and is answered (I encountered an unexpected error, sir. Please try again.)
+M3 the wrong fix: allow LISTENING -> PLANNING in the state rules: CAUGHT | FAIL: the state rules are unchanged: LISTENING → PLANNING is still refused
+M4 barge-in while SPEAKING removed: CAUGHT | FAIL: …and the barge-in stops the reply being spoken (a "stop" to tts.py) (no command sent)
+M5 a running request is not aborted by the new one: CAUGHT | FAIL: …and the one it replaced is not (it was aborted; review R5) (Paris is sunny today, sir. | London is rainy today, sir.)
+M6 the waiting spoken request is not dropped (R1): CAUGHT | FAIL: left in REFLECTING with a spoken request waiting: the typed request is answered (London is rainy today, sir.)
+M7 the left-over branch also takes spoken input (N1): CAUGHT | FAIL: …and the waiting spoken request still runs (not dropped: only typed text replaces it) (It is 05:09 PM, sir.)
+
+6/7 caught
+(M1 not caught: it differs only when a spoken request waits during LISTENING, which jarvis.ts cannot produce today; review N6, change_log.md Known limits.)
+
+Checksums before:
+428a8fe7ca31a7dd6425a7d59b4f9f6c  core/orchestrator.ts
+03f9165aabd99033d8079474702d4efa  core/agentStateMachine.ts
+Checksums after:
+428a8fe7ca31a7dd6425a7d59b4f9f6c  core/orchestrator.ts
+03f9165aabd99033d8079474702d4efa  core/agentStateMachine.ts
+TREE RESTORED: yes
+ .../runs/2026-10-31_routing-a3/verification.md     | 22 ++++++++++++++++++++--
+ core/orchestrator.ts                               | 16 ++++++++++++++++
+ tests/boundary-doubles.json                        |  7 +++++++
+ 3 files changed, 43 insertions(+), 2 deletions(-)

@@ -1,0 +1,53 @@
+--- env.at-final-review
++++ .env.example
+@@ -142,22 +142,34 @@
+ #     result a later step builds on is marked "not verified" when it was not
+ #     verified. save_relation keeps only what you confirm: during a request
+ #     (yours, or an agent's task) it shows you the fact, naming the agent that
+-#     asks, and stores it only on "yes", given within 20 seconds. Within that
+-#     request or task you are asked once per fact: a "no" or no answer is not
+-#     asked again, a "yes" stores the fact once, and a store that failed is
+-#     tried again without asking. The question does not count against the
+-#     tool's time limit, and a request that is stopped withdraws it and stores
+-#     nothing. Refused without asking: a fact longer than 150 characters; one
+-#     with a line break, a control character, a run of spaces, or a character
+-#     the screen does not show (format and default-ignorable characters, the
+-#     blank Braille pattern; an emoji's own variation selector is allowed);
+-#     and a password, key or token, also when split across the parts. By
+-#     voice, a fact longer than about 56 characters, or with markdown that
+-#     speech leaves out, needs a typed answer. Inside a goal nothing is stored
+-#     and nobody is asked; a goal step that tried to keep a fact, or was asked
+-#     to in English words (remember, store, save, record, memorize, make a
+-#     note, keep … in memory, update the profile), waits for your review.
+-#     forget_memory removes a kept fact, not a graph-memory edge.
++#     asks, and stores it only on "yes", given within 20 seconds. Within one
++#     agent task, or one of your requests answered by JARVIS itself, a fact
++#     asked about one call at a time is asked once: a "no" or no answer is
++#     not asked again, a "yes" stores it once, and a store that failed is tried
++#     again without asking. Two calls for the same fact at the same moment, or
++#     JARVIS and an agent it started in the same request, are asked
++#     separately. The question does not count against the tool's time limit,
++#     and a request that is stopped withdraws it and stores nothing. Refused
++#     without asking: a fact longer than 150 characters; one with a line
++#     break, a control character, a run of spaces, or a character the screen
++#     does not show (format and default-ignorable characters, the blank
++#     Braille pattern); and a password, key or token, also when split across
++#     the parts. This also refuses some ordinary text: Persian or Urdu typed
++#     with a zero-width non-joiner, scripts or emoji joined with a zero-width
++#     joiner, keycaps and subdivision flags. A single emoji with its own
++#     variation selector (U+FE0F right after it) is allowed. By voice, a fact
++#     longer than about 56 characters, or with markdown that speech leaves
++#     out, needs a typed answer. Inside a goal nothing is stored and nobody is
++#     asked; a goal step that tried to keep a fact, or whose text starts by
++#     asking to keep one in English (remember that, store, save, record,
++#     memorize, make a note) or asks to keep, store, save, add, record or put
++#     something in memory, or to update the profile, waits for your review.
++#     The check reads only those phrasings: other wordings, other languages,
++#     or the request later in the step's text are not recognised, and a step
++#     starting "Add up", "Record the answer" or "Remember to" may be held for
++#     review although it stores nothing. forget_memory removes a kept fact; it
++#     does not remove a graph-memory edge, or the note in your second-brain
++#     vault when a vault is configured.
+ #   - A split request whose parts failed for different reasons keeps every
+ #     cause; recovery acts on the identity failure first, then a model that
+ #     did not answer, and waits for budget only when every part ran out of

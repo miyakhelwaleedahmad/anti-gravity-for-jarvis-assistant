@@ -1,0 +1,40 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=honestReadToolsA5aTest,boundaryDoublesTest,closeByNameTest,executionDispatchAuditTest,honestActionReplyTest,registryRepairHonestyTest,resourceUsageAuditTest,routeGoldenTest,scenarioIntegrationTest,secondBrainIntegrationTest,selfCheckTest,systemStateRouteTest,systemStateSmokeTest,tabTargetingA4Test,tabRouteReplyA4Test,windowsStateFreshnessTest,windowsStateSessionTest,worldStateTest,voiceRouteMockTest,deterministicCommandRouteTest,browserControlAgentTest,browserControlTest,jarvisChromeTest,routingA3Test,typedWhileBusyB4Test,timeQuestionsNpc10Test,docsHygieneTest,promptInjectionFlowTest,plannerDecisionAuditTest
+
+
+=== JARVIS test suite — 29 file(s) ===
+
+  PASS    boundaryDoublesTest                          380ms
+  PASS    browserControlAgentTest                      8986ms
+  PASS    browserControlTest                           520ms
+  PASS    closeByNameTest                              12628ms
+  PASS    deterministicCommandRouteTest                1298ms
+  PASS    docsHygieneTest                              1392ms
+  PASS    executionDispatchAuditTest                   3481ms
+  PASS    honestActionReplyTest                        3304ms
+  PASS    honestReadToolsA5aTest                       3416ms
+  PASS    jarvisChromeTest                             13880ms
+  PASS    plannerDecisionAuditTest                     1400ms
+  PASS    promptInjectionFlowTest                      1423ms
+  PASS    registryRepairHonestyTest                    1556ms
+  PASS    resourceUsageAuditTest                       470ms
+  PASS    routeGoldenTest                              1463ms
+  PASS    routingA3Test                                1505ms
+  PASS    scenarioIntegrationTest                      44868ms
+  PASS    secondBrainIntegrationTest                   1812ms
+  PASS    selfCheckTest                                1464ms
+  PASS    systemStateRouteTest                         1465ms
+  PASS    systemStateSmokeTest                         2183ms
+  PASS    tabRouteReplyA4Test                          3246ms
+  PASS    tabTargetingA4Test                           12777ms
+  PASS    timeQuestionsNpc10Test                       3394ms
+  PASS    typedWhileBusyB4Test                         7507ms
+  PASS    voiceRouteMockTest                           1529ms
+  PASS    windowsStateFreshnessTest                    4420ms
+  PASS    windowsStateSessionTest                      6286ms
+  PASS    worldStateTest                               9755ms
+
+=== 29 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

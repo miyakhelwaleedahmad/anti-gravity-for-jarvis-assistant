@@ -1,0 +1,15 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=honestActionReplyTest,clarificationGoalTest,taskFailureHonestyTest,supersededRequestTest
+
+
+=== JARVIS test suite — 4 file(s) ===
+
+  PASS    clarificationGoalTest                        1911ms
+  PASS    honestActionReplyTest                        3226ms
+  PASS    supersededRequestTest                        4053ms
+  PASS    taskFailureHonestyTest                       1266ms
+
+=== 4 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

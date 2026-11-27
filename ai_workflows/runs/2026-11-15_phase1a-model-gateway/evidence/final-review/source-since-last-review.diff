@@ -1,0 +1,204 @@
+--- reviewed/core/tools/memoryTool.ts
++++ final/core/tools/memoryTool.ts
+@@ -11,7 +11,27 @@
+ import { hasSecret } from '../../security/redactor.js';
+ import { relationFact } from '../verifiers.js';
+ import { approvalGate } from '../../security/approvalGate.js';
+-import { getAgentPath, getGoalContext, getRequestText } from '../traceContext.js';
++import { buildApprovalRequest, voiceApprovalMaxRisk } from '../../security/approvalRequest.js';
++import { getAgentIds, getAgentPath, getGoalContext, getRequestSource, getRequestText } from '../traceContext.js';
++
++/**
++ * What the owner is shown must be what is stored (review M-1): the console
++ * shows a question's target up to 160 characters on one line, and voice says
++ * about 60. Longer facts, or facts whose text the screen would fold or hide,
++ * are not asked about at all.
++ */
++const MAX_SHOWN_FACT = 150;
++const MAX_SPOKEN_FACT = 56;
++/** Seconds the owner has to answer: inside the registry's 25 s limit for a low-risk call (review M-2). */
++const ANSWER_SECONDS = 20;
++
++/** Why a fact cannot be shown to the owner exactly as it would be stored; undefined when it can. */
++export function unshownFact(parts: string[], fact: string): string | undefined {
++  if (parts.some((p) => /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(p))) return 'it contains a line break, a control character or an invisible character, which the question would not show';
++  if (/\s{2,}/.test(fact)) return 'it contains a run of spaces, which the question would fold';
++  if (fact.length > MAX_SHOWN_FACT) return `it is ${fact.length} characters long and the question shows only ${MAX_SHOWN_FACT}; keep it shorter`;
++  return undefined;
++}
+ 
+ /**
+  * Unverified information never enters trusted long-term memory (owner,
+@@ -36,14 +56,27 @@
+  * is not asked. False: not confirmed.
+  */
+ async function ownerConfirms(fact: string): Promise<boolean> {
+-  if (getRequestText() === undefined) return true;
++  const request = getRequestText();
++  if (request === undefined) return true;
++  const source = getRequestSource() ?? 'cli';
++  // By voice, a fact longer than what is spoken cannot be approved by voice: it needs a typed answer (review M-1).
++  const risk = source === 'voice' && fact.length > MAX_SPOKEN_FACT ? Math.min(4, voiceApprovalMaxRisk() + 1) : 1;
+   const agent = getAgentPath();
+-  return approvalGate.requestApproval(
+-    'Keep in long-term memory',
+-    `"${fact}"`,
+-    'LOW_RISK',
+-    `Only what you confirm is kept in long-term memory${agent ? ` (asked by ${agent})` : ''}. Say no unless you said it yourself or have checked it.`,
+-  );
++  const agentIds = getAgentIds();
++  // A full request names the tool and the asking agent, as the registry's own questions do (review L-3).
++  const question = buildApprovalRequest({
++    tool: 'save_relation',
++    title: 'Keep in long-term memory',
++    target: `"${fact}"`,
++    request,
++    effect: 'Only what you confirm is kept in long-term memory. Say no unless you said it yourself or have checked it.',
++    risk,
++    reversible: 'yes',
++    source,
++    ...(agent ? { agent } : {}),
++    ...(agentIds ? { agentIds } : {}),
++  });
++  return approvalGate.requestApproval(question, '', undefined, undefined, ANSWER_SECONDS);
+ }
+ 
+ // ─── Save Graph Relation ──────────────────────────────────────────────────────
+@@ -53,6 +86,7 @@
+   description:
+     'Use to save long-term semantic relationships between entities into graph memory (e.g., User, WORKS_ON, EcommerceApp). DO NOT use for temporary task state or web searching. Required parameters: entity1 (subject), relation (uppercase relationship), and entity2 (object). Returns confirmation string.',
+   riskLevel: 'low',
++  asksOwner: true,
+   inputSchema: {
+     entity1: {
+       type: 'string',
+@@ -88,8 +122,15 @@
+ 
+     if (signal?.aborted) throw new Error('ABORTED');
+     const fact = relationFact(args);
+-    if (!(await ownerConfirms(fact))) return `Error: save_relation refused - you did not confirm "${fact}", so nothing was stored.`;
+-    if (signal?.aborted) throw new Error('ABORTED');
++    // Refused by policy: the same call fails the same way, so it is not asked again (review M-1).
++    const unshown = unshownFact([entity1, relation, entity2], fact);
++    if (unshown) return `Error: save_relation refused by memory policy - ${unshown}; nothing was stored.`;
++    // The owner's "no", or no answer, is final (review M-3): "cancelled by user", as the registry's own denial,
++    // is not retried by the task graph or the repair step. The fact is not quoted, so its words cannot match
++    // another repair rule ("JSON", "timeout", …).
++    if (!(await ownerConfirms(fact))) return 'Error: save_relation cancelled by user - the fact was not confirmed, so nothing was stored.';
++    // A "yes" that came after the call was stopped (its time limit, or its caller) stores nothing (review M-2).
++    if (signal?.aborted) return 'Error: save_relation stopped by memory policy - your answer came after this call was stopped, so nothing was stored. Ask me again.';
+ 
+     try {
+       // Also a long-term fact: search_memory reads facts, not the graph, and
+--- reviewed/core/goalExecutor.ts
++++ final/core/goalExecutor.ts
+@@ -29,6 +29,7 @@
+ import type { ExecOutcome, ExecRequest, GoalTaskExecutor, PreviousRun } from './goalRuntime.js';
+ import type { AgentManager, RootResult } from './agents/agentManager.js';
+ import { A2AServer, InProcessA2AClient, userMessage } from './agents/a2a.js';
++import { factToRemember } from './agents/behaviors/memory.js';
+ import type { A2ATask, ResourceUsage } from './agents/types.js';
+ 
+ const ZERO: ResourceUsage = { llmCalls: 0, toolCalls: 0, tokens: 0 };
+@@ -185,11 +186,10 @@
+       return { ok: false, result, usage, failure: { message: err?.message ?? (r.answer || 'the agent could not finish'), ...(code ? { code } : {}), ...(causes.length > 1 ? { causes } : {}) } };
+     }
+     if (!result.summary) return { ok: false, result, usage, failure: { class: 'evidence', message: 'the agent finished without a result' } };
+-    // A step that tried to keep a fact and could not did not keep it, whatever its text says (owner, 2026-11-17, L-3).
+-    const notStored = r.limitations.find((l) => /\bsave_relation\b/.test(l) && /\b(refused|failed)\b/i.test(l));
+-    if (notStored) {
+-      return { ok: false, result, usage, failure: { class: 'inconclusive', code: 'MEMORY_NOT_STORED', message: `the fact was not stored in long-term memory: ${notStored.replace(/^Tool refused or failed:\s*/, '').slice(0, 200)}` } };
+-    }
++    // A step that tried to keep a fact did not keep it, whatever its text says (owner, 2026-11-17, L-3):
++    // save_relation stores nothing inside a goal.
++    const notStored = memoryNotStored(r.limitations, task.specialist, task.description);
++    if (notStored) return { ok: false, result, usage, failure: { class: 'inconclusive', code: 'MEMORY_NOT_STORED', message: notStored } };
+ 
+     if (this.opts.verify !== false) {
+       const { shouldVerify, verifyRootResult } = await import('./agents/jarvisAgents.js');
+@@ -212,12 +212,15 @@
+     try {
+       const dir = this.opts.manager?.archiveDir() ?? path.join(dataRoot(getWorkspaceRoot()), 'data', 'agents');
+       const body = JSON.parse(fs.readFileSync(path.join(dir, `${rootTaskId}.json`), 'utf8')) as {
+-        status: string; result?: RootResult; workspace?: { findings?: { text: string }[] };
++        status: string; result?: RootResult; workspace?: { findings?: { text: string }[] }; request?: string; agents?: { role?: string }[];
+       };
+       const findings = (body.result?.findings ?? body.workspace?.findings ?? []).map((f) => f.text).slice(0, 5);
++      // A step that did not keep its fact is not taken back as done (review L-2); it runs again and says so.
++      const memoryStep = (body.agents ?? []).some((a) => a.role === 'memory_agent');
++      const notStored = memoryNotStored(body.result?.limitations ?? [], memoryStep ? 'memory_agent' : '', body.request ?? '');
+       return {
+         status: body.status,
+-        ...(body.status === 'COMPLETED' && body.result ? { result: taskResultFrom({ ...body.result, specialist: { role: 'archived' } }, [], 'archive') } : {}),
++        ...(body.status === 'COMPLETED' && body.result && !notStored ? { result: taskResultFrom({ ...body.result, specialist: { role: 'archived' } }, [], 'archive') } : {}),
+         findings,
+       };
+     } catch {
+@@ -225,3 +228,22 @@
+     }
+   }
+ }
++
++/** A goal step asked to keep a fact: "remember that …", or keep, store, save or add … in memory. */
++function isRememberStep(description: string): boolean {
++  return !!factToRemember(description) || /\b(keep|store|save|add)\b[^.?!]*\b(in|to|into)\s+(long-term\s+)?memory\b/i.test(description);
++}
++
++/**
++ * Why a goal step did not keep a fact (owner, 2026-11-17, L-3; review L-1, L-2):
++ * save_relation's own failure (only its entry, not any text that mentions it),
++ * or a Memory-agent step asked to keep one, since nothing is stored inside a goal.
++ */
++function memoryNotStored(limitations: readonly string[], specialist: string, description: string): string | undefined {
++  const failed = limitations.find((l) => /^Tool refused or failed: save_relation:/.test(l));
++  if (failed) return `the fact was not stored in long-term memory: ${failed.replace(/^Tool refused or failed:\s*/, '').slice(0, 200)}`;
++  if (specialist === 'memory_agent' && isRememberStep(description)) {
++    return 'the fact was not stored in long-term memory: inside a goal nothing is stored there; tell me the fact yourself to keep it';
++  }
++  return undefined;
++}
+--- reviewed/.env.example
++++ final/.env.example
+@@ -141,9 +141,14 @@
+ #     (data/agents/<task>.json) unless JARVIS_AGENT_ARCHIVE=0. In a goal, a
+ #     result a later step builds on is marked "not verified" when it was not
+ #     verified. save_relation keeps only what you confirm: during a request
+-#     (yours, or an agent's task) it shows you the exact fact and stores it
+-#     only on "yes"; inside a goal it stores nothing and does not ask, and a
+-#     goal step that tried to keep a fact waits for your review.
++#     (yours, or an agent's task) it shows you the fact, naming the agent that
++#     asks, and stores it only on "yes", given within 20 seconds; a "no" or no
++#     answer is final. The question does not count against the tool's time
++#     limit, and a request that is stopped withdraws it. A fact longer than 150 characters, or with a line
++#     break, an invisible character or a run of spaces, is refused without
++#     asking. By voice, a fact longer than about 56 characters needs a typed
++#     answer. Inside a goal nothing is stored and nobody is asked; a goal step
++#     that tried to keep a fact, or was asked to, waits for your review.
+ #   - A split request whose parts failed for different reasons keeps every
+ #     cause; recovery acts on the identity failure first, then a model that
+ #     did not answer, and waits for budget only when every part ran out of
+--- reviewed/core/toolRegistryV2.ts
++++ final/core/toolRegistryV2.ts
+@@ -145,6 +145,13 @@
+   description: string;
+   riskLevel: RiskLevel;
+   /**
++   * The tool may ask the owner a question while it runs (approvalGate): it runs
++   * under the sandbox's pausable call budget even when its risk is low, so the
++   * question does not count against its time, and a stopped call withdraws it
++   * (review INDEPENDENT_REVIEW_SAVE_RELATION_CONFIRM.md M-2).
++   */
++  asksOwner?: boolean;
++  /**
+    * Minimum permission level required to dispatch this tool (JARVIS-005).
+    *
+    * Enforced by `execute()` before any dispatch, as defence in depth — the
+@@ -957,7 +964,7 @@
+         try {
+           // Phase 5: route through sandbox for medium/high risk tools
+           let output: string;
+-          if (currentTool.riskLevel === 'low') {
++          if (currentTool.riskLevel === 'low' && !currentTool.asksOwner) {
+             output = await this._executeRaw(currentTool, args, externalSignal);
+           } else {
+             output = await toolExecutionSandbox.run(currentTool, args, externalSignal);

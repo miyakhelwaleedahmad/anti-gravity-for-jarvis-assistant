@@ -1,10 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataRoot } from '../core/workspaceRoot.js';
 import * as os from 'os';
 import { fileURLToPath } from 'url';
 import { getWindowsState } from './windowsState.js';
 import { getChromeState } from './chromeState.js';
 import { getJarvisServiceState } from './jarvisServiceState.js';
+import { worldState } from '../core/worldState.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,11 +53,12 @@ export class SystemStateObserver {
 
   constructor(config: Partial<SystemStateObserverConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.stateFilePath = path.resolve(__dirname, '..', 'data', 'runtime', 'system_state.json');
+    this.stateFilePath = path.join(dataRoot(path.resolve(__dirname, '..')), 'data', 'runtime', 'system_state.json');
     this.state = {
       timestamp: new Date().toISOString(),
       activeWindow: { title: '', processName: '', pid: 0 },
       openApps: [],
+      windowsUnavailable: 'the window list has not been read yet',
       chrome: { running: false, debugPort: 9222, tabs: [] },
       jarvisServices: {
         redis: 'unknown',
@@ -142,14 +145,20 @@ export class SystemStateObserver {
     if (this.windowsProbeLock) return;
     this.windowsProbeLock = true;
     try {
-      const windowsData = await getWindowsState();
+      // A background snapshot: the last state is fine while PowerShell is busy.
+      const windowsData = await getWindowsState({ allowStale: true });
+      // Also the world state's apps part: a request then needs no new read.
+      worldState.set('apps', windowsData, 'systemStateObserver');
       
       const activeWindowChanged = JSON.stringify(this.state.activeWindow) !== JSON.stringify(windowsData.activeWindow);
       const openAppsChanged = JSON.stringify(this.state.openApps) !== JSON.stringify(windowsData.openApps);
       
-      if (activeWindowChanged || openAppsChanged) {
+      // Why the lists are empty when they could not be read (A5a, TRA-07): the read tools say so.
+      const unavailableChanged = this.state.windowsUnavailable !== windowsData.unavailable;
+      if (activeWindowChanged || openAppsChanged || unavailableChanged) {
         this.state.activeWindow = windowsData.activeWindow;
         this.state.openApps = windowsData.openApps;
+        this.state.windowsUnavailable = windowsData.unavailable;
         this.stateChanged = true;
       }
     } finally {
@@ -162,6 +171,7 @@ export class SystemStateObserver {
     this.chromeProbeLock = true;
     try {
       const chromeData = await getChromeState();
+      worldState.set('browser', chromeData, 'systemStateObserver');
       const chromeChanged = JSON.stringify(this.state.chrome) !== JSON.stringify(chromeData);
       
       if (chromeChanged) {
@@ -220,7 +230,7 @@ export class SystemStateObserver {
         // Fallback for Windows file lock (EPERM / EBUSY) when reading concurrently
         if (['EPERM', 'EBUSY', 'EACCES'].includes(renameErr.code)) {
           await fs.promises.writeFile(this.stateFilePath, content, 'utf-8');
-          try { await fs.promises.unlink(tempPath); } catch {}
+          try { await fs.promises.unlink(tempPath); } catch { /* the state was written; a leftover temp file is harmless */ }
         } else {
           throw renameErr;
         }

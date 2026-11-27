@@ -1,0 +1,18 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=appControlTest,kernelOutcomeA5cTest,browserControlTest,fileControlSafetyTest,systemControlSafetyTest,filesAndDevToolsTest,secretFileTest
+
+
+=== JARVIS test suite — 7 file(s) ===
+
+  PASS    appControlTest                               624ms
+  PASS    browserControlTest                           463ms
+  PASS    fileControlSafetyTest                        425ms
+  PASS    filesAndDevToolsTest                         3134ms
+  PASS    kernelOutcomeA5cTest                         2365ms
+  PASS    secretFileTest                               1478ms
+  PASS    systemControlSafetyTest                      565ms
+
+=== 7 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

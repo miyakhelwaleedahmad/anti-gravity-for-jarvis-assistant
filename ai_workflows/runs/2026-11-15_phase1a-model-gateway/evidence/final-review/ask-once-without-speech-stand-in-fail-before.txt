@@ -1,0 +1,9 @@
+
+=== The owner is asked once (M-3) ===
+
+  FAIL: "no": asked once, nothing stored (asked 3; stored 0)
+  FAIL: no answer: asked once, nothing stored (asked 3; stored 0)
+  PASS: "yes": asked once, stored once (control) (asked 1; stored 1)
+
+=== Results: 1 passed, 2 failed ===
+exit=1

@@ -1,0 +1,71 @@
+# Green step, round 3 (the committed version): full output of tests/voiceRouteMockTest.ts on unchanged runtime code (76f4712).
+# Captured from a scratch copy that exits 1 at the end, because the runner prints a test's output only on failure; the runner's FAIL line below is that exit code, the test's own result is the 'Results' line.
+=== JARVIS test suite — 1 file(s) ===
+  FAIL    showVoiceRouteOutputTest                     1655ms
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+Real failures:
+  - showVoiceRouteOutputTest: === Results: 13 passed, 0 failed ===
+  … last lines:
+[GraphMemory] Neo4j disabled.
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, b
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[Orchestrator] 🎯 26 skill(s) loaded into ToolRegistry: 79 tools in total.
+[UnifiedContext] Building context heavy=false depth=fast budget=2400tok [PARALLEL]
+[windowsState] PS spawn error: spawn powershell ENOENT
+=== Voice Route Mock Test ===
+[NodeBridge] WebSocket server started on ws://127.0.0.1:40399 (Auth Mode: TOKEN PROTECTED (production))
+--- Registering stand-in clients ---
+[NodeBridge] Health endpoint started on http://127.0.0.1:35849/health
+[GoalManager] ✅ Initialized. 0 historical goal(s) found.
+[Orchestrator] 🎯 GoalManager initialized.
+[Memory] Initialized. Short-term: 0 Long-term: 0
+[NodeBridge] Client 17929260600439sea7 connected from 127.0.0.1 (awaiting READY)
+[Redis] Initial connection failed — running without cache.
+[NodeBridge] RX type=client_ready role=wakeword
+[NodeBridge] ✅ READY client registered: wakeword
+[NodeBridge] 📋 Ready clients: wakeword
+[NodeBridge] Client 1792926060051h7k7v connected from 127.0.0.1 (awaiting READY)
+[NodeBridge] RX type=client_ready role=tts
+[NodeBridge] ✅ READY client registered: tts
+[NodeBridge] 📋 Ready clients: wakeword, tts
+[NodeBridge] Client 1792926060054dndjwi connected from 127.0.0.1 (awaiting READY)
+[NodeBridge] RX type=client_ready role=stt
+[NodeBridge] ✅ READY client registered: stt
+[NodeBridge] 📋 Ready clients: wakeword, tts, stt
+  ✅ PASS: wakeword registered
+  ✅ PASS: tts registered
+  ✅ PASS: stt registered
+--- Test: wake_word has_command=false ---
+[NodeBridge] → [stt] listen_start
+  ✅ PASS: sendListenStart sent listen_start to the ready STT client
+--- Test: stt_result through the bridge ---
+  ✅ PASS: an empty stt_result reaches the handlers but is not counted as a transcript
+  ✅ PASS: the bridge delivered "open YouTube for me" to the stt_result handlers
+  ✅ PASS: …and recorded a transcript
+  ✅ PASS: …and took the engine from the sender (wakeword: Google STT, stt: Whisper)
+--- Test: deterministic route for "open YouTube for me" ---
+(jarvis.ts's stt_result handler is not part of this test: the delivered text goes to orchestrator.process directly)
+[Orchestrator] Processing input [voice]: "open YouTube for me"
+[ConvBus] 🟢 Conversation started — autonomous tasks paused.
+[Orchestrator] Skipping GoalManager for simple/deterministic request.
+[Orchestrator] ⚡ Deterministic command route: type="open_app" target="youtube"
+[AgentStateMachine] IDLE → PLANNING
+[AgentStateMachine] PLANNING → EXECUTING
+[AgentStateMachine] ✅ PLANNING watchdog cleared (normal transition).
+[AgentStateMachine] EXECUTING → OBSERVING
+[AgentStateMachine] OBSERVING → REFLECTING
+[AgentStateMachine] REFLECTING → SPEAKING
+[NodeBridge] → [tts] speak
+[Orchestrator] State is SPEAKING — deferring reset and conversationEnded to IDLE until TTS completes.
+[Timing] Total request processing time: 33ms
+  ✅ PASS: Deterministic pre-router chose open_app for "youtube"
+  ✅ PASS: open_app ran once for "youtube" (https://www.youtube.com)
+  ✅ PASS: open_app was a dry run (no browser launched)
+  ✅ PASS: the route ran no tool but open_app (ran: open_app)
+  ✅ PASS: no browser or opener process was started during the test
+=== Results: 13 passed, 0 failed ===
+✅ All voice route mock tests PASSED.
+ ELIFECYCLE  Test failed. See above for more details.

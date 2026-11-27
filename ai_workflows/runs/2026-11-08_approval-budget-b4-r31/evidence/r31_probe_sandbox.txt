@@ -1,0 +1,5 @@
+A  browser-style (checks signal), answer at 1.8 s (in the advertised window): reply after 1811 ms = "Error: not closed: the request had already ended when the answer came."; action NOT done
+[ToolSandbox] "fake_close" finished after its 1500 ms budget.
+B  other controllers (no check),  answer at 1.8 s: reply after 1801 ms = "Closed."; action done at 1800 ms
+[ToolSandbox] ⚠️ "fake_close" did not stop after its signal; its slot stays taken until it ends.
+C  other controllers (no check),  answer at 2.5 s (after JARVIS stopped waiting): reply after 2003 ms = "Error: TIMEOUT: Tool "fake_close" ran past its 2 s budget and did not stop within 1 s; JAR"; action done at 2502 ms

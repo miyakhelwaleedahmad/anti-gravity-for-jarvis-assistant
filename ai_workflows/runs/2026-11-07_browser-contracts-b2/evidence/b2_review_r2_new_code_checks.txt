@@ -1,0 +1,74 @@
+
+=== Browser contracts (phase B2) ===
+
+--- 1. A Chrome that is slow to answer (contracts 5, 6) ---
+  PASS: open a tab, Chrome answers late: the request is sent once (no second tab) (1 request(s))
+  PASS: …JARVIS says Chrome did not answer and may be busy, not that it is not running (Chrome did not answer within 3 s (it may be busy), so JARVIS does not know whether the tab opened; it was not tried again.)
+  PASS: …and that it does not know whether the tab opened, and did not try again (Chrome did not answer within 3 s (it may be busy), so JARVIS does not know whether the tab opened; it was not tried again.)
+  PASS: close a tab, Chrome answers late: the request is sent once (1 request(s))
+  PASS: …not "not running"; it does not know whether the tab closed (Chrome did not answer within 3 s (it may be busy), so JARVIS does not know whether the tab closed; it was not tried again.)
+  PASS: bring a tab forward, Chrome answers late: the request is sent once (1 request(s))
+  PASS: …not "not running" (Chrome did not answer within 3 s (it may be busy), so JARVIS does not know whether the tab came to the front; it was not tried again.)
+[windowsState] OPT-PS-1: Persistent PowerShell session started.
+[windowsState] PS spawn error: spawn powershell ENOENT
+  PASS: end to end, "open this address" with a slow Chrome: one tab, not two (D2) (1 request(s))
+  PASS: …reported as a failure that says Chrome did not answer, not "not running" (Chrome did not answer within 3 s (it may be busy), so JARVIS does not know whether the tab opened; it was not tried again.)
+  PASS: read the tab list, Chrome answers late: "did not answer within 2 s", not "not running" (Chrome did not answer within 2 s (it may be busy).)
+[ActionQueue] Action "listTabs" failed (attempt 1/2). Retrying... Error: Chrome did not answer within 2 s (it may be busy).
+  PASS: …a read is safe to repeat: the action queue still tries it a second time (2 request(s))
+  PASS: nothing listens on the port: still "Chrome is not reachable … not running" (unchanged) (Chrome is not reachable for JARVIS on 127.0.0.1:46649: JARVIS's own Chrome is not running (it starts when JARVIS opens a)
+
+--- 1b. A Chrome slow to say it is running (review F1) ---
+  PASS: open a page, Chrome slow to say it runs: no second Chrome is started (0 start(s); Chrome did not answer within 2 s (it may be busy).)
+  PASS: …JARVIS says Chrome did not answer, not that it is not running (Chrome did not answer within 2 s (it may be busy).)
+  PASS: the tab tools: "did not answer", not "not running, so no tab was changed" (Chrome did not answer within 2 s (it may be busy).)
+  PASS: the read tools: a failure, not a crash, that says Chrome did not answer, not "not running" ({"success":false,"error":"JARVIS's Chrome did not list its tabs: Chrome did not answer within 2 s (it may be busy).","spoken":"I could not read my Chrome's tabs)
+  PASS: JARVIS_CDP_PORT, Chrome slow to answer: open a page says it did not answer, not "nothing answers" (Chrome did not answer within 2 s (it may be busy).)
+  PASS: …and the tab tools say so too (Chrome did not answer within 2 s (it may be busy).)
+[JarvisChrome] Starting Chrome (/fake/chrome) with JARVIS's own profile (/tmp/jarvis-b2-m6mgKn/profile-start).
+[JarvisChrome] JARVIS's Chrome answers on 127.0.0.1:37977.
+  PASS: JARVIS starts its Chrome, which is slow to answer at first: JARVIS waits for it and uses it (37977; 1 start(s))
+
+--- 1c. Chrome busy as JARVIS closes it (review F10) ---
+[PermissionSession] 🚀 Full Control active. Session: ps_mw6mrgv8_l1qkg | Duration: 5 min | Expires: 4:46:15 PM | Source: cli
+[PermissionSession] 🛡️ Full Control disabled. Reason: test. Session: ps_mw6mrgv8_l1qkg
+  PASS: Chrome busy when JARVIS closes it: no "Closed JARVIS's Chrome" (JARVIS's Chrome is still open: Chrome did not answer within 2 s (it may be busy), so it was not asked to close.)
+  PASS: …it says JARVIS's Chrome is still open and did not answer (JARVIS's Chrome is still open: Chrome did not answer within 2 s (it may be busy), so it was not asked to close.)
+  PASS: …no close was sent (no DevTools connection to Chrome) (0 connection(s))
+  PASS: …the owner was asked once, and the close was not tried again (asked 1, 2 version request(s))
+
+--- 2. Closing a tab does not disconnect (contract 2) ---
+[GraphMemory] Neo4j disabled.
+[ToolRegistry] ✅ Registered 53 tool(s) into registry.
+[ToolRegistry] 53 built-in tools registered; skills load next.
+[ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, browser_click, browser_type, browser_select, browser_scroll, browser_screenshot, browser_download, browser_upload, files, git, git_push, dev, diagnose_app, windows_overview, ui_elements, ui_action, screenshot, clipboard, github_search, github_repo, data_tools, delegate_task, agent_status, cancel_agent_task, goal_create, goal_status, goal_control, youtube_search, youtube_play, site_search, news_search, youtube_trending, self_check, self_repair, propose_code_repair, memory_brain
+[SkillLoader] ✅ Loaded 26 skill(s) into ToolRegistry.
+[PermissionSession] 🚀 Full Control active. Session: ps_mw6mrksa_c1rfw | Duration: 5 min | Expires: 4:46:20 PM | Source: cli
+[ToolRegistry] ✓ browser_tab: checked — the tab is gone.
+[PermissionSession] 🛡️ Full Control disabled. Reason: test. Session: ps_mw6mrksa_c1rfw
+  PASS: browser_tab close "Alpha": done and checked (verified {
+  "success": true,
+  "action": "close",
+  "target": "Alpha",
+  "did": "closed the tab \"Alpha\"",
+)
+  PASS: …the reply says nothing about the browser closing or a lost connection ({
+  "success": true,
+  "action": "close",
+  "target": "Alpha",
+  "did": "closed the tab \"Alpha\"",
+  "check": {
+    "status": "verified",
+    "evidence": "the )
+  PASS: Chrome is still running, with Beta open and Alpha gone (Beta)
+  PASS: after the close, another tab is read: Beta's page structure, with its button (<untrusted_context source="web-page">
+{
+  "title": "Beta",
+  "url": "http://127.0.0.1:42393/beta",
+  "headings": [
+    {)
+[ToolRegistry] ✓ browser_click: checked — the page changed (1 update).
+  PASS: …and acted on: the click in Beta is done and checked (verified the page changed (1 update))
+
+28 passed, 0 failed
+EXIT=0

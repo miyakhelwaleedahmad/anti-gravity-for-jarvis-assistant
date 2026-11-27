@@ -16,7 +16,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { toolRegistryV2 } from './toolRegistryV2.js';
-import type { AgentTool } from './toolRegistryV2.js';
+import type { AgentTool, ToolMeta } from './toolRegistryV2.js';
+import { readTrustList, untrustedReason, type TrustList } from './skillTrust.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,12 +27,28 @@ export interface SkillDescription {
   name: string;
   description: string;
   riskLevel?: 'low' | 'medium' | 'high';
+  /** Minimum permission level to dispatch this skill (JARVIS-005). Omitted = 0. */
+  requiredLevel?: number;
+  /** Low-risk skills only: reuse an identical call's result for 30 s. */
+  cacheable?: boolean;
+  /** Category, risks, effects; overrides core/toolCatalog.ts for this skill. */
+  meta?: ToolMeta;
   parameters?: Record<string, {
     type: 'string' | 'number' | 'boolean' | 'object' | 'array';
     description: string;
     required?: boolean;
+    enum?: string[];
   }>;
   fallbacks?: string[];
+}
+
+/** What a call says when its skill's first load is still running (spoken; short). */
+export function skillStillLoading(name: string): string {
+  return `${name} is still loading on this PC; ask me again in a moment.`;
+}
+
+export function isSkillStillLoading(text: string): boolean {
+  return /^.+ is still loading on this PC; ask me again in a moment\.$/.test(text);
 }
 
 export interface SkillModule {
@@ -44,10 +61,20 @@ export class SkillLoader {
   private failedCount = 0;
   private metadataCache = new Map<string, SkillDescription>();
   private moduleCache = new Map<string, SkillModule>();
+  /** Imports still running: a call made after a timed-out wait joins the same import. */
+  private pendingImports = new Map<string, Promise<SkillModule | null>>();
   /** Phase 5: tracks skills that failed to load so callers get a clear error */
   private degradedSkills = new Set<string>();
-  /** Phase 5: max ms to wait for a skill module import() before giving up */
+  /**
+   * Phase 5: max ms one call waits for a skill module import(). The import is
+   * not cancelled and the skill is not degraded when the wait runs out: on a
+   * busy PC the first load can take longer, and the next call waits for it.
+   */
   private readonly IMPORT_TIMEOUT_MS = 5_000;
+  /** skills/trusted-skills.json, read once per load (SEC-16). */
+  private trust: TrustList | null = null;
+  /** Folders refused because they are not trusted. */
+  readonly refused: string[] = [];
 
   constructor(skillsDir: string) {
     this.skillsDir = skillsDir;
@@ -60,10 +87,15 @@ export class SkillLoader {
     }
 
     const entries = fs.readdirSync(this.skillsDir, { withFileTypes: true });
-    const subDirs = entries.filter(e => e.isDirectory()).map(e => path.join(this.skillsDir, e.name));
+    // Links count too: untrustedReason() refuses them with a reason.
+    const subDirs = entries.filter(e => e.isDirectory() || e.isSymbolicLink()).map(e => path.join(this.skillsDir, e.name));
+    this.trust = readTrustList(this.skillsDir);
 
     await Promise.all(subDirs.map(dirPath => this.loadSkillFromDirectory(dirPath)));
 
+    if (this.refused.length > 0) {
+      console.warn(`[SkillLoader] ⛔ ${this.refused.length} skill folder(s) not trusted, not loaded: ${this.refused.join(', ')}.`);
+    }
     if (this.failedCount > 0) {
       console.warn(`[SkillLoader] ⚠️  ${this.failedCount} skill(s) failed to load and are marked degraded.`);
     }
@@ -75,6 +107,14 @@ export class SkillLoader {
     const descPath = path.join(dirPath, 'description.json');
 
     if (!fs.existsSync(descPath)) return;
+
+    // SEC-16: only folders the owner trusts become tools (core/skillTrust.ts).
+    const distrust = untrustedReason(this.skillsDir, dirPath, this.trust);
+    if (distrust) {
+      console.warn(`[SkillLoader] ⛔ Skill folder "${path.basename(dirPath)}" not loaded: ${distrust}`);
+      this.refused.push(path.basename(dirPath));
+      return;
+    }
 
     let desc: SkillDescription;
     if (this.metadataCache.has(descPath)) {
@@ -116,38 +156,55 @@ export class SkillLoader {
 
     // Lazy load handler function with Phase 5 import timeout
     const skillName = desc.name;
-    const getOrImportModule = async (): Promise<SkillModule | null> => {
-      if (this.moduleCache.has(targetPathToImport)) {
-        return this.moduleCache.get(targetPathToImport)!;
-      }
+    // One import per module. Only a module that fails to load or has no
+    // execute() is degraded; a slow one is not.
+    const startImport = (): Promise<SkillModule | null> => {
+      const pending = (async (): Promise<SkillModule | null> => {
+        let mod: any;
+        try {
+          mod = await import(pathToFileURL(targetPathToImport).href);
+        } catch (err) {
+          console.warn(`[SkillLoader] ${skillName}: failed to import skill module:`, err);
+          this.degradedSkills.add(skillName);
+          return null;
+        }
 
-      // Phase 5: race import() against a timeout to prevent hanging loads
-      let mod: any;
-      try {
-        const importPromise = import(pathToFileURL(targetPathToImport).href);
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`import timeout after ${this.IMPORT_TIMEOUT_MS}ms`)), this.IMPORT_TIMEOUT_MS)
-        );
-        mod = await Promise.race([importPromise, timeoutPromise]);
-      } catch (err) {
-        console.warn(`[SkillLoader] ${skillName}: failed to import skill module:`, err);
+        let skillModule: SkillModule | null = null;
+        if (typeof mod?.default?.execute === 'function') {
+          skillModule = mod.default as SkillModule;
+        } else if (typeof mod?.execute === 'function') {
+          skillModule = mod as SkillModule;
+        }
+        if (skillModule) {
+          this.moduleCache.set(targetPathToImport, skillModule);
+          return skillModule;
+        }
+        console.warn(`[SkillLoader] ${skillName}: module loaded but missing execute() export.`);
         this.degradedSkills.add(skillName);
         return null;
-      }
+      })().finally(() => this.pendingImports.delete(targetPathToImport));
+      this.pendingImports.set(targetPathToImport, pending);
+      return pending;
+    };
+    const getOrImportModule = async (): Promise<SkillModule | null | 'loading'> => {
+      const cached = this.moduleCache.get(targetPathToImport);
+      if (cached) return cached;
 
-      let skillModule: SkillModule | null = null;
-      if (typeof mod?.default?.execute === 'function') {
-        skillModule = mod.default as SkillModule;
-      } else if (typeof mod?.execute === 'function') {
-        skillModule = mod as SkillModule;
+      // Phase 5: race the import against a timeout so a call never hangs on it
+      const pending = this.pendingImports.get(targetPathToImport) ?? startImport();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const waitedOut = new Promise<'loading'>((resolve) => {
+        timer = setTimeout(() => resolve('loading'), this.IMPORT_TIMEOUT_MS);
+      });
+      try {
+        const mod = await Promise.race([pending, waitedOut]);
+        if (mod === 'loading') {
+          console.warn(`[SkillLoader] ${skillName}: still loading after ${this.IMPORT_TIMEOUT_MS} ms; the load goes on and the next call waits for it.`);
+        }
+        return mod;
+      } finally {
+        clearTimeout(timer);
       }
-      if (skillModule) {
-        this.moduleCache.set(targetPathToImport, skillModule);
-        return skillModule;
-      }
-      console.warn(`[SkillLoader] ${skillName}: module loaded but missing execute() export.`);
-      this.degradedSkills.add(skillName);
-      return null;
     };
 
     // Phase 5: capture degradedSkills by closure reference (execute() has its own `this`)
@@ -158,6 +215,9 @@ export class SkillLoader {
       name: desc.id,
       description: desc.description || desc.name,
       riskLevel: desc.riskLevel ?? 'medium',
+      ...(typeof desc.requiredLevel === 'number' ? { requiredLevel: desc.requiredLevel } : {}),
+      ...(desc.cacheable === true ? { cacheable: true } : {}),
+      ...(desc.meta ? { meta: desc.meta } : {}),
       inputSchema: Object.fromEntries(
         Object.entries(desc.parameters ?? {}).map(([key, p]) => [
           key,
@@ -165,6 +225,9 @@ export class SkillLoader {
             type: p.type,
             description: p.description,
             required: p.required ?? false,
+            // The allowed actions: without them the model saw only free text
+            // and guessed action names the skill does not have.
+            ...(Array.isArray(p.enum) && p.enum.length > 0 ? { enum: p.enum } : {}),
           },
         ])
       ),
@@ -176,6 +239,10 @@ export class SkillLoader {
           return `Error: Skill "${skillName}" is degraded and cannot execute. Check logs for import errors.`;
         }
         const mod = await getOrImportModule();
+        if (mod === 'loading') {
+          // Short, so a voice reply can say it (core/orchestrator.ts failureReply).
+          return JSON.stringify({ success: false, error: skillStillLoading(desc.name) });
+        }
         if (!mod) {
           return `Error: Skill "${desc.name}" module could not be loaded.`;
         }
@@ -183,7 +250,14 @@ export class SkillLoader {
       },
     };
 
-    toolRegistryV2.register(tool);
+    try {
+      toolRegistryV2.register(tool);
+    } catch (err) {
+      // Refused by the registry (a fallback riskier than the skill, SEC-09):
+      // this skill is not loaded; the others are.
+      console.error(`[SkillLoader] ${desc.name} not loaded: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
     this.loadedCount++;
   }
 

@@ -1,0 +1,9 @@
+M1 typed input in LISTENING not handled: MISSED | 
+M2 a left-over state not reset: CAUGHT | FAIL: left in EXECUTING: the typed request runs and is answered (I encountered an unexpected error, sir. Please try again.)
+M3 the wrong fix: allow LISTENING -> PLANNING in the state rules: CAUGHT | FAIL: the state rules are unchanged: LISTENING → PLANNING is still refused
+M4 barge-in while SPEAKING removed: CAUGHT | FAIL: …and the barge-in stops the reply being spoken (a "stop" to tts.py) (no command sent)
+M5 a running request is not aborted by the new one: CAUGHT | FAIL: …and the one it replaced is not (it was aborted; review R5) (Paris is sunny today, sir. | London is rainy today, sir.)
+M6 the waiting spoken request is not dropped (R1): CAUGHT | FAIL: left in REFLECTING with a spoken request waiting: the typed request is answered (London is rainy today, sir.)
+
+5/6 caught
+TREE_RESTORED

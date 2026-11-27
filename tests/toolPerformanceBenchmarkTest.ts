@@ -133,7 +133,9 @@ async function runPerformanceBenchmark() {
   console.log('=============================================================\n');
 }
 
-runPerformanceBenchmark().catch(err => {
+// Exit explicitly when done: an open connection or child process (Redis, the
+// Windows PowerShell session) must not keep a finished benchmark running.
+runPerformanceBenchmark().then(() => process.exit(0), (err) => {
   console.error('[Benchmark] Error:', err);
   process.exit(1);
 });

@@ -1,0 +1,34 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=browserRefusalSpokenTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    browserRefusalSpokenTest                     1574ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - browserRefusalSpokenTest: 2 passed, 4 failed
+        FAIL: …without "unexpected error" (I encountered an unexpected error and have been unable to complete the task, sir. "YouTube" is a page open in Chrome, not an app. Ask me to close the YouTube tab instead.)
+        FAIL: control_app: the refusal is spoken in full, without "unexpected error" (I encountered an unexpected error and have been unable to complete the task, sir. "youtube" is a page open in Chrome, not an app. Ask me to close the youtube tab instead.)
+        FAIL: control_app: the browser refusal is spoken in full (I encountered an unexpected error and have been unable to complete the task, sir.)
+        FAIL: …without "unexpected error" (I encountered an unexpected error and have been unable to complete the task, sir.)
+        …
+      ┌────────────────────────────────────────────┐
+      │  ⏱  JARVIS Timing Breakdown                 │
+      ├────────────────────────────────────────────┤
+      │  ContextBuild..............     0ms  │
+      │  LLM Network...............     0ms  │
+      │  TokensEstimated.......    1128 tok  │
+      ├────────────────────────────────────────────┤
+      │  TOTAL........................     5ms  │
+      └────────────────────────────────────────────┘
+      [NodeBridge] RX type=speaking_start role=tts
+      [ConvBus] 🔊 Speaking started.
+      [NodeBridge] RX type=speaking_end role=tts
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: a failure that is not a refusal is not spoken as "I couldn't do that" (I encountered an unexpected error and have been unable to complete the task, sir.)
+      2 passed, 4 failed
+ ELIFECYCLE  Test failed. See above for more details.

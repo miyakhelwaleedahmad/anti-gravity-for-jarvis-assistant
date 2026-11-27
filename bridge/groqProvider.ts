@@ -1,18 +1,27 @@
 /**
  * bridge/groqProvider.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Groq API provider — now with full tool/function-calling support.
+ * The primary LLM client. Despite the file name it is not Groq-specific: it
+ * speaks the OpenAI chat-completions protocol, which both Groq and Gemini serve,
+ * and takes its address, key, models and thinking control from
+ * config/llmconfig.ts (JARVIS_LLM_PROVIDER / GEMINI_* / GROQ_*).
  *
- * Changes from previous version:
- *   - Forwards `tools` and `tool_choice` from the request to the Groq API
- *   - Reads `tool_calls` from the response and returns them in ILLMResponse
- *   - Handles finish_reason "tool_calls" (no content when model calls a tool)
+ *   - Forwards `tools` and `tool_choice`; returns `tool_calls`
+ *   - Retries only what can succeed on retry: 5xx, network errors and our own
+ *     timeout. 4xx (bad key, unknown model) and a reply cut off by max_tokens
+ *     fail immediately — on a 5-requests-per-minute free tier every wasted
+ *     retry costs a real request.
+ *   - 429 drops to the fast model once (it has its own quota), then gives up
  */
 
 import { llmConfig } from "../config/llmconfig.js";
-import type { ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall } from "./llmTypes.js";
+import type { ILLMProvider, ILLMRequest, ILLMResponse, ILLMToolCall, ProviderCapabilities } from "./llmTypes.js";
 import { AdaptiveLruCache } from "../core/adaptiveRamManager.js";
+import { llmStatus } from "./llmStatus.js";
+import { pipelineRegistry, LLM_PIPELINE } from "../self_healing/pipelineRegistry.js";
 import crypto from "crypto";
+import { LLM_MAX_ATTEMPTS, llmTimeoutMs } from '../config/llmTiming.js';
+import { healthLedger, LEDGER_PIPELINES } from '../monitoring/healthLedger.js';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -20,18 +29,14 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // PHASE1-LLM-1: Retry delay eliminated — blocking sleeps stall the voice pipeline.
 // Server-error retries use a minimal 100ms to avoid tight-spin; all other paths are 0.
 const RETRY_DELAY_MS = 100; // server-error only
-const LLM_TIMEOUT_MS = Number(process.env.JARVIS_LLM_TIMEOUT_MS ?? 10_000);
+const LLM_TIMEOUT_MS = llmTimeoutMs();
 
 /**
- * PHASE1-LLM-2: Sanitize model names.
- * Groq API rejects names with forward-slashes (e.g. "qwen/qwen3-32b").
- * Strip everything up to and including the last slash so the bare model
- * ID is sent ("qwen/qwen3-32b" → "qwen3-32b", "llama-3.1-8b-instant" unchanged).
+ * Model IDs are sent exactly as configured. Groq IDs may contain a slash
+ * ("qwen/qwen3-32b") and must keep it; Gemini IDs are plain ("gemini-3.5-flash").
  */
 function sanitizeModel(name: string): string {
-  // Groq API uses model IDs containing forward slashes (e.g., "qwen/qwen3.6-27b").
-  // Do not strip the slash; return the name as is.
-  return name;
+  return name.trim();
 }
 
 function createRequestSignal(parentSignal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
@@ -56,288 +61,481 @@ function createRequestSignal(parentSignal?: AbortSignal): { signal: AbortSignal;
   };
 }
 
+/**
+ * Every request's outcome goes to the shared LLM status (dashboard) and the
+ * LLM pipeline (self-healing). A rate limit means the provider answered, and a
+ * cancelled request is the caller's choice, so neither counts as a pipeline failure.
+ */
+function noteOk(): void {
+  llmStatus.recordSuccess("request");
+  pipelineRegistry.recordSuccess(LLM_PIPELINE);
+  healthLedger.record(LEDGER_PIPELINES.llm, true, "chat answered");
+}
+function noteFail(err: unknown): void {
+  const c = llmStatus.recordFailure(err, "request");
+  if (c.kind !== "rate_limit" && c.kind !== "aborted") pipelineRegistry.recordFailure(LLM_PIPELINE, `${c.kind}: ${c.message}`);
+  // A rate limit is not a restart reason, but the request did fail: the
+  // ledger says so. A cancelled request is the caller's choice.
+  if (c.kind !== "aborted") healthLedger.record(LEDGER_PIPELINES.llm, false, `${c.kind}: ${String(c.message).slice(0, 160)}`);
+}
+
+/** Display name of the configured provider, for logs and errors. */
+const PROVIDER_LABEL = () => (llmConfig.provider === "gemini" ? "Gemini" : "Groq");
+const TAG = () => `[LLM:${llmConfig.provider}]`;
+
+/** An HTTP failure from the provider, with its status kept for retry decisions. */
+export class LLMHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "LLMHttpError";
+  }
+}
+
+/**
+ * The error after the last retry. It keeps the last HTTP status, so a 503 is
+ * still reported as a server error (it became a plain "request failed").
+ */
+function allAttemptsFailed(prefix: string, lastError: Error | null): Error {
+  const message = `${prefix}. Last error: ${lastError?.message ?? "unknown"}`;
+  return lastError instanceof LLMHttpError ? new LLMHttpError(lastError.status, message) : new Error(message);
+}
+
+/** The provider's own error message, shortened; never the request (it holds the key header). */
+async function readErrorText(res: Response): Promise<string> {
+  const text = await res.text().catch(() => "");
+  try {
+    const parsed = JSON.parse(text);
+    const body = Array.isArray(parsed) ? parsed[0] : parsed;
+    const msg = body?.error?.message;
+    if (typeof msg === "string" && msg) {
+      const flat = msg.replace(/\s+/g, " ");
+      // Gemini's 429 text opens with boilerplate; the useful part (which quota,
+      // its limit, when to retry) comes after it and was cut off at 300 chars.
+      const quota = flat.match(/Quota exceeded for metric:[^*]*?(?=\* |$)/)?.[0];
+      const retry = flat.match(/Please retry in [\dhm.]+s/)?.[0];
+      if (quota) return (retry && !quota.includes(retry) ? `${quota.trim()} ${retry}` : quota.trim()).slice(0, 300);
+      return flat.slice(0, 300);
+    }
+  } catch {
+    // not JSON — fall through
+  }
+  return text.replace(/\s+/g, " ").slice(0, 300);
+}
+
+/** "Please retry in 16h37m57.5s" → milliseconds; undefined when absent. */
+export function parseRetryDelayMs(text: string): number | undefined {
+  const m = text.match(/retry in (?:(\d+)h)?(?:(\d+)m(?!s))?(?:([\d.]+)s)?/i);
+  if (!m || (!m[1] && !m[2] && !m[3])) return undefined;
+  return ((Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0)) * 60 + Number(m[3] ?? 0)) * 1000;
+}
+
+function describeFetchError(err: Error): string {
+  const cause = (err as Error & { cause?: unknown }).cause;
+  if (err.message.includes("LLM_TIMEOUT") || String(cause).includes("LLM_TIMEOUT")) return `timed out after ${LLM_TIMEOUT_MS}ms`;
+  return cause instanceof Error ? `${err.message}: ${cause.message}` : err.message;
+}
+
 // ─── GroqProvider ─────────────────────────────────────────────────────────────
 
+/** Rate-limit and cache state of one client (Phase 1A, MM-1A-03). */
+interface ClientState {
+  isCircuitBroken: boolean;
+  circuitBreakerResetTime: number;
+  consecutive429s: number;
+  modelCooldownUntil: Map<string, number>;
+  responseCache: AdaptiveLruCache<string, ILLMResponse>;
+  inFlight: Map<string, { promise: Promise<ILLMResponse>; controller: AbortController; waiting: number }>;
+}
+
 export class GroqProvider implements ILLMProvider {
+  // The default client's state. It stays on the class, as before, so every
+  // default client shares it and resetting it here resets them (the tests do).
+  // A client made with { isolatedState: true } keeps its own (ClientState).
   private static isCircuitBroken = false;
   private static circuitBreakerResetTime = 0;
   private static consecutive429s = 0;
+  /**
+   * Models rate-limited for longer than a minute — typically a used-up daily
+   * quota (Gemini free tier: 20 requests/day on gemini-3.5-flash). Until the
+   * time the provider gave, requests go straight to the fast model instead of
+   * paying a rejected round trip and a warning on every command.
+   */
+  private static modelCooldownUntil = new Map<string, number>();
+
+  private coolingDown(model: string): boolean {
+    const until = this.state.modelCooldownUntil.get(model);
+    if (until === undefined) return false;
+    if (Date.now() >= until) { this.state.modelCooldownUntil.delete(model); return false; }
+    return true;
+  }
+
+  private noteLongRateLimit(model: string, detail: string): void {
+    const delay = parseRetryDelayMs(detail);
+    if (delay !== undefined && delay > 60_000) {
+      this.state.modelCooldownUntil.set(model, Date.now() + delay);
+      console.warn(`${TAG()} ${model} is rate-limited for ${Math.round(delay / 60_000)} min; using ${llmConfig.fastModel} until then.`);
+    }
+  }
+
+  /** The model to start with: the requested one, unless it is cooling down. */
+  private startModel(requested: string, fastModel: string, exact = false): string {
+    if (exact) return requested;   // a strict route: never another model (owner, 2026-11-16)
+    return this.coolingDown(requested) && !this.coolingDown(fastModel) ? fastModel : requested;
+  }
 
   // Phase 7: Response cache — identical planning calls reuse the last result for 60s
   private static responseCache = new AdaptiveLruCache<string, ILLMResponse>(64, 60_000, 'groq-resp');
   // Phase 7: In-flight dedup — same hash never fires two concurrent Groq requests
-  private static inFlight = new Map<string, Promise<ILLMResponse>>();
+  /**
+   * Identical requests in flight share one call (Phase 7 dedup). REL-05: the
+   * shared call used to run on the first caller's abort signal, so cancelling
+   * that caller failed every other caller of the same request. The shared call
+   * now has its own controller, aborted only when every caller has cancelled;
+   * each caller's promise follows its own signal.
+   */
+  private static inFlight = new Map<string, { promise: Promise<ILLMResponse>; controller: AbortController; waiting: number }>();
+
+  /** The class fields above as one state object: reads and writes go to the fields themselves. */
+  private static readonly sharedState: ClientState = {
+    get isCircuitBroken() { return GroqProvider.isCircuitBroken; },
+    set isCircuitBroken(v: boolean) { GroqProvider.isCircuitBroken = v; },
+    get circuitBreakerResetTime() { return GroqProvider.circuitBreakerResetTime; },
+    set circuitBreakerResetTime(v: number) { GroqProvider.circuitBreakerResetTime = v; },
+    get consecutive429s() { return GroqProvider.consecutive429s; },
+    set consecutive429s(v: number) { GroqProvider.consecutive429s = v; },
+    get modelCooldownUntil() { return GroqProvider.modelCooldownUntil; },
+    get responseCache() { return GroqProvider.responseCache; },
+    get inFlight() { return GroqProvider.inFlight; },
+  };
+
+  private readonly state: ClientState;
+
+  /**
+   * @param opts.isolatedState  this client keeps its own breaker, model
+   *   cooldowns, response cache and in-flight calls, so a second provider
+   *   served by this class (Phase 1B) is never stopped by the first one's
+   *   rate limits. Default: the shared state, exactly as before.
+   */
+  constructor(opts: { isolatedState?: boolean } = {}) {
+    this.state = opts.isolatedState
+      ? {
+          isCircuitBroken: false, circuitBreakerResetTime: 0, consecutive429s: 0, modelCooldownUntil: new Map(),
+          responseCache: new AdaptiveLruCache<string, ILLMResponse>(64, 60_000, 'groq-resp-isolated'), inFlight: new Map(),
+        }
+      : GroqProvider.sharedState;
+  }
+
+  /** What this client passes through (bridge/llmTypes.ts). Images are untested here, so not claimed. */
+  capabilities(): ProviderCapabilities {
+    return {
+      streaming: true, toolCalling: true, structuredOutput: false, imageInput: false, audioInput: false,
+      audioOutput: false, webSearch: false, reportsUsage: true, reportsStreamUsage: false,
+      cancellation: true, ownBreaker: true,
+    };
+  }
 
   // Phase 7: Stable hash key for request dedup/cache
   private static hashRequest(req: ILLMRequest): string {
     const key = JSON.stringify({
       model: req.model ?? llmConfig.model,
-      messages: req.messages.map(m => ({ role: m.role, c: (m.content ?? '').slice(0, 200) })),
+      // A strict request never gets the cached reply of a non-strict one (which may come from the fast model).
+      exact: req.exactModel === true,
+      // Previously `.slice(0, 200)`: two different requests sharing a 200-char
+      // prefix collided in the cache and the second received the first's
+      // response (JARVIS-010). Hashing the full content costs microseconds
+      // against a network round-trip.
+      messages: req.messages.map(m => ({ role: m.role, c: m.content ?? '' })),
       tools: (req.tools ?? []).map((t: any) => t?.function?.name ?? t?.name ?? ''),
     });
     return crypto.createHash('sha1').update(key).digest('hex').slice(0, 16);
   }
 
   private checkCircuit(): void {
-    if (GroqProvider.isCircuitBroken) {
-      if (Date.now() > GroqProvider.circuitBreakerResetTime) {
-        GroqProvider.isCircuitBroken = false;
-        GroqProvider.consecutive429s = 0;
-        console.log("[GroqProvider] 🔌 Circuit breaker reset. Retrying cloud model...");
+    if (this.state.isCircuitBroken) {
+      if (Date.now() > this.state.circuitBreakerResetTime) {
+        this.state.isCircuitBroken = false;
+        this.state.consecutive429s = 0;
+        console.log(`${TAG()} 🔌 Circuit breaker reset. Retrying cloud model...`);
       } else {
-        const remainingSec = Math.ceil((GroqProvider.circuitBreakerResetTime - Date.now()) / 1000);
-        throw new Error(`Groq API rate-limited (circuit broken, retrying in ${remainingSec}s)`);
+        const remainingSec = Math.ceil((this.state.circuitBreakerResetTime - Date.now()) / 1000);
+        throw new Error(`${PROVIDER_LABEL()} API rate-limited (circuit broken, retrying in ${remainingSec}s)`);
       }
     }
   }
 
   private handle429Success(): void {
-    GroqProvider.consecutive429s = 0;
-    GroqProvider.isCircuitBroken = false;
+    this.state.consecutive429s = 0;
+    this.state.isCircuitBroken = false;
   }
 
   private handle429Failure(): void {
-    GroqProvider.consecutive429s++;
-    if (GroqProvider.consecutive429s >= 2) {
-      GroqProvider.isCircuitBroken = true;
-      GroqProvider.circuitBreakerResetTime = Date.now() + 60000; // Break for 60 seconds
-      console.warn(`[GroqProvider] 🔌 Circuit broken due to repeated 429s. Cloud requests suspended for 60s.`);
+    this.state.consecutive429s++;
+    if (this.state.consecutive429s >= 2) {
+      this.state.isCircuitBroken = true;
+      this.state.circuitBreakerResetTime = Date.now() + 60000; // Break for 60 seconds
+      console.warn(`${TAG()} 🔌 Circuit broken due to repeated 429s. Cloud requests suspended for 60s.`);
     }
   }
 
   async chat(request: ILLMRequest): Promise<ILLMResponse> {
-    this.checkCircuit();
+    try { this.checkCircuit(); } catch (err) { noteFail(err); throw err; }
 
     // Phase 7: Check response cache for non-streaming identical requests
     const cacheKey = GroqProvider.hashRequest(request);
-    const cached = GroqProvider.responseCache.get(cacheKey);
+    const cached = this.state.responseCache.get(cacheKey);
     if (cached && !request.signal?.aborted) {
-      console.log(`[GroqProvider] ⚡ Cache hit (${cacheKey}) — skipping Groq call`);
+      console.log(`${TAG()} ⚡ Cache hit (${cacheKey}) — skipping API call`);
       return cached;
     }
 
     // Phase 7: In-flight dedup — if an identical request is already pending, await it
-    const existing = GroqProvider.inFlight.get(cacheKey);
+    const existing = this.state.inFlight.get(cacheKey);
     if (existing) {
-      console.log(`[GroqProvider] 🔄 Deduped in-flight request (${cacheKey})`);
-      return existing;
+      console.log(`${TAG()} 🔄 Deduped in-flight request (${cacheKey})`);
+      return GroqProvider.follow(existing, request.signal);
     }
 
-    const promise = this._chatInternal(request, cacheKey);
-    GroqProvider.inFlight.set(cacheKey, promise);
-    promise.finally(() => GroqProvider.inFlight.delete(cacheKey));
-    return promise;
+    const shared = { controller: new AbortController(), waiting: 0, promise: undefined as unknown as Promise<ILLMResponse> };
+    shared.promise = this._chatInternal({ ...request, signal: shared.controller.signal }, cacheKey);
+    shared.promise.then(() => noteOk(), (err) => noteFail(err));
+    this.state.inFlight.set(cacheKey, shared);
+    // `.finally()` would return a second promise that rejects with nobody
+    // listening — an unhandled rejection on every failed call.
+    const clear = () => { if (this.state.inFlight.get(cacheKey) === shared) this.state.inFlight.delete(cacheKey); };
+    shared.promise.then(clear, clear);
+    return GroqProvider.follow(shared, request.signal);
+  }
+
+  /**
+   * One caller's view of a shared call: it rejects when this caller's signal
+   * aborts, and the shared call itself is aborted only when no caller is left.
+   */
+  private static follow(
+    shared: { promise: Promise<ILLMResponse>; controller: AbortController; waiting: number },
+    signal: AbortSignal | undefined,
+  ): Promise<ILLMResponse> {
+    shared.waiting++;
+    let left = false;
+    const leave = () => {
+      if (left) return;
+      left = true;
+      shared.waiting--;
+      if (shared.waiting <= 0) shared.controller.abort(signal?.reason ?? new Error('LLM_ABORTED'));
+    };
+    if (signal?.aborted) {
+      leave();
+      return Promise.reject(signal.reason instanceof Error ? signal.reason : new Error('LLM_ABORTED'));
+    }
+    return new Promise<ILLMResponse>((resolve, reject) => {
+      const onAbort = () => { leave(); reject(signal?.reason instanceof Error ? signal.reason : new Error('LLM_ABORTED')); };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      shared.promise.then(
+        (v) => { signal?.removeEventListener('abort', onAbort); if (!left) { left = true; shared.waiting--; } resolve(v); },
+        (e) => { signal?.removeEventListener('abort', onAbort); if (!left) { left = true; shared.waiting--; } reject(e); },
+      );
+    });
+  }
+
+  /** Request body shared by chat and streaming. */
+  private buildBody(request: ILLMRequest, model: string, maxTokens: number): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      model,
+      messages: request.messages,
+      temperature: request.temperature ?? llmConfig.temperature,
+      max_tokens: maxTokens,
+    };
+    if (llmConfig.reasoningEffort) body.reasoning_effort = llmConfig.reasoningEffort;
+    return body;
+  }
+
+  private post(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
+    const requestSignal = createRequestSignal(signal);
+    return fetch(`${llmConfig.baseURL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${llmConfig.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: requestSignal.signal,
+    }).finally(requestSignal.cleanup);
   }
 
   private async _chatInternal(request: ILLMRequest, cacheKey: string): Promise<ILLMResponse> {
-    const url = `${llmConfig.baseURL}/chat/completions`;
-
-    const MAX_ATTEMPTS = 3;
+    const MAX_ATTEMPTS = LLM_MAX_ATTEMPTS;
     let lastError: Error | null = null;
-    let currentModel = sanitizeModel(request.model || llmConfig.model);
-    const fastModel = sanitizeModel(process.env.JARVIS_FAST_MODEL || "llama-3.1-8b-instant");
-    // Phase 7: Cap planning tokens at 1024 to reduce Groq queue time
+    const fastModel = sanitizeModel(llmConfig.fastModel);
+    let currentModel = this.startModel(sanitizeModel(request.model || llmConfig.model), fastModel, request.exactModel === true);
+    let usedFastModelFor429 = false;
+    // Phase 7: Cap planning tokens at 1024 to reduce queue time
     const maxTokens = request.max_tokens ?? Math.min(llmConfig.maxTokens ?? 4096, 1024);
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      const body: Record<string, unknown> = {
-        model: currentModel,
-        messages: request.messages,
-        temperature: request.temperature ?? llmConfig.temperature,
-        max_tokens: maxTokens,
-      };
-
+      const body = this.buildBody(request, currentModel, maxTokens);
       if (request.tools && request.tools.length > 0) {
         body.tools = request.tools;
         body.tool_choice = request.tool_choice ?? "auto";
       }
 
+      let response: Response;
       try {
-        const requestSignal = createRequestSignal(request.signal);
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${llmConfig.apiKey}`,
-          },
-          body: JSON.stringify(body),
-          signal: requestSignal.signal,
-        }).finally(requestSignal.cleanup);
-
-        if (response.status === 429) {
-          this.handle429Failure();
-          if (attempt >= 1) {
-            console.warn(`[GroqProvider] Rate limited on fallback/attempts. Raising error.`);
-            throw new Error("Groq API Rate Limited (429)");
-          }
-          // PHASE1-LLM-1: Zero sleep — immediate fallback, no pipeline stall
-          console.warn(`[GroqProvider] Rate limited (429). Falling back to fast model: ${fastModel} immediately.`);
-          currentModel = fastModel;
-          continue; // No sleep — immediate retry on fast model
-        }
-
-        if (response.status >= 500) {
-          console.warn(`[GroqProvider] Server error (${response.status}). Retrying in 1s…`);
-          await sleep(RETRY_DELAY_MS);
-          continue;
-        }
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Groq API Error: ${response.status} - ${errorText}`);
-        }
-
-        const data = await response.json() as any;
-        const choice = data?.choices?.[0];
-
-        if (!choice) {
-          throw new Error(`Groq returned no choices. Response: ${JSON.stringify(data)}`);
-        }
-
-        const finishReason: string = choice.finish_reason ?? "";
-        const message = choice.message ?? {};
-
-        this.handle429Success();
-
-        if (finishReason === "tool_calls" || (message.tool_calls && message.tool_calls.length > 0)) {
-          const toolCalls: ILLMToolCall[] = (message.tool_calls ?? []).map((tc: any) => ({
-            id: tc.id ?? `call_${Date.now()}`,
-            type: "function" as const,
-            function: {
-              name: tc.function?.name ?? "",
-              arguments: tc.function?.arguments ?? "{}",
-            },
-          }));
-
-          console.log(`[GroqProvider] 🔧 Model called ${toolCalls.length} tool(s): ${toolCalls.map(t => t.function.name).join(", ")}`);
-
-          const toolResult: ILLMResponse = {
-            content: "",
-            tool_calls: toolCalls,
-            usage: {
-              promptTokens: data.usage?.prompt_tokens ?? 0,
-              completionTokens: data.usage?.completion_tokens ?? 0,
-              totalTokens: data.usage?.total_tokens ?? 0,
-            },
-          };
-          // Don't cache tool_call responses — they contain live call IDs
-          return toolResult;
-        }
-
-        const content = message.content ?? "";
-        if (!content && finishReason !== "stop") {
-          throw new Error(`Groq returned empty content. Response: ${JSON.stringify(data)}`);
-        }
-
-        const result: ILLMResponse = {
-          content,
-          usage: {
-            promptTokens: data.usage?.prompt_tokens ?? 0,
-            completionTokens: data.usage?.completion_tokens ?? 0,
-            totalTokens: data.usage?.total_tokens ?? 0,
-          },
-        };
-        // Phase 7: Cache successful text responses for 60s
-        if (content) GroqProvider.responseCache.set(cacheKey, result);
-        return result;
-
+        response = await this.post(body, request.signal);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        if (request.signal?.aborted || lastError.message.includes("LLM_TIMEOUT")) {
-          console.warn(`[GroqProvider] LLM request timed out or was aborted after ${LLM_TIMEOUT_MS}ms.`);
-        }
-        if (lastError.message.includes("Groq API Error: 4") && !lastError.message.includes("429")) {
-          throw lastError;
-        }
-        if (attempt < MAX_ATTEMPTS - 1) {
-          // PHASE1-LLM-1: Only sleep on server errors (5xx), never on client errors
-          const needsDelay = lastError.message.includes("Server error") || lastError.message.includes("5");
-          console.warn(`[GroqProvider] Attempt ${attempt + 1} failed: ${lastError.message}. Retrying${needsDelay ? ` in ${RETRY_DELAY_MS}ms` : " immediately"}…`);
-          if (needsDelay) await sleep(RETRY_DELAY_MS);
-        }
+        // The caller cancelled: retrying would spend a request nobody wants.
+        if (request.signal?.aborted) throw lastError;
+        console.warn(`${TAG()} Attempt ${attempt + 1} failed (${describeFetchError(lastError)}).${attempt < MAX_ATTEMPTS - 1 ? " Retrying…" : ""}`);
+        continue;
       }
+
+      if (response.status === 429) {
+        this.handle429Failure();
+        const detail = await readErrorText(response);
+        lastError = new LLMHttpError(429, `${PROVIDER_LABEL()} rate-limited (429): ${detail}`);
+        this.noteLongRateLimit(currentModel, detail);
+        if (request.exactModel || usedFastModelFor429 || currentModel === fastModel) throw lastError;
+        console.warn(`${TAG()} Rate limited (429) on ${currentModel}; trying the fast model ${fastModel} once. ${detail}`);
+        currentModel = fastModel;
+        usedFastModelFor429 = true;
+        continue;
+      }
+
+      if (response.status >= 500) {
+        lastError = new LLMHttpError(response.status, `${PROVIDER_LABEL()} server error ${response.status}: ${await readErrorText(response)}`);
+        console.warn(`${TAG()} ${lastError.message}.${attempt < MAX_ATTEMPTS - 1 ? " Retrying…" : ""}`);
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+
+      if (!response.ok) {
+        // 400/401/403/404: a bad key, an unknown model or a rejected request.
+        // The same request will fail the same way, so do not retry it.
+        throw new LLMHttpError(response.status, `${PROVIDER_LABEL()} API error ${response.status}: ${await readErrorText(response)}`);
+      }
+
+      const data = await response.json() as any;
+      const choice = data?.choices?.[0];
+      if (!choice) {
+        lastError = new Error(`${PROVIDER_LABEL()} returned no choices: ${JSON.stringify(data).slice(0, 300)}`);
+        continue;
+      }
+
+      const finishReason: string = choice.finish_reason ?? "";
+      const message = choice.message ?? {};
+      this.handle429Success();
+
+      // Not reported is null, not 0: a budget or a cost view must not count
+      // missing data as "used nothing".
+      const usage = {
+        promptTokens: typeof data.usage?.prompt_tokens === "number" ? data.usage.prompt_tokens : null,
+        completionTokens: typeof data.usage?.completion_tokens === "number" ? data.usage.completion_tokens : null,
+        totalTokens: typeof data.usage?.total_tokens === "number" ? data.usage.total_tokens : null,
+      };
+
+      if (finishReason === "tool_calls" || (message.tool_calls && message.tool_calls.length > 0)) {
+        const toolCalls: ILLMToolCall[] = (message.tool_calls ?? []).map((tc: any, i: number) => ({
+          id: tc.id || `call_${Date.now()}_${i}`,
+          type: "function" as const,
+          function: {
+            name: tc.function?.name ?? "",
+            arguments: tc.function?.arguments ?? "{}",
+          },
+        }));
+        console.log(`${TAG()} 🔧 Model called ${toolCalls.length} tool(s): ${toolCalls.map(t => t.function.name).join(", ")}`);
+        // Don't cache tool_call responses — they contain live call IDs
+        return { content: "", tool_calls: toolCalls, usage, ...(typeof data?.model === "string" && data.model ? { model: data.model } : {}) };
+      }
+
+      const content = message.content ?? "";
+      if (!content && finishReason === "length") {
+        // Thinking models spend max_tokens on reasoning first; at a small limit
+        // nothing is left for the answer. Retrying cannot change that.
+        throw new LLMHttpError(200, `${PROVIDER_LABEL()} used the whole max_tokens budget (${maxTokens}) before answering. ` +
+          `Raise the limit, or lower thinking with JARVIS_LLM_REASONING_EFFORT=minimal.`);
+      }
+      if (!content && finishReason !== "stop") {
+        lastError = new Error(`${PROVIDER_LABEL()} returned empty content (finish_reason=${finishReason || "none"}).`);
+        continue;
+      }
+
+      // The model the server reports it used (never the requested one copied over).
+      const result: ILLMResponse = { content, usage, ...(typeof data?.model === "string" && data.model ? { model: data.model } : {}) };
+      // Phase 7: Cache successful text responses for 60s
+      if (content) this.state.responseCache.set(cacheKey, result);
+      return result;
     }
 
-    throw new Error(`[GroqProvider] All ${MAX_ATTEMPTS} attempts failed. Last error: ${lastError?.message}`);
+    throw allAttemptsFailed(`${TAG()} All ${MAX_ATTEMPTS} attempts failed`, lastError);
   }
 
   async *streamChat(request: ILLMRequest): AsyncGenerator<string, void, unknown> {
+    try {
+      yield* this._streamInternal(request);
+      noteOk();
+    } catch (err) {
+      noteFail(err);
+      throw err;
+    }
+  }
+
+  private async *_streamInternal(request: ILLMRequest): AsyncGenerator<string, void, unknown> {
     this.checkCircuit();
-    const url = `${llmConfig.baseURL}/chat/completions`;
 
-    // PHASE1-LLM-2: Strip slashes from model names before sending to Groq
-    let currentModel = sanitizeModel(request.model || llmConfig.model);
-    const fastModel = sanitizeModel(process.env.JARVIS_FAST_MODEL || "llama-3.1-8b-instant");
+    const fastModel = sanitizeModel(llmConfig.fastModel);
+    let currentModel = this.startModel(sanitizeModel(request.model || llmConfig.model), fastModel, request.exactModel === true);
+    let usedFastModelFor429 = false;
 
-    const MAX_ATTEMPTS = 3;
+    const MAX_ATTEMPTS = LLM_MAX_ATTEMPTS;
     let response: Response | null = null;
+    let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      const body: Record<string, unknown> = {
-        model: currentModel,
-        messages: request.messages,
-        temperature: request.temperature ?? llmConfig.temperature,
-        max_tokens: request.max_tokens ?? llmConfig.maxTokens,
-        stream: true,
-      };
+      const body = this.buildBody(request, currentModel, request.max_tokens ?? llmConfig.maxTokens);
+      body.stream = true;
 
+      let res: Response;
       try {
-        const requestSignal = createRequestSignal(request.signal);
-        response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${llmConfig.apiKey}`,
-          },
-          body: JSON.stringify(body),
-          signal: requestSignal.signal,
-        }).finally(requestSignal.cleanup);
-
-        if (response.status === 429) {
-          this.handle429Failure();
-          if (attempt >= 1) {
-            throw new Error("Groq Streaming Rate Limited (429)");
-          }
-          // PHASE1-LLM-1: Zero sleep on stream 429 — immediate fallback
-          console.warn(`[GroqProvider] Streaming Rate limited (429). Falling back to fast model: ${fastModel} immediately.`);
-          currentModel = fastModel;
-          continue; // No sleep
-        }
-
-        if (response.status >= 500) {
-          console.warn(`[GroqProvider] Server error (${response.status}). Retrying in 1s…`);
-          await sleep(RETRY_DELAY_MS);
-          continue;
-        }
-
-        if (!response.ok) {
-          throw new Error(`Groq Streaming Error: ${response.status}`);
-        }
-
-        this.handle429Success();
-        break; // Success
+        res = await this.post(body, request.signal);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (request.signal?.aborted || message.includes("LLM_TIMEOUT")) {
-          console.warn(`[GroqProvider] LLM stream timed out or was aborted after ${LLM_TIMEOUT_MS}ms.`);
-        }
-        if (attempt < MAX_ATTEMPTS - 1) {
-          console.warn(`[GroqProvider] Stream attempt ${attempt + 1} failed: ${err}. Retrying…`);
-          await sleep(RETRY_DELAY_MS);
-        } else {
-          console.warn(`[GroqProvider] All ${MAX_ATTEMPTS} stream attempts failed.`);
-          throw err;
-        }
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (request.signal?.aborted) throw lastError;
+        console.warn(`${TAG()} Stream attempt ${attempt + 1} failed (${describeFetchError(lastError)}).`);
+        await sleep(RETRY_DELAY_MS);
+        continue;
       }
+
+      if (res.status === 429) {
+        this.handle429Failure();
+        const detail = await readErrorText(res);
+        lastError = new LLMHttpError(429, `${PROVIDER_LABEL()} rate-limited (429): ${detail}`);
+        this.noteLongRateLimit(currentModel, detail);
+        if (request.exactModel || usedFastModelFor429 || currentModel === fastModel) throw lastError;
+        console.warn(`${TAG()} Streaming rate limited (429) on ${currentModel}; trying the fast model ${fastModel} once.`);
+        currentModel = fastModel;
+        usedFastModelFor429 = true;
+        continue;
+      }
+
+      if (res.status >= 500) {
+        lastError = new LLMHttpError(res.status, `${PROVIDER_LABEL()} server error ${res.status}: ${await readErrorText(res)}`);
+        console.warn(`${TAG()} ${lastError.message}`);
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+
+      if (!res.ok) {
+        // Not retried, and not re-sent through chat(): it would fail the same way.
+        throw new LLMHttpError(res.status, `${PROVIDER_LABEL()} streaming error ${res.status}: ${await readErrorText(res)}`);
+      }
+
+      this.handle429Success();
+      response = res;
+      break;
     }
 
-    if (!response || !response.ok) {
-        console.warn("[GroqProvider] Falling back to non-streaming chat due to stream failure.");
-        const fallbackResponse = await this.chat(request);
-        yield fallbackResponse.content;
-        return;
+    if (!response) {
+      throw allAttemptsFailed(`${TAG()} All ${MAX_ATTEMPTS} stream attempts failed`, lastError);
     }
-
     if (!response.body) throw new Error("No response body");
 
     const reader = response.body.getReader();
@@ -351,26 +549,74 @@ export class GroqProvider implements ILLMProvider {
       }
       const { done, value } = await reader.read();
       if (done) break;
-      
+
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || "";
-      
+
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const dataStr = line.slice(6).trim();
           if (dataStr === '[DONE]') return;
           try {
             const data = JSON.parse(dataStr);
-            if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
-              yield data.choices[0].delta.content;
-            }
-          } catch (e) {
-            // Ignore parse errors
+            const piece = data?.choices?.[0]?.delta?.content;
+            if (piece) yield piece;
+          } catch {
+            // Ignore partial or non-JSON lines
           }
         }
       }
     }
+  }
+
+  /**
+   * Cheap reachability check: lists the provider's models. Confirms the address,
+   * the key and the configured model name without generating anything, so it
+   * costs no generation quota and cannot come back empty because the model
+   * spent its token budget thinking.
+   */
+  async ping(signal?: AbortSignal): Promise<{ modelFound: boolean; models: number }> {
+    // Only the LLM status here: the caller (health checker, self-heal) records
+    // the pipeline result itself, and doing both counted every failed probe twice.
+    try {
+      const result = await this._ping(signal);
+      llmStatus.recordSuccess("probe");
+      return result;
+    } catch (err) {
+      llmStatus.recordFailure(err, "probe");
+      throw err;
+    }
+  }
+
+  private async _ping(signal?: AbortSignal): Promise<{ modelFound: boolean; models: number }> {
+    const requestSignal = createRequestSignal(signal);
+    let res: Response;
+    try {
+      res = await fetch(`${llmConfig.baseURL}/models`, {
+        headers: { Authorization: `Bearer ${llmConfig.apiKey}` },
+        signal: requestSignal.signal,
+      });
+    } finally {
+      requestSignal.cleanup();
+    }
+    if (!res.ok) {
+      throw new LLMHttpError(res.status, `${PROVIDER_LABEL()} /models returned ${res.status}: ${await readErrorText(res)}`);
+    }
+    const data = await res.json() as { data?: Array<{ id?: string }> };
+    if (!Array.isArray(data?.data)) {
+      throw new Error(`${PROVIDER_LABEL()} /models answered without a model list (unexpected JSON).`);
+    }
+    const ids = data.data.map((m) => m.id ?? "");
+    // Gemini lists "models/gemini-3.5-flash"; Groq lists the bare id.
+    const offered = (model: string) => ids.some((id) => id === model || id.endsWith(`/${model}`));
+    // Both models: a wrong fast model used to show up only when a 429 switched to it.
+    for (const [model, field] of [[llmConfig.model, "JARVIS_BRAIN_MODEL"], [llmConfig.fastModel, "JARVIS_FAST_MODEL"]] as const) {
+      if (!offered(model)) {
+        throw new Error(`${PROVIDER_LABEL()} does not offer the model "${model}" (${field}). Check the name.`);
+      }
+    }
+    return { modelFound: true, models: ids.length };
   }
 }
 

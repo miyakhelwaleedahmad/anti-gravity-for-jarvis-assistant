@@ -1,40 +1,45 @@
 # Stage 02 — Diagnosis
 
-## Purpose
-Identify the exact root cause by reading and tracing relevant code.
+Find the root cause by reading and tracing the relevant code. No edits.
 
-## What You Are Allowed to Do
-```
-✅ Read files identified in the Stage 01 issue brief
-✅ Follow the control flow from input to output
-✅ Read test files for existing behavioral contracts
-✅ Identify the exact file + line where the failure occurs
-✅ List all probable root causes (most likely first)
-✅ Cross-reference with _config/VOICE_ROUTE_CONTRACT.md
-✅ Write diagnosis in output/diagnosis.md
-```
+## Inputs
 
-## What You Must NOT Do
-```
-❌ Do not edit any code during this stage
-❌ Do not apply any fixes — not even "obvious" ones
-❌ Do not add debug logging to runtime files (except temporarily with user approval)
-❌ Do not advance to patch plan without completing the diagnosis document
-```
+| Source | Load | Why |
+|---|---|---|
+| `runs/<run>/issue_brief.md` | Whole file | Symptom, record, files to read |
+| Files listed in the brief | Only those, plus files the trace leads to | The code path |
+| `_config/CONTEXT_LOADING_RULES.md` | The section for this bug type | What to read and what not to |
+| `_config/VOICE_ROUTE_CONTRACT.md` | Voice bugs only | Expected live behaviour |
+| `_config/SELF_HEALING_OWNERSHIP.md` | Self-healing or recovery bugs only | Which owner to extend |
+| Existing tests for the behaviour | Only the relevant `tests/<name>.ts` | Behavioural contracts |
 
-## Context Loading
-Use `_config/CONTEXT_LOADING_RULES.md` to decide which files to read.
-Do not load irrelevant files (memory files for a voice bug, etc.).
+## Process
 
-## Output Required
-Complete `output/diagnosis.md` before advancing to Stage 03.
+1. Trace the control flow from input to the failure point.
+2. Identify the file and line where the failure occurs, if possible.
+3. List probable causes, most likely first, each with its evidence.
+4. Label each claim: observed (log, record, code read) or inferred.
+5. List the files that would need to change, and which are protected
+   (`_config/RUNTIME_PROTECTED_FILES.md`).
+6. Name the tests that cover the behaviour and propose how Stage 02b can
+   reproduce the failure (existing test, new test, or owner's PC).
+7. A change to a classifier or recovery planner names the others it may
+   affect (`_config/SELF_HEALING_OWNERSHIP.md`).
 
-The diagnosis must include:
-- Root cause (specific file + line if possible)
-- Supporting evidence (log lines, code traces)
-- Alternative possible causes (secondary hypotheses)
-- Which hypothesis is most likely and why
-- List of files that would need to change to fix this
+Allowed: reading files, searching the code. Forbidden: editing any code;
+applying a fix, even an "obvious" one; adding debug logging to runtime
+files (only temporarily, with the owner's approval, and removed again);
+loading unrelated subsystems.
 
-## Advancement Condition
-You may advance to `03_patch_plan` only when `output/diagnosis.md` is complete.
+## Outputs
+
+`runs/<run>/diagnosis.md` from `output/diagnosis.md`: root cause (file and
+line), evidence, control-flow trace, alternative hypotheses, files to
+change, proposed reproduction method.
+
+## Audit / advancement
+
+- PASS: root cause or ranked hypotheses with evidence, and a reproduction
+  method. Advance to `02b_reproduction`.
+- BLOCKED: evidence missing (logs, record, access); ask the owner.
+- Never: skip to `03_patch_plan` or to implementation.

@@ -1,0 +1,12 @@
+  PASS: (setup) the Memory agent's model asked to save an earlier, unverified result (["{\"entity1\":\"fast-tool\",\"relation\":\"IS\",\"entity2\":\"the best library\"}"])
+  PASS: nothing from it reached long-term memory ([])
+  PASS: …and the tool said it was not stored, and why (Error: save_relation refused - inside the goal "Find the best library and remember it" facts come from other agents' results, which are not verified, so nothing was stored (the result stays in the goa)
+  PASS: L-B: all three "not verified" labels reach the Memory agent's model, uncut (3 label(s) in 1557 chars)
+  PASS: a goal task's save_relation stores nothing, even in the task's own words (0 stored; Error: save_relation refused - inside the goal "Find the best library and remember it" facts come from other agents' results, which are not verified, so nothing)
+  PASS: the owner's own fact is stored (control) (1 stored; Saved relation: (User)-[HAS_EXAM_ON]->(Friday at nine) in long-term memory.)
+  PASS: a fact not in the request's words is refused (0 stored; Error: save_relation refused - "fast-tool" and "the best library" is not in the words of this request, so it may come from a result that was not verified; nothi)
+  PASS: a fact read from goal_status (an agent's result) is refused (0 stored; Error: save_relation refused - "fast-tool" and "the best library" is not in the words of this request, so it may come from a result that was not verified; nothi)
+  PASS: the owner's "remember this" is stored (control) (1 stored; Saved relation: (User)-[PREFERS]->(dark theme) in long-term memory.)
+  PASS: no request in flight (code calling the registry): stored as before (1 stored)
+  PASS: a credential is still refused (Error: save_relation refused - I don't store passwords, keys or tokens, sir.)
+=== Results: 11 passed, 0 failed ===

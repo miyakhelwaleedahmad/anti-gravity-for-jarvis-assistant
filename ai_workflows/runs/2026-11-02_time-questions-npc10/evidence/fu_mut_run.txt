@@ -1,0 +1,27 @@
+M1 time back to the three exact wordings: CAUGHT | FAIL: "what  time is this" → the time, local (planner)
+M3 no date answer: CAUGHT | FAIL: "what's the date" → the date (planner)
+M4 time pattern not anchored at the end (over-match): CAUGHT | FAIL: "what time is it in london" → not the time or date answer (time)
+M5 date pattern not anchored at the end (over-match): CAUGHT | FAIL: "what is the date of the meeting" → not the date answer (date)
+M6 clock line back to UTC time: CAUGHT | FAIL: …the local time (22:05)
+M7 cache hit keeps the old clock line: CAUGHT | FAIL: on a cache hit the clock line is made fresh (time zone changed to Tokyo, no summer time) ([SYS now=Monday 2026-11-02 22:05 local time (UTC+05:00, Asia/Karachi), rea
+M8 time zone offset sign flipped: CAUGHT | FAIL: …and the time zone (UTC+05:00)
+M9 cache hit refreshes systemState but not the context sent: CAUGHT | FAIL: on a cache hit the clock line is made fresh (time zone changed to Tokyo, no summer time) ([SYS now=Tuesday 2026-11-03 02:05 local time (UTC+09:00, Asia/Tokyo), read
+M10 time reply in the PC's regional format (T2): CAUGHT | FAIL: with an Arabic regional format: the time reply is still English (It is ١٠:٠٥ م, sir.)
+M11 date reply in the PC's regional format (T2): CAUGHT | FAIL: …and so is the date reply (Today is الاثنين، ٢ نوفمبر ٢٠٢٦, sir.)
+M12 a trailing jarvis is not dropped (T3): CAUGHT | FAIL: "What's the time, Jarvis?" → the time, local (planner)
+M13 'what is time' and the like match again (T5): CAUGHT | FAIL: "what is time" → not the time or date answer (time)
+M14 'which day' / 'what day is this' not matched (P3): CAUGHT | FAIL: "what day is this" → the date (planner)
+M15 'what date is it' / 'which date is today' not matched (P3): CAUGHT | FAIL: "which date is today" → the date (planner)
+M16 the clock line no longer says it is this PC's clock (P4, T14): CAUGHT | FAIL: …and the line says where the time comes from: this PC's clock, now
+M17 the 'which day' pattern not anchored at the end (T17): CAUGHT | FAIL: "which day is it tomorrow" → not the date answer (date)
+M18 'what date is this' answered with today's date (T15): CAUGHT | FAIL: "what date is this" → not the date answer (date)
+
+17/17 caught
+
+Checksums before:
+ec887dd90cead5b0abd5ba1d79ef50e0  core/deterministicRoutes.ts
+30134e2d818a94e283549d0e495cce4c  memory/unifiedContextBuilder.ts
+Checksums after:
+ec887dd90cead5b0abd5ba1d79ef50e0  core/deterministicRoutes.ts
+30134e2d818a94e283549d0e495cce4c  memory/unifiedContextBuilder.ts
+TREE RESTORED: yes

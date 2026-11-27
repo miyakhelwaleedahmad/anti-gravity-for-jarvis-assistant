@@ -4,8 +4,13 @@ import { pythonBridgeConfig } from "../config/llmconfig.js";
 import { failureDetector } from "../self_healing/failureDetector.js";
 import { pipelineRegistry } from "../self_healing/pipelineRegistry.js";
 import { conversationBus } from "../core/conversationBus.js";
-import { systemController } from "../core/systemController.js";
+import { systemController } from "../core/stateShim.js";
+import { agentStateMachine } from "../core/agentStateMachine.js";
 import http from "http";
+import { createHash, timingSafeEqual } from "crypto";
+import { assertLoopbackBind } from "../security/remoteAccess.js";
+import { healthLedger, LEDGER_PIPELINES } from "../monitoring/healthLedger.js";
+import { stripMarkdown } from "../core/spokenText.js";
 
 const LOCALHOST_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const BRIDGE_DEV_MODE = process.env.JARVIS_BRIDGE_DEV_MODE === "true";
@@ -16,6 +21,13 @@ const STT_READY_TIMEOUT_MS = Number.parseInt(process.env.JARVIS_STT_READY_TIMEOU
 /** Phase 4: Maximum pending TTS phrases while TTS client is not ready.
  *  Drops the middle item (keep head + tail) to avoid stale queue buildup. */
 const MAX_PENDING_TTS = 3;
+/** A repeat of the phrase just queued, sooner than this and before it finished playing, is dropped. */
+const TTS_DEDUP_WINDOW_MS = 2_000;
+/** Speech outcomes that count against speech health (VOICE-005). */
+const SPEECH_FAILURES = new Set(["synthesis_failed", "no_audio_device", "playback_failed", "timed_out"]);
+export function isSpeechFailure(outcome: string): boolean {
+  return SPEECH_FAILURES.has(outcome);
+}
 
 export function getBridgeAuthStatus(): { requiresToken: boolean; devMode: boolean; tokenConfigured: boolean } {
   const isDev = (process.env.JARVIS_BRIDGE_DEV_MODE ?? "false").toLowerCase() === "true";
@@ -27,11 +39,50 @@ export function getBridgeAuthStatus(): { requiresToken: boolean; devMode: boolea
   };
 }
 
+/** A token longer than this is refused before it is compared. */
+const MAX_TOKEN_LENGTH = 512;
+
+/**
+ * Compared in constant time (SEC-11): both sides are hashed to the same
+ * length first, so neither the length nor a common prefix shows in the time.
+ */
+function sameSecret(given: string, expected: string): boolean {
+  const a = createHash("sha256").update(given, "utf8").digest();
+  const b = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(a, b);
+}
+
 export function isBridgeTokenValid(token: unknown): boolean {
   const isDev = (process.env.JARVIS_BRIDGE_DEV_MODE ?? "false").toLowerCase() === "true";
+  // Dev mode skips the token only: a browser page is refused before this, at
+  // the connection (bridgeOriginAllowed), in every mode (SEC-01).
   if (isDev) return true;
   const validToken = process.env.JARVIS_BRIDGE_TOKEN ?? BRIDGE_TOKEN;
-  return typeof token === "string" && token.length > 0 && token === validToken;
+  if (typeof token !== "string" || token.length === 0 || token.length > MAX_TOKEN_LENGTH) return false;
+  if (!validToken) return false;
+  return sameSecret(token, validToken);
+}
+
+/**
+ * Whether a WebSocket connection may open, from its Origin header (SEC-01).
+ *
+ * JARVIS's clients are its own Python modules (voice/stt.py, tts.py,
+ * wakeWords.py, vision/screen_capture.py); the websockets library sends no
+ * Origin. A browser always sends one, so a web page that tried to reach
+ * ws://127.0.0.1:9000 (to send commands or answer approvals) is refused here,
+ * in token mode and in dev mode alike. JARVIS_BRIDGE_ALLOWED_ORIGINS
+ * (comma-separated, exact) admits a trusted local page if one is ever needed.
+ */
+export function bridgeOriginAllowed(origin: string | undefined, env: Record<string, string | undefined> = process.env): boolean {
+  if (origin === undefined || origin === "") return true;
+  const allowed = (env.JARVIS_BRIDGE_ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean);
+  return allowed.includes(origin);
+}
+
+/** Largest message a client may send (vision frames are the largest). */
+function maxPayloadBytes(): number {
+  const mb = Number(process.env.JARVIS_BRIDGE_MAX_PAYLOAD_MB);
+  return (Number.isFinite(mb) && mb > 0 ? mb : 16) * 1024 * 1024;
 }
 
 
@@ -48,7 +99,7 @@ export interface VisionFrameData {
 }
 
 export interface BridgeMessage {
-  type: "tts" | "stt_result" | "wake_word" | "command" | "response" | "error" | "status" | "client_ready" | "hardware_error" | "speaking_start" | "speaking_end" | "listen_start" | "vision_frame" | "vision_start" | "vision_stop";
+  type: "tts" | "stt_result" | "stt_no_speech" | "wake_word" | "command" | "response" | "error" | "status" | "client_ready" | "hardware_error" | "speaking_start" | "speaking_end" | "speaking_delay" | "listen_start" | "vision_frame" | "vision_start" | "vision_stop";
   payload: any;
   id?: string;
 }
@@ -68,6 +119,8 @@ export class NodeBridge {
   public lastTtsTimestamp: number = 0;  // when last TTS was sent (for echo filter expiry)
   /** Phase 4: when TTS playback actually started (speaking_start from tts.py) */
   public ttsStartedMs: number = 0;
+  /** When TTS playback finished (speaking_end) — the echo window runs from here. */
+  public ttsEndedMs: number = 0;
 
   private wss: WebSocketServer | null = null;
   private clients: Set<WebSocket> = new Set();
@@ -75,13 +128,38 @@ export class NodeBridge {
   private readyClients: Map<string, WebSocket> = new Map();
   private clientRoles: Map<WebSocket, string> = new Map();
   private commandQueue: Map<string, QueuedCommand[]> = new Map();
-  private pendingListen: boolean = false;
   private pendingListenStart: boolean = false;
   private pendingListenStartedAt: number | null = null;
   private pendingListenWarningTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingTTS: string[] = [];
-  /** Phase 4: last TTS text sent — prevents enqueueing identical adjacent phrases */
+  /**
+   * The phrase just queued, to drop a second copy queued at the same moment.
+   * Forgotten when that phrase finishes playing (speaking_end), when TTS is
+   * stopped, and after TTS_DEDUP_WINDOW_MS (VOICE-001: it used to be kept for
+   * ever, so the same reply to a second request was never spoken and JARVIS
+   * waited, deaf, for the 12 s SPEAKING watchdog).
+   */
   private _lastQueuedTts: string = "";
+  private _lastQueuedTtsAt = 0;
+  /**
+   * What tts.py did with the last reply, from speaking_end's outcome or a
+   * hardware_error (VOICE-005). "Speech output" used to be recorded healthy
+   * when the text was sent, so a reply that never played changed nothing.
+   */
+  lastSpeechOutcome: { outcome: string; detail: string; at: number; engine?: string } | null = null;
+  /**
+   * Which recogniser produced the last transcript (BUG-7): the wake-word
+   * process uses Google STT (inline commands, follow-ups); stt.py uses Whisper.
+   */
+  lastTranscriptEngine: 'Google STT' | 'Whisper' | null = null;
+  /**
+   * Replies sent to tts.py and not ended yet, by request id (VOICE-005). Each
+   * tts message carries its id and tts.py lists the ids a speaking_end covers,
+   * so a late or repeated speaking_end cannot mark a newer reply as played or
+   * close the turn that reply is still waiting on.
+   */
+  private _inFlight = new Map<string, number>();
+  private _speechSeq = 0;
 
   // Bridge-level event emitter for internal events (client_connected, etc.)
   // Kept separate from the message-handler Map to avoid TypeScript conflicts.
@@ -108,8 +186,18 @@ export class NodeBridge {
     return this.latestScreenFrame;
   }
 
+  /** Whether the WebSocket server is up (voice clients can connect). */
+  isListening(): boolean {
+    return this.wss !== null;
+  }
+
   getReadyClients(): string[] {
     return Array.from(this.readyClients.keys());
+  }
+
+  /** Whether a reply sent to tts.py has not ended yet. With none, nothing will end the speaking turn. */
+  get speechInFlight(): boolean {
+    return this._inFlight.size > 0;
   }
 
   isRoleReady(role: string): boolean {
@@ -126,6 +214,7 @@ export class NodeBridge {
     if (!LOCALHOST_HOSTS.has(pythonBridgeConfig.host)) {
       throw new Error(`[NodeBridge] Refusing to bind WebSocket bridge to non-localhost host: ${pythonBridgeConfig.host}`);
     }
+    assertLoopbackBind(pythonBridgeConfig.host, 'The voice bridge');
 
     if (!BRIDGE_TOKEN && !BRIDGE_DEV_MODE) {
       throw new Error('[NodeBridge] JARVIS_BRIDGE_TOKEN is required. Set it in .env, or explicitly set JARVIS_BRIDGE_DEV_MODE=true for local insecure development.');
@@ -134,6 +223,13 @@ export class NodeBridge {
     this.wss = new WebSocketServer({
       host: pythonBridgeConfig.host,
       port: pythonBridgeConfig.port,
+      maxPayload: maxPayloadBytes(),
+      // Refuse browser pages before any message is read (SEC-01).
+      verifyClient: (info: { origin?: string; req: http.IncomingMessage }) => {
+        if (bridgeOriginAllowed(info.origin || undefined)) return true;
+        console.warn(`[NodeBridge] ⛔ Refused a WebSocket connection from a web page (Origin: ${String(info.origin).slice(0, 80)}).`);
+        return false;
+      },
     });
 
     const authStatus = BRIDGE_DEV_MODE ? "INSECURE DEV MODE (no token)" : "TOKEN PROTECTED (production)";
@@ -144,9 +240,11 @@ export class NodeBridge {
     // PART B-5: Add health status endpoint
     const healthPort = parseInt(process.env.HEALTH_PORT || "9001", 10);
     const healthServer = http.createServer((req, res) => {
-      if (req.url === "/health") {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(pipelineRegistry.getHealth(), null, 2));
+      if (req.method === "GET" && req.url === "/health") {
+        // Each pipeline's status only: no error text, paths or settings (SEC-11).
+        const status = Object.fromEntries(Object.entries(pipelineRegistry.getHealth()).map(([name, p]) => [name, p.status]));
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(JSON.stringify(status, null, 2));
       } else {
         res.writeHead(404);
         res.end("Not Found");
@@ -178,7 +276,7 @@ export class NodeBridge {
         console.warn(`[NodeBridge] Rejected unauthenticated client_ready for role=${role}`);
         try {
           ws.close(1008, "Authentication required");
-        } catch {}
+        } catch { /* socket already closing; the client is refused either way */ }
         return;
       }
 
@@ -197,14 +295,17 @@ export class NodeBridge {
       console.log(`[NodeBridge] ✅ READY client registered: ${role}`);
       console.log(`[NodeBridge] 📋 Ready clients: ${[...this.readyClients.keys()].join(", ")}`);
 
-      // ✅ Sync pipelineRegistry so dashboard shows connected immediately
+      // A (re)started service: earlier failures are history, but connecting
+      // is not success. Recognition, wake word and speech output are recorded
+      // working when they produce a transcript, a detection or a played reply
+      // (healthLedger); this used to mark them healthy here.
       if (role === "wakeword") {
-        pipelineRegistry.recordSuccess("wake_to_stt");
+        pipelineRegistry.resetFailures("wake_to_stt");
       } else if (role === "stt") {
-        pipelineRegistry.recordSuccess("wake_to_stt");
-        pipelineRegistry.recordSuccess("stt_to_brain");
+        pipelineRegistry.resetFailures("stt_to_brain");
       } else if (role === "tts") {
-        pipelineRegistry.recordSuccess("brain_to_tts");
+        pipelineRegistry.resetFailures("brain_to_tts");
+        this.lastSpeechOutcome = null;
       }
 
       // Emit bridge-level event so jarvis.ts can refresh dashboard immediately
@@ -215,9 +316,7 @@ export class NodeBridge {
         console.log(`[NodeBridge] Flushing ${this.pendingTTS.length} queued TTS message(s).`);
         const flush = [...this.pendingTTS];
         this.pendingTTS = [];
-        for (const text of flush) {
-          this.send(ws, { type: "tts", payload: { text } });
-        }
+        for (const text of flush) this.sendTts(ws, text);
       }
 
       // ✅ FIX: Flush queued listen_start to STT when it becomes ready
@@ -245,19 +344,16 @@ export class NodeBridge {
         }
       }
       this.commandQueue.delete(role);
-
-      // Legacy listen flush (action: listen)
-      if ((role === "stt" || role === "all") && this.pendingListen) {
-        console.log(`[NodeBridge] Flushing pending listen command to STT.`);
-        this.pendingListen = false;
-        this.send(ws, { type: "command", payload: { action: "listen" } });
-      }
     });
 
     // CRIT-4: Hardware error from Python voice module
     this.on("hardware_error", (msg) => {
       const device = msg.payload?.device as string | undefined;
-      console.error(`[NodeBridge] ⚠️  Hardware error reported by: ${device ?? "unknown"}`);
+      const error = String(msg.payload?.error ?? "");
+      console.error(`[NodeBridge] ⚠️  Hardware error reported by: ${device ?? "unknown"}${error ? ` — ${error.slice(0, 160)}` : ""}`);
+      if (device === "tts") this.noteSpeechOutcome("no_audio_device", error || "audio output device unavailable");
+      if (device === "stt") healthLedger.record(LEDGER_PIPELINES.stt, false, `hardware_error: ${(error || "speech recognition unavailable").slice(0, 160)}`);
+      if (device === "wakeword") healthLedger.record(LEDGER_PIPELINES.wake, false, `hardware_error: ${(error || "wake word unavailable").slice(0, 160)}`);
     });
 
     this.wss.on("connection", (ws, req) => {
@@ -277,7 +373,7 @@ export class NodeBridge {
               console.warn(`[NodeBridge] Rejecting unauthenticated client message type=${msg.type}`);
               try {
                 ws.send(JSON.stringify({ type: "error", payload: { error: "Authentication required" } }));
-              } catch {}
+              } catch { /* socket already closing; it is closed on the next line */ }
               ws.close(1008, "Authentication required");
               return;
             }
@@ -297,25 +393,24 @@ export class NodeBridge {
             this.handleSpeakingLifecycleSignal("speaking_end", msg.payload);
             return;
           }
-
-          if (msg.type === "wake_word") {
-            console.log(`[NodeBridge] 🔍 Ready clients at wake word: ${[...this.readyClients.keys()].join(", ") || "NONE"}`);
+          // tts.py is retrying a synthesis that timed out: more time is needed.
+          if (msg.type === "speaking_delay") {
+            this.handleSpeakingDelay(msg.payload);
+            return;
           }
 
-          // ✅ FIXED: Missing ACK System handling
-          if (msg.type === ("ack" as any) && msg.id) {
-            const pending = (this as any).pendingAcks?.get(msg.id);
-            if (pending) {
-              clearTimeout(pending.timeout);
-              pending.resolve();
-              (this as any).pendingAcks.delete(msg.id);
-            }
-            return;
+          if (msg.type === "wake_word") {
+            healthLedger.record(LEDGER_PIPELINES.wake, true, "wake word detected");
+            console.log(`[NodeBridge] 🔍 Ready clients at wake word: ${[...this.readyClients.keys()].join(", ") || "NONE"}`);
           }
 
           if (msg.type === "stt_result" && msg.payload?.text) {
             const text = msg.payload.text;
+            healthLedger.record(LEDGER_PIPELINES.stt, true, "transcript produced");
             const role = this.clientRoles.get(ws) || "unknown";
+            if (role === "wakeword") this.lastTranscriptEngine = "Google STT";
+            // stt.py says when Google STT stood in while Whisper loaded (BUG-17).
+            else if (role === "stt") this.lastTranscriptEngine = msg.payload?.engine === "Google STT" ? "Google STT" : "Whisper";
             if (DEBUG_LOGS) {
               console.log(`[NodeBridge] RX type=stt_result role=${role} text="${text}"`);
               console.log(`[NodeBridge] Forwarding STT result to orchestrator.process(...)`);
@@ -352,6 +447,12 @@ export class NodeBridge {
 
       ws.on("close", () => {
         const role = this.clientRoles.get(ws);
+        // tts.py went away mid-reply: no speaking_end will come (VOICE-001).
+        if (role === "tts" && this.readyClients.get("tts") === ws && this._inFlight.size > 0) {
+          this._inFlight.clear();
+          this.noteSpeechOutcome("not_connected", "tts.py disconnected before the reply ended");
+          this.closeSpeakingTurn({ reason: "not_connected", outcome: "not_connected" });
+        }
         this.clients.delete(ws);
         this.authenticatedClients.delete(ws);
         
@@ -416,19 +517,89 @@ export class NodeBridge {
     this._bridgeEvents.on(event, handler);
   }
 
+  /** TTS needs more time (a synthesis retry): extend the SPEAKING watchdog and the mic guard. */
+  handleSpeakingDelay(payload: any = {}): void {
+    const extraMs = Number(payload?.extra_ms);
+    const reason = typeof payload?.reason === "string" ? payload.reason.slice(0, 40) : "tts_delay";
+    if (!Number.isFinite(extraMs) || extraMs <= 0) return;
+    console.log(`[NodeBridge] RX type=speaking_delay role=tts (${reason}, +${Math.round(extraMs)} ms)`);
+    agentStateMachine.noteSpeechDelayed(extraMs, reason);
+    conversationBus.noteSpeechQueued();
+  }
+
+  /**
+   * Records whether the speech turn was heard (VOICE-005). Only these count
+   * against speech health; interrupted and cancelled (the user stopped it) and
+   * not_connected (shown as the connection itself) are neither success nor
+   * failure. An interrupted turn leaves the last outcome as it was.
+   */
+  private noteSpeechOutcome(outcome: string, detail = "", engine = ""): void {
+    if (outcome === "interrupted") return;
+    this.lastSpeechOutcome = { outcome, detail: detail.slice(0, 200), at: Date.now(), ...(engine ? { engine: engine.slice(0, 40) } : {}) };
+    if (outcome === "played") {
+      pipelineRegistry.recordSuccess("brain_to_tts");
+      healthLedger.record(LEDGER_PIPELINES.tts, true, engine ? `played (${engine.slice(0, 40)})` : "played");
+    } else if (SPEECH_FAILURES.has(outcome)) {
+      healthLedger.record(LEDGER_PIPELINES.tts, false, `${outcome}${detail ? `: ${detail.slice(0, 120)}` : ""}`);
+      pipelineRegistry.recordFailure("brain_to_tts", `reply not played: ${outcome}${detail ? ` (${detail.slice(0, 120)})` : ""}`);
+    }
+  }
+
+  /** The speaking watchdog gave up on the replies in flight (VOICE-005). */
+  noteSpeechTimedOut(): void {
+    if (this._inFlight.size === 0) return;
+    this._inFlight.clear();
+    this.noteSpeechOutcome("timed_out", "no speaking_end within the speaking watchdog");
+  }
+
+  private sendTts(ws: WebSocket, text: string): void {
+    const id = `tts-${++this._speechSeq}`;
+    this._inFlight.set(id, Date.now());
+    ws.send(JSON.stringify({ type: "tts", payload: { text, id } } satisfies BridgeMessage), (err) => {
+      // The socket closed under the send: the close handler ends the turn.
+      if (err) console.warn(`[NodeBridge] TTS send failed: ${err.message}`);
+    });
+  }
+
+  /** Ends the speaking turn: the same path as tts.py's speaking_end. */
+  private closeSpeakingTurn(payload: any = {}): void {
+    this.ttsEndedMs = Date.now();
+    this._lastQueuedTts = "";
+    agentStateMachine.noteSpeechFinished();
+    conversationBus.speakingEnded();
+    this._bridgeEvents.emit("speaking_end", payload);
+  }
+
   handleSpeakingLifecycleSignal(type: "speaking_start" | "speaking_end", payload: any = {}): void {
     if (type === "speaking_start") {
       console.log("[NodeBridge] RX type=speaking_start role=tts");
       // Phase 4: record when TTS playback actually began for barge-in detection
       this.ttsStartedMs = Date.now();
       conversationBus.speakingStarted();
+      // The SPEAKING watchdog counts from now: synthesis time is not speech.
+      agentStateMachine.notePlaybackStarted();
       this._bridgeEvents.emit("speaking_start", payload);
       return;
     }
 
     console.log("[NodeBridge] RX type=speaking_end role=tts");
-    conversationBus.speakingEnded();
-    this._bridgeEvents.emit("speaking_end", payload);
+    if (Array.isArray(payload?.ids)) {
+      const covered = payload.ids.map(String).filter((id: string) => this._inFlight.delete(id));
+      if (covered.length === 0) {
+        console.log(`[NodeBridge] speaking_end for replies no longer in flight (${payload.ids.join(", ").slice(0, 80)}) — ignored.`);
+        return;
+      }
+    } else {
+      // A tts.py without ids: one speaking_end covers everything sent.
+      this._inFlight.clear();
+    }
+    // No outcome (a turn stopped before anything was tried): nothing to record.
+    if (payload?.outcome) this.noteSpeechOutcome(String(payload.outcome), String(payload?.detail ?? ""), String(payload?.engine ?? ""));
+    if (this._inFlight.size > 0) {
+      console.log(`[NodeBridge] ${this._inFlight.size} newer repl${this._inFlight.size === 1 ? "y" : "ies"} still in flight — speaking turn stays open.`);
+      return;
+    }
+    this.closeSpeakingTurn(payload);
   }
 
   removeListener(type: BridgeMessage["type"], handler: MessageHandler): void {
@@ -436,61 +607,6 @@ export class NodeBridge {
     if (existing) {
       this.handlers.set(type, existing.filter(h => h !== handler));
     }
-  }
-
-  async askForConfirmation(action: string, timeoutMs: number = 10000): Promise<boolean> {
-    return new Promise((resolve) => {
-      console.log(`[NodeBridge] Security Action required: ${action}. Waiting for CLI confirmation...`);
-      // Ask through the CLI for safety instead of voice which is prone to hallucinations
-      this.speakToClients(`Sir, I need your confirmation to ${action}. Please type confirm in the console.`);
-      
-      const timeout = setTimeout(() => {
-        console.log("\n[NodeBridge] Confirmation timed out. Aborting.");
-        resolve(false);
-      }, timeoutMs);
-
-      // Check stdin for confirmation
-      const onData = (data: Buffer) => {
-        const input = data.toString().trim().toLowerCase();
-        if (["confirm", "yes", "y", "proceed", "do it"].includes(input)) {
-           clearTimeout(timeout);
-           process.stdin.removeListener('data', onData);
-           resolve(true);
-        } else if (["cancel", "no", "n", "abort", "stop"].includes(input)) {
-           clearTimeout(timeout);
-           process.stdin.removeListener('data', onData);
-           resolve(false);
-        }
-      };
-      
-      process.stdin.on('data', onData);
-    });
-  }
-
-  waitForTextConfirmation(timeoutMs: number = 10000): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const accepted = new Set(["confirm", "yes", "approve", "approved", "proceed", "do it"]);
-      const denied = new Set(["cancel", "no", "deny", "abort", "stop"]);
-      let settled = false;
-
-      const finish = (value?: string, error?: Error) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        this._bridgeEvents.removeListener("stt_text", onText);
-        if (error) reject(error);
-        else resolve(value ?? "");
-      };
-
-      const onText = (text: string) => {
-        const clean = String(text).trim().toLowerCase();
-        if (accepted.has(clean)) finish("CONFIRM");
-        if (denied.has(clean)) finish("DENY");
-      };
-
-      const timer = setTimeout(() => finish(undefined, new Error("APPROVAL_TIMEOUT")), timeoutMs);
-      this._bridgeEvents.on("stt_text", onText);
-    });
   }
 
   send(ws: WebSocket, msg: BridgeMessage): void {
@@ -512,6 +628,12 @@ export class NodeBridge {
     if (role === 'tts' && msg.type === 'command' && msg.payload?.action === 'stop') {
       console.log('[NodeBridge] 🛑 Stop command for TTS received. Clearing pendingTTS queue.');
       this.pendingTTS = [];
+      this._lastQueuedTts = "";
+      if (this._inFlight.size > 0) {
+        this._inFlight.clear();
+        this.noteSpeechOutcome("cancelled", "stopped before it finished");
+      }
+      agentStateMachine.noteSpeechFinished();
     }
 
     let sent = false;
@@ -542,44 +664,34 @@ export class NodeBridge {
     }
   }
 
-  sendToClient(role: string, message: object): void {
-    const client = this.readyClients.get(role);
-    if (client && client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(message));
-      console.log(`[NodeBridge] 📨 Sent to ${role}:`, message);
-    } else {
-      console.log(`[NodeBridge] ⏳ ${role} not READY — queueing command`);
-      const existing = this.commandQueue.get(role) ?? [];
-      existing.push({ message, timestamp: Date.now() });
-      this.commandQueue.set(role, existing);
-    }
-  }
-
-  speakToClients(text: string): void {
+  /** `allowRepeat`: say it even if it is the same as the last phrase (a second approval request). */
+  speakToClients(text: string, opts: { allowRepeat?: boolean } = {}): void {
     if (!systemController.can("tts_output")) {
       console.log("[NodeBridge] 🛑 TTS blocked due to active interrupt.");
       return;
     }
 
-    // Strip thinking tags if any leaked here
-    let cleanText = text
-      .replace(/<think>[\s\S]*?<\/think>/g, '')
-      .replace(/<think>[\s\S]*/g, '')
-      .trim();
+    // Every sender's text, as the voice says it: no thinking tags, no list
+    // markers or **bold** (BUG-13: some senders do not use the orchestrator's cleanup).
+    const cleanText = stripMarkdown(text);
 
     if (!cleanText) return;
 
-    // Phase 4: Dedup — do not queue identical text twice in a row
-    if (cleanText === this._lastQueuedTts) {
+    // Dedup: the same phrase queued twice while the first is still pending.
+    if (cleanText === this._lastQueuedTts && !opts.allowRepeat && Date.now() - this._lastQueuedTtsAt < TTS_DEDUP_WINDOW_MS) {
       console.log(`[NodeBridge] TTS dedup: identical phrase already queued — skipping: "${cleanText.slice(0, 60)}"`);
       return;
     }
     this._lastQueuedTts = cleanText;
+    this._lastQueuedTtsAt = Date.now();
 
     this.lastTtsText = cleanText;
     this.lastTtsTimestamp = Date.now();
+    // Lets the SPEAKING watchdog allow for everything queued, not a fixed 12 s.
+    agentStateMachine.noteSpeechQueued(cleanText);
+    // The same for the guard that reopens the mic (else JARVIS hears itself).
+    conversationBus.noteSpeechQueued();
 
-    const msg: BridgeMessage = { type: "tts", payload: { text: cleanText } };
     const ttsClient = this.readyClients.get("tts");
 
     if (!ttsClient || ttsClient.readyState !== WebSocket.OPEN) {
@@ -591,12 +703,17 @@ export class NodeBridge {
       }
       console.warn("[NodeBridge] No READY clients yet — queueing TTS.");
       this.pendingTTS.push(cleanText);
+      // Nothing will end this speaking turn: end it now, so JARVIS does not
+      // wait in SPEAKING with the wake word paused for the watchdog (VOICE-001).
+      // The reply is kept and spoken when tts.py connects.
+      this.noteSpeechOutcome("not_connected", "tts.py is not connected; the reply is queued");
+      if (this._inFlight.size === 0) this.closeSpeakingTurn({ reason: "not_connected", outcome: "not_connected" });
       return;
     }
 
     console.log(`[NodeBridge] → [tts] speak`);
-    ttsClient.send(JSON.stringify(msg));
-    pipelineRegistry.recordSuccess("brain_to_tts");
+    // Health is recorded from what tts.py reports back (speaking_end), not here.
+    this.sendTts(ttsClient, cleanText);
   }
 
   /**
@@ -627,6 +744,7 @@ export class NodeBridge {
       const pendingMs = Date.now() - (this.pendingListenStartedAt ?? Date.now());
       const payload = { reason: "listen_start_timeout", pendingMs };
       console.warn(`[NodeBridge] STT still not READY after ${pendingMs}ms. Keeping wake-word continuation fallback active.`);
+      healthLedger.record(LEDGER_PIPELINES.stt, false, `not ready to listen after ${pendingMs} ms`);
       this._bridgeEvents.emit("stt_unavailable", payload);
     }, Math.max(1, timeoutMs));
     this.pendingListenWarningTimer.unref?.();

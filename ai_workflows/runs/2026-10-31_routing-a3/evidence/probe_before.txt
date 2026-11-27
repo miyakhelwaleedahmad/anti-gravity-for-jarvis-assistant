@@ -1,0 +1,19 @@
+"close youtube" | normalized="close youtube" | route=close_browser_tab youtube | planner tools=control_app,control_window
+"close youtube tab" | normalized="close youtube tab" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure
+"close the youtube tab" | normalized="close the youtube tab" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure
+"close YouTube for me" | normalized="close youtube" | route=close_browser_tab youtube | planner tools=control_app,control_window
+"Jarvis close the YouTube tab" | normalized="close the youtube tab" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure
+"close the gmail tab" | normalized="close the gmail tab" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure
+"close this tab" | normalized="close this tab" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure
+"close the current tab" | normalized="close the current tab" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure
+"close tab" | normalized="close tab" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure
+"enable full control mode" | normalized="enable full control mode" | route=enable_full_control_session | planner tools=enable_full_control_session,disable_full_control_session,get_permission_status
+"enable full controll mode" | normalized="enable full controll mode" | route=none (planner) | planner tools=open_app,web_search,get_system_info,run_command
+"enable full control" | normalized="enable full control" | route=none (planner) | planner tools=enable_full_control_session,disable_full_control_session,get_permission_status
+"turn on full control mode" | normalized="turn on full control mode" | route=none (planner) | planner tools=enable_full_control_session,disable_full_control_session,get_permission_status
+"enable fool control mode" | normalized="enable fool control mode" | route=none (planner) | planner tools=open_app,web_search,get_system_info,run_command
+"close notepad and chrome" | normalized="close notepad and chrome" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state
+"open github.com" | normalized="open githubcom" | route=none (planner) | planner tools=open_app,control_app
+"open www.google.com" | normalized="open wwwgooglecom" | route=none (planner) | planner tools=open_app,control_app
+"launch cmd /c del *" | normalized="launch cmd c del" | route=none (planner) | planner tools=open_app,control_app
+"close the youtube tab; del *" | normalized="close the youtube tab del" | route=none (planner) | planner tools=control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure

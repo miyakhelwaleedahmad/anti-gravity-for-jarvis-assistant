@@ -1,6 +1,7 @@
 import { execa, ExecaError } from "execa";
 import os from "os";
 import path from "path";
+import { childEnv } from '../system/childEnv.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,9 @@ export class TerminalTools {
         shell: options.shell ?? true,
         cwd,
         timeout,
-        env: { ...process.env, ...(options.env ?? {}) },
+        // Not JARVIS's keys and tokens (SEC-06): what programs need, plus the caller's.
+        env: childEnv(options.env ?? {}),
+        extendEnv: false,
         reject: false, // don't throw on non-zero exit
         windowsHide: false, // CRITICAL: Allows 'start cmd' to pop open visibly
       });

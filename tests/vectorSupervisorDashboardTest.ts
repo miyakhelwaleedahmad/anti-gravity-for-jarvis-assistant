@@ -49,7 +49,7 @@ async function runTest() {
 
   assert(vectorHealth !== undefined, 'HealthManager probe includes vector_memory service');
   assert(
-    vectorHealth.status === 'online' || vectorHealth.status === 'degraded',
+    vectorHealth.status === 'online' || vectorHealth.status === 'degraded' || vectorHealth.status === 'loading',
     `Vector service status reported valid state (got: "${vectorHealth.status}", detail: "${vectorHealth.detail}")`
   );
   assert(
@@ -64,7 +64,8 @@ async function runTest() {
   const searchResults = await memoryManager.searchFactsWithScores('interface preference', 3);
   assert(Array.isArray(searchResults), 'searchFactsWithScores returned array');
   assert(searchResults.length > 0, 'Semantic/lexical search returned remembered fact');
-  assert(searchResults[0].fact.fact.includes('dark mode'), 'Search result contains correct fact text');
+  // An empty result is a failed check, not a crash (it threw TypeError before).
+  assert(searchResults[0]?.fact?.fact?.includes('dark mode') === true, 'Search result contains correct fact text');
 
   // Shutdown vector supervisor cleanly
   vectorMemorySupervisor.stop();

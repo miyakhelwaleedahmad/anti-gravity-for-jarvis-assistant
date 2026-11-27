@@ -1,0 +1,38 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=finalReviewFixesTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    finalReviewFixesTest                         1253ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - finalReviewFixesTest: === Results: 2 passed, 8 failed ===
+        FAIL: an unconfigured coding agent is taken at the model agents send (JARVIS_AGENT_MODEL) ({"provider":"groq","model":"qwen-2.5-32b"})
+        FAIL: …so QA on that same model is not independent (independent: coding uses groq qwen-2.5-32b, QA uses groq model-x)
+        FAIL: without JARVIS_AGENT_MODEL, agents send the fast model: QA on the fast model is not independent ({"provider":"groq","model":"qwen-2.5-32b"} not independent: both use groq, whose client moves to its fast model llama-3.1-8b-instant on a rate limit)
+        FAIL: two models on the Gemini/Groq client are not independent (either can move to the fast model) (independent: coding uses groq model-a, QA uses groq model-b)
+        FAIL: …the same for the models really recorded (independent: different models answered)
+        FAIL: a root coding task given inheritModelRoute=qa_agent stays on the coding model (checker:coding_agent)
+        FAIL: a root QA task given inheritModelRoute=coding_agent stays on QA's model (coder:qa_agent)
+        FAIL: a root PC task given inheritModelRoute=coding_agent is not moved onto the coding model (coder:pc_agent)
+        …
+        PASS: different providers are still independent (independent: coding uses anthropic claude-a, QA uses groq model-b)
+      --- L1. Only a parent's own helper inherits its route ---
+      [ToolRegistry] ✅ Registered 53 tool(s) into registry.
+      [ToolRegistry] 53 built-in tools registered; skills load next.
+      [ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, b
+      [LLM usage] checker qa-model planning: ? in / ? out tokens, 1 ms
+        FAIL: a root coding task given inheritModelRoute=qa_agent stays on the coding model (checker:coding_agent)
+      [LLM usage] coder code-model planning: ? in / ? out tokens, 0 ms
+        FAIL: a root QA task given inheritModelRoute=coding_agent stays on QA's model (coder:qa_agent)
+      [LLM usage] coder code-model planning: ? in / ? out tokens, 0 ms
+        FAIL: a root PC task given inheritModelRoute=coding_agent is not moved onto the coding model (coder:pc_agent)
+      [LLM usage] coder code-model planning: ? in / ? out tokens, 0 ms
+      [LLM usage] coder code-model planning: ? in / ? out tokens, 0 ms
+        PASS: the coding agent's own helpers still inherit the coding model (coder:code_analysis_worker,coder:code_analysis_worker)
+      === Results: 2 passed, 8 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

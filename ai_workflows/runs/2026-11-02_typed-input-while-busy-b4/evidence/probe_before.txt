@@ -1,0 +1,12 @@
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+[Orchestrator] ❌ Unhandled error in agent loop: Error: [AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: LISTENING -> PLANNING. Allowed: [PROCESSING_STT, INTERRUPTED, IDLE]
+CASE LISTENING (wake word heard, waiting for speech)
+  state before: LISTENING
+  said: I encountered an unexpected error, sir. Please try again.
+  state after: IDLE
+[AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: REFLECTING -> PLANNING. Allowed: [REPAIRING, SPEAKING, IDLE]
+[Orchestrator] ❌ Unhandled error in agent loop: Error: [AgentStateMachine] ⛔ ILLEGAL TRANSITION REJECTED: REFLECTING -> PLANNING. Allowed: [REPAIRING, SPEAKING, IDLE]
+CASE REFLECTING (a state left over with no request running)
+  state before: REFLECTING
+  said: I encountered an unexpected error, sir. Please try again.
+  state after: IDLE

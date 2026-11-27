@@ -1,0 +1,42 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=gapReviewFixesTest,claudePrimaryStrictTest,independentQaTest,strictModelIdentityTest,lineageInheritanceTest,verificationInconclusiveTest,modelRoutingTest,llmClientBehaviourTest,claudeProviderTest,providerHealthTest,llmCancellationTest,foregroundPriorityTest,modelRoleRoutingTest,modelRouteCorrectionsTest,modelRouteRound3Test,providerIsolationTest,providerCapabilitiesTest,usageLedgerTest,qaModelFailureTest,reviewRound3FixesTest,strictHelperRoutingTest,finalReviewFixesTest,agentSpecialistsTest,sevenAgentTest,agentRuntimeTest,jarvisAgentIntegrationTest,goalAgentIntegrationTest,codeRepairTest,backgroundResearchTest,selfHealingHonestyTest,replyGoldenTest
+
+
+=== JARVIS test suite — 31 file(s) ===
+
+  PASS    agentRuntimeTest                             2882ms
+  PASS    agentSpecialistsTest                         1289ms
+  PASS    backgroundResearchTest                       1285ms
+  PASS    claudePrimaryStrictTest                      753ms
+  PASS    claudeProviderTest                           1281ms
+  PASS    codeRepairTest                               9159ms
+  PASS    finalReviewFixesTest                         1385ms
+  PASS    foregroundPriorityTest                       1236ms
+  PASS    gapReviewFixesTest                           1791ms
+  PASS    goalAgentIntegrationTest                     2883ms
+  PASS    independentQaTest                            1257ms
+  PASS    jarvisAgentIntegrationTest                   3825ms
+  PASS    lineageInheritanceTest                       1250ms
+  PASS    llmCancellationTest                          2200ms
+  PASS    llmClientBehaviourTest                       1402ms
+  PASS    modelRoleRoutingTest                         10045ms
+  PASS    modelRouteCorrectionsTest                    5543ms
+  PASS    modelRouteRound3Test                         2259ms
+  PASS    modelRoutingTest                             749ms
+  PASS    providerCapabilitiesTest                     789ms
+  PASS    providerHealthTest                           3715ms
+  PASS    providerIsolationTest                        1364ms
+  PASS    qaModelFailureTest                           1621ms
+  PASS    replyGoldenTest                              1446ms
+  PASS    reviewRound3FixesTest                        3928ms
+  PASS    selfHealingHonestyTest                       467ms
+  PASS    sevenAgentTest                               1778ms
+  PASS    strictHelperRoutingTest                      1349ms
+  PASS    strictModelIdentityTest                      870ms
+  PASS    usageLedgerTest                              1379ms
+  PASS    verificationInconclusiveTest                 1317ms
+
+=== 31 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

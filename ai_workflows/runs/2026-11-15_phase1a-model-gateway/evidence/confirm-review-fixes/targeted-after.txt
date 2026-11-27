@@ -1,0 +1,33 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=saveRelationAskOnceTest,saveRelationConfirmReviewTest,saveRelationConfirmTest,saveRelationProvenanceTest,unverifiedMemoryTest,memoryTrustTest,mixedFailureCausesTest,secretSinksTest,verifyAfterActTest,executionDispatchAuditTest,sevenAgentTest,jarvisAgentIntegrationTest,goalRuntimeTest,goalAgentIntegrationTest,goalRecoveryTest,toolDiscoverabilityAuditTest,plannerDecisionAuditTest,fullSystemIntegrationTest,adminControlTest,approvalBudgetR31Test,errorClassificationTest,lowReviewFixesTest
+
+
+=== JARVIS test suite — 22 file(s) ===
+
+  PASS    adminControlTest                             540ms
+  PASS    approvalBudgetR31Test                        70420ms
+  PASS    errorClassificationTest                      1229ms
+  PASS    executionDispatchAuditTest                   3240ms
+  PASS    fullSystemIntegrationTest                    1266ms
+  PASS    goalAgentIntegrationTest                     2467ms
+  PASS    goalRecoveryTest                             479ms
+  PASS    goalRuntimeTest                              2371ms
+  PASS    jarvisAgentIntegrationTest                   3721ms
+  PASS    lowReviewFixesTest                           1298ms
+  PASS    memoryTrustTest                              816ms
+  PASS    mixedFailureCausesTest                       1332ms
+  PASS    plannerDecisionAuditTest                     1217ms
+  PASS    saveRelationAskOnceTest                      4280ms
+  PASS    saveRelationConfirmReviewTest                1303ms
+  PASS    saveRelationConfirmTest                      1273ms
+  PASS    saveRelationProvenanceTest                   1351ms
+  PASS    secretSinksTest                              5069ms
+  PASS    sevenAgentTest                               1531ms
+  PASS    toolDiscoverabilityAuditTest                 1310ms
+  PASS    unverifiedMemoryTest                         770ms
+  PASS    verifyAfterActTest                           6287ms
+
+=== 22 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

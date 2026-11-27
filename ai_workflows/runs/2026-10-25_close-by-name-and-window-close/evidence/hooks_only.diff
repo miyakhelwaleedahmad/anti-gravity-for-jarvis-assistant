@@ -1,0 +1,241 @@
+--- /dev/fd/63	2026-10-25 17:18:53.369851997 +0000
+--- control/appController.ts	2026-10-25 17:18:25.278792216 +0000
+@@ -32,7 +32,14 @@
+  */
+ const CMD_METACHARACTERS = /[&|^<>%"\r\n]/;
+ 
++const DEFAULT_DEPS = {
++  windows: () => getWindowsState(),
++  automate: runAutomateScript,
++  approve: (t: string, c: string) => approvalGate.requestApproval(t, c),
++};
+ export class AppController {
++  constructor(private readonly deps: any = DEFAULT_DEPS) {}
++
+   private resolveTarget(target: string): string {
+     const lower = target.toLowerCase().trim();
+     if (APP_ALIASES[lower]) {
+@@ -99,13 +106,13 @@
+     const isProtected = PROTECTED_APPS.some(app => resolved.includes(app) || target.toLowerCase().includes(app));
+ 
+     if (isProtected) {
+-      const approved = await approvalGate.requestApproval('Close Protected App', `Close app: ${target}`);
++      const approved = await this.deps.approve('Close Protected App', `Close app: ${target}`);
+       if (!approved) {
+         throw new Error(`Close action cancelled by user for protected app: ${target}`);
+       }
+     }
+ 
+-    const winState = await getWindowsState();
++    const winState = await this.deps.windows();
+     const matches = winState.openApps.filter(app => 
+       app.name.toLowerCase().includes(resolved) || 
+       app.windowTitle.toLowerCase().includes(resolved)
+@@ -120,7 +127,7 @@
+     let closedCount = 0;
+     for (const match of matches) {
+       if (match.hwnd) {
+-        await runAutomateScript(['-Action', 'control-window', '-ActionType', 'close', '-Hwnd', match.hwnd]);
++        await this.deps.automate(['-Action', 'control-window', '-ActionType', 'close', '-Hwnd', match.hwnd]);
+         closedCount++;
+       }
+     }
+@@ -134,7 +141,7 @@
+     }
+ 
+     const resolved = this.resolveTarget(target).toLowerCase();
+-    const winState = await getWindowsState();
++    const winState = await this.deps.windows();
+     const match = winState.openApps.find(app => 
+       app.name.toLowerCase().includes(resolved) || 
+       app.windowTitle.toLowerCase().includes(resolved)
+@@ -144,13 +151,13 @@
+       return `No running window found for app "${target}".`;
+     }
+ 
+-    await runAutomateScript(['-Action', 'control-window', '-ActionType', 'focus', '-Hwnd', match.hwnd]);
++    await this.deps.automate(['-Action', 'control-window', '-ActionType', 'focus', '-Hwnd', match.hwnd]);
+     return `Focused window: "${match.windowTitle}"`;
+   }
+ 
+   public async isAppOpen(target: string): Promise<boolean> {
+     const resolved = this.resolveTarget(target).toLowerCase();
+-    const winState = await getWindowsState();
++    const winState = await this.deps.windows();
+     const hasWindow = winState.openApps.some(app => 
+       app.name.toLowerCase().includes(resolved) || 
+       app.windowTitle.toLowerCase().includes(resolved)
+@@ -178,7 +185,7 @@
+   }
+ 
+   public async listApps(): Promise<string> {
+-    const winState = await getWindowsState();
++    const winState = await this.deps.windows();
+     const apps = winState.openApps.map(app => `${app.name} (PID: ${app.pid}) - ${app.windowTitle}`);
+     return JSON.stringify(apps, null, 2);
+   }
+--- /dev/fd/63	2026-10-25 17:18:53.373851997 +0000
+--- control/windowController.ts	2026-10-25 17:18:25.278977266 +0000
+@@ -11,14 +11,21 @@
+ 
+ const PROTECTED_WINDOWS = ['antigravity', 'code', 'windowsterminal', 'powershell', 'cmd'];
+ 
++const DEFAULT_DEPS = {
++  windows: () => getWindowsState(),
++  automate: runAutomateScript,
++  approve: (t: string, c: string) => approvalGate.requestApproval(t, c),
++};
+ export class WindowController {
++  constructor(private readonly deps: any = DEFAULT_DEPS) {}
++
+   private async findHwnd(target: string): Promise<string> {
+     // Check if target is already an HWND hex (no window list needed)
+     if (/^0x[0-9a-fA-F]+$/.test(target)) {
+       return target;
+     }
+ 
+-    const winState = await getWindowsState();
++    const winState = await this.deps.windows();
+     const lower = target.toLowerCase().trim();
+     const match = winState.openApps.find(app => 
+       app.windowTitle.toLowerCase().includes(lower) || 
+@@ -33,12 +40,12 @@
+   }
+ 
+   public async getActiveWindow(): Promise<string> {
+-    const state = await getWindowsState();
++    const state = await this.deps.windows();
+     return JSON.stringify(state.activeWindow, null, 2);
+   }
+ 
+   public async listOpenWindows(): Promise<string> {
+-    const state = await getWindowsState();
++    const state = await this.deps.windows();
+     return JSON.stringify(state.openApps, null, 2);
+   }
+ 
+@@ -48,7 +55,7 @@
+     }
+     try {
+       const hwnd = await this.findHwnd(target);
+-      return runAutomateScript(['-Action', 'control-window', '-ActionType', 'focus', '-Hwnd', hwnd]);
++      return this.deps.automate(['-Action', 'control-window', '-ActionType', 'focus', '-Hwnd', hwnd]);
+     } catch (err) {
+       return err instanceof Error ? err.message : String(err);
+     }
+@@ -60,20 +67,20 @@
+     }
+ 
+     const hwnd = await this.findHwnd(target);
+-    const winState = await getWindowsState();
++    const winState = await this.deps.windows();
+     const match = winState.openApps.find(app => app.hwnd === hwnd);
+     
+     if (match) {
+       const isProtected = PROTECTED_WINDOWS.some(p => match.name.toLowerCase().includes(p) || match.windowTitle.toLowerCase().includes(p));
+       if (isProtected) {
+-        const approved = await approvalGate.requestApproval('Close Protected Window', `Close: ${match.windowTitle}`);
++        const approved = await this.deps.approve('Close Protected Window', `Close: ${match.windowTitle}`);
+         if (!approved) {
+           throw new Error('Close window cancelled by user.');
+         }
+       }
+     }
+ 
+-    return runAutomateScript(['-Action', 'control-window', '-ActionType', 'close', '-Hwnd', hwnd]);
++    return this.deps.automate(['-Action', 'control-window', '-ActionType', 'close', '-Hwnd', hwnd]);
+   }
+ 
+   public async closeCurrentWindow(): Promise<string> {
+@@ -82,7 +89,7 @@
+     if (!permissionSession.checkPermission(2, 'Close the current window')) {
+       throw new Error('Permission Level 2 required.');
+     }
+-    const winState = await getWindowsState();
++    const winState = await this.deps.windows();
+     const active = winState.activeWindow;
+     if (!active.hwnd || active.hwnd === '0x0') {
+       throw new Error('No active window to close.');
+@@ -95,7 +102,7 @@
+       throw new Error('Permission denied.');
+     }
+     const hwnd = await this.findHwnd(target);
+-    return runAutomateScript(['-Action', 'control-window', '-ActionType', 'minimize', '-Hwnd', hwnd]);
++    return this.deps.automate(['-Action', 'control-window', '-ActionType', 'minimize', '-Hwnd', hwnd]);
+   }
+ 
+   public async maximizeWindow(target: string): Promise<string> {
+@@ -103,7 +110,7 @@
+       throw new Error('Permission denied.');
+     }
+     const hwnd = await this.findHwnd(target);
+-    return runAutomateScript(['-Action', 'control-window', '-ActionType', 'maximize', '-Hwnd', hwnd]);
++    return this.deps.automate(['-Action', 'control-window', '-ActionType', 'maximize', '-Hwnd', hwnd]);
+   }
+ 
+   public async moveWindow(target: string, x: number, y: number): Promise<string> {
+@@ -112,11 +119,11 @@
+     }
+     const hwnd = await this.findHwnd(target);
+     // Find current size to preserve it
+-    const winState = await getWindowsState();
++    const winState = await this.deps.windows();
+     // Default size if we can't fetch it
+     const width = 800;
+     const height = 600;
+-    return runAutomateScript([
++    return this.deps.automate([
+       '-Action', 'control-window',
+       '-ActionType', 'move',
+       '-Hwnd', hwnd,
+@@ -135,7 +142,7 @@
+     // Preserve X, Y position if possible, otherwise center/default
+     const x = 100;
+     const y = 100;
+-    return runAutomateScript([
++    return this.deps.automate([
+       '-Action', 'control-window',
+       '-ActionType', 'move',
+       '-Hwnd', hwnd,
+--- /dev/fd/63	2026-10-25 17:18:53.377851998 +0000
+--- control/processController.ts	2026-10-25 17:18:25.279078063 +0000
+@@ -23,17 +23,20 @@
+   workingSet?: number;
+ }
+ 
++const DEFAULT_DEPS = {
++  powershell: async (script: string) => { const r = await execa('powershell', ['-NoProfile', '-Command', script], { reject: false, env: childEnv(), extendEnv: false }); return { exitCode: r.exitCode, stdout: String(r.stdout ?? ''), stderr: String(r.stderr ?? '') }; },
++  approve: (t: string, c: string) => approvalGate.requestApproval(t, c),
++};
+ export class ProcessController {
++  constructor(private readonly deps: any = DEFAULT_DEPS) {}
++
+   public async listProcesses(): Promise<ProcessInfo[]> {
+     if (!permissionSession.checkPermission(0, 'List processes')) {
+       throw new Error('Permission denied.');
+     }
+ 
+     try {
+-      const { stdout } = await execa('powershell', [
+-        '-NoProfile', '-Command',
+-        'Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet | ConvertTo-Json'
+-      ], { reject: false, env: childEnv(), extendEnv: false });
++      const { stdout } = await this.deps.powershell('Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet | ConvertTo-Json');
+       
+       const parsed = JSON.parse(stdout);
+       const list = Array.isArray(parsed) ? parsed : [parsed];
+@@ -74,12 +77,12 @@
+     }
+ 
+     // Terminating processes ALWAYS requires Level 3 confirmation
+-    const approved = await approvalGate.requestApproval('Terminate Process', `Kill process: ${match.name} (PID: ${match.pid})`);
++    const approved = await this.deps.approve('Terminate Process', `Kill process: ${match.name} (PID: ${match.pid})`);
+     if (!approved) {
+       throw new Error(`Process termination cancelled by user: ${match.name}`);
+     }
+ 
+-    await execa('powershell', ['-NoProfile', '-Command', `Stop-Process -Id ${match.pid} -Force`], { reject: false, env: childEnv(), extendEnv: false });
++    await this.deps.powershell(`Stop-Process -Id ${match.pid} -Force`);
+     return `Successfully terminated process: ${match.name} (PID: ${match.pid})`;
+   }
+ 

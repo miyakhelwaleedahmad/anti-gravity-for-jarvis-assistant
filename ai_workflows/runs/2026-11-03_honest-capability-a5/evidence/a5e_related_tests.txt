@@ -1,0 +1,196 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=browserControlAgentTest,browserObservationTest,capabilityA5eTest,claudeProviderTest,closeByNameTest,codeRepairTest,echoFilterCommandAcceptanceTest,echoShortReplyTest,echoWindowFromPlaybackEndTest,endToEndLatencyTest,filesAndDevToolsTest,fullSystemIntegrationTest,healthLedgerTest,honestActionReplyTest,jarvisAgentIntegrationTest,jarvisChromeTest,openAppHonestA5dTest,plannerDecisionAuditTest,plannerDesktopToolSelectionTest,realTtsHandoffTest,repairRunTest,routeGoldenTest,routingA3Test,secondBrainIntegrationTest,selfCheckA5bTest,selfCheckTest,skillLoadOrderTest,speechRequestCorrelationTest,spokenTextTest,systemObservationTest,taskFailureHonestyTest,toolDiscoverabilityAuditTest,toolNameListsTest,toolRegistryMetadataTest,ttsDeliveryLifecycleTest,ttsRepeatDeliveryTest,verifyAfterActTest,voiceYouTubeIntegrationTest,windowsToolsTest
+
+
+=== JARVIS test suite — 39 file(s) ===
+
+  PASS    browserControlAgentTest                      10275ms
+  PASS    browserObservationTest                       8055ms
+  PASS    capabilityA5eTest                            2307ms
+  PASS    claudeProviderTest                           1269ms
+  FAIL    closeByNameTest                              11410ms
+  PASS    codeRepairTest                               8962ms
+  PASS    echoFilterCommandAcceptanceTest              1383ms
+  PASS    echoShortReplyTest                           438ms
+  PASS    echoWindowFromPlaybackEndTest                410ms
+  PASS    endToEndLatencyTest                          1265ms
+  PASS    filesAndDevToolsTest                         2921ms
+  PASS    fullSystemIntegrationTest                    1303ms
+  PASS    healthLedgerTest                             4918ms
+  PASS    honestActionReplyTest                        3317ms
+  PASS    jarvisAgentIntegrationTest                   3922ms
+  PASS    jarvisChromeTest                             13399ms
+  PASS    openAppHonestA5dTest                         5753ms
+  PASS    plannerDecisionAuditTest                     1370ms
+  PASS    plannerDesktopToolSelectionTest              1299ms
+  BLOCKED realTtsHandoffTest                           402ms  (needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.)
+  PASS    repairRunTest                                6755ms
+  FAIL    routeGoldenTest                              1368ms
+  PASS    routingA3Test                                1711ms
+  PASS    secondBrainIntegrationTest                   1878ms
+  PASS    selfCheckA5bTest                             568ms
+  PASS    selfCheckTest                                1385ms
+  PASS    skillLoadOrderTest                           3010ms
+  PASS    speechRequestCorrelationTest                 3285ms
+  PASS    spokenTextTest                               486ms
+  PASS    systemObservationTest                        3141ms
+  FAIL    taskFailureHonestyTest                       1458ms
+  FAIL    toolDiscoverabilityAuditTest                 1322ms
+  PASS    toolNameListsTest                            1295ms
+  PASS    toolRegistryMetadataTest                     1475ms
+  PASS    ttsDeliveryLifecycleTest                     3480ms
+  PASS    ttsRepeatDeliveryTest                        3485ms
+  PASS    verifyAfterActTest                           6494ms
+  PASS    voiceYouTubeIntegrationTest                  1214ms
+  FAIL    windowsToolsTest                             5020ms
+
+=== 33 passed · 5 failed · 0 timed out · 1 blocked · 0 environment · 0 skipped ===
+
+Blocked, not verified (the environment the test needs was not available):
+  - realTtsHandoffTest: needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.
+
+Real failures:
+  - closeByNameTest: === Close by name: 83 passed, 5 failed ===
+        FAIL: "close notepad": control_app and control_window still offered (control_app)
+        FAIL: "close the calculator window": control_app and control_window still offered (control_app)
+        FAIL: "maximize the window with the youtube tab": control_window still offered (control_browser, browser_tab, browser_state, browser_read_page, browser_page_structure)
+        FAIL: "minimize the chrome window with my gmail tab": control_window still offered (control_browser, browser_tab, browser_state, browser_read_page, browser_page_structure, get_system_info, get_system_state, get_pc_state)
+        FAIL: "minimize the youtube tab": control_window still offered (control_browser, browser_tab, browser_state, browser_read_page, browser_page_structure)
+        …
+        PASS: fallback rule: a Chrome window titled "notepad tips" is not a Notepad window left open
+        PASS: the action queue does not retry: "I don't close the Chrome browser through…" (ran 1 time(s))
+        PASS: the action queue does not retry: ""youtube" is a page open in Chrome, not …" (ran 1 time(s))
+        PASS: the action queue does not retry: "notepad (PID: 101) is still running afte…" (ran 1 time(s))
+        PASS: the action queue does not retry: "Ended notepad, but could not start it ag…" (ran 1 time(s))
+        PASS: the action queue does not retry: "Window 0x2C was not closed: no visible w…" (ran 1 time(s))
+      --- 6. kernel results for app, window and process ---
+      [windowsState] Poll failed (non-fatal): no current window list for an action: PowerShell exited with code null/undefined; a fresh one failed too: This needs Windows: JARVIS reads it through Windows PowerShell.
+        PASS: control_app close of something not open: success false, with the reason (false The open windows could not be read: no current window list for an action: PowerShell exited with code null/undefined; a fresh one failed too: This needs W)
+        PASS: control_window close of something not open: success false, with the reason (false The open windows could not be read: no current window list for an action: PowerShell exited with code null/undefined; a fresh one failed too: This needs W)
+      [ActionQueue] Action "killProcess" failed (attempt 1/2). Retrying... Error: PowerShell could not start: Command failed with ENOENT: powershell -NoProfile -Command 'Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet | ConvertTo-Json'
+      spawn powershell ENOENT
+        PASS: control_process kill of something not open: success false, with the reason (false PowerShell could not start: Command failed with ENOENT: powershell -NoProfile -Command 'Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet | Con)
+      [PermissionSession] 🛡️ Full Control disabled. Reason: close by name test. Session: ps_mw4ne0b1_f0zri
+      === Close by name: 83 passed, 5 failed ===
+  - routeGoldenTest: === Results: 402 passed, 39 failed ===
+        FAIL: tools offered for "stop" (was control_app,control_window, now control_app)
+        FAIL: tools offered for "jarvis stop" (was control_app,control_window, now control_app)
+        FAIL: tools offered for "pause" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "resume" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "hello" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "hey jarvis" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "thanks" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "what time is it" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "close notepad" (was control_app,control_window, now control_app)
+        FAIL: tools offered for "minimize chrome" (was control_app,control_window,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state, now control_app,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state,get_b
+        FAIL: tools offered for "who are you" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "whats running" (was get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs,is_app_open,is_tab_open, now get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "what is running on my pc" (was get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs,is_app_open,is_tab_open, now get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "why isnt my app working" (was open_app,control_app,get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs, now open_app,control_app,get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "continue what i was doing" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "what was i doing" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "yes" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "no thanks" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "system status" (was get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs,is_app_open,is_tab_open, now get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "how is my pc doing" (was get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs,is_app_open,is_tab_open, now get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "git status" (was git,git_overview,get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs, now git,git_overview,get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open,run_command)
+        FAIL: tools offered for "what changed in my project" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "how many agents are running" (was agent_status,cancel_agent_task,get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs, now agent_status,cancel_agent_task,get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "show me the task tree" (was control_process, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "how much work remains" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "stop this research" (was delegate_task,control_app,control_window,web_search,deep_search, now delegate_task,control_app,web_search,deep_search)
+        FAIL: tools offered for "goal status" (was goal_create,goal_status,goal_control,get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window, now goal_create,goal_status,goal_control,get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "tell me a joke" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "shutdown the computer" (was get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs,is_app_open,is_tab_open, now get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "   " (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "!!!" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "take a screenshot" (was screenshot,control_system, now control_system)
+        FAIL: tools offered for "click the login button" (was browser_click,browser_state,browser_read_page,browser_page_structure,control_mouse, now browser_click,browser_state,browser_read_page,browser_page_structure)
+        FAIL: tools offered for "type hello into the search box" (was browser_type,web_search,deep_search,control_keyboard, now browser_type,web_search,deep_search)
+        FAIL: tools offered for "scroll down on this page" (was browser_scroll,browser_state,browser_read_page,browser_page_structure,control_mouse, now browser_scroll,browser_state,browser_read_page,browser_page_structure)
+        FAIL: tools offered for "list my open windows" (was open_app,control_app,get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs, now open_app,control_app,get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "is anything listening on port 3000" (was windows_overview,dev_status, now dev_status)
+        FAIL: tools offered for "install the requests package" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        …
+        FAIL: tools offered for "goal status" (was goal_create,goal_status,goal_control,get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window, now goal_create,goal_status,goal_control,get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "tell me a joke" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "shutdown the computer" (was get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs,is_app_open,is_tab_open, now get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "   " (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "!!!" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        FAIL: tools offered for "take a screenshot" (was screenshot,control_system, now control_system)
+        FAIL: tools offered for "click the login button" (was browser_click,browser_state,browser_read_page,browser_page_structure,control_mouse, now browser_click,browser_state,browser_read_page,browser_page_structure)
+        FAIL: tools offered for "type hello into the search box" (was browser_type,web_search,deep_search,control_keyboard, now browser_type,web_search,deep_search)
+        FAIL: tools offered for "scroll down on this page" (was browser_scroll,browser_state,browser_read_page,browser_page_structure,control_mouse, now browser_scroll,browser_state,browser_read_page,browser_page_structure)
+        FAIL: tools offered for "list my open windows" (was open_app,control_app,get_system_info,get_system_state,get_pc_state,get_open_apps,get_active_window,get_browser_tabs, now open_app,control_app,get_system_info,get_system_state,get_pc_state,get_browser_tabs,is_tab_open)
+        FAIL: tools offered for "is anything listening on port 3000" (was windows_overview,dev_status, now dev_status)
+        FAIL: tools offered for "install the requests package" (was open_app,web_search,get_system_info,run_command, now list_capabilities,web_search,get_system_info)
+        402 checks passed
+      === Results: 402 passed, 39 failed ===
+  - taskFailureHonestyTest: === Results: 42 passed, 3 failed ===
+        FAIL: "close whatsapp" offers control_app and control_window (control_app)
+        FAIL: "minimize spotify" offers control_app and control_window (control_app)
+        FAIL: AI path: tells you to enable full control mode (I encountered an unexpected error and have been unable to complete the task, sir. RISK REFUSED: Not available here: control window needs Windows, and this computer is not running Windows.)
+        …
+      [ConvBus] 💤 JARVIS idle — autonomous tasks may resume.
+        PASS: an app off the allow-list is refused out loud, not "Opening paint" (I couldn't do that, sir. Target is not in the open app allowlist.)
+        PASS: without retries or a diagnosis request (15ms, 1 calls)
+      --- closeApp now fails when nothing matches; restart still opens ---
+        PASS: "restart notepad" when it is not running just opens it (Opened "notepad" successfully.)
+      --- 5. No LLM diagnosis once retries are spent ---
+      [Reflection] 🔍 Analyzing graph "graph_1793949881116_7kvq5": 0 done, 1 failed, 0 skipped
+      [Reflection] 📋 All tasks failed: 0/1 nodes completed.
+      Failure class: unknown
+      Repair strategy: abort
+      Failed nodes:
+        - web_search [task_1_web_search]: Something odd happened
+        PASS: retries spent: strategy is abort (abort)
+        PASS: and the LLM was not asked (0 calls)
+      === Results: 42 passed, 3 failed ===
+  - toolDiscoverabilityAuditTest: ❌ Tool Discoverability Audit Test FAILED.
+        ❌ FAIL: Planner discovered "control_keyboard" for input "press enter key"
+        ❌ FAIL: Planner discovered "control_mouse" for input "click mouse button"
+        ❌ FAIL: Planner discovered "control_process" for input "kill chrome process"
+        ❌ FAIL: Planner discovered "control_window" for input "minimize window"
+      ❌ Tool Discoverability Audit Test FAILED.
+        …
+        ✅ PASS: Planner discovered "get_system_info" for input "get system info"
+        ✅ PASS: Planner discovered "save_relation" for input "remember user prefers dark theme"
+        ✅ PASS: Planner discovered "open_app" for input "open WhatsApp"
+        ❌ FAIL: Planner discovered "control_keyboard" for input "press enter key"
+        ❌ FAIL: Planner discovered "control_mouse" for input "click mouse button"
+        ❌ FAIL: Planner discovered "control_process" for input "kill chrome process"
+        ✅ PASS: Planner discovered "control_system" for input "take a screenshot"
+        ❌ FAIL: Planner discovered "control_window" for input "minimize window"
+        ✅ PASS: Planner discovered "control_browser" for input "close tab"
+        ✅ PASS: Planner discovered "enable_full_control_session" for input "enable full control session"
+      --- Section 4: OpenAI LLM Tool Definitions Serialization ---
+        ✅ PASS: LLM definition count matches registered tool count
+        ✅ PASS: LLM definitions serialized cleanly to valid JSON
+      === Results: 16 passed, 4 failed ===
+      ❌ Tool Discoverability Audit Test FAILED.
+  - windowsToolsTest: === 63 passed, 5 failed ===
+        FAIL: "what graphics card do I have" → windows_overview
+        FAIL: "which program is listening on port 8080" → windows_overview
+        FAIL: "click the OK button in the dialog" → ui_elements and ui_action
+        FAIL: "take a screenshot" → screenshot; in a browser tab → browser_screenshot
+        FAIL: "what is on my clipboard" → clipboard
+        …
+        PASS: …and it stops after two looks when nothing changes (looks=2)
+        PASS: on a fast PC it keeps looking within the time allowed (looks=5)
+      --- 8. A window close is never taken on trust (Step C) ---
+        PASS: the window checks read the desktop through one place a test can stand in for
+        PASS: a close that gave no result is failed, not "not checked" (the seventh run) (failed: the close gave no result naming a window, so nothing shows it was done)
+      [Redis] Cannot connect after 3 retries — running without cache.
+        PASS: a close whose window is still open is failed (failed: the window is still open; it may be asking whether to save)
+        PASS: a close whose window is gone is verified, by the handle asked for (verified: the window is gone; read 0x1A0364)
+        PASS: a result naming another window than the one asked for is failed (failed: it acted on window 0x2, not on 0x1A0364, the window asked for)
+        PASS: a window that could not be read is a failed close (failed: whether the window closed could not be read: PowerShell did not answer)
+        PASS: close_current: checked by the window its result names (verified: the window is gone)
+        PASS: a close whose check could not decide is failed, never passed (failed: the close could not be checked: the check took longer than 60 s)
+        PASS: focus with a window handle and no result: that window is checked (it is in front) (verified: the window is in front)
+        PASS: a move or resize still makes no claim (not read back) (unverifiable: its new position or size is not read back)
+      === 63 passed, 5 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

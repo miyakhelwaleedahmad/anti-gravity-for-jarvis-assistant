@@ -1,0 +1,9 @@
+CI run 42033994044 (commit d9d7820), job 'windows', attempt 2 (job 127296040980), the one approved re-run: excerpt
+  FAIL    browserControlAgentTest                      25095ms
+  PASS    scenarioIntegrationTest                      50271ms
+  PASS    selfCheckA5bTest                             1160ms
+  PASS    selfCheckTest                                4760ms
+=== 217 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 6 skipped ===
+  - browserControlAgentTest: === 71 passed, 1 failed ===
+        FAIL: click: the page changed, and the check says so (undefined)
+        FAIL: click: the page changed, and the check says so (undefined)

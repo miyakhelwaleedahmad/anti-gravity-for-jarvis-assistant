@@ -1,0 +1,16 @@
+control_browser              high
+control_app                  high
+control_window               high
+control_process              high
+control_system               high
+control_keyboard             high
+open_app                     medium
+enable_full_control_session  high
+files                        medium
+run_command                  high
+write_file                   medium
+browser_tab                  medium
+dev                          medium
+git_push                     high
+self_repair                  medium
+ui_action                    medium

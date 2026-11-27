@@ -1,10 +1,13 @@
+> **Superseded.** See `ARCHITECTURE.md` for the current, code-verified architecture.
+> Three factual errors in this document have been corrected in place.
+
 # JARVIS Advanced Voice Pipeline Architecture
 
 The JARVIS voice pipeline represents a robust hybrid architecture, utilizing a Node.js central hub to manage long-running Python AI subsystems securely. This documentation provides a visual overview of how audio flows securely and resiliently through your system.
 
 ## High-Level Architecture Components
 
-1. **Central Brain (`jarvis.ts`)**: The core Node.js process housing the WebSocket server (`NodeBridge`), memory integrations, LLMs routing (`jarvisBrain`), and CLI fallbacks.
+1. **Central Brain (`jarvis.ts` → `core/orchestrator.ts`)**: `jarvis.ts` is the entry point and voice state machine; the reasoning brain is `core/orchestrator.ts`. (Corrected: this document previously named `jarvisBrain`, which is `core/brain.ts` — a migration leftover that nothing imports and that now lives in `_legacy/`.)
 2. **SelfHealingManager (`selfHealingManager.ts`)**: The autonomous supervisor. It spawns the Python scripts securely, intercepts crashes through `FailureDetector`, safely filters standard log outputs, restarts crashed components using exponential backoffs, and maintains circuit breakers to avoid crash loops.
 3. **Wake Word Engine (`wakeWords.py`)**: A continuous-listening local daemon. It monitors microphone levels, checks Google STT output for similarity against phrases like `"hey jarvis"`, and triggers the entire pipeline without exhausting local resources.
 4. **Speech-To-Text (`stt.py`)**: The dedicated OpenAI Whisper transcriber. It safely loads highly-accurate neural models on a background thread so as to not block the connection queue, records your command strictly upon NodeBridge command, and transcribes exactly what you said.
@@ -57,7 +60,7 @@ sequenceDiagram
     participant WW as WakeWord (Python)
     participant NB as NodeBridge (TypeScript)
     participant STT as Whisper STT (Python)
-    participant Brain as JarvisBrain (LLM)
+    participant Brain as Orchestrator (LLM)
     participant TTS as EdgeTTS (Python)
 
     %% Step 1: Trigger
@@ -123,6 +126,6 @@ sequenceDiagram
 
 ### Why This Design is "Ideal" For You
 
-1. **Scalability:** Since WS (`ws://127.0.0.1:9000`) acts as the core bus, you could technically run `stt.py` on another fast machine while `tts.py` acts on another, completely distributed.
+1. **Scalability:** NOT distributed, by design. `bridge/nodeBridge.ts` throws on any non-localhost host (`Refusing to bind WebSocket bridge to non-localhost host`), so the Python sidecars must run on the same machine. Treat the bridge as a local IPC channel, not a network bus.
 2. **Resilience:** The Node process (where your LLM tooling / database / API keys live) will practically **never crash** if Python runs out of VRAM or internet acts spotty.
 3. **True Autonomy:** The `FailureDetector` doesn't just log out stack traces—it counts failure iterations. After roughly 3 consecutive `Traceback` failures, it completely seals the module with a **Circuit Breaker** to protect desktop stability so you avoid an infinite CPU loop.

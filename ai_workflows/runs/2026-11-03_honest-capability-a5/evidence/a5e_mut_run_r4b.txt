@@ -1,0 +1,5 @@
+M17 questions about recent changes not given git_overview (E1) [capabilityA5eTest]: CAUGHT | FAIL: "what did i change today": git_overview, to answer from (list_capabilities, web_search, get_system_info)
+M19 the PC phrase 'what change in my project' not understood (both rules back) [capabilityA5eTest]: CAUGHT | FAIL: "what change in my project": git_overview, to answer from (list_capabilities, web_search, get_system_info)
+
+2/2 caught
+tree restored (md5): YES

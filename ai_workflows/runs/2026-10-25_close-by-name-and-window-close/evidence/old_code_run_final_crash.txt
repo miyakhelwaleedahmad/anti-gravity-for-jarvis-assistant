@@ -1,0 +1,70 @@
+
+> antigravityforjarvisassistant@1.0.0 test <scratchpad>/a1old
+> tsx tests/runAll.ts -- --only=closeByNameTest
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    closeByNameTest                              2225ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - closeByNameTest: at onErrorNT (node:internal/child_process:483:16)
+        FAIL: "close notepad" closes the Notepad window (No open application matches "notepad".; closed [])
+        FAIL: "close Notepad.exe" closes the same window (No open application matches "Notepad.exe".)
+        FAIL: "close calculator" closes the Calculator window (ApplicationFrameHost), with no extra question (No open application matches "calculator".; asked nothing)
+        FAIL: "close calculator" with a Chrome tab about calculators: Calculator closes, Chrome stays (both tools) (app: No open application matches "calculator".; window: ok)
+        FAIL: "close calculator" with only "calculator.py - Notepad" open: asks first; on no, nothing closed (No open application matches "calculator".)
+        FAIL: "close calculator" with only "calculator.png - Photos" (ApplicationFrameHost): asked first; on no, nothing closed (No open application matches "calculator".)
+        FAIL: "close calculator" in CalculatorApp (Windows 11): closed, no extra question (No open application matches "calculator".; asked nothing)
+        FAIL: "focus notepad" brings the Notepad window to the front (No running window found for app "notepad".)
+        FAIL: "restart notepad" closes the running Notepad before opening it once (closed [], opened 1)
+        FAIL: "close notepad" closes Notepad, not Notepad++, and asks nothing (No open application matches "notepad".; closed [])
+        FAIL: a Notepad entry without a window handle is skipped: one window closed, no question (No open application matches "notepad".)
+        FAIL: no matching window has a handle: a failure, not "Closed 0 window(s)" (No open application matches "notepad".)
+        FAIL: "close notepad" with only Notepad++ open: asks, and the owner says no: nothing closed (No open application matches "notepad".)
+        FAIL: approved "close cmd", the owner says no: asked outside the approval, naming the window; nothing closed (Close Protected App: Close app: cmd; closed [])
+        FAIL: approved "close cmd", the owner says yes: asked outside the approval, naming the window; only Command Prompt closed (Close Protected App: Close app: cmd; closed [])
+        FAIL: "close vs code" with only a Chrome tab about it: the tab refusal, no question first (No open application matches "vs code".; asked Close Protected App: Close app: vs code)
+        FAIL: "note" (part of three programs' names): asked about all 3 windows; the owner says no: nothing closed (; )
+        FAIL: "host" (inside two programs' names, no title): no app chosen, nothing asked or closed
+        FAIL: "close windows terminal" finds Windows Terminal (protected): asked, nothing closed on no (No open application matches "windows terminal".)
+        FAIL: approved control_window "close jarvis": the protected question is asked outside the approval, naming the program (Close Protected Window: Close: jarvis - pnpm dev; closed [])
+        FAIL: "close terminal" reaches a protected app (WindowsTerminal): asked, nothing closed on no
+        FAIL: an empty app name closes nothing and asks nothing (closed ["0x1A","0x3D","0x4E"])
+        FAIL: control_app close "youtube": no window closed, the reply points to the tab (closed ["0x2B"])
+        FAIL: control_app close "gmail": no window closed, the reply points to the tab (closed ["0x2C"])
+        FAIL: Arc is a browser too: "youtube" closes no Arc window (closed ["0x2E"])
+        FAIL: control_app close "youtube" with Chrome listed first: only the Explorer window, never Chrome (Closed 2 window(s) matching "youtube".; closed ["0x2B","0x5A"])
+        FAIL: control_window close "youtube" with Chrome listed first: only the Explorer window, never Chrome (ok; closed ["0x2B"])
+        FAIL: control_app close "chrome": the browser is not closed through app control (No open application matches "chrome".)
+        FAIL: control_app close "google chrome": the browser is not closed through app control (closed ["0x2B","0x2C"])
+        FAIL: control_app close "Chrome.exe": the browser is not closed through app control (No open application matches "Chrome.exe".)
+        FAIL: control_app close "edge": the browser is not closed through app control (closed ["0x2F"])
+        FAIL: control_window close "youtube": no Chrome window closed, and the reply says why (closed ["0x2B"])
+        FAIL: control_window close "chrome": no Chrome window closed, and the reply says why (closed ["0x2B"])
+        FAIL: control_window close by a Chrome window's handle (from a window list): refused (closed ["0x2B"])
+        FAIL: control_window close by a Chrome handle missing from the app list: refused (closed ["0x2C"])
+        FAIL: control_window close by a handle no visible window has: refused, nothing closed (closed ["0x77"])
+        FAIL: a protected window known only from the full list: asked; on no, not closed
+        FAIL: "close current window" on a protected window missing from the app list: asked; on no, not closed
+        FAIL: two Notepad windows, the owner says no: nothing closed (No open application matches "notepad".)
+        FAIL: the question names both windows (not asked)
+        …
+      Error: spawn notepad++ ENOENT
+          at ChildProcess._handle.onexit (node:internal/child_process:285:19)
+          at onErrorNT (node:internal/child_process:483:16)
+          at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+      Emitted 'error' event on ChildProcess instance at:
+          at ChildProcess._handle.onexit (node:internal/child_process:291:12)
+          at onErrorNT (node:internal/child_process:483:16)
+          at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+        errno: -2,
+        code: 'ENOENT',
+        syscall: 'spawn notepad++',
+        path: 'notepad++',
+        spawnargs: []
+      }
+      Node.js v22.22.2
+ ELIFECYCLE  Test failed. See above for more details.

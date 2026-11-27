@@ -1,0 +1,247 @@
+{
+  "_source": "ConvertTo-Json -Depth 4 -Compress output (PowerShell 7.4.6 on Linux) of objects built the way perception/windows_probe.ps1 and control/uia.ps1 build them. The values are examples, not a reading of a real PC; the owner's PC is checked by pnpm verify:windows.",
+  "gpu": {
+    "ok": true,
+    "items": [
+      {
+        "refreshHz": 144,
+        "name": "NVIDIA GeForce RTX 3060",
+        "width": 1920,
+        "driver": "31.0.15.3623",
+        "status": "OK",
+        "memoryBytes": 4293918720.0,
+        "height": 1080
+      }
+    ],
+    "section": "gpu"
+  },
+  "gpu2": {
+    "ok": true,
+    "items": [
+      {
+        "refreshHz": 0,
+        "name": "Intel(R) UHD Graphics 620",
+        "width": 0,
+        "driver": "27.20.100.8681",
+        "status": "OK",
+        "memoryBytes": 1073741824.0,
+        "height": 0
+      },
+      {
+        "refreshHz": 60,
+        "name": "Microsoft Basic Display Adapter",
+        "width": 1366,
+        "driver": "",
+        "status": "OK",
+        "memoryBytes": 0.0,
+        "height": 768
+      }
+    ],
+    "section": "gpu"
+  },
+  "displays": {
+    "ok": true,
+    "items": [
+      {
+        "primary": true,
+        "height": 1080,
+        "name": "\\\\.\\DISPLAY1",
+        "width": 1920,
+        "y": 0,
+        "x": 0
+      },
+      {
+        "primary": false,
+        "height": 1024,
+        "name": "\\\\.\\DISPLAY2",
+        "width": 1280,
+        "y": 0,
+        "x": 1920
+      }
+    ],
+    "section": "displays"
+  },
+  "audio": {
+    "endpoints": [
+      {
+        "status": "OK",
+        "name": "Speakers (Realtek(R) Audio)"
+      },
+      {
+        "status": "OK",
+        "name": "Microphone Array (Realtek(R) Audio)"
+      },
+      {
+        "status": "Unknown",
+        "name": "Headphones (WH-1000XM4 Stereo)"
+      }
+    ],
+    "ok": true,
+    "devices": [
+      {
+        "name": "Realtek High Definition Audio",
+        "status": "OK",
+        "maker": "Realtek"
+      }
+    ],
+    "section": "audio"
+  },
+  "cameras": {
+    "ok": true,
+    "items": [
+      {
+        "name": "Integrated Webcam",
+        "status": "OK",
+        "kind": "Camera"
+      }
+    ],
+    "section": "cameras"
+  },
+  "cameras0": {
+    "ok": true,
+    "items": [],
+    "section": "cameras"
+  },
+  "apps": {
+    "ok": true,
+    "total": 2,
+    "items": [
+      {
+        "name": "Google Chrome",
+        "version": "129.0.6668.90",
+        "publisher": "Google LLC"
+      },
+      {
+        "name": "Node.js",
+        "version": "22.11.0",
+        "publisher": "Node.js Foundation"
+      }
+    ],
+    "section": "apps"
+  },
+  "services": {
+    "ok": true,
+    "items": [
+      {
+        "name": "AudioSrv",
+        "status": "Running",
+        "display": "Windows Audio",
+        "start": "Automatic"
+      },
+      {
+        "name": "Spooler",
+        "status": "Stopped",
+        "display": "Print Spooler",
+        "start": "Manual"
+      }
+    ],
+    "section": "services"
+  },
+  "ports": {
+    "ok": true,
+    "items": [
+      {
+        "process": "node",
+        "port": 5173,
+        "pid": 9120,
+        "address": "0.0.0.0"
+      },
+      {
+        "process": "node",
+        "port": 5173,
+        "pid": 9120,
+        "address": "::"
+      },
+      {
+        "process": "chrome",
+        "port": 9222,
+        "pid": 4410,
+        "address": "127.0.0.1"
+      },
+      {
+        "process": "svchost",
+        "port": 135,
+        "pid": 1024,
+        "address": "0.0.0.0"
+      }
+    ],
+    "section": "ports"
+  },
+  "windows": {
+    "ok": true,
+    "items": [
+      {
+        "hwnd": "1311204",
+        "title": "npm run dev",
+        "process": "WindowsTerminal",
+        "pid": 9120
+      },
+      {
+        "hwnd": "657426",
+        "title": "Calculator",
+        "process": "ApplicationFrameHost",
+        "pid": 7712
+      }
+    ],
+    "section": "windows"
+  },
+  "window_state": {
+    "section": "window_state",
+    "ok": true,
+    "minimized": true,
+    "visible": true,
+    "maximized": false,
+    "exists": true,
+    "foreground": false
+  },
+  "error": {
+    "ok": false,
+    "section": "ports",
+    "error": "Access is denied."
+  },
+  "uia": {
+    "ok": true,
+    "more": false,
+    "elements": [
+      {
+        "id": "42.657426.4.12",
+        "depth": 4,
+        "password": false,
+        "className": "Button",
+        "patterns": [
+          "Invoke"
+        ],
+        "automationId": "num1Button",
+        "offscreen": false,
+        "value": "",
+        "type": "Button",
+        "focused": false,
+        "enabled": true,
+        "name": "One"
+      },
+      {
+        "id": "42.98.4.7",
+        "depth": 3,
+        "password": true,
+        "className": "TextBox",
+        "patterns": [
+          "Value",
+          "Text"
+        ],
+        "automationId": "pw",
+        "offscreen": false,
+        "value": "",
+        "type": "Edit",
+        "focused": false,
+        "enabled": true,
+        "name": "Password"
+      }
+    ],
+    "action": "list",
+    "window": {
+      "hwnd": "657426",
+      "title": "Calculator",
+      "process": "ApplicationFrameHost"
+    }
+  }
+}

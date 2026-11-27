@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  # The live provider job runs only when started by hand (TEST-01).
+  workflow_dispatch:
+    inputs:
+      live:
+        description: 'Also run the tests that call a real LLM provider (uses the repository secrets)'
+        type: boolean
+        default: false
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # No `version:` here. package.json's "packageManager" field is the single
+      # source of truth; pnpm/action-setup (v4 and v6) refuses to run when both are set
+      # ("Multiple versions of pnpm specified"), which failed CI run 36520392513.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # For realTtsHandoffTest: the real voice/tts.py (pygame on SDL's silent
+      # "dummy" driver) behind the real bridge (VOICE-007 / TEST-102).
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install pygame and websockets for the real tts.py test
+        run: python -m pip install --quiet pygame websockets
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # Runs every test that does not need Windows, Redis, a Python virtualenv,
+      # or a reachable LLM API. Those are reported as skipped with the reason,
+      # so a genuine regression is the only thing that turns this red.
+      - name: Test (platform-independent subset)
+        env:
+          JARVIS_TEST_PYTHON: python
+        run: pnpm test -- --ci
+
+      # Line coverage of the same run (TEST-01). c8 follows every test's child
+      # process through NODE_V8_COVERAGE; the report is kept as an artifact.
+      - name: Coverage
+        if: always()
+        env:
+          JARVIS_TEST_PYTHON: python
+        run: npx --yes c8@10.1.3 --reporter=text-summary --reporter=lcov --exclude=tests/** --exclude=node_modules/** --exclude=dist/** node node_modules/tsx/dist/cli.mjs tests/runAll.ts --ci
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage
+          path: coverage/lcov.info
+          if-no-files-found: ignore
+
+  # The same suite on Windows (TEST-01): the PowerShell, window and process
+  # tests run there instead of being skipped. Windows behaviour was only ever
+  # checked on the owner's PC.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install pygame and websockets for the real tts.py test
+        run: python -m pip install --quiet pygame websockets
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Windows offline voice writes audio (VOICE-003)
+        run: python tests/python/test_tts_windows_voice.py
+      - name: Test (Windows)
+        env:
+          JARVIS_TEST_FULL_OUTPUT: '1'
+          JARVIS_TEST_CHROME_WAIT_MS: '60000'
+          JARVIS_TEST_PYTHON: python
+        run: pnpm test -- --ci
+
+  # Opt-in: tests that call a real LLM provider. Started by hand with
+  # live = true; skipped (with the reason) when the secret is not set.
+  live-providers:
+    if: github.event_name == 'workflow_dispatch' && inputs.live
+    runs-on: ubuntu-latest
+    env:
+      JARVIS_LIVE_TESTS: '1'
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Live provider tests
+        run: pnpm test -- --ci --filter=finalIntegrationSuite && pnpm test -- --ci --filter=successfulExecutionLifecycleAudit
+
+  python-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      # sentence-transformers is deliberately not installed: it pulls in torch,
+      # and the vector-persistence test stubs the embedding model.
+      - name: Install light Python dependencies
+        run: python -m pip install --quiet numpy fastapi pydantic
+
+      - name: Compile-check every Python file
+        run: python -m compileall -q memory voice vision bridge
+
+      - name: Vector persistence and fact-id tests
+        run: python tests/python/test_vector_persistence.py
+
+      - name: Vector service startup and write-queue tests
+        run: python tests/python/test_vector_service_startup.py
+
+      - name: Vector service refuses callers without the token (SEC-18)
+        run: python tests/python/test_vector_access.py
+
+      - name: Vector service log names levels, no health-poll access lines (BUG-16)
+        run: python tests/python/test_vector_logs.py
+
+      - name: TTS synthesis retry tells JARVIS it needs more time
+        run: python tests/python/test_tts_retry_delay.py
+      - name: TTS audio device failure (VOICE-004)
+        run: python tests/python/test_tts_audio_device.py
+      - name: Offline TTS fallback when edge-tts fails (VOICE-003)
+        run: python tests/python/test_tts_fallback.py
+      - name: edge-tts 403 skipped, offline voice kept warm (BUG-5, BUG-6)
+        run: python tests/python/test_tts_edge_skip.py
+
+      - name: TTS hides pygame's pkg_resources warning (BUG-23)
+        run: python tests/python/test_tts_pkg_resources_warning.py
+      - name: Every STT listen session ends with a message (BUG-1)
+        run: python tests/python/test_stt_session_end.py
+
+      - name: STT transcribes with Google STT while Whisper loads (BUG-17)
+        run: python tests/python/test_stt_model_loading.py
+      - name: STT calibration capped by the room baseline (BUG-2)
+        run: python tests/python/test_stt_calibration_cap.py
+      - name: Follow-ups after a reply are heard or logged (BUG-3)
+        run: python tests/python/test_wakeword_followup.py
+      - name: A pause drops JARVIS's own reply from the wake-word mic (voice echo N-PC1)
+        run: python tests/python/test_wakeword_pause_drops_echo.py
+      - name: STT energy gate looks at frames, not the whole clip (VOICE-009)
+        run: python tests/python/test_stt_vad_gate.py

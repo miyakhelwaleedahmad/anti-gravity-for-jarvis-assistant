@@ -8,12 +8,41 @@
       "type": "string",
       "description": "Window command: 'focus', 'close', 'close_current', 'minimize', 'maximize', 'move', 'resize'",
       "required": true,
-      "enum": ["focus", "close", "close_current", "minimize", "maximize", "move", "resize"]
+      "enum": [
+        "focus",
+        "close",
+        "close_current",
+        "minimize",
+        "maximize",
+        "move",
+        "resize"
+      ]
     },
-    "target": { "type": "string", "description": "Window title, process name, or HWND", "required": false },
-    "x": { "type": "number", "description": "X coordinate for move", "required": false },
-    "y": { "type": "number", "description": "Y coordinate for move", "required": false },
-    "width": { "type": "number", "description": "Width for resize", "required": false },
-    "height": { "type": "number", "description": "Height for resize", "required": false }
-  }
+    "target": {
+      "type": "string",
+      "description": "Window title, process name, or HWND",
+      "required": false
+    },
+    "x": {
+      "type": "number",
+      "description": "X coordinate for move",
+      "required": false
+    },
+    "y": {
+      "type": "number",
+      "description": "Y coordinate for move",
+      "required": false
+    },
+    "width": {
+      "type": "number",
+      "description": "Width for resize",
+      "required": false
+    },
+    "height": {
+      "type": "number",
+      "description": "Height for resize",
+      "required": false
+    }
+  },
+  "requiredLevel": 1
 }

@@ -1,0 +1,2 @@
+requests to open a tab: 2; tabs Chrome opened: 2 (tab1, tab2)
+after 6.5 s, JARVIS's error: Chrome is not reachable for JARVIS on 127.0.0.1:38271: JARVIS's own Chrome is not running (it starts when JARVIS opens a page). JARVIS opens pages in a Chrome o

@@ -3,6 +3,11 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Manages backup state and undoes actions (like reopened closed tabs/apps,
  * restored files) where feasible.
+ *
+ * REL-07: controllers register undo steps here, but nothing in JARVIS calls
+ * rollbackLast() — no tool, route or failed plan undoes anything by itself.
+ * The README used to say plans run "with rollback"; they do not. The file
+ * tools' own trash (files action: delete → restore) is the working undo.
  */
 
 export interface RollbackPoint {

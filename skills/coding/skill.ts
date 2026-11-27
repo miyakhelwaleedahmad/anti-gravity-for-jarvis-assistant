@@ -8,6 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isEnvFile, resolveWorkspacePath } from '../../security/workspacePathPolicy.js';
 
 const LANGUAGE_MAP: Record<string, string> = {
   '.ts': 'TypeScript', '.tsx': 'TypeScript/React',
@@ -29,8 +30,12 @@ export async function execute(args: Record<string, unknown>, signal?: AbortSigna
   if (!filePath) return 'Error: file_path is required.';
   if (signal?.aborted) throw new Error('ABORTED');
 
-  // Resolve path
-  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+  // Inside the JARVIS folder only, as read_file. Any absolute path used to be
+  // read and sent to the LLM — a private key, another user's files, anything.
+  const check = resolveWorkspacePath(filePath, 'read', 'explain_code');
+  if (!check.allowed || !check.resolvedPath) return `Error: explain_code denied - ${check.reason}`;
+  if (isEnvFile(check.resolvedPath)) return 'Error: explain_code denied - .env files hold keys and are not read.';
+  const resolved = check.resolvedPath;
 
   if (!fs.existsSync(resolved)) {
     return `Error: File not found at "${resolved}".`;

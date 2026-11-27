@@ -1,49 +1,50 @@
 # Stage 03 — Patch Plan
 
-## Purpose
-Write the exact change plan before any code is touched.
+Write the exact change before any code is touched, then wait for the
+owner's approval. This is the approval gate for implementation.
 
-## What You Are Allowed to Do
-```
-✅ Write the exact proposed change as a before/after diff
-✅ List every file that would be changed
-✅ List every test that must pass after the change
-✅ Identify whether live voice verification is required
-✅ Identify any risks or regressions the change might introduce
-✅ Write the patch plan in output/patch_plan.md
-✅ Ask the user for approval
-```
+## Inputs
 
-## What You Must NOT Do
-```
-❌ Do not implement anything during this stage
-❌ Do not edit any runtime file
-❌ Do not advance to implementation without explicit human approval
-❌ Do not assume silence = approval
-❌ Do not include unrelated changes in the plan
-```
+| Source | Load | Why |
+|---|---|---|
+| `runs/<run>/diagnosis.md` | Whole file | Root cause and files to change |
+| `runs/<run>/reproduction.md` | Label, test, exception | Proof the failure is real, or why not |
+| `_config/RUNTIME_PROTECTED_FILES.md` | Sections for the files in the plan | Protected-file rules |
+| `_config/DO_NOT_BREAK.md` | Invariants for the subsystem | What the change must keep |
+| `_config/SECURITY_RULES.md` | Only if routing, commands, approval or permissions change | Security boundaries |
+| `_config/TEST_MATRIX.md` | Commands and required groups | Tests to list |
 
-## Patch Plan Format
-The output/patch_plan.md must contain:
+## Process
 
-```markdown
-## File: <path/to/file.ts>
-### Change: <one-line description>
-### Before:
-<exact current code>
-### After:
-<exact proposed code>
-### Reason: <why this change is needed>
-```
+1. For each file: the exact before and after code, and why it fixes the
+   root cause (format in `output/patch_plan.md`).
+2. List every file that will change and mark the protected ones.
+3. List the tests to run, through the runner only: the regression test from
+   Stage 02b, the required group from `TEST_MATRIX.md`, then
+   `pnpm test -- --ci`.
+4. State whether live verification on the owner's PC is required and why
+   (always for voice, microphone, speaker, Windows-control or real-browser
+   behaviour).
+5. Assess risks: what could break, and how it would show.
+6. Copy the reproduction label. If it is an exception, restate it: why
+   reproduction is unavailable and what evidence will verify the fix.
+7. Present the plan and ask for approval.
 
-Repeat for each file that would change.
+Forbidden: implementing anything; editing runtime files; unrelated changes
+in the plan; treating silence, a report, a test result or an automated
+agent's output as approval.
 
-Also include:
-- List of tests to run after implementation
-- Whether live voice verification is required (yes/no + why)
-- Risk assessment: what could break?
+## Outputs
 
-## Advancement Condition
-You may advance to `04_implementation` ONLY after:
-1. `output/patch_plan.md` is complete
-2. The user has explicitly written "approved" or "proceed"
+`runs/<run>/patch_plan.md` from `output/patch_plan.md`, with the approval
+recorded: the owner's words ("approved" or "proceed"), date, and any
+reproduction exception they accepted.
+
+## Audit / advancement
+
+- APPROVED: the owner explicitly wrote "approved" or "proceed" for this
+  plan, and any reproduction exception is named in the plan. Advance to
+  `04_implementation`.
+- REVISE: the owner asked for changes; revise and ask again.
+- REJECTED or no answer: stop. Silence is not approval.
+- A changed plan needs a new approval.

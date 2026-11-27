@@ -1,0 +1,75 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=agentRuntimeTest,appControlTest,approvalGateStructuredTest,approvalTypeAheadTest,backgroundResearchTest,browserControlAgentTest,browserControlTest,browserRefusalSpokenTest,childEnvCoverageTest,closeByNameTest,commandObfuscationTest,dispatchAuthzTest,episodicPersistenceTest,executionDispatchAuditTest,fileControlSafetyTest,filesAndDevToolsTest,finalIntegrationSuiteTest,fullSystemIntegrationTest,honestActionReplyTest,jarvisChromeTest,kernelOutcomeA5cTest,navigationPolicyTest,pcControlKernelTest,plannerDecisionAuditTest,policyOwnershipTest,processControlSafetyTest,registryRepairHonestyTest,remoteAccessTest,repairRunTest,riskEngineTest,routingA3Test,scenarioIntegrationTest,secretFileTest,securityBypassTest,selfCheckTest,skillLoadOrderTest,systemControlSafetyTest,systemStateRouteTest,tabTargetingA4Test,taskFailureHonestyTest,toolDiscoverabilityAuditTest,toolRegistryMetadataTest,toolTimeoutTest,verifyAfterActTest,windowControlTest,windowsScriptsTest,windowsStateFreshnessTest,windowsToolsTest,worldStateTest,boundaryDoublesTest,honestReadToolsA5aTest,routeGoldenTest,docsHygieneTest
+
+
+=== JARVIS test suite — 53 file(s) ===
+
+  PASS    agentRuntimeTest                             2921ms
+  PASS    appControlTest                               617ms
+  PASS    approvalGateStructuredTest                   11843ms
+  PASS    approvalTypeAheadTest                        1826ms
+  PASS    backgroundResearchTest                       1540ms
+  PASS    boundaryDoublesTest                          398ms
+  PASS    browserControlAgentTest                      9347ms
+  PASS    browserControlTest                           432ms
+  PASS    browserRefusalSpokenTest                     1759ms
+  PASS    childEnvCoverageTest                         773ms
+  PASS    closeByNameTest                              12400ms
+  PASS    commandObfuscationTest                       640ms
+  PASS    dispatchAuthzTest                            1126ms
+  PASS    docsHygieneTest                              1331ms
+  PASS    episodicPersistenceTest                      463ms
+  PASS    executionDispatchAuditTest                   3740ms
+  PASS    fileControlSafetyTest                        414ms
+  PASS    filesAndDevToolsTest                         3148ms
+  SKIP  finalIntegrationSuiteTest                    live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  PASS    fullSystemIntegrationTest                    1423ms
+  PASS    honestActionReplyTest                        3453ms
+  PASS    honestReadToolsA5aTest                       3521ms
+  PASS    jarvisChromeTest                             14111ms
+  PASS    kernelOutcomeA5cTest                         4003ms
+  PASS    navigationPolicyTest                         1849ms
+  PASS    pcControlKernelTest                          732ms
+  PASS    plannerDecisionAuditTest                     1252ms
+  PASS    policyOwnershipTest                          600ms
+  FAIL    processControlSafetyTest                     541ms  (expected here: needs Windows process table)
+  PASS    registryRepairHonestyTest                    1471ms
+  PASS    remoteAccessTest                             449ms
+  PASS    repairRunTest                                6685ms
+  PASS    riskEngineTest                               1499ms
+  PASS    routeGoldenTest                              1380ms
+  PASS    routingA3Test                                1486ms
+  PASS    scenarioIntegrationTest                      44707ms
+  PASS    secretFileTest                               1292ms
+  PASS    securityBypassTest                           2012ms
+  PASS    selfCheckTest                                1551ms
+  PASS    skillLoadOrderTest                           3037ms
+  PASS    systemControlSafetyTest                      553ms
+  PASS    systemStateRouteTest                         1306ms
+  PASS    tabTargetingA4Test                           12871ms
+  PASS    taskFailureHonestyTest                       1567ms
+  PASS    toolDiscoverabilityAuditTest                 1345ms
+  PASS    toolRegistryMetadataTest                     1426ms
+  PASS    toolTimeoutTest                              4690ms
+  PASS    verifyAfterActTest                           6493ms
+  BLOCKED windowControlTest                            495ms  (needs Windows: JARVIS reads windows through Windows PowerShell.)
+  SKIP  windowsScriptsTest                           needs PowerShell 7, pwsh (JARVIS_TEST_PWSH). No PowerShell 7 (pwsh) found. Install it (CMD: winget install --id Microsoft.PowerShell --source winget), open a new CMD window and check with: pwsh -v. Or set JARVIS_TEST_PWSH to the full path of pwsh.exe. (not found on this host)
+  PASS    windowsStateFreshnessTest                    4387ms
+  PASS    windowsToolsTest                             5252ms
+  PASS    worldStateTest                               9703ms
+
+=== 49 passed · 0 failed · 0 timed out · 1 blocked · 1 environment · 2 skipped ===
+
+Skipped (not run, so not passed):
+  - finalIntegrationSuiteTest: live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  - windowsScriptsTest: needs PowerShell 7, pwsh (JARVIS_TEST_PWSH). No PowerShell 7 (pwsh) found. Install it (CMD: winget install --id Microsoft.PowerShell --source winget), open a new CMD window and check with: pwsh -v. Or set JARVIS_TEST_PWSH to the full path of pwsh.exe.
+
+Blocked, not verified (the environment the test needs was not available):
+  - windowControlTest: needs Windows: JARVIS reads windows through Windows PowerShell.
+
+Failed for a missing prerequisite, not a defect:
+  - processControlSafetyTest (needs Windows process table)
+
+No failures, but the blocked tests above were not verified.
+ ELIFECYCLE  Test failed. See above for more details.

@@ -1,0 +1,20 @@
+M1 ownership: any Chrome on the file's port counts: CAUGHT | FAIL: a file naming a different browser on that port: not JARVIS's
+M2 close without asking: CAUGHT | FAIL: owner says no: asked once, outside the earlier approval, naming JARVIS's Chrome, its tabs and that the owner's own Chrome stays open
+M3 question inside the earlier approval: CAUGHT | FAIL: owner says no: asked once, outside the earlier approval, naming JARVIS's Chrome, its tabs and that the owner's own Chrome stays open (Close JARVIS's Chrome: Close JARVIS's Chrome (4 tabs: "YouTu
+M4 openUrl falls back to the default browser: MISSED | No unexpected failures.
+M5 open_app web targets use the platform opener: CAUGHT | FAIL: "open youtube": a new tab in JARVIS's Chrome, brought forward ({"success":true,"target":"youtube","resolvedTarget":"https://www.youtube.com","platform":"linux","method":"xdg-open"})
+M6 fixed port instead of port 0: CAUGHT | FAIL: …so it starts Chrome once, with port 0 and its own profile (["--remote-debugging-port=9222","--user-data-dir=/tmp/jarvis-own-chrome-A8rXtR/p-stale","--no-first-run","--no-default-browser-check",
+M7 JARVIS_CHROME_AUTOSTART ignored: CAUGHT | FAIL: automatic start switched off: says so, starts nothing
+M8 'still open' retried by the queue: CAUGHT | FAIL: Chrome still answers after the close: a failure, and the queue does not retry it (asked once) (JARVIS's Chrome is still open: port 42239 still answers after the close request.; asked 2)
+M9 close_browser check always verified: CAUGHT | FAIL: …and failed when it still answers ({"status":"verified","evidence":"nothing answers on JARVIS's Chrome's port 46289 any more"})
+M10 'close chrome' not routed: CAUGHT | FAIL: "close chrome" → close_browser (null)
+M11 planner offers app/window tools for 'close the browser': CAUGHT | FAIL: "close the browser": control_browser offered, control_app and control_window not (control_app, control_window, browser_tab, browser_state, browser_read_page, browser_page_structure, control_brow
+M12 two requests start two Chromes: CAUGHT | FAIL: two requests at once start one Chrome (2 start(s); 43873, 43873)
+M13 no full-control check on close_browser: CAUGHT | FAIL: without full control mode: refused like closing a tab, nothing asked or closed
+M14 cdpPort ignores the profile file: CAUGHT | FAIL: then the port in JARVIS's profile (9222)
+M15 (R1) control_app open sends pages to the platform opener: CAUGHT | FAIL: control_app open "https://github.com": a tab in JARVIS's Chrome, no opener (Opened "https://github.com" successfully. xdg-open https://github.com)
+M16 (R3) a late yes still closes: CAUGHT | FAIL: a "yes" that comes after the request timed out closes nothing, and says so
+M17 (R7) close check reads the first port in the reply: CAUGHT | FAIL: …the port is read from the end of the reply, not from a tab title ({"status":"failed","evidence":"JARVIS's Chrome still answers on port 45949"})
+M18 (R8) close does not check which browser answers: CAUGHT | FAIL: a different browser now on that port is not closed
+
+17/18 caught

@@ -14,6 +14,11 @@
  */
 
 import { EventEmitter } from 'events';
+import { isPermissionDenial } from '../control/permissionDenial.js';
+import { runInTaskNode } from './taskContext.js';
+import { isOutcomeUnknown } from './outcomeUnknown.js';
+import type { ApprovalDecision } from '../security/approvalRequest.js';
+import type { Verification } from './verifiers.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +41,12 @@ export interface TaskNode {
   description: string;
   /** Phase 5: error classification for smarter retry decisions */
   errorType?: 'timeout' | 'abort' | 'permission' | 'transient' | 'fatal';
+  /** Approval decisions made while this node ran (security/approvalGate.ts). */
+  approvals?: ApprovalDecision[];
+  /** The check of the call's real effect (core/verifiers.ts). */
+  verification?: Verification;
+  /** Never ran because this step failed (BUG-01): reset together with it. */
+  blockedBy?: string;
 }
 
 export interface TaskGraph {
@@ -259,9 +270,25 @@ export class TaskGraphEngine extends EventEmitter {
    */
   private readonly MAX_GRAPH_RETRIES = 2;
   private _graphRetryCount = new Map<string, number>(); // goal → retry count
+  /** Upper bound on the retry-guard map, so a long session cannot grow it without limit. */
+  private readonly MAX_TRACKED_GOALS = 100;
 
   private abortControllers = new Map<string, AbortController>();
   private toolExecutionQueues = new Map<string, Promise<void>>();
+  /**
+   * Last invocation time per tool, used to space out calls to the same tool.
+   * Bounded by the number of registered tools.
+   */
+  private lastToolInvocation = new Map<string, number>();
+  /**
+   * Minimum gap between two calls to the *same* tool. Previously this was an
+   * unconditional 500 ms sleep before every node, including the first call to a
+   * tool, which added 500 ms to every tool-using request (JARVIS-004).
+   */
+  private readonly MIN_TOOL_GAP_MS = Math.max(
+    0,
+    Number(process.env['JARVIS_MIN_TOOL_GAP_MS'] ?? 250),
+  );
   private currentGraph: TaskGraph | null = null;
 
   constructor() {
@@ -319,6 +346,18 @@ export class TaskGraphEngine extends EventEmitter {
     }
 
     graph.completedAt = Date.now();
+    // No longer the graph in flight: a later interrupt or "why are you stuck"
+    // must not find it (BUG-19).
+    if (this.currentGraph === graph) this.currentGraph = null;
+
+    // Clear the replan guard once the goal settles successfully. Previously the
+    // counter was only deleted inside the guard branch itself and
+    // `resetReplanCount()` had no callers, so a goal that had used up its
+    // replans stayed poisoned: repeating the same command later in the session
+    // failed instantly without executing anything (JARVIS-008).
+    if (graph.status === 'completed') {
+      this._graphRetryCount.delete(graph.goal);
+    }
 
     this.emit('graph_completed', {
       graphId: graph.id,
@@ -348,11 +387,36 @@ export class TaskGraphEngine extends EventEmitter {
       const ready = this.getReadyNodes(graph);
 
       if (ready.length === 0) {
-        // Check for deadlock: nodes pending but none ready
+        // Nothing can start. A step whose dependency failed did not run
+        // because of it, which is not a deadlock (BUG-01: it was reported as
+        // one, and a repair that reset the failed step left this one failed).
         const pending = [...graph.nodes.values()].filter(n => n.status === 'pending');
-        if (pending.length > 0) {
-          console.warn(`[TaskGraph] ⚠️  Deadlock: ${pending.length} pending nodes but none are ready. Marking as failed.`);
-          for (const node of pending) {
+        const failedDep = (node: TaskNode, seen = new Set<string>()): TaskNode | undefined => {
+          for (const depId of node.dependencies) {
+            if (seen.has(depId)) continue;
+            seen.add(depId);
+            const dep = graph.nodes.get(depId);
+            if (!dep) continue;
+            // The step that really failed, also through one that did not run.
+            if (dep.status === 'failed') return dep.blockedBy ? graph.nodes.get(dep.blockedBy) ?? dep : dep;
+            if (dep.status === 'pending') { const deeper = failedDep(dep, seen); if (deeper) return deeper; }
+          }
+          return undefined;
+        };
+        const stuck: TaskNode[] = [];
+        for (const node of pending) {
+          const cause = failedDep(node);
+          if (cause) {
+            node.status = 'failed';
+            node.blockedBy = cause.id;
+            node.error = `Did not run: it depends on "${cause.description || cause.tool}", which failed.`;
+          } else {
+            stuck.push(node);
+          }
+        }
+        if (stuck.length > 0) {
+          console.warn(`[TaskGraph] Deadlock: ${stuck.length} pending nodes but none are ready. Marking as failed.`);
+          for (const node of stuck) {
             node.status = 'failed';
             node.error = 'Deadlock: dependencies never resolved';
           }
@@ -369,6 +433,29 @@ export class TaskGraphEngine extends EventEmitter {
 
       await Promise.allSettled(batch.map(node => this.executeNode(node, graph, executor)));
     }
+  }
+
+  /**
+   * Steps that did not run because `nodeId` failed, directly or through
+   * another such step (BUG-01). A step that ran and failed on its own is not
+   * one of them.
+   */
+  blockedDependents(graph: TaskGraph, nodeId: string): TaskNode[] {
+    const out: TaskNode[] = [];
+    const reached = new Set<string>([nodeId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const node of graph.nodes.values()) {
+        if (reached.has(node.id) || node.status !== 'failed' || !node.blockedBy) continue;
+        if (node.dependencies.some((d) => reached.has(d))) {
+          reached.add(node.id);
+          out.push(node);
+          grew = true;
+        }
+      }
+    }
+    return out;
   }
 
   /**
@@ -412,10 +499,16 @@ export class TaskGraphEngine extends EventEmitter {
       const previousExecution = this.toolExecutionQueues.get(node.tool) || Promise.resolve();
       
       const executionPromise = previousExecution.then(async () => {
-        // Enforce a small backoff between calls to the same tool
-        await sleep(500); 
+        // Space out repeat calls to the same tool, but never delay its first
+        // call. Measured start-to-start, so a slow tool needs no extra wait.
+        const last = this.lastToolInvocation.get(node.tool);
+        const wait = last === undefined
+          ? 0
+          : Math.max(0, this.MIN_TOOL_GAP_MS - (Date.now() - last));
+        if (wait > 0) await sleep(wait);
+        this.lastToolInvocation.set(node.tool, Date.now());
         if (graph.status === 'interrupted') throw new Error('interrupted');
-        return executor(node.tool, node.args, ac.signal);
+        return runInTaskNode(node, () => executor(node.tool, node.args, ac.signal));
       }).catch(err => {
          // Pass the error down to the node retry logic, don't break the queue chain
          throw err;
@@ -433,6 +526,7 @@ export class TaskGraphEngine extends EventEmitter {
       this.emit('node_completed', {
         nodeId: node.id,
         tool: node.tool,
+        args: node.args,
         result,
         durationMs: node.completedAt - (node.startedAt ?? node.completedAt),
       });
@@ -447,16 +541,35 @@ export class TaskGraphEngine extends EventEmitter {
       // Phase 5: Classify error type for smarter retry decisions
       const errLower = errMsg.toLowerCase();
       const errorType: TaskNode['errorType'] =
-        errLower.includes('abort') || errLower.includes('cancelled')      ? 'abort'
+        // The action reported success but its effect is not there: repeating
+        // it blind is not a repair. First, whatever words the evidence uses.
+        errLower.startsWith('verification_failed')                        ? 'fatal'
+        // It may have happened (B4): never run again by itself.
+        : isOutcomeUnknown(errMsg)                                         ? 'fatal'
+        : errLower.includes('abort') || errLower.includes('cancelled')    ? 'abort'
         : errLower.includes('timeout') || errLower.includes('timed out')   ? 'timeout'
+        // Refused by JARVIS's permission levels, or by a tool's policy (allow-list,
+        // safety block), or nothing to act on: the same call fails the same way,
+        // so retrying only added ~3 s before the reply.
+        : isPermissionDenial(errMsg) || errLower.includes('allowlist') || errLower.includes('policy') || errLower.includes('no open application') ? 'fatal'
         : errLower.includes('permission') || errLower.includes('access denied') ? 'permission'
         : errLower.includes('not registered') || errLower.includes('not found') ? 'fatal'
+        // Bad arguments or a tool/action that does not exist fail the same way
+        // every time; they were retried as 'transient' (~3 s of silence).
+        : errLower.includes('missing required argument') || errLower.includes('expects type')
+          || errLower.includes('must be one of') || errLower.includes('invalid arguments for tool')
+          || errLower.includes('unknown tool') || /unknown \w+ action/.test(errLower) ? 'fatal'
+        // Missing or rejected configuration (e.g. "SERPER_API_KEY is not set")
+        // cannot fix itself; retrying only added ~3 s of silence to the reply.
+        : errLower.includes('is not set') || errLower.includes('api key') || errLower.includes('unauthorized') ? 'fatal'
+        // A per-minute limit: retrying in a second hits it again.
+        : errLower.includes('rate_limited') || errLower.includes('rate limit') ? 'fatal'
         : 'transient';
       node.errorType = errorType;
 
       const isFatal = errorType === 'fatal' || errorType === 'abort';
 
-      console.error(`[TaskGraph]   ❌ Node "${node.id}" failed [${errorType}] (attempt ${node.retryCount}/${node.maxRetries}): ${errMsg}`);
+      console.error(`[TaskGraph]   ❌ Node "${node.id}" failed [${errorType}] (attempt ${node.retryCount}/${node.maxRetries + 1}): ${errMsg}`);
 
       // Fatal/abort errors skip retries immediately
       const canRetry = !isFatal
@@ -476,7 +589,7 @@ export class TaskGraphEngine extends EventEmitter {
         }
         node.status = 'failed';
         node.completedAt = Date.now();
-        this.emit('node_failed', { nodeId: node.id, tool: node.tool, error: errMsg, errorType });
+        this.emit('node_failed', { nodeId: node.id, tool: node.tool, args: node.args, error: errMsg, errorType });
       }
 
     } finally {
@@ -488,6 +601,9 @@ export class TaskGraphEngine extends EventEmitter {
    * Interrupt all running nodes immediately.
    */
   interrupt(graph: TaskGraph): void {
+    // A graph that already finished is left as it is (BUG-19: an interrupt
+    // marked a completed graph "interrupted").
+    if (graph.status === 'completed' || graph.status === 'failed') return;
     graph.status = 'interrupted';
 
     for (const [nodeId, ac] of this.abortControllers.entries()) {
@@ -560,6 +676,12 @@ export class TaskGraphEngine extends EventEmitter {
   canReplan(goal: string): boolean {
     const count = this._graphRetryCount.get(goal) ?? 0;
     if (count >= this.MAX_GRAPH_RETRIES) return false;
+    // Evict the oldest entry rather than letting the map grow for the life of
+    // the process (Map preserves insertion order).
+    if (!this._graphRetryCount.has(goal) && this._graphRetryCount.size >= this.MAX_TRACKED_GOALS) {
+      const oldest = this._graphRetryCount.keys().next();
+      if (!oldest.done) this._graphRetryCount.delete(oldest.value);
+    }
     this._graphRetryCount.set(goal, count + 1);
     return true;
   }

@@ -1,0 +1,65 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=approvalGateStructuredTest,boundaryDoublesTest,browserControlAgentTest,browserObservationTest,browserRefusalSpokenTest,capabilityA5eTest,childEnvCoverageTest,claudeProviderTest,closeByNameTest,codeRepairTest,docsHygieneTest,echoFilterCommandAcceptanceTest,echoShortReplyTest,echoWindowFromPlaybackEndTest,endToEndLatencyTest,filesAndDevToolsTest,fullSystemIntegrationTest,healthLedgerTest,honestActionReplyTest,honestReadToolsA5aTest,jarvisAgentIntegrationTest,jarvisChromeTest,kernelOutcomeA5cTest,openAppHonestA5dTest,plannerDecisionAuditTest,plannerDesktopToolSelectionTest,realTtsHandoffTest,repairRunTest,riskEngineTest,routeGoldenTest,routingA3Test,scenarioIntegrationTest,secondBrainIntegrationTest,securityBypassTest,selfCheckA5bTest,selfCheckTest,skillLoadOrderTest,speechRequestCorrelationTest,spokenTextTest,systemObservationTest,taskFailureHonestyTest,toolDiscoverabilityAuditTest,toolNameListsTest,toolRegistryMetadataTest,ttsDeliveryLifecycleTest,ttsRepeatDeliveryTest,verifyAfterActTest,voiceYouTubeIntegrationTest,windowsToolsTest
+
+
+=== JARVIS test suite — 49 file(s) ===
+
+  PASS    approvalGateStructuredTest                   11479ms
+  PASS    boundaryDoublesTest                          396ms
+  PASS    browserControlAgentTest                      8793ms
+  PASS    browserObservationTest                       8238ms
+  PASS    browserRefusalSpokenTest                     1552ms
+  PASS    capabilityA5eTest                            2371ms
+  PASS    childEnvCoverageTest                         805ms
+  PASS    claudeProviderTest                           1152ms
+  PASS    closeByNameTest                              11435ms
+  PASS    codeRepairTest                               8755ms
+  PASS    docsHygieneTest                              1235ms
+  PASS    echoFilterCommandAcceptanceTest              1238ms
+  PASS    echoShortReplyTest                           365ms
+  PASS    echoWindowFromPlaybackEndTest                361ms
+  PASS    endToEndLatencyTest                          1211ms
+  PASS    filesAndDevToolsTest                         2984ms
+  PASS    fullSystemIntegrationTest                    1373ms
+  PASS    healthLedgerTest                             4905ms
+  PASS    honestActionReplyTest                        3283ms
+  PASS    honestReadToolsA5aTest                       3179ms
+  PASS    jarvisAgentIntegrationTest                   3695ms
+  PASS    jarvisChromeTest                             13222ms
+  PASS    kernelOutcomeA5cTest                         2297ms
+  PASS    openAppHonestA5dTest                         5578ms
+  PASS    plannerDecisionAuditTest                     1270ms
+  PASS    plannerDesktopToolSelectionTest              1258ms
+  BLOCKED realTtsHandoffTest                           358ms  (needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.)
+  PASS    repairRunTest                                6478ms
+  PASS    riskEngineTest                               1578ms
+  PASS    routeGoldenTest                              1223ms
+  PASS    routingA3Test                                1607ms
+  PASS    scenarioIntegrationTest                      44422ms
+  PASS    secondBrainIntegrationTest                   1742ms
+  PASS    securityBypassTest                           1885ms
+  PASS    selfCheckA5bTest                             585ms
+  PASS    selfCheckTest                                1601ms
+  PASS    skillLoadOrderTest                           2903ms
+  PASS    speechRequestCorrelationTest                 3369ms
+  PASS    spokenTextTest                               453ms
+  PASS    systemObservationTest                        2981ms
+  PASS    taskFailureHonestyTest                       1596ms
+  PASS    toolDiscoverabilityAuditTest                 1328ms
+  PASS    toolNameListsTest                            1179ms
+  PASS    toolRegistryMetadataTest                     1323ms
+  PASS    ttsDeliveryLifecycleTest                     3252ms
+  PASS    ttsRepeatDeliveryTest                        3150ms
+  PASS    verifyAfterActTest                           6425ms
+  PASS    voiceYouTubeIntegrationTest                  1226ms
+  PASS    windowsToolsTest                             4974ms
+
+=== 48 passed · 0 failed · 0 timed out · 1 blocked · 0 environment · 0 skipped ===
+
+Blocked, not verified (the environment the test needs was not available):
+  - realTtsHandoffTest: needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.
+
+No failures, but the blocked tests above were not verified.
+ ELIFECYCLE  Test failed. See above for more details.
+EXIT=1

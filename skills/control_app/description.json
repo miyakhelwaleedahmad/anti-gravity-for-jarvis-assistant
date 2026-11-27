@@ -8,8 +8,18 @@
       "type": "string",
       "description": "App command: 'open', 'close', 'focus', 'restart'",
       "required": true,
-      "enum": ["open", "close", "focus", "restart"]
+      "enum": [
+        "open",
+        "close",
+        "focus",
+        "restart"
+      ]
     },
-    "target": { "type": "string", "description": "Application name or executable (e.g. 'notepad')", "required": true }
-  }
+    "target": {
+      "type": "string",
+      "description": "Application name or executable (e.g. 'notepad')",
+      "required": true
+    }
+  },
+  "requiredLevel": 1
 }

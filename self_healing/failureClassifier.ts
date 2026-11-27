@@ -5,6 +5,8 @@
  * Everything flowing into the self-healing system passes through here first.
  */
 
+import { failureSignature, type FailureSignature } from "../core/failureSignature.js";
+
 // ─── Failure Types ────────────────────────────────────────────────────────────
 
 export type FailureType =
@@ -23,6 +25,8 @@ export interface ClassifiedFailure {
   message: string;
   raw: unknown;
   timestamp: Date;
+  /** The shared identity and category (core/failureSignature.ts), as reflection and goal recovery give it. */
+  signature: FailureSignature;
 }
 
 // ─── Rules ────────────────────────────────────────────────────────────────────
@@ -70,6 +74,7 @@ export function classifyFailure(
     message,
     raw,
     timestamp: new Date(),
+    signature: failureSignature({ component: `service:${module}`, message }),
   };
 }
 

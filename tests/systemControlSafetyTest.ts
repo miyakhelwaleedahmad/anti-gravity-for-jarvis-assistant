@@ -81,9 +81,12 @@ console.log('\n--- Test 5: getDiskStatus() ---');
 let diskStatus: string = '';
 try {
   diskStatus = await systemController.getDiskStatus();
-  ok('getDiskStatus() resolves without throwing', true);
+  ok('getDiskStatus() reads the disks, or fails with its reason', true);
 } catch (err: any) {
-  ok(`getDiskStatus() resolves without throwing (got: ${err.message})`, false);
+  // Since phase A5c PowerShell's failure is thrown with its reason (it was an empty
+  // answer counted as success). Without PowerShell (not Windows) it cannot read them.
+  diskStatus = String(err?.message ?? '');
+  ok(`getDiskStatus() reads the disks, or fails with its reason (${diskStatus.slice(0, 80)})`, process.platform !== 'win32' && /PowerShell/.test(diskStatus));
 }
 ok('getDiskStatus() returns a string', typeof diskStatus === 'string');
 

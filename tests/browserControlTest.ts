@@ -24,9 +24,12 @@ console.log('--- Test 1: listTabs() fallback ---');
 let tabsResult: string = '';
 try {
   tabsResult = await browserController.listTabs();
-  ok('listTabs() resolves without throwing', true);
-} catch {
-  ok('listTabs() resolves without throwing', false);
+  ok('listTabs() lists the tabs, or fails with its reason', true);
+} catch (err: any) {
+  // Since phase A5c a failure is thrown with its reason, not returned as text.
+  tabsResult = String(err?.message ?? '');
+  // The reason names Chrome: JARVIS's own Chrome is not running here (review C8).
+  ok(`listTabs() lists the tabs, or fails with its reason (${tabsResult.slice(0, 80)})`, /Chrome/.test(tabsResult));
 }
 ok('listTabs() returns a string', typeof tabsResult === 'string');
 // When DevTools unavailable, should mention it or return empty list
@@ -63,16 +66,20 @@ ok('isTabOpen() returns a boolean', typeof isOpen === 'boolean');
 ok('isTabOpen() returns false when Chrome not reachable', isOpen === false);
 
 // ── Test 4: closeTab() with no DevTools gives useful error ─────────────────
+// Phase A4: it fails with the reason (JARVIS's own Chrome is not running, so
+// no tab was changed). It used to return "Tab matching … is not open.", which
+// the kernel counted as a success although Chrome was not reachable.
 console.log('\n--- Test 4: closeTab() fallback message ---');
 let closeResult: string = '';
+let closeThrew = false;
 try {
   closeResult = await browserController.closeTab('youtube');
-  ok('closeTab() resolves without throwing', true);
 } catch (err: any) {
+  closeThrew = true;
   closeResult = err.message ?? '';
-  ok('closeTab() resolves without throwing', false);
 }
-ok('closeTab() result mentions DevTools or returns message', closeResult.length > 0);
+ok('closeTab() fails (it does not report a result) when Chrome is not reachable', closeThrew);
+ok('closeTab() says JARVIS\'s Chrome is not running and nothing was changed', /not running/i.test(closeResult) && /no tab was changed/i.test(closeResult));
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
 if (failed > 0) process.exit(1);

@@ -3,6 +3,7 @@
   "name": "Enable Full Control Session",
   "description": "Requests explicit approval before enabling a time-limited Level 2 Full Control Mode session.",
   "riskLevel": "high",
+  "requiredLevel": 0,
   "parameters": {
     "source": {
       "type": "string",

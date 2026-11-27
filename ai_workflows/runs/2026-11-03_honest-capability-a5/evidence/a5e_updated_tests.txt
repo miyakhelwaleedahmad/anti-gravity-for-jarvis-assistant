@@ -1,0 +1,23 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=capabilityA5eTest,honestReadToolsA5aTest,approvalGateStructuredTest,browserRefusalSpokenTest,registryRepairHonestyTest,riskEngineTest,securityBypassTest,closeByNameTest,taskFailureHonestyTest,toolDiscoverabilityAuditTest,windowsToolsTest,routeGoldenTest
+
+
+=== JARVIS test suite — 12 file(s) ===
+
+  PASS    approvalGateStructuredTest                   11681ms
+  PASS    browserRefusalSpokenTest                     1646ms
+  PASS    capabilityA5eTest                            2536ms
+  PASS    closeByNameTest                              11549ms
+  PASS    honestReadToolsA5aTest                       3452ms
+  PASS    registryRepairHonestyTest                    1445ms
+  PASS    riskEngineTest                               1631ms
+  PASS    routeGoldenTest                              1439ms
+  PASS    securityBypassTest                           2053ms
+  PASS    taskFailureHonestyTest                       1471ms
+  PASS    toolDiscoverabilityAuditTest                 1281ms
+  PASS    windowsToolsTest                             5004ms
+
+=== 12 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

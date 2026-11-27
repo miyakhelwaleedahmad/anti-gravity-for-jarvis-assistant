@@ -7,6 +7,7 @@
 import { execa } from 'execa';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { childEnv } from '../system/childEnv.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -19,7 +20,7 @@ export async function runAutomateScript(args: string[]): Promise<string> {
     '-File',
     scriptPath,
     ...args
-  ], { reject: false });
+  ], { reject: false, env: childEnv(), extendEnv: false });
   
   if (result.exitCode !== 0) {
     throw new Error(`WinAutomate script failed (exit ${result.exitCode}): ${result.stderr || result.stdout}`);

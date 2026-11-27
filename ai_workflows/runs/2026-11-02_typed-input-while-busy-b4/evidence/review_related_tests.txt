@@ -1,0 +1,63 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=typedWhileBusyB4Test,bargeInEchoTest,bargeInProcessingTest,interruptGatingTest,supersededRequestTest,voiceRouteMockTest,speakingWatchdogQueueTest,speechStateTest,stopClearsTtsQueueTest,ttsLifecycleStateTest,ttsRetryWatchdogTest,voiceQueueAntiDeadlockTest,voiceContinuationFallbackTest,watchdogUnitTest,actionQueueRecoveryTest,voiceApprovalTest,voiceNormalizerTest,voiceYouTubeIntegrationTest,systemStateRouteTest,nodeBridgeSingletonTest,openAppSmokeTest,latencySmokeTest,deterministicCommandRouteTest,honestActionReplyTest,routingA3Test,tabRouteReplyA4Test,tabTargetingA4Test,boundaryDoublesTest,taskFailureHonestyTest,goalRuntimeTest,listeningRecoveryTest,approvalTypeAheadTest,goalApprovalTest
+
+
+=== JARVIS test suite — 33 file(s) ===
+
+  PASS    actionQueueRecoveryTest                      1687ms
+  PASS    approvalTypeAheadTest                        1885ms
+  PASS    bargeInEchoTest                              435ms
+  PASS    bargeInProcessingTest                        1285ms
+  FAIL    boundaryDoublesTest                          384ms
+  PASS    deterministicCommandRouteTest                1426ms
+  PASS    goalApprovalTest                             577ms
+  PASS    goalRuntimeTest                              2226ms
+  PASS    honestActionReplyTest                        3328ms
+  PASS    interruptGatingTest                          377ms
+  PASS    latencySmokeTest                             1315ms
+  PASS    listeningRecoveryTest                        3957ms
+  PASS    nodeBridgeSingletonTest                      513ms
+  PASS    openAppSmokeTest                             468ms
+  PASS    routingA3Test                                1659ms
+  PASS    speakingWatchdogQueueTest                    4559ms
+  PASS    speechStateTest                              1239ms
+  PASS    stopClearsTtsQueueTest                       1218ms
+  PASS    supersededRequestTest                        4066ms
+  PASS    systemStateRouteTest                         1281ms
+  PASS    tabRouteReplyA4Test                          3278ms
+  PASS    tabTargetingA4Test                           12705ms
+  PASS    taskFailureHonestyTest                       1402ms
+  PASS    ttsLifecycleStateTest                        1233ms
+  PASS    ttsRetryWatchdogTest                         5473ms
+  PASS    typedWhileBusyB4Test                         6576ms
+  PASS    voiceApprovalTest                            38787ms
+  PASS    voiceContinuationFallbackTest                1303ms
+  PASS    voiceNormalizerTest                          427ms
+  PASS    voiceQueueAntiDeadlockTest                   1287ms
+  PASS    voiceRouteMockTest                           1478ms
+  PASS    voiceYouTubeIntegrationTest                  1260ms
+  PASS    watchdogUnitTest                             1019ms
+
+=== 32 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - boundaryDoublesTest: === Results: 44 passed, 1 failed ===
+        ❌ tests/typedWhileBusyB4Test.ts (installFakeTts, sendToRole) is listed with a reason
+        …
+        ✅ tests/toolRegistryMetadataTest.ts (installFakeTts) is listed with a reason
+        ❌ tests/typedWhileBusyB4Test.ts (installFakeTts, sendToRole) is listed with a reason
+             listed as installFakeTts; found installFakeTts, sendToRole
+        ✅ tests/verifyAfterActTest.ts (installFakeTts) is listed with a reason
+        ✅ tests/voiceApprovalTest.ts (speak, speakToClients) is listed with a reason
+        ✅ tests/voiceRouteMockTest.ts (registry:execute) is listed with a reason
+        ✅ tests/worldStateTest.ts (installFakeTts) is listed with a reason
+      --- 2. No stale entries ---
+        ✅ every listed file exists and still replaces a boundary
+      --- 3. The real boundaries are still tested ---
+        ✅ speech: realTtsHandoffTest exists and crosses the real boundary
+        ✅ speech: ttsDeliveryLifecycleTest exists and crosses the real boundary
+        ✅ registry: toolExecutionPipelineVerificationTest exists and crosses the real boundary
+        ✅ registry: verifyAfterActTest exists and crosses the real boundary
+      === Results: 44 passed, 1 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

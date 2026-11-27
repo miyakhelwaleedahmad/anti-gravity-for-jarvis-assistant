@@ -17,12 +17,18 @@ import type { AgentTool } from '../core/toolRegistryV2.js';
 import { terminalTools } from '../core/terminalTools.js';
 import { commandValidator } from '../security/commandValidator.js';
 import { securityAuditLogger } from '../security/securityAuditLogger.js';
+import { validateDeveloperCommand } from '../security/developerCommands.js';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import {
+  getWorkspaceRoot,
+  isForeignWindowsAbsolute,
+  isPathInside,
+  isProtectedSystemPath,
+} from '../core/workspaceRoot.js';
 
 // ─── Project root (safe working directory) ────────────────────────────────────
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..');
+// Single authority — see core/workspaceRoot.ts (JARVIS-001).
+const PROJECT_ROOT = getWorkspaceRoot();
 
 /** Directories that require approval to run commands within */
 const SYSTEM_DIRECTORY_PATTERNS: readonly RegExp[] = [
@@ -36,107 +42,17 @@ const SYSTEM_DIRECTORY_PATTERNS: readonly RegExp[] = [
 /** Default timeout for command execution in milliseconds */
 const COMMAND_TIMEOUT_MS = 30_000;
 
-const SHELL_METACHAR_PATTERN = /[&|;<>`$]|\|\||&&/;
-const DANGEROUS_COMMAND_PATTERNS: readonly RegExp[] = [
-  /^\s*(del|erase|rd|rmdir|format|shutdown)\b/i,
-  /\brm\s+-[^\n]*r/i,
-  /\bremove-item\b[\s\S]*\b-recurse\b[\s\S]*\b-force\b/i,
-  /\bpowershell(?:\.exe)?\b[\s\S]*\s-(?:enc|encodedcommand)\b/i,
-  /\bcurl\b[\s\S]*\|/i,
-  /\bwget\b[\s\S]*\|/i,
-  /\binvoke-expression\b|\biex\b/i,
-  /\bstart-process\b/i,
-];
 
-const SAFE_NPM_SCRIPTS = new Set([
-  'test',
-  'test:voice-core',
-  'test:pc-control',
-  'test:all',
-  'test:latency',
-  'build',
-]);
 
 function isSystemDirectory(dir: string): boolean {
-  return SYSTEM_DIRECTORY_PATTERNS.some((p) => p.test(dir));
+  // The local patterns require a trailing separator, so a bare `C:\\Windows`
+  // slips past them even on Windows; the shared predicate also normalises
+  // separators and matches on any host (JARVIS-001b).
+  return isProtectedSystemPath(dir) || SYSTEM_DIRECTORY_PATTERNS.some((p) => p.test(dir));
 }
 
-function tokenizeCommand(command: string): string[] | null {
-  const matches = command.match(/"[^"]*"|'[^']*'|\S+/g);
-  if (!matches) return null;
-  return matches.map((token) => token.replace(/^["']|["']$/g, ''));
-}
-
-function validateDeveloperCommand(command: string): { allowed: boolean; reason: string } {
-  const normalized = command.trim().replace(/\s+/g, ' ');
-
-  if (SHELL_METACHAR_PATTERN.test(normalized)) {
-    return { allowed: false, reason: 'Shell metacharacters are blocked for run_command.' };
-  }
-
-  for (const pattern of DANGEROUS_COMMAND_PATTERNS) {
-    if (pattern.test(normalized)) {
-      return { allowed: false, reason: `Command matches blocked pattern: ${pattern.toString()}` };
-    }
-  }
-
-  const tokens = tokenizeCommand(normalized);
-  if (!tokens || tokens.length === 0) {
-    return { allowed: false, reason: 'Unable to parse command.' };
-  }
-
-  const exe = tokens[0].toLowerCase();
-  const args = tokens.slice(1);
-  const arg0 = args[0]?.toLowerCase();
-
-  if (exe === 'git') {
-    const safeGit = new Set(['status', 'diff', 'log', 'show', 'branch']);
-    return {
-      allowed: !!arg0 && safeGit.has(arg0),
-      reason: 'Only read-only git developer commands are allowed.',
-    };
-  }
-
-  if (exe === 'npm') {
-    if (arg0 !== 'run' || !args[1]) {
-      return { allowed: false, reason: 'Only npm run <safe-script> is allowed.' };
-    }
-    return {
-      allowed: SAFE_NPM_SCRIPTS.has(args[1].toLowerCase()),
-      reason: `npm script "${args[1]}" is not on the safe script allowlist.`,
-    };
-  }
-
-  if (exe === 'pnpm') {
-    if (arg0 === 'install' || arg0 === 'add' || arg0 === 'remove' || arg0 === 'update' || arg0 === 'publish') {
-      return { allowed: false, reason: 'Dependency mutation/publish commands are blocked.' };
-    }
-    if (arg0 === 'run' && args[1]) {
-      return {
-        allowed: SAFE_NPM_SCRIPTS.has(args[1].toLowerCase()),
-        reason: `pnpm script "${args[1]}" is not on the safe script allowlist.`,
-      };
-    }
-    const safePnpm = new Set(['test', 'build']);
-    return {
-      allowed: !!arg0 && safePnpm.has(arg0),
-      reason: 'Only safe pnpm developer commands are allowed.',
-    };
-  }
-
-  if (exe === 'npx') {
-    const isTscNoEmit = arg0 === 'tsc' && args.slice(1).every((arg) => arg === '--noEmit');
-    const isTsxSafeTest = arg0 === 'tsx' && /^tests[\\/][A-Za-z0-9_.-]+\.ts$/.test(args[1] ?? '') && args.length === 2;
-    return {
-      allowed: isTscNoEmit || isTsxSafeTest,
-      reason: 'Only npx tsc --noEmit or npx tsx tests/<safe-test>.ts are allowed.',
-    };
-  }
-
-  return { allowed: false, reason: `Command "${exe}" is not on the developer allowlist.` };
-}
-
-// ─── Structured execution result ──────────────────────────────────────────────
+// The allow-list lives in security/developerCommands.ts (ARCH-04).
+export { validateDeveloperCommand };
 
 export interface RunCommandResult {
   success: boolean;
@@ -156,6 +72,9 @@ export const runCommandTool: AgentTool = {
   description:
     'Use to execute safe Windows shell/terminal commands (CMD or PowerShell). DO NOT use for opening desktop apps, searching the web, or reading files directly. Required parameter: command (string shell command). Optional parameter: workingDir (string). Returns string containing exit code and terminal output.',
   riskLevel: 'high',
+  // No dispatch floor: allow-listed developer commands run at level 0, and
+  // every command is checked by the allowlist and CommandValidator below.
+  requiredLevel: 0,
   inputSchema: {
     command: {
       type: 'string',
@@ -175,14 +94,29 @@ export const runCommandTool: AgentTool = {
   async execute(args, signal) {
     const command = String(args['command'] ?? '').trim();
     const requestedCwd = args['workingDir'] ? String(args['workingDir']).trim() : PROJECT_ROOT;
-    const effectiveCwd = path.resolve(requestedCwd || PROJECT_ROOT);
 
     if (!command) {
       return 'Error: run_command requires a non-empty command argument.';
     }
 
-    const relativeCwd = path.relative(PROJECT_ROOT, effectiveCwd);
-    if (relativeCwd.startsWith('..') || path.isAbsolute(relativeCwd)) {
+    // A cwd that is absolute for a different platform than the host cannot be
+    // resolved meaningfully here — `path.resolve('C:\\Windows')` on POSIX yields
+    // a path *inside* the project root, so the containment check below would
+    // pass it. Reject it up front (JARVIS-001b). Checked before the system-path
+    // guard so the outcome matches Windows, where containment fails first.
+    if (isForeignWindowsAbsolute(requestedCwd)) {
+      securityAuditLogger.denied(
+        command,
+        'HIGH_RISK',
+        `Working directory outside project root blocked: ${requestedCwd}`,
+        'run_command',
+      );
+      return `Error: Working directory "${requestedCwd}" is outside the project workspace.`;
+    }
+
+    const effectiveCwd = path.resolve(requestedCwd || PROJECT_ROOT);
+
+    if (!isPathInside(PROJECT_ROOT, effectiveCwd)) {
       securityAuditLogger.denied(
         command,
         'HIGH_RISK',

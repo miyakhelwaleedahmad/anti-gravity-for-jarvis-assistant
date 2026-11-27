@@ -7,33 +7,61 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import {
+  isForeignWindowsAbsolute,
+  isPathInside,
+  isProtectedSystemPath,
+  realPathOf,
+} from '../core/workspaceRoot.js';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
 import { rollbackManager } from './rollbackManager.js';
+import { isSecretFile, SECRET_FILE_REFUSAL } from '../security/secretFiles.js';
+import { approvedFolders } from '../security/protectedTargets.js';
+
+export { approvedFolders };
 
 export class FileController {
+  /**
+   * Directories this controller may operate in.
+   *
+   * Deliberately wider than `workspacePathPolicy`'s workspace-only boundary: a
+   * desktop assistant is expected to manage the user's own document folders.
+   * That difference is intentional and preserved — only the broken workspace
+   * literal and the containment test have changed (JARVIS-012).
+   *
+   * Paths are no longer lower-cased: `searchFiles()` passes these straight to
+   * `fs.readdir`, so a lower-cased `/home/u/desktop` simply never matched on a
+   * case-sensitive filesystem. Casing is now handled by `isPathInside`.
+   */
   private getApprovedFolders(): string[] {
-    const home = os.homedir();
-    return [
-      path.resolve('W:\\anti gravity for jarvis assistant').toLowerCase(),
-      path.resolve(os.tmpdir()).toLowerCase(),
-      path.resolve(path.join(home, 'Desktop')).toLowerCase(),
-      path.resolve(path.join(home, 'Documents')).toLowerCase(),
-      path.resolve(path.join(home, 'Downloads')).toLowerCase()
-    ];
+    return approvedFolders();
   }
 
   private isPathContained(targetPath: string): boolean {
-    const resolved = path.resolve(targetPath).toLowerCase();
-    
-    // Protect system folders explicitly
-    const systemFolders = ['c:\\windows', 'c:\\program files', 'c:\\program files (x86)'];
-    for (const sys of systemFolders) {
-      if (resolved.startsWith(sys)) return false;
-    }
+    const raw = String(targetPath ?? '').trim();
+    if (!raw) return false;
 
-    const approved = this.getApprovedFolders();
-    return approved.some(folder => resolved.startsWith(folder));
+    // Protected OS locations, tested against the RAW input: on a POSIX host
+    // `path.resolve('C:\\Windows\\x')` produces a path inside the project, which
+    // the old `startsWith('c:\\windows')` test could never match (JARVIS-001b).
+    if (isProtectedSystemPath(raw)) return false;
+
+    // Absolute for a different platform than the host — cannot be inside any
+    // approved folder here, and must not be silently treated as relative.
+    if (isForeignWindowsAbsolute(raw)) return false;
+
+    const resolved = path.resolve(raw);
+    if (isProtectedSystemPath(resolved)) return false;
+
+    // Boundary-aware containment. The previous `startsWith` prefix test also
+    // accepted sibling directories such as `<home>/Desktop-evil`. Compared by
+    // real path too: a link inside an approved folder (a symlink or junction
+    // in temp pointing at /etc or C:\Windows) no longer leads out of it.
+    const real = realPathOf(resolved);
+    if (isProtectedSystemPath(real)) return false;
+    return this.getApprovedFolders().some((folder) => isPathInside(folder, resolved))
+      && this.getApprovedFolders().some((folder) => isPathInside(realPathOf(folder), real));
   }
 
   private ensureApproved(filePath: string, action: string): void {
@@ -56,23 +84,25 @@ export class FileController {
             matches.push(path.join(dir, f));
           }
         }
-      } catch {}
+      } catch { /* folder missing or not readable: search the others */ }
     }
 
     return JSON.stringify(matches, null, 2);
   }
 
   public async readFile(filePath: string): Promise<string> {
+    // A refusal or a failed read is thrown, never returned as text: the kernel
+    // counts returned text as the file's contents (A5c, TRA-10).
     try {
       this.ensureApproved(filePath, 'readFile');
-      // Prevent reading `.env` keys aloud or in stdout if it has sensitive info
-      const content = await fs.promises.readFile(filePath, 'utf-8');
-      if (filePath.endsWith('.env')) {
-        return '(Protected Environment File Content)';
+      // Keys, tokens and passwords are not read at all: `.env` and files named
+      // for what they hold (SEC-14). Only `.env` itself was caught before.
+      if (filePath.endsWith('.env') || isSecretFile(filePath)) {
+        throw new Error(SECRET_FILE_REFUSAL);
       }
-      return content;
+      return await fs.promises.readFile(filePath, 'utf-8');
     } catch (err: any) {
-      return `Error reading file: ${err.message}`;
+      throw new Error(`Error reading file: ${err?.message ?? String(err)}`);
     }
   }
 

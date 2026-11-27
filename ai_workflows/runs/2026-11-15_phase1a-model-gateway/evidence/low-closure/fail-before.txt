@@ -1,0 +1,101 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=errorClassificationTest,memoryTrustTest,identityAliasTest,claudePrimaryTargetsTest
+
+
+=== JARVIS test suite — 4 file(s) ===
+
+  FAIL    claudePrimaryTargetsTest                     747ms
+  FAIL    errorClassificationTest                      1554ms
+  FAIL    identityAliasTest                            6582ms
+  FAIL    memoryTrustTest                              927ms
+
+=== 0 passed · 4 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - claudePrimaryTargetsTest: === Results: 1 passed, 1 failed ===
+        FAIL: coding without its own setting: the listed model is the model really sent (listed [{"provider":"anthropic","model":"llama-3.1-8b-instant","exact":false}]; sent claude-haiku-5-5)
+        …
+      === Claude as primary: listed models are the models sent ===
+        PASS: (setup) Claude is the primary provider (anthropic)
+      [LLM usage] anthropic claude-haiku-5-5 unspecified: ? in / ? out tokens, 2 ms
+        FAIL: coding without its own setting: the listed model is the model really sent (listed [{"provider":"anthropic","model":"llama-3.1-8b-instant","exact":false}]; sent claude-haiku-5-5)
+      === Results: 1 passed, 1 failed ===
+  - errorClassificationTest: === Results: 2 passed, 13 failed ===
+        FAIL: a strict reply without a reported model: task code MODEL_IDENTITY_UNCONFIRMED (FAILED MODEL_UNAVAILABLE)
+        FAIL: …the goal sees MODEL_IDENTITY_UNCONFIRMED, class "configuration" (MODEL_UNAVAILABLE → unrecoverable)
+        FAIL: …blocked, not retried (failed/continue)
+        FAIL: the strict model is down: code MODEL_UNAVAILABLE, class "dependency" (MODEL_UNAVAILABLE → unrecoverable)
+        FAIL: …retried later, waiting for the service (failed/undefined)
+        FAIL: the agent task keeps BUDGET_EXCEEDED and says it was the tool budget ({"code":"BUDGET_EXCEEDED","message":"The toolCalls budget is used up (task task-e7c824ca-551a-4a95-93a5-ad9f3278a226)."})
+        FAIL: …the goal sees TOOL_BUDGET_EXHAUSTED, class "budget" (BUDGET_EXCEEDED → budget)
+        FAIL: a goal task whose cited source could not be re-read is not ok (ok=true {"verdict":"inconclusive","note":"not checked: could not re-read acme/cdp-kit: GitHub API answered 503"})
+        FAIL: …code VERIFICATION_INCONCLUSIVE, class "inconclusive" (undefined → undefined)
+        FAIL: …needs review, the goal waits for the owner, not retried (no failure)
+        FAIL: a research worker ran out of TOOL calls: the strict coding task is not failed as a model failure (FAILED {"code":"MODEL_UNAVAILABLE","message":"Repository Code Analysis Worker: Project cdp-kit Deep Analysis Worker: The toolCalls budget is used up (task task-5591b82a-5630-4f34-9a36-35db4f10f1
+        FAIL: a research worker ran out of MODEL calls: the coding task fails with BUDGET_EXCEEDED (llmCalls), its code kept (FAILED {"code":"MODEL_UNAVAILABLE","message":"Repository Code Analysis Worker: Project cdp-kit Deep Analysis Worker: The llmCalls budget is used up (task task-f088a91e-f5a5-446e-92
+        FAIL: the four codes give four different failure signatures (1)
+        …
+        PASS: …the goal waits for budget (wait/budget)
+      --- VERIFICATION_INCONCLUSIVE ---
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        FAIL: a goal task whose cited source could not be re-read is not ok (ok=true {"verdict":"inconclusive","note":"not checked: could not re-read acme/cdp-kit: GitHub API answered 503"})
+        FAIL: …code VERIFICATION_INCONCLUSIVE, class "inconclusive" (undefined → undefined)
+        FAIL: …needs review, the goal waits for the owner, not retried (no failure)
+      --- R3. Strict research: model budget vs tool budget ---
+      [LLM usage] codeok code-model planning: ? in / ? out tokens, 0 ms
+        FAIL: a research worker ran out of TOOL calls: the strict coding task is not failed as a model failure (FAILED {"code":"MODEL_UNAVAILABLE","message":"Repository Code Analysis Worker: Project cdp-kit Deep Analysis Worker: The toolCalls budget is used up (task task-5591b82a-5630-4f34-9a36-35db4f10f1
+      [LLM usage] codeok code-model planning: ? in / ? out tokens, 0 ms
+        FAIL: a research worker ran out of MODEL calls: the coding task fails with BUDGET_EXCEEDED (llmCalls), its code kept (FAILED {"code":"MODEL_UNAVAILABLE","message":"Repository Code Analysis Worker: Project cdp-kit Deep Analysis Worker: The llmCalls budget is used up (task task-f088a91e-f5a5-446e-92
+      --- Four distinct signatures ---
+        FAIL: the four codes give four different failure signatures (1)
+        PASS: …and an existing code keeps its class (BUDGET_EXCEEDED → budget)
+      === Results: 2 passed, 13 failed ===
+  - identityAliasTest: === Results: 1 passed, 16 failed ===
+        FAIL: a gateway id ("vendor/") of the same model: not independent (independent: coding may use p1 anthropic/claude-opus-5-5; QA may use p2 claude-opus-5-5)
+        FAIL: a "-NNN" version of the same model: not independent (independent: coding may use p1 gemini-2.5-flash-001; QA may use p2 gemini-2.5-flash)
+        FAIL: an "@date" stamp: not independent (independent: coding may use p1 claude-x@20261101; QA may use p2 claude-x)
+        FAIL: a "-YYYYMMDD" stamp: not independent (independent: coding may use p1 claude-x-20261101; QA may use p2 claude-x)
+        FAIL: a "-YYYY-MM-DD" stamp: not independent (independent: coding may use p1 gpt-x-2026-11-01; QA may use p2 gpt-x)
+        FAIL: a ":variant" suffix: not independent (independent: coding may use p1 llama-4-70b:free; QA may use p2 llama-4-70b)
+        FAIL: a floating alias ("-latest"): unknown, not independent (independent: coding may use p1 gemini-flash-latest; QA may use p2 gemini-3.5-pro)
+        FAIL: a look-up that never answers ends within its limit (5002 ms)
+        FAIL: …as unresolved: not independent (timeout)
+        FAIL: a failed look-up is not repeated within a minute (2 look-up(s))
+        FAIL: independence not required: QA runs with no identity look-up (COMPLETED lookups=1)
+        FAIL: a QA reply reporting an alias of coding's model: FAILED "independent QA unavailable" (COMPLETED  {"status":"independent","required":true,"qaModels":["gw/shared-x-20261101"],"reason":"independent: coding may use lookups shared-x; QA may use groq llama-3.1-8b-instant; every reply reported a mo
+        FAIL: a coding helper on QA's model makes coding and QA not independent (independent: coding may use primary llama-3.1-8b-instant; QA may use p2 helper-model-2026-11-01)
+        FAIL: …the helper's model is listed among coding's ([{"provider":"primary","model":"llama-3.1-8b-instant","exact":false}])
+        FAIL: HELPER_ROLES.coding_agent matches the agents the registry lets it create (registry: code_analysis_worker,project_deep_analysis_worker,repo_code_analysis_worker,repo_discovery_worker,test_runner_worker | list: )
+        FAIL: HELPER_ROLES.qa_agent matches the agents the registry lets it create (registry: evidence_check_worker,test_runner_worker | list: )
+        …
+        FAIL: …as unresolved: not independent (timeout)
+        FAIL: a failed look-up is not repeated within a minute (2 look-up(s))
+      [ToolRegistry] ✅ Registered 53 tool(s) into registry.
+      [ToolRegistry] 53 built-in tools registered; skills load next.
+      [ToolRegistry] Tools: web_search, read_file, write_file, run_command, get_system_info, save_relation, search_memory, forget_memory, list_capabilities, action_history, system_overview, dev_status, git_overview, browser_state, browser_read_page, browser_page_structure, browser_navigate, browser_tab, b
+      [LLM usage] lookups qa-model planning: ? in / ? out tokens, 2 ms
+        FAIL: independence not required: QA runs with no identity look-up (COMPLETED lookups=1)
+      [LLM usage] groq llama-3.1-8b-instant planning: ? in / ? out tokens, 0 ms
+        FAIL: a QA reply reporting an alias of coding's model: FAILED "independent QA unavailable" (COMPLETED  {"status":"independent","required":true,"qaModels":["gw/shared-x-20261101"],"reason":"independent: coding may use lookups shared-x; QA may use groq llama-3.1-8b-instant; every reply reported a mo
+      --- L1. Coding helpers' own settings ---
+        FAIL: a coding helper on QA's model makes coding and QA not independent (independent: coding may use primary llama-3.1-8b-instant; QA may use p2 helper-model-2026-11-01)
+        FAIL: …the helper's model is listed among coding's ([{"provider":"primary","model":"llama-3.1-8b-instant","exact":false}])
+        FAIL: HELPER_ROLES.coding_agent matches the agents the registry lets it create (registry: code_analysis_worker,project_deep_analysis_worker,repo_code_analysis_worker,repo_discovery_worker,test_runner_worker | list: )
+        FAIL: HELPER_ROLES.qa_agent matches the agents the registry lets it create (registry: evidence_check_worker,test_runner_worker | list: )
+      === Results: 1 passed, 16 failed ===
+  - memoryTrustTest: === Results: 3 passed, 3 failed ===
+        FAIL: verification inconclusive: not stored
+        FAIL: result unverified: not stored
+        FAIL: verification needed but it did not finish: not stored
+        …
+      === Only verified results become long-term memory ===
+        PASS: verified research result: stored
+      [Agents] Not stored in long-term memory: the Verification agent found issues.
+        PASS: verifier found issues: not stored
+        FAIL: verification inconclusive: not stored
+        FAIL: result unverified: not stored
+        FAIL: verification needed but it did not finish: not stored
+        PASS: a result that did not need verification: stored as before
+      === Results: 3 passed, 3 failed ===
+ ELIFECYCLE  Test failed. See above for more details.

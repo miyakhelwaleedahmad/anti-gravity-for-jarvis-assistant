@@ -1,0 +1,17 @@
+# Round 2: typecheck + target and related tests (repository working tree, cloud Linux); fake xdg-open on PATH
+
+typecheck exit=0
+  PASS    bargeInEchoTest                              469ms
+  PASS    boundaryDoublesTest                          420ms
+  PASS    bridgeSecurityTest                           10093ms
+  PASS    deterministicCommandRouteTest                1475ms
+  PASS    docsHygieneTest                              1577ms
+  PASS    healthLedgerTest                             5034ms
+  PASS    nodeBridgeSingletonTest                      570ms
+  PASS    openAppSmokeTest                             526ms
+  PASS    testScriptIsolationTest                      3518ms
+  PASS    voiceContinuationFallbackTest                1443ms
+  PASS    voiceRouteMockTest                           1836ms
+  PASS    voiceYouTubeIntegrationTest                  1622ms
+=== 12 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+opener calls: 0

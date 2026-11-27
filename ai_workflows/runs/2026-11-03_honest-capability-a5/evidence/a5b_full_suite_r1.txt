@@ -1,0 +1,250 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --ci
+
+
+=== JARVIS test suite — 224 file(s) (CI mode) ===
+
+  PASS    a2aProtocolTest                              1663ms
+  PASS    actionQueueRecoveryTest                      1629ms
+  PASS    adaptiveRamOptimizationTest                  690ms
+  PASS    adminControlTest                             634ms
+  PASS    agentRuntimeTest                             2891ms
+  PASS    agentSpecialistsTest                         1475ms
+  PASS    alertVoiceTest                               581ms
+  PASS    appControlTest                               648ms
+  PASS    approvalGateStructuredTest                   11657ms
+  PASS    approvalPathsTest                            490ms
+  PASS    approvalTypeAheadTest                        1906ms
+  PASS    backgroundResearchTest                       1351ms
+  PASS    backupDataTest                               1657ms
+  PASS    backupScheduleTest                           4414ms
+  PASS    bargeInEchoTest                              432ms
+  PASS    bargeInProcessingTest                        1352ms
+  PASS    boundaryDoublesTest                          473ms
+  PASS    bridgeAuthUnitTest                           611ms
+  PASS    bridgeSecurityTest                           10074ms
+  PASS    browserControlAgentTest                      8972ms
+  PASS    browserControlTest                           499ms
+  PASS    browserObservationTest                       8177ms
+  PASS    browserRefusalSpokenTest                     1728ms
+  PASS    childEnvCoverageTest                         959ms
+  PASS    childEnvTest                                 1548ms
+  PASS    chromeStateSmokeTest                         628ms
+  PASS    clarificationGoalTest                        2032ms
+  PASS    claudeProviderTest                           1207ms
+  PASS    closeAppRouteTest                            1340ms
+  PASS    closeByNameTest                              11599ms
+  PASS    cmdMetacharTest                              621ms
+  PASS    codeRepairTest                               9226ms
+  PASS    commandObfuscationTest                       662ms
+  PASS    controlCenterTest                            625ms
+  PASS    crashPolicyTest                              2384ms
+  PASS    dangerousCommandMatchTest                    598ms
+  SKIP  dashboardAccuracyTest                        needs a running Redis and a reachable LLM API
+  SKIP  dashboardHealthSystemTest                    needs Windows PowerShell, a reachable LLM API and Redis
+  PASS    dashboardLabelTest                           847ms
+  PASS    dataRootIsolationTest                        886ms
+  PASS    delegationRoutingTest                        1384ms
+  PASS    dependencyImportCheck                        487ms
+  PASS    desktopControlTest                           10251ms
+  PASS    deterministicCommandRouteTest                1313ms
+  PASS    diagnosisRulesTest                           577ms
+  PASS    dispatchAuthzTest                            1254ms
+  PASS    docsHygieneTest                              1483ms
+  PASS    duplicateEventsTest                          498ms
+  PASS    echoFilterCommandAcceptanceTest              1393ms
+  PASS    echoFilterVerificationTest                   413ms
+  PASS    echoShortReplyTest                           410ms
+  PASS    echoWindowFromPlaybackEndTest                349ms
+  PASS    endToEndLatencyTest                          1280ms
+  PASS    episodicPersistenceTest                      492ms
+  PASS    errorHandlingAuditTest                       1338ms
+  PASS    errorRecoveryTest                            11790ms
+  PASS    executionDispatchAuditTest                   3338ms
+  PASS    executionTraceTest                           538ms
+  PASS    failedTaskMemoryTest                         531ms
+  PASS    fallbackPolicyTest                           1379ms
+  PASS    fallbackToolStrategyTest                     1554ms
+  PASS    faultInjectionTest                           508ms
+  PASS    fileControlSafetyTest                        425ms
+  PASS    filesAndDevToolsTest                         3158ms
+  PASS    fileToolWorkspaceSafetyTest                  505ms
+  SKIP  finalIntegrationSuiteTest                    live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  PASS    foregroundPriorityTest                       1074ms
+  PASS    fullControlLimitTest                         520ms
+  PASS    fullSystemIntegrationTest                    1278ms
+  PASS    goalAgentIntegrationTest                     2630ms
+  PASS    goalApprovalTest                             541ms
+  PASS    goalCreationTest                             2854ms
+  PASS    goalLearningTest                             677ms
+  PASS    goalLifecycleAuditTest                       434ms
+  PASS    goalLifecycleTest                            494ms
+  PASS    goalManagerInitTest                          381ms
+  PASS    goalRecoveryTest                             429ms
+  PASS    goalRuntimeMigrationTest                     422ms
+  PASS    goalRuntimeTest                              2359ms
+  PASS    goalServiceTest                              1464ms
+  PASS    healthLedgerTest                             4937ms
+  PASS    healthStatusTest                             7555ms
+  PASS    honestActionReplyTest                        3502ms
+  PASS    honestReadToolsA5aTest                       3281ms
+  PASS    inputControlTest                             1121ms
+  PASS    interruptGatingTest                          386ms
+  PASS    issueStoreTest                               634ms
+  PASS    jarvisAgentIntegrationTest                   3870ms
+  PASS    jarvisChromeTest                             13395ms
+  PASS    kernelOutcomeA5cTest                         2503ms
+  PASS    latencySmokeTest                             1343ms
+  PASS    listeningRecoveryTest                        4028ms
+  PASS    llmCancellationTest                          2207ms
+  PASS    llmClientBehaviourTest                       1234ms
+  PASS    llmProviderConfigTest                        412ms
+  PASS    llmTimingTest                                3902ms
+  PASS    memoryCacheTest                              606ms
+  PASS    memoryForgetTest                             1478ms
+  PASS    memoryPerformanceTest                        724ms
+  PASS    modelRoutingTest                             788ms
+  PASS    mouseKeyboardControlTest                     512ms
+  PASS    navigationPolicyTest                         1834ms
+  PASS    nestedApprovalTest                           522ms
+  PASS    nodeBridgeSingletonTest                      570ms
+  PASS    noGroqForLocalCommandsTest                   1495ms
+  PASS    noThinkMemoryTest                            1439ms
+  PASS    openAppHonestA5dTest                         5782ms
+  PASS    openAppSecurityTest                          504ms
+  PASS    openAppSmokeTest                             499ms
+  PASS    parallelizationTimeoutAuditTest              1497ms
+  PASS    pcControlKernelTest                          746ms
+  PASS    permissionSessionTest                        400ms
+  PASS    plannerDecisionAuditTest                     1295ms
+  PASS    plannerDesktopToolSelectionTest              1408ms
+  PASS    planningPerformanceTest                      1306ms
+  PASS    planningTimeoutSpeechTest                    4481ms
+  PASS    policyOwnershipTest                          682ms
+  SKIP  processControlSafetyTest                     needs Windows process table
+  PASS    projectScriptPolicyTest                      1598ms
+  PASS    promptInjectionFlowTest                      1558ms
+  PASS    promptInjectionHardeningTest                 423ms
+  PASS    providerFailoverTest                         700ms
+  PASS    providerHealthTest                           3591ms
+  PASS    pythonUtf8Test                               416ms
+  PASS    ragPipelineTest                              528ms
+  BLOCKED realTtsHandoffTest                           415ms  (needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.)
+  PASS    recursiveResearchExampleTest                 1733ms
+  PASS    redactionTest                                495ms
+  PASS    redisHealthAgreementTest                     2648ms
+  PASS    redisReadyRaceTest                           742ms
+  PASS    registryRepairHonestyTest                    1524ms
+  PASS    remoteAccessTest                             470ms
+  PASS    repairRunTest                                6447ms
+  PASS    replyGoldenTest                              1503ms
+  PASS    requestScopeTest                             1684ms
+  PASS    requestTraceLogTest                          1851ms
+  PASS    resourceUsageAuditTest                       430ms
+  PASS    retryPolicyTest                              3518ms
+  PASS    riskEngineTest                               1618ms
+  PASS    rollbackManagerTest                          381ms
+  PASS    routeGoldenTest                              1310ms
+  PASS    routingA3Test                                1491ms
+  PASS    runCommandSafetyTest                         471ms
+  PASS    scenarioIntegrationTest                      44811ms
+  PASS    secondBrainIntegrationTest                   1762ms
+  PASS    secondBrainTest                              595ms
+  PASS    secretFileTest                               1483ms
+  PASS    secretSinksTest                              5316ms
+  PASS    securityBypassTest                           1864ms
+  PASS    securityGateUnitTest                         468ms
+  PASS    selfCheckA5bTest                             518ms
+  PASS    selfCheckTest                                1555ms
+  PASS    selfHealingHonestyTest                       510ms
+  PASS    selfHealInstallTest                          574ms
+  PASS    serverExitRaceTest                           2549ms
+  PASS    serviceLogLabelTest                          388ms
+  PASS    sevenAgentTest                               1847ms
+  PASS    shutdownStepsTest                            1351ms
+  PASS    simpleNoGoalTest                             1232ms
+  PASS    skillImportTimeoutTest                       1486ms
+  PASS    skillLoadOrderTest                           2903ms
+  PASS    skillTrustTest                               677ms
+  PASS    sourceFileNamesTest                          384ms
+  PASS    speakingWatchdogQueueTest                    4535ms
+  PASS    speechOutcomeHealthTest                      2475ms
+  PASS    speechRequestCorrelationTest                 3822ms
+  PASS    speechStateTest                              1468ms
+  PASS    spokenTextTest                               489ms
+  PASS    startScriptTest                              413ms
+  SKIP  startupPerformanceTest                       needs JARVIS_BRIDGE_TOKEN
+  PASS    startupRegistrationTest                      1341ms
+  PASS    stopClearsTtsQueueTest                       1322ms
+  SKIP  sttReliabilityTest                           needs Python virtualenv (.venv)
+  SKIP  successfulExecutionLifecycleAuditTest        live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  PASS    supersededRequestTest                        4319ms
+  PASS    systemControlSafetyTest                      526ms
+  PASS    systemObservationTest                        3211ms
+  PASS    systemStateRouteTest                         1327ms
+  PASS    systemStateSmokeTest                         2199ms
+  PASS    tabRouteReplyA4Test                          3308ms
+  PASS    tabTargetingA4Test                           12797ms
+  PASS    taskFailureHonestyTest                       1490ms
+  PASS    taskGraphRepairTest                          708ms
+  PASS    testScriptIsolationTest                      2963ms
+  PASS    timeQuestionsNpc10Test                       3318ms
+  PASS    toolDiscoverabilityAuditTest                 1223ms
+  PASS    toolExecutionPipelineVerificationTest        1360ms
+  PASS    toolGapAndReplanGuardTest                    1134ms
+  PASS    toolNameListsTest                            1259ms
+  PASS    toolPerformanceBenchmarkTest                 1258ms
+  PASS    toolRegistryMetadataTest                     1465ms
+  PASS    toolRegistryOptimizationTest                 1297ms
+  PASS    toolTimeoutTest                              4613ms
+  PASS    transitionLoggingTest                        369ms
+  PASS    ttsDeliveryLifecycleTest                     3262ms
+  PASS    ttsFallbackHonestyTest                       507ms
+  PASS    ttsLifecycleStateTest                        1302ms
+  PASS    ttsRepeatDeliveryTest                        3312ms
+  PASS    ttsRetryWatchdogTest                         5523ms
+  PASS    ttsSpeakingLifecycleTest                     433ms
+  PASS    typedWhileBusyB4Test                         7356ms
+  PASS    vectorAuthTest                               545ms
+  PASS    vectorLogBudgetTest                          1663ms
+  PASS    vectorReadinessTest                          1063ms
+  PASS    vectorRebuildStoreTest                       1730ms
+  PASS    vectorStartupGateTest                        3006ms
+  PASS    vectorSupervisorDashboardTest                5771ms
+  PASS    verifyAfterActTest                           6502ms
+  PASS    voiceApprovalTest                            38810ms
+  PASS    voiceContinuationFallbackTest                1453ms
+  PASS    voiceNormalizerTest                          421ms
+  PASS    voiceQueueAntiDeadlockTest                   1405ms
+  PASS    voiceRouteMockTest                           1496ms
+  PASS    voiceSettingsTest                            372ms
+  PASS    voiceYouTubeIntegrationTest                  1393ms
+  PASS    watchdogUnitTest                             1045ms
+  SKIP  windowControlTest                            needs Windows window manager
+  SKIP  windowsScriptsTest                           needs PowerShell 7, pwsh (JARVIS_TEST_PWSH). No PowerShell 7 (pwsh) found. Install it (CMD: winget install --id Microsoft.PowerShell --source winget), open a new CMD window and check with: pwsh -v. Or set JARVIS_TEST_PWSH to the full path of pwsh.exe. (not found on this host)
+  PASS    windowsStateFreshnessTest                    4414ms
+  PASS    windowsStateSessionTest                      6420ms
+  PASS    windowsToolsTest                             5090ms
+  PASS    workspaceRootPortabilityTest                 431ms
+  PASS    worldStateTest                               9624ms
+  PASS    youtubePlayIntentTest                        1432ms
+
+=== 214 passed · 0 failed · 0 timed out · 1 blocked · 0 environment · 9 skipped ===
+
+Skipped (not run, so not passed):
+  - dashboardAccuracyTest: needs a running Redis and a reachable LLM API
+  - dashboardHealthSystemTest: needs Windows PowerShell, a reachable LLM API and Redis
+  - finalIntegrationSuiteTest, successfulExecutionLifecycleAuditTest: live provider test: run it with pnpm test:live (needs an API key and the network; acts on this PC)
+  - processControlSafetyTest: needs Windows process table
+  - startupPerformanceTest: needs JARVIS_BRIDGE_TOKEN
+  - sttReliabilityTest: needs Python virtualenv (.venv)
+  - windowControlTest: needs Windows window manager
+  - windowsScriptsTest: needs PowerShell 7, pwsh (JARVIS_TEST_PWSH). No PowerShell 7 (pwsh) found. Install it (CMD: winget install --id Microsoft.PowerShell --source winget), open a new CMD window and check with: pwsh -v. Or set JARVIS_TEST_PWSH to the full path of pwsh.exe.
+
+Blocked, not verified (the environment the test needs was not available):
+  - realTtsHandoffTest: needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.
+
+No failures, but the blocked tests above were not verified.
+ ELIFECYCLE  Test failed. See above for more details.
+EXIT=1

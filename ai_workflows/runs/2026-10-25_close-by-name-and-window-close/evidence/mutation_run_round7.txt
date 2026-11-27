@@ -1,0 +1,5 @@
+# Round 7 mutation run (owner decision 2026-10-26: "close current window" with a browser in front asks first)
+none                               === 2 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: -
+O1_current_browser_no_question     === 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+O2_current_browser_question_in_scope === 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest
+O3_current_browser_refused_outright === 1 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===  failing: closeByNameTest

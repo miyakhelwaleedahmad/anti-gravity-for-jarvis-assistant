@@ -1,0 +1,6 @@
+automation: 95 ms
+control_browser: 361 ms
+automation: 69 ms
+control_browser: 301 ms
+automation: 82 ms
+control_browser: 295 ms

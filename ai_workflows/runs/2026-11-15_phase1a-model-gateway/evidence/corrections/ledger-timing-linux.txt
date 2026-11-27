@@ -1,0 +1,4 @@
+records in 2 MB file: 7312
+first-use read (readRecent 500 of a full 2 MB file): 6.54 ms
+repeat read, mean of 20: 2.90 ms
+append (mkdir+stat+appendFileSync), mean of 1000: 0.011 ms

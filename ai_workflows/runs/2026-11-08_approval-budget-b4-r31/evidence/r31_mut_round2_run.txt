@@ -1,0 +1,13 @@
+N1 F2 no grace after a withdrawal [approvalBudgetR31Test]: CAUGHT | FAIL: F2: a "yes" typed then (meant for the withdrawn question) does not approve "Delete B": it stays open, undecided (swallowed true, open false, decided true)
+N2 F2 the withdrawal time is not kept [approvalBudgetR31Test]: CAUGHT | FAIL: F2: a "yes" typed then (meant for the withdrawn question) does not approve "Delete B": it stays open, undecided (swallowed true, open false, decided true)
+N3 F2 the deadline is not moved by the grace (window shortened) [approvalBudgetR31Test]: CAUGHT | FAIL: F2: the deadline moves by the same grace (the 30 s window is not shortened) (30000 ms after the withdrawal)
+N4 F2 the grace applies to every question (normal behaviour changed) [approvalBudgetR31Test]: CAUGHT | FAIL: "yes" twice: the action runs once; the second answer is not taken (acted 0)
+N5 F3 an ended call is still the current call [approvalBudgetR31Test]: CAUGHT | FAIL: F3: work left behind by an ended call is no longer part of it (inCall true)
+N6 F3 a call is never marked ended [approvalBudgetR31Test]: CAUGHT | FAIL: F3: work left behind by an ended call is no longer part of it (inCall true)
+N7 F5 the budget clock uses the system clock [approvalBudgetR31Test]: CAUGHT | FAIL: F5: the system clock moves back 10 s before a question: only the 1199 ms left runs after the answer (±0.15 s) (1502 ms after the answer)
+N8 F5 no upper limit on the remaining time [approvalBudgetR31Test]: MISSED |
+N9 F7 a withdrawn spoken question is still said [approvalBudgetR31Test]: CAUGHT | FAIL: F7: a spoken question withdrawn before JARVIS reaches the speaker is not said; recorded as cancelled (1 said, cancelled)
+N10 F8 no budget left at the pause: the budget does not end [approvalBudgetR31Test]: CAUGHT | FAIL: F8: no budget left when the question is asked: not asked, recorded as cancelled, never acted (1 shown, console: acted)
+
+9/10 caught
+tree restored (md5): YES

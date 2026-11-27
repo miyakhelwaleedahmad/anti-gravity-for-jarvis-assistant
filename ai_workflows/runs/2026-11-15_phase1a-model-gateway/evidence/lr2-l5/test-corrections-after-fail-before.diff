@@ -1,0 +1,41 @@
+--- /tmp/claude-0/-home-user-pm-claude-skills/3f3c860d-f160-54b3-98e3-1d95ccd1bf66/scratchpad/mixedFailureCausesTest.at-fail-before.ts	2026-11-17 10:25:38.132491872 +0000
++++ tests/mixedFailureCausesTest.ts	2026-11-17 10:25:38.154630677 +0000
+@@ -78,14 +78,14 @@
+ modelRouter.registerNamedProvider('qaprov', provider as never);
+ 
+ const TWO = 'Run the type check; then describe the weather';
+-async function goalRun(env: Record<string, string>, limits: Record<string, string>) {
++async function goalRun(env: Record<string, string>, limits: Record<string, string>, description = TWO) {
+   for (const k of Object.keys(process.env)) if (k.startsWith('JARVIS_MODEL_AGENT_') || k.startsWith('JARVIS_QA_')) delete process.env[k];
+   Object.assign(process.env, env);
+   const m = new AgentManager(agentEvents, loadAgentLimits(limits));
+   m.useToolExecutor(tools as never);
+   registerAgentRoles(m);
+   const exec = new AgentGoalExecutor({ manager: m, verify: false });
+-  const task = { id: 't', title: 'step', description: TWO, specialist: 'qa_agent', attempts: 1, maxAttempts: 3, sideEffects: 'none', failures: [] };
++  const task = { id: 't', title: 'step', description, specialist: 'qa_agent', attempts: 1, maxAttempts: 3, sideEffects: 'none', failures: [] };
+   const out = await exec.run({ goal: { id: 'g', description: 'goal', objective: 'goal', source: 'cli', priority: 5 }, task, signal: new AbortController().signal, onStarted: () => {} } as never) as any;
+   const f = out.failure;
+   const cls = f ? classifyFailure(f) : undefined;
+@@ -113,15 +113,18 @@
+ const mixA = await goalRun({}, { JARVIS_AGENT_BUDGET_TOOL_CALLS: '0' });
+ ok('QA: one part out of tool calls, one answered by rules (model down): not TOOL_BUDGET_EXHAUSTED', mixA.f?.code !== 'TOOL_BUDGET_EXHAUSTED' && mixA.cls !== 'budget', show(mixA));
+ ok('…recorded as the model not answering (MODEL_UNAVAILABLE, dependency)', mixA.f?.code === 'MODEL_UNAVAILABLE' && mixA.cls === 'dependency', show(mixA));
+-ok('…recovery does not wait for budget and does not give the budget as the reason', mixA.d?.goalWaitingFor !== 'budget' && !/budget is used up/i.test(String(mixA.d?.action ?? '')), show(mixA));
++// The action quotes each part's own error ("The toolCalls budget is used up"); recovery's own reason must not be the budget.
++ok('…recovery does not wait for budget and does not give the budget as the reason', mixA.d?.goalWaitingFor !== 'budget' && !/^waiting/i.test(String(mixA.d?.action ?? '')) && !/the goal's budget is used up/i.test(String(mixA.d?.action ?? '')), show(mixA));
++ok('…its reason is that something it needs is unavailable', /something it needs is unavailable/i.test(String(mixA.d?.action ?? '')), String(mixA.d?.action ?? '').slice(0, 120));
+ ok('…both causes are kept in the goal failure', causesOf(mixA.f).join(',') === 'MODEL_UNAVAILABLE,TOOL_BUDGET_EXHAUSTED', causesOf(mixA.f).join(','));
+ ok('…and in the agent task\'s error', (mixA.agentError as any)?.code === 'MODEL_UNAVAILABLE' && ((mixA.agentError as any)?.causes ?? []).some((c: any) => c.code === 'BUDGET_EXCEEDED' && c.budget === 'toolCalls'), JSON.stringify(mixA.agentError ? { code: (mixA.agentError as any).code, causes: (mixA.agentError as any).causes } : null));
+ ok('…the recovery action still names the tool budget', /tool/i.test(String(mixA.d?.action ?? '')) && /budget/i.test(String(mixA.d?.action ?? '')), String(mixA.d?.action ?? '').slice(0, 200));
+ const sig = (r: Awaited<ReturnType<typeof goalRun>>) => r.d?.signature?.id;
+ ok('…its signature differs from the pure tool-budget and the pure model-down signatures', !!sig(mixA) && sig(mixA) !== sig(pureBudget) && sig(mixA) !== sig(pureDown), `${sig(mixA)} / ${sig(pureBudget)} / ${sig(pureDown)}`);
+ 
+-plan = [[/^Run the type check/i, 'throw'], [/^describe the weather/i, 'tool']];
+-const mixA2 = await goalRun({}, { JARVIS_AGENT_BUDGET_TOOL_CALLS: '0' });
++// The parts in the other order. Each part keeps its behaviour: the weather part's rules need no tool;
++// the type-check part's rules call one, so its model must be the one asking for the tool.
++const mixA2 = await goalRun({}, { JARVIS_AGENT_BUDGET_TOOL_CALLS: '0' }, 'Describe the weather; then run the type check');
+ ok('the same mix in the other order: the same code and causes', mixA2.f?.code === mixA.f?.code && causesOf(mixA2.f).join(',') === causesOf(mixA.f).join(','), show(mixA2));
+ 
+ plan = [[/^Run the type check/i, 'tool'], [/^describe the weather/i, 'throw']];

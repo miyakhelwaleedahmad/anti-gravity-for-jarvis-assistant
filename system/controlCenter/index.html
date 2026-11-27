@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS Control Center</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main>
+  <h1>JARVIS Control Center</h1>
+  <p class="note">This PC only. Actions run through the same permission checks as a spoken request; a dangerous one still asks for approval in the JARVIS console.</p>
+
+  <section id="login">
+    <h2>Log in</h2>
+    <p>Paste the token from <code>data\security\control_center_token</code>.</p>
+    <form id="login-form">
+      <input id="token" type="password" autocomplete="off" aria-label="Token" required>
+      <button type="submit">Log in</button>
+    </form>
+    <p id="login-error" class="error" role="alert"></p>
+  </section>
+
+  <section id="panel" hidden>
+    <div class="row">
+      <button id="refresh" type="button">Refresh</button>
+      <button id="logout" type="button">Log out</button>
+    </div>
+    <h2>Permissions</h2><pre id="permissions"></pre>
+    <h2>Goals</h2><pre id="goals"></pre>
+    <h2>Agents</h2><pre id="agents"></pre>
+    <h2>Model</h2><pre id="model"></pre>
+    <h2>Actions</h2>
+    <div class="row" id="actions">
+      <button type="button" data-action="pause_goal">Pause latest goal</button>
+      <button type="button" data-action="resume_goal">Resume latest goal</button>
+      <button type="button" data-action="cancel_goal">Cancel latest goal</button>
+      <button type="button" data-action="stop_agents">Stop all agents</button>
+      <button type="button" data-action="disable_full_control">Turn off full control</button>
+      <button type="button" data-action="enable_full_control">Turn on full control (10 min, approve in console)</button>
+    </div>
+    <pre id="result" role="status"></pre>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

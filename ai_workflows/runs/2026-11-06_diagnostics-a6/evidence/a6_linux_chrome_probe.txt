@@ -1,0 +1,3 @@
+Linux (this cloud host): tests/chromeHelper.ts startChromium() then stop(); Chrome processes with that profile, counted with ps (phase A6 review F7)
+chrome processes with this profile while running: 9
+after stop(): 0

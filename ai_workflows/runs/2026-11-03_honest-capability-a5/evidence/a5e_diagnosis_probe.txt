@@ -1,0 +1,8 @@
+platform: linux
+"no i am asking that we should maximize the notepad" -> control_app, control_window
+"no minimise" -> open_app, web_search, get_system_info, run_command
+"you have full access up please so why you cant" -> open_app, web_search, get_system_info, run_command
+"language commands can you tell me" -> open_app, web_search, get_system_info, run_command
+"type hello in notepad" -> open_app, control_app, ui_elements, ui_action, control_keyboard
+"what apps are open" -> open_app, control_app
+list_capabilities COMPUTER entry for control_window: {"name":"control_window","summary":"Focuses, moves, resizes, minimises, maximises or closes a window.","risk":[1,2],"approval":"policy","reversible":"partial","external":"none","actions":["focus","minimize","maximize","move","resize","close","close_current"]}

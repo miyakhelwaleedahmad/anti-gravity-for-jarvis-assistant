@@ -8,6 +8,8 @@ export const webSearchTool: AgentTool = {
   description:
     'Use to perform live web queries for online information or general web answers. DO NOT use for opening local applications, launching desktop apps, reading local files, or executing system commands. Required parameter: query (string search query). Returns text summary of web search results.',
   riskLevel: 'low',
+  // Same query within 30 s: reuse the answer instead of another Serper call.
+  cacheable: true,
   inputSchema: {
     query: { type: 'string', description: 'Search query', required: true }
   },

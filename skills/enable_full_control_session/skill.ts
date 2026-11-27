@@ -13,19 +13,24 @@
  * so it shows in the session log.
  */
 
-import { permissionSession } from '../../control/permissionSession.js';
+import { clampSessionMinutes, permissionSession } from '../../control/permissionSession.js';
+import { currentApproval, isSameCall } from '../../security/approvalScope.js';
 import { approvalGate } from '../../security/approvalGate.js';
 import { securityAuditLogger } from '../../security/securityAuditLogger.js';
+import { getRequestSource } from '../../core/traceContext.js';
 
 export async function execute(args: Record<string, unknown> = {}): Promise<string> {
   const action = String(args['action'] ?? 'enable').toLowerCase();
 
   // ── Validate source ─────────────────────────────────────────────────────
-  const source = (['voice', 'cli', 'gui', 'auto'].includes(String(args['source'] ?? ''))
-    ? String(args['source'])
-    : 'cli') as 'voice' | 'cli' | 'gui' | 'auto';
+  // How the request really arrived wins over what the model wrote in
+  // `source`: it decides how approval is asked and what the audit records as
+  // the activator. The argument is used only outside a request (direct calls).
+  const claimed = String(args['source'] ?? '');
+  const source: 'voice' | 'cli' | 'gui' | 'auto' = getRequestSource()
+    ?? (['voice', 'cli', 'gui', 'auto'].includes(claimed) ? claimed as 'voice' | 'cli' | 'gui' | 'auto' : 'cli');
 
-  const durationMinutes = Math.min(Math.max(Number(args['durationMinutes'] ?? 10), 1), 120);
+  const durationMinutes = clampSessionMinutes(args['durationMinutes'] ?? 10, 10);
 
   // ── action: status ──────────────────────────────────────────────────────
   if (action === 'status') {
@@ -62,12 +67,17 @@ export async function execute(args: Record<string, unknown> = {}): Promise<strin
 
   // ── action: enable (default) ────────────────────────────────────────────
   const isVoice = source === 'voice';
-  const approved = await approvalGate.requestApproval(
+  // The registry already asked the owner for this very call (risk 3, typed);
+  // asking again here was a second box for the same thing (owner's PC,
+  // 2026-10-31). Called any other way, or with other arguments, it still asks.
+  const approvedCall = currentApproval();
+  const alreadyApproved = approvedCall !== undefined && isSameCall(approvedCall, 'enable_full_control_session', args);
+  const approved = alreadyApproved || await approvalGate.requestApproval(
     'Enable Full Control Session',
     `enable_full_control_session for ${durationMinutes} minute(s)`,
     'HIGH_RISK',
     'Full control permits keyboard, mouse, file, and app control. It is denied by default.',
-    isVoice ? 'voice' : source as any,
+    isVoice ? 'voice' : 'cli',
     isVoice ? 10 : undefined,
   );
 

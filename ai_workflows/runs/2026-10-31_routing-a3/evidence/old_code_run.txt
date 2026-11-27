@@ -1,0 +1,57 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=routingA3Test
+
+
+=== JARVIS test suite — 1 file(s) ===
+
+  FAIL    routingA3Test                                1629ms
+
+=== 0 passed · 1 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+Real failures:
+  - routingA3Test: 32 passed, 27 failed
+        FAIL: "close youtube tab" → close_browser_tab youtube (none)
+        FAIL: "close the youtube tab" → close_browser_tab youtube (none)
+        FAIL: "Jarvis close the YouTube tab" → close_browser_tab youtube (none)
+        FAIL: "close the YouTube tab for me" → close_browser_tab youtube (none)
+        FAIL: "please close the gmail tab" → close_browser_tab gmail (none)
+        FAIL: "close the stack overflow tab" → close_browser_tab stack overflow (none)
+        FAIL: "enable full controll mode" → enable_full_control_session (none)
+        FAIL: "enable fool control mode" → enable_full_control_session (none)
+        FAIL: "enable full control" → enable_full_control_session (none)
+        FAIL: "enable full contol mode" → enable_full_control_session (none)
+        FAIL: "turn on full control mode" → enable_full_control_session (none)
+        FAIL: "activate full control mode" → enable_full_control_session (none)
+        FAIL: "switch on full control" → enable_full_control_session (none)
+        FAIL: "unable full control mode" → enable_full_control_session (none)
+        FAIL: "Jarvis enable full controll mode" → enable_full_control_session (none)
+        FAIL: "enable full controll mode" offers enable_full_control_session (open_app,web_search,get_system_info,run_command)
+        FAIL: "enable fool control mode" offers enable_full_control_session (open_app,web_search,get_system_info,run_command)
+        FAIL: "please turn on full contol mode now" offers enable_full_control_session (open_app,web_search,get_system_info,run_command)
+        FAIL: "enable full control mode" asks for approval once (2 question(s))
+        FAIL: …and the reply says it was not approved, not just "Failed" (Failed to enable full control, sir.)
+        FAIL: "close notepad and chrome" offers control_app and control_browser (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+        FAIL: "close chrome and notepad" offers control_app and control_browser (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+        FAIL: "close notepad and the browser" offers control_app and control_browser (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+        FAIL: normaliser: "open github.com" → "open github.com" ("open githubcom")
+        FAIL: normaliser: "open www.google.com" → "open www.google.com" ("open wwwgooglecom")
+        FAIL: normaliser: "Open GitHub.com, please." → "open github.com" ("open githubcom")
+        FAIL: normaliser: "version 2.5 is out" → "version 2.5 is out" ("version 25 is out")
+        …
+        FAIL: …and the reply says it was not approved, not just "Failed" (Failed to enable full control, sir.)
+        FAIL: "close notepad and chrome" offers control_app and control_browser (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+        FAIL: "close chrome and notepad" offers control_app and control_browser (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+        FAIL: "close notepad and the browser" offers control_app and control_browser (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+        PASS: "close chrome" alone still offers no app tool (phase A2, D3) (control_browser,browser_tab,browser_state,browser_read_page,browser_page_structure,get_system_info,get_system_state,get_pc_state)
+      --- 6. Domain names keep their dot ---
+        FAIL: normaliser: "open github.com" → "open github.com" ("open githubcom")
+        FAIL: normaliser: "open www.google.com" → "open www.google.com" ("open wwwgooglecom")
+        FAIL: normaliser: "Open GitHub.com, please." → "open github.com" ("open githubcom")
+        PASS: normaliser: "open youtube." → "open youtube" ("open youtube")
+        PASS: normaliser: "jarvis... open notepad" → "open notepad" ("open notepad")
+        FAIL: normaliser: "version 2.5 is out" → "version 2.5 is out" ("version 25 is out")
+        PASS: "open github.com" still has no route (it goes to the planner, with its dot) (none)
+        PASS: "open github" still routes to github (open_app github)
+      32 passed, 27 failed
+ ELIFECYCLE  Test failed. See above for more details.

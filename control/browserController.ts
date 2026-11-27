@@ -5,14 +5,20 @@
  * Supports opening, closing, focusing, and listing tabs, and integrates safety approvals.
  */
 
-import axios from 'axios';
 import { permissionSession } from './permissionSession.js';
 import { approvalGate } from '../security/approvalGate.js';
-import { keyboardController } from './keyboardController.js';
 import { rollbackManager } from './rollbackManager.js';
+import { activateTab, closeTabById, listPages, openTab } from '../perception/cdpClient.js';
+import { chromeStartHint } from '../perception/chromeProfile.js';
+import { resolveTab, resolveTabOrAsk } from '../perception/tabResolver.js';
+import { withoutApproval } from '../security/approvalScope.js';
+import { checkTabClose } from './tabClose.js';
+import { checkedChromePort, closeTabKeepingChrome, jarvisChrome, type JarvisChrome } from './jarvisChrome.js';
 
-const DEBUG_PORT = 9222;
-const BASE_URL = `http://127.0.0.1:${DEBUG_PORT}`;
+// Phase A4: every tab action goes to JARVIS's checked Chrome (no stale
+// profile port, no 9222 guess), finds its tab with the one finder in
+// perception/tabResolver.ts, and never presses Ctrl+W / Ctrl+R into whatever
+// browser window is in front when that Chrome does not answer.
 
 export interface CDPTab {
   id: string;
@@ -21,52 +27,64 @@ export interface CDPTab {
   type: string;
 }
 
+export interface BrowserControllerDeps {
+  chrome: JarvisChrome;
+  approve: (title: string, command: string) => Promise<boolean>;
+}
+
+const DEFAULT_DEPS: BrowserControllerDeps = {
+  chrome: jarvisChrome,
+  approve: (title, command) => approvalGate.requestApproval(title, command),
+};
+
 export class BrowserController {
+  constructor(private readonly deps: BrowserControllerDeps = DEFAULT_DEPS) {}
+
   private getInstruction(): string {
-    return 'Please start Chrome with remote debugging enabled:\nstart chrome.exe --remote-debugging-port=9222 --user-data-dir="W:\\jarvis-chrome-profile"';
+    return chromeStartHint();
+  }
+
+  /** JARVIS's checked Chrome; it says why when there is none. */
+  private port(): Promise<number> {
+    return checkedChromePort(this.deps.chrome);
   }
 
   private async fetchCDPTabs(): Promise<CDPTab[]> {
+    const port = await this.port();
     try {
-      const response = await axios.get(`${BASE_URL}/json/list`, { timeout: 1500 });
-      return Array.isArray(response.data) ? response.data : [];
+      return await listPages(port);
     } catch {
       throw new Error(`Chrome DevTools endpoint unavailable.\n${this.getInstruction()}`);
     }
   }
 
   public async listTabs(): Promise<string> {
+    // A failure is thrown, never returned as text (A5c, TRA-10).
     if (!permissionSession.checkPermission(0, 'List browser tabs')) {
-      return 'Permission denied.';
+      throw new Error('Permission denied.');
     }
-    try {
-      const tabs = await this.fetchCDPTabs();
-      const pageTabs = tabs.filter(t => t.type === 'page').map(t => ({ title: t.title, url: t.url }));
-      return JSON.stringify(pageTabs, null, 2);
-    } catch (err) {
-      return err instanceof Error ? err.message : String(err);
-    }
+    const tabs = await this.fetchCDPTabs();
+    const pageTabs = tabs.filter(t => t.type === 'page').map(t => ({ title: t.title, url: t.url }));
+    return JSON.stringify(pageTabs, null, 2);
   }
 
+  /** The one tab a name means; null when none does, or when it is not clear which (several, none on screen). */
   public async findTab(query: string): Promise<CDPTab | null> {
-    let tabs: CDPTab[] = [];
     try {
-      tabs = await this.fetchCDPTabs();
+      const choice = await resolveTab(query, await this.port());
+      return choice.kind === 'one' ? choice.tab : null;
     } catch {
       return null;
     }
-    const lower = query.toLowerCase().trim();
-    const match = tabs.find(t => 
-      t.type === 'page' && 
-      (t.title.toLowerCase().includes(lower) || t.url.toLowerCase().includes(lower))
-    );
-    return match || null;
   }
 
+  /** Some tab's title or address contains the name; an empty name is no tab. */
   public async isTabOpen(query: string): Promise<boolean> {
+    const lower = query.toLowerCase().trim();
+    if (!lower) return false;
     try {
-      const tab = await this.findTab(query);
-      return tab !== null;
+      const tabs = await this.fetchCDPTabs();
+      return tabs.some((t) => t.id === query.trim() || t.title.toLowerCase().includes(lower) || t.url.toLowerCase().includes(lower));
     } catch {
       return false;
     }
@@ -77,61 +95,58 @@ export class BrowserController {
       throw new Error('Permission denied.');
     }
 
-    const tab = await this.findTab(query);
+    const port = await this.port();
+    const tab = await resolveTabOrAsk(query, port);
     if (!tab) {
       throw new Error(`Browser tab matching "${query}" not found.`);
     }
 
-    await axios.get(`${BASE_URL}/json/activate/${tab.id}`);
-    return `Focused tab: "${tab.title}"`;
+    await activateTab(tab.id, port);
+    return `Focused tab: "${tab.title}" (tab ${tab.id})`;
   }
 
   public async closeTab(query: string): Promise<string> {
-    // Level 1 allows closing YouTube or empty tabs, Level 2 for normal tabs, protected tabs always confirm
-    const isYouTube = query.toLowerCase().includes('youtube');
-    const requiredLevel = (isYouTube || query === 'about:blank' || query === '') ? 1 : 2;
+    // A first check from the words, before Chrome is read: "youtube" or
+    // "about:blank" may be level 1, anything else (an empty name, the tab on
+    // screen, included) needs level 2. The tab that is found decides again
+    // (control/tabClose.ts): "youtube" can match a Google sign-in page.
+    const youTubeOrBlank = /youtube/i.test(query) || query.trim().toLowerCase() === 'about:blank';
+    const requiredLevel = youTubeOrBlank ? 1 : 2;
 
     if (!permissionSession.checkPermission(requiredLevel, `Close tab: ${query}`)) {
-      return `Permission level ${requiredLevel} required to close tab.`;
+      throw new Error(`Permission level ${requiredLevel} required to close tab.`);
     }
 
-    const tab = await this.findTab(query);
+    const port = await this.port();
+    // Several matches and none on screen, or no tab on screen: a question (owner, Q1).
+    const tab = await resolveTabOrAsk(query, port);
     if (!tab) {
-      return `Tab matching "${query}" is not open.`;
+      // Nothing was closed: a failure, not a done action (owner, A5c Q1).
+      throw new Error(`Tab matching "${query}" is not open, so nothing was closed.`);
     }
 
-    // High risk checks: if we are closing a tab that looks like code editors or active tasks
-    if (tab.title.toLowerCase().includes('antigravity') || tab.title.toLowerCase().includes('github')) {
-      const approved = await approvalGate.requestApproval('Close browser tab', `Close sensitive tab: "${tab.title}"`);
-      if (!approved) {
-        throw new Error('Action cancelled by user.');
-      }
-    }
+    // The same rule as browser_tab: the level of the tab found, and a question
+    // for a sensitive tab (GitHub, Antigravity).
+    await checkTabClose(tab);
 
-    // Register rollback to reopen the tab
+    // The last tab: a blank one is opened first, so JARVIS's Chrome stays open (owner, Q4).
+    await closeTabKeepingChrome(tab.id, port);
+
+    // A way to reopen it, once it is closed (not before: a failed close left a reopen of an open tab).
     const urlToReopen = tab.url;
     rollbackManager.register('close_tab', `Reopen closed tab: ${urlToReopen}`, async () => {
       await this.openUrl(urlToReopen);
       return true;
     });
-
-    await axios.get(`${BASE_URL}/json/close/${tab.id}`);
-    return `Closed tab: "${tab.title}"`;
+    return `Closed tab: "${tab.title}" (tab ${tab.id})`;
   }
 
   public async closeActiveTab(): Promise<string> {
-    // Close active tab using Ctrl+W shortcut via keyboard controller as safe backup or direct CDP
-    try {
-      const tabs = await this.fetchCDPTabs();
-      const pageTabs = tabs.filter(t => t.type === 'page');
-      if (pageTabs.length > 0) {
-        return this.closeTab(pageTabs[0].id);
-      }
-    } catch {}
-    
-    // Fallback shortcut
-    await keyboardController.pressHotkey(['ctrl', 'w']);
-    return 'Closed active tab via Ctrl+W shortcut.';
+    // The tab on screen (not the first in the list), closed by its id; with
+    // none on screen, a question. Chrome not answering: said, nothing pressed.
+    const tab = await resolveTabOrAsk('', await this.port());
+    if (!tab) throw new Error('No tab is open in JARVIS\'s Chrome.');
+    return this.closeTab(tab.id);
   }
 
   public async openUrl(url: string): Promise<string> {
@@ -144,22 +159,46 @@ export class BrowserController {
       finalUrl = `https://${url}`;
     }
 
-    try {
-      // Direct CDP new tab
-      const response = await axios.get(`${BASE_URL}/json/new?${encodeURIComponent(finalUrl)}`);
-      const newTab = response.data;
-      
-      rollbackManager.register('open_url', `Close opened tab: ${finalUrl}`, async () => {
-        await axios.get(`${BASE_URL}/json/close/${newTab.id}`);
-        return true;
-      });
+    // In JARVIS's own Chrome, started if needed; never the default browser
+    // (the everyday Chrome, which JARVIS cannot see: D1, TRA-03).
+    const port = await this.deps.chrome.ensure();
+    const newTab = await openTab(finalUrl, port);
+    await activateTab(newTab.id, port);
 
-      return `Opened URL: ${finalUrl}`;
-    } catch {
-      // Fallback: spawn default browser
-      const { appController } = await import('./appController.js');
-      return appController.openApp(finalUrl);
+    rollbackManager.register('open_url', `Close opened tab: ${finalUrl}`, async () => {
+      await closeTabById(newTab.id, port);
+      return true;
+    });
+
+    return `Opened URL: ${finalUrl} (tab ${newTab.id})`;
+  }
+
+  /**
+   * Closes JARVIS's own Chrome, after asking every time (D3). The owner's
+   * everyday Chrome is never reached: only the Chrome JARVIS started (or the
+   * owner's JARVIS_CDP_PORT one) is closed, through DevTools.
+   */
+  public async closeBrowser(signal?: AbortSignal): Promise<string> {
+    if (!permissionSession.checkPermission(2, 'Close JARVIS\'s Chrome')) {
+      throw new Error('Permission Level 2 required to close JARVIS\'s Chrome.');
     }
+    const chrome = await this.deps.chrome.running();
+    if (!chrome) throw new Error('JARVIS\'s Chrome is not open; JARVIS never closes your own Chrome.');
+    const { port } = chrome;
+    const pages = await listPages(port).catch(() => []);
+    const titles = pages.slice(0, 3).map((p) => `"${(p.title || p.url).slice(0, 40)}"`).join(', ');
+    const tabs = `${pages.length} tab${pages.length === 1 ? '' : 's'}${titles ? `: ${titles}${pages.length > 3 ? ', …' : ''}` : ''}`;
+    // Asked outside any approval already given: that one did not show the tabs.
+    const approved = await withoutApproval(() => this.deps.approve('Close JARVIS\'s Chrome',
+      `Close JARVIS's Chrome (${tabs})? Your own Chrome stays open.`));
+    if (!approved) throw new Error('JARVIS\'s Chrome was not closed: not approved.');
+    // An answer that came after the request ended (its time ran out, or it was
+    // cancelled) closes nothing: JARVIS has already said it was not done.
+    if (signal?.aborted) throw new Error('JARVIS\'s Chrome was not closed: the request had already ended when the answer came.');
+    if (!(await this.deps.chrome.close(chrome))) {
+      throw new Error(`JARVIS's Chrome is still open: port ${port} still answers after the close request.`);
+    }
+    return `Closed JARVIS's Chrome (${tabs}) (port ${port} no longer answers).`;
   }
 
   public async refreshTab(query: string): Promise<string> {
@@ -167,13 +206,18 @@ export class BrowserController {
       throw new Error('Permission denied.');
     }
     
-    const tab = await this.findTab(query);
+    const tab = await resolveTabOrAsk(query.trim(), await this.port());
     if (tab) {
-      await this.focusTab(tab.id);
+      // Reload through DevTools, and check the page loaded again.
+      const { navigate } = await import('./browserAgent.js');
+      const report = await navigate({ action: 'reload', tab: tab.id });
+      if (!report.success) throw new Error(report.error ?? 'The tab could not be reloaded.');
+      return report.check?.status === 'verified'
+        ? `Refreshed tab: "${tab.title}" (tab ${tab.id}) (checked: ${report.check.evidence})`
+        : `Reloaded tab "${tab.title}" (tab ${tab.id}), but the check found that ${report.check?.evidence ?? 'nothing could be checked'}`;
     }
-    
-    await keyboardController.pressHotkey(['ctrl', 'r']);
-    return `Refreshed tab: "${tab ? tab.title : 'active'}"`;
+
+    throw new Error(query.trim() ? `No browser tab matches "${query}".` : 'No tab is open in JARVIS\'s Chrome.');
   }
 }
 

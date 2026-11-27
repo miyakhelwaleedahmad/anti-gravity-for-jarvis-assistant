@@ -1,0 +1,39 @@
+
+> antigravityforjarvisassistant@1.0.0 test /home/user/anti-gravity-for-jarvis-assistant
+> tsx tests/runAll.ts -- --only=timeQuestionsNpc10Test,boundaryDoublesTest,deterministicCommandRouteTest,routeGoldenTest,noGroqForLocalCommandsTest,voiceRouteMockTest,routingA3Test,typedWhileBusyB4Test,memoryPerformanceTest,adaptiveRamOptimizationTest,secondBrainIntegrationTest,delegationRoutingTest,agentRuntimeTest,goalLifecycleTest,goalLifecycleAuditTest,fullSystemIntegrationTest,approvalGateStructuredTest,plannerDecisionAuditTest,plannerDesktopToolSelectionTest,replyGoldenTest,voiceNormalizerTest,echoFilterCommandAcceptanceTest,echoFilterVerificationTest,echoShortReplyTest,bargeInEchoTest,docsHygieneTest,crashPolicyTest,llmTimingTest
+
+
+=== JARVIS test suite — 28 file(s) ===
+
+  PASS    adaptiveRamOptimizationTest                  767ms
+  PASS    agentRuntimeTest                             2783ms
+  PASS    approvalGateStructuredTest                   11559ms
+  PASS    bargeInEchoTest                              446ms
+  PASS    boundaryDoublesTest                          448ms
+  PASS    crashPolicyTest                              2292ms
+  PASS    delegationRoutingTest                        1401ms
+  PASS    deterministicCommandRouteTest                1422ms
+  PASS    docsHygieneTest                              1233ms
+  PASS    echoFilterCommandAcceptanceTest              1205ms
+  PASS    echoFilterVerificationTest                   422ms
+  PASS    echoShortReplyTest                           361ms
+  PASS    fullSystemIntegrationTest                    1297ms
+  PASS    goalLifecycleAuditTest                       412ms
+  PASS    goalLifecycleTest                            486ms
+  PASS    llmTimingTest                                3797ms
+  PASS    memoryPerformanceTest                        815ms
+  PASS    noGroqForLocalCommandsTest                   1529ms
+  PASS    plannerDecisionAuditTest                     1252ms
+  PASS    plannerDesktopToolSelectionTest              1273ms
+  PASS    replyGoldenTest                              1243ms
+  PASS    routeGoldenTest                              1275ms
+  PASS    routingA3Test                                1462ms
+  PASS    secondBrainIntegrationTest                   1725ms
+  PASS    timeQuestionsNpc10Test                       3154ms
+  PASS    typedWhileBusyB4Test                         7345ms
+  PASS    voiceNormalizerTest                          385ms
+  PASS    voiceRouteMockTest                           1361ms
+
+=== 28 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+
+No unexpected failures.

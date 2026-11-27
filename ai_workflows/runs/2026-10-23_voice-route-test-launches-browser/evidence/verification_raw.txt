@@ -1,0 +1,35 @@
+### host Linux 6.18.44-fc-v153 node v22.22.2 pnpm 10.33.0 base 0117a56 + working-tree fix
+### typecheck
+rc=0
+### test area
+=== JARVIS test suite — 7 file(s) ===
+  PASS    boundaryDoublesTest                          425ms
+  PASS    deterministicCommandRouteTest                1567ms
+  PASS    noGroqForLocalCommandsTest                   1492ms
+  PASS    openAppSmokeTest                             446ms
+  PASS    simpleNoGoalTest                             1262ms
+  PASS    voiceRouteMockTest                           1217ms
+  PASS    voiceYouTubeIntegrationTest                  1227ms
+=== 7 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+rc=0
+### voice-core
+=== JARVIS test suite — 12 file(s) ===
+  PASS    bargeInProcessingTest                        1364ms
+  PASS    deterministicCommandRouteTest                1459ms
+  PASS    interruptGatingTest                          445ms
+  PASS    latencySmokeTest                             1331ms
+  PASS    nodeBridgeSingletonTest                      420ms
+  PASS    noGroqForLocalCommandsTest                   1577ms
+  PASS    noThinkMemoryTest                            1131ms
+  PASS    openAppSmokeTest                             445ms
+  PASS    stopClearsTtsQueueTest                       1417ms
+  PASS    ttsLifecycleStateTest                        1370ms
+  PASS    voiceRouteMockTest                           1441ms
+  PASS    voiceYouTubeIntegrationTest                  1378ms
+=== 12 passed · 0 failed · 0 timed out · 0 blocked · 0 environment · 0 skipped ===
+rc=0
+### full --ci with recording opener
+rc=1
+  BLOCKED realTtsHandoffTest                           320ms  (needs a Python with pygame and websockets: JARVIS's .venv, or set JARVIS_TEST_PYTHON.)
+=== 200 passed · 0 failed · 0 timed out · 1 blocked · 0 environment · 9 skipped ===
+browser-opener calls during whole suite: 0

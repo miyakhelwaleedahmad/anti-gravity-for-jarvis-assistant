@@ -25,11 +25,19 @@ export class GraphMemory {
   constructor() {
     const uri = process.env.NEO4J_URI || "bolt://localhost:7687";
     const user = process.env.NEO4J_USER || "neo4j";
-    const password = process.env.NEO4J_PASSWORD || "password";
+    const password = process.env.NEO4J_PASSWORD;
     const enabled = process.env.JARVIS_NEO4J_ENABLED === "true";
 
     try {
-      if (enabled) {
+      if (enabled && !password) {
+        // Previously defaulted to the literal "password" (JARVIS-020). Refuse to
+        // connect rather than silently trying a well-known credential.
+        this.isConnected = false;
+        console.error(
+          "[GraphMemory] JARVIS_NEO4J_ENABLED=true but NEO4J_PASSWORD is not set. " +
+          "Graph memory is disabled. Set NEO4J_PASSWORD in .env to enable it.",
+        );
+      } else if (enabled && password) {
         this.driver = neo4j.driver(uri, neo4j.auth.basic(user, password), {
           connectionAcquisitionTimeout: 2000,
         });
