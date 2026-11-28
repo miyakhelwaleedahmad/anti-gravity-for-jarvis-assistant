@@ -145,6 +145,8 @@ interface ChainOptions {
   routeKey?: string;
   /** The route's own failure, for that error when nothing is left to try. */
   priorError?: unknown;
+  /** The route's provider: the one the dashboard names as failed once the fallback has answered (review L5). */
+  routeProvider?: string;
 }
 
 /** After a routed call asked every eligible provider: which ones, and the last reason. */
@@ -601,10 +603,10 @@ export class ModelRouter {
         if (own) attempted.wide.add(own);
       }
       const reason = String((err as Error)?.message ?? err);
-      console.warn(`[ModelRouter] ${route.key} (${route.provider}:${route.model}) failed (${redact(reason).slice(0, 120)}); answered by the default model.`);
-      llmStatus.recordFallback(route.provider, this.primary, reason);
-      // The fallback: every attempt waits for the owner's conversation first (M-3).
-      return this.chain(request, undefined, { fromRoute: true, attempted, skipWait: true, waitEach: { key: route.key }, routeKey: route.key, priorError: err });
+      console.warn(`[ModelRouter] ${route.key} (${route.provider}:${route.model}) failed (${redact(reason).slice(0, 120)}); answering with the default model.`);
+      // The fallback: every attempt waits for the owner's conversation first (M-3). It is recorded for the
+      // dashboard only once it has answered (review L5).
+      return this.chain(request, undefined, { fromRoute: true, attempted, skipWait: true, waitEach: { key: route.key }, routeKey: route.key, priorError: err, routeProvider: route.provider });
     }
   }
 
@@ -765,11 +767,13 @@ export class ModelRouter {
       try {
         const response = await provider.chat(sent);
         this.guardFor(name).noteSuccess(admitted.ticket);
-        if (name !== order[0]) {
-          // Visible on the dashboard too (bridge/llmStatus.ts), not only in the log.
-          const reason = (lastError as Error)?.message ?? "failed";
-          console.warn(`[ModelRouter] ${order[0]} failed (${reason.slice(0, 120)}); answered by the fallback "${name}".`);
-          llmStatus.recordFallback(order[0]!, name, reason);
+        if (name !== order[0] || fromRoute) {
+          // Visible on the dashboard too (bridge/llmStatus.ts), not only in the log; for a route's fallback, the
+          // route's provider is the one that failed (review L5).
+          const failedProvider = fromRoute ? opts.routeProvider ?? order[0]! : order[0]!;
+          const reason = String((lastError as Error)?.message ?? (opts.priorError as Error)?.message ?? "failed");
+          console.warn(`[ModelRouter] ${failedProvider} failed (${redact(reason).slice(0, 120)}); answered by the fallback "${name}".`);
+          llmStatus.recordFallback(failedProvider, name, reason);
         }
         this.noteUsage(sent, name, started, true, name !== order[0] || fromRoute, false, response);
         return response;
@@ -834,8 +838,11 @@ export class ModelRouter {
     await this.waitForConversation(route, request);
     const attempted = newAttemptLog();
     let yielded = false;
+    // The route's time limit, when set, applies to its own stream as a limit on silence (review L9): the
+    // stream stops when the provider sends nothing for that long, before the first text or between pieces.
+    const silenceLimit = route.explicitTimeout ? { ms: route.timeoutMs, key: route.key } : undefined;
     try {
-      for await (const piece of this.streamFrom(name, provider, req, attempted)) {
+      for await (const piece of this.streamFrom(name, provider, req, attempted, silenceLimit)) {
         yielded = true;
         yield piece;
       }
@@ -843,29 +850,74 @@ export class ModelRouter {
       // Text already spoken or a cancellation: not answered again. A strict route fails as itself (M2).
       if (yielded || request.signal?.aborted) throw err;
       if (route.strict) throw strictRouteError(route, err);
+      // The route's own time limit passed: this call asks that provider nothing more (M-2).
+      if ((err as Error | null)?.name === "TimeoutError") attempted.wide.add(provider);
       const reason = String((err as Error)?.message ?? err);
       console.warn(`[ModelRouter] ${route.key} stream (${route.provider}:${route.model}) failed before any text (${redact(reason).slice(0, 120)}); answering with the default model.`);
-      llmStatus.recordFallback(route.provider, this.primary, reason);
-      // The providers this call has not asked yet (M3): the route's own is not asked again.
-      yield* this.primaryStream(request, undefined, { fromRoute: true, attempted, skipWait: true, waitEach: { key: route.key }, routeKey: route.key, priorError: err });
+      // The providers this call has not asked yet (M3): the route's own is not asked again. Recorded for the
+      // dashboard only once the fallback has answered (review L5).
+      yield* this.primaryStream(request, undefined, { fromRoute: true, attempted, skipWait: true, waitEach: { key: route.key }, routeKey: route.key, priorError: err, routeProvider: route.provider });
+    }
+  }
+
+  /**
+   * The next piece of a stream, or a TimeoutError when the provider sends nothing for `ms` (review L9). On the
+   * time-out the provider's request is cancelled; the piece still pending is dropped.
+   */
+  private async nextWithin(it: AsyncIterator<string>, ms: number, key: string, cancel: AbortController): Promise<IteratorResult<string>> {
+    const pending = it.next();
+    pending.catch(() => undefined);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const silence = new Promise<never>((_res, rej) => {
+      timer = setTimeout(() => {
+        const err = Object.assign(new Error(`${key} stream sent nothing for ${ms} ms`), { name: "TimeoutError" });
+        cancel.abort(err);
+        void it.return?.(undefined)?.catch(() => undefined);
+        rej(err);
+      }, ms);
+    });
+    try {
+      return await Promise.race([pending, silence]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
   /** One provider's stream for a configured route: capabilities and guard, then the usage record. */
-  private async *streamFrom(name: string, provider: ILLMProvider, request: ILLMRequest, attempted?: AttemptLog): AsyncGenerator<string, void, unknown> {
+  private async *streamFrom(name: string, provider: ILLMProvider, request: ILLMRequest, attempted?: AttemptLog, silenceLimit?: { ms: number; key: string }): AsyncGenerator<string, void, unknown> {
     request = redactRequest(request);
-    const sent = withModel(request, modelFor(name, request.model));
+    let sent = withModel(request, modelFor(name, request.model));
     const admitted = this.admit(name, provider, sent);
     if (admitted.refused) {
       if (attempted) attempted.wide.add(provider);
+      // Recorded as a failed call, as a refused routed chat is (review L8).
+      this.noteUsage(sent, name, Date.now(), false, false, true, undefined, admitted.refused);
       throw admitted.refused;
     }
     if (attempted) this.markAttempt(attempted, name, provider, sent.model);
     const stream = (provider as unknown as { streamChat: (r: ILLMRequest) => AsyncGenerator<string, void, unknown> }).streamChat;
     const started = Date.now();
     let reported = false;
+    // With a time limit, the provider's request runs on its own signal, which the caller's cancellation also ends.
+    const cancel = silenceLimit ? new AbortController() : undefined;
+    const onAbort = () => cancel?.abort(request.signal?.reason);
+    if (cancel) {
+      if (request.signal?.aborted) onAbort();
+      else request.signal?.addEventListener("abort", onAbort, { once: true });
+      sent = { ...sent, signal: cancel.signal };
+    }
+    let it: AsyncIterator<string> | undefined;
+    let finished = false;
     try {
-      for await (const chunk of stream.call(provider, sent)) yield chunk;
+      if (silenceLimit && cancel) {
+        it = stream.call(provider, sent)[Symbol.asyncIterator]();
+        for (let next = await this.nextWithin(it, silenceLimit.ms, silenceLimit.key, cancel); !next.done; next = await this.nextWithin(it, silenceLimit.ms, silenceLimit.key, cancel)) {
+          yield next.value;
+        }
+        finished = true;
+      } else {
+        for await (const chunk of stream.call(provider, sent)) yield chunk;
+      }
       reported = true;
       this.guardFor(name).noteSuccess(admitted.ticket);
       const usage = (provider as { lastStreamUsage?: ILLMResponse["usage"] | null }).lastStreamUsage;
@@ -876,8 +928,13 @@ export class ModelRouter {
       this.noteUsage(sent, name, started, false, false, true, undefined, err);
       throw err;
     } finally {
-      // The consumer stopped reading early: no outcome, but the call is over (a trial frees its lease).
-      if (!reported) this.guardFor(name).noteCancelled(admitted.ticket);
+      request.signal?.removeEventListener("abort", onAbort);
+      // The consumer stopped reading early: no outcome, but the call is over (a trial frees its lease). A stream
+      // read piece by piece is closed here, as for-await closes the other.
+      if (!reported) {
+        this.guardFor(name).noteCancelled(admitted.ticket);
+        if (it && !finished) { cancel?.abort(new Error("stream closed by its reader")); void it.return?.(undefined)?.catch(() => undefined); }
+      }
     }
   }
 
@@ -940,6 +997,8 @@ export class ModelRouter {
       // Token counts when the provider reports them for a stream (Claude does); else null, not 0.
       const usage = (provider as { lastStreamUsage?: ILLMResponse["usage"] | null }).lastStreamUsage;
       this.noteUsage(sent, selectedProviderName, started, true, fromRoute, true, usage ? { content: "", usage } : undefined);
+      // A route's fallback that answered: now the dashboard may say so, naming the route's provider (review L5).
+      if (fromRoute) llmStatus.recordFallback(opts.routeProvider ?? selectedProviderName, selectedProviderName, String((opts.priorError as Error)?.message ?? opts.priorError ?? "failed"));
     } catch (err) {
       reported = true;
       this.noteOutcomeFailure(selectedProviderName, admitted.ticket, err, request.signal, opts.attempted, provider);

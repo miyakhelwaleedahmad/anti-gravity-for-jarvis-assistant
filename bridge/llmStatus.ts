@@ -146,11 +146,13 @@ export class LLMStatusTracker {
     const keyVar = s.provider === 'gemini' ? 'GEMINI_API_KEY' : 'GROQ_API_KEY';
     if (!s.hasKey) return { status: 'offline', detail: `${name}: missing ${keyVar}` };
     const err = s.lastError && s.lastError.provider === s.provider && (!s.lastOkAt || s.lastError.at > s.lastOkAt) ? s.lastError : undefined;
-    // The fallback answered after the primary failed: say both.
+    // A fallback answered after a provider failed: say which one failed (a route's own provider, or the
+    // primary) and which answered (review L5). The primary's error detail is shown only when it is the one.
     if (s.lastFallback && (!s.lastOkAt || s.lastFallback.at >= s.lastOkAt) && (!err || s.lastFallback.at >= err.at)) {
+      const failedIsPrimary = s.lastFallback.from === s.provider;
       return {
         status: 'degraded',
-        detail: `${name} failed${err ? ` (${err.kind}${err.status ? ` ${err.status}` : ''})` : ''}; answered by ${providerName(s.lastFallback.to)} (${ago(now - s.lastFallback.at)})`,
+        detail: `${providerName(s.lastFallback.from)} failed${err && failedIsPrimary ? ` (${err.kind}${err.status ? ` ${err.status}` : ''})` : ''}; answered by ${providerName(s.lastFallback.to)} (${ago(now - s.lastFallback.at)})`,
       };
     }
     if (err) {
