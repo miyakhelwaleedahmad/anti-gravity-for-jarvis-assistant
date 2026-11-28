@@ -769,7 +769,8 @@ Example: ["tool_x requires a file path but none was provided", "step 3 depends o
     const loading = reasons.find(isSkillStillLoading);
     if (loading) return `I couldn't do that yet, sir. ${loading}`;
     const reason = reasons.find(r => /allowlist|policy|no open application|no process found|window matching .* not found|no active window/i.test(r));
-    return reason && reason.length <= 160 ? `I couldn't do that, sir. ${reason.replace(/^Refused by safety policy:\s*/, '')}` : undefined;
+    // A tool's own "Error: … refused by … policy" is said without "Error:" (final review LL-4).
+    return reason && reason.length <= 160 ? `I couldn't do that, sir. ${reason.replace(/^Refused by safety policy:\s*/, '').replace(/^Error:\s*/i, '')}` : undefined;
   }
 
   /**

@@ -88,6 +88,11 @@ function settledOrStopped(p: Promise<void>, signal?: AbortSignal): Promise<void>
 
 /** A request stopped while the owner was asked stores nothing, whatever the answer (review M-2, final review L-4). */
 const STOPPED = 'Error: save_relation stopped by memory policy - this request was stopped before your answer counted, so nothing was stored. Ask me again.';
+/**
+ * A credential is refused by memory policy (final review LL-4): with "policy" the task graph does not retry it
+ * (it was retried three times as 'transient') and the reply says it was refused, not that a tool failed.
+ */
+const CREDENTIAL_REFUSED = "Error: save_relation refused by memory policy - I don't store passwords, keys or tokens, sir.";
 
 /** The owner did not approve: reported as the registry reports its own denials (APPROVAL_DENIED; final review L-4). */
 const NOT_CONFIRMED = JSON.stringify({
@@ -180,16 +185,14 @@ export const saveRelationTool: AgentTool = {
     if (!entity1 || !relation || !entity2) {
       return 'Error: save_relation requires entity1, relation, and entity2.';
     }
-    if ([entity1, relation, entity2].some(hasSecret)) {
-      return "Error: save_relation refused - I don't store passwords, keys or tokens, sir.";
-    }
+    if ([entity1, relation, entity2].some(hasSecret)) return CREDENTIAL_REFUSED;
     const inGoal = relationRefusedInGoal();
     if (inGoal) return `Error: save_relation refused - ${inGoal}.`;
 
     if (signal?.aborted) throw new Error('ABORTED');
     const fact = relationFact(args);
     // A credential split across the parts (final review L-3).
-    if (hasSecret(fact)) return "Error: save_relation refused - I don't store passwords, keys or tokens, sir.";
+    if (hasSecret(fact)) return CREDENTIAL_REFUSED;
     // Refused by policy: the same call fails the same way, so it is not asked again (review M-1).
     const unshown = unshownFact([entity1, relation, entity2], fact);
     if (unshown) return `Error: save_relation refused by memory policy - ${unshown}; nothing was stored.`;
