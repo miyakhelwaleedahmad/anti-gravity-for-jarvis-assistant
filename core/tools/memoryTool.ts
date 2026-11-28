@@ -30,14 +30,53 @@ const ANSWER_SECONDS = 20;
 /**
  * Characters the question would not show: line breaks, control and format
  * characters, default-ignorable ones (variation selectors, Hangul fillers),
- * and the blank Braille pattern (final review L-2). An emoji's own U+FE0F is
- * allowed.
+ * and the blank Braille pattern (final review L-2). The ones ordinary text
+ * needs are allowed where they belong (withoutNeededJoiners).
  */
 const HIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]/u;
 
+/** Scripts whose spelling uses ZWNJ/ZWJ between letters: Arabic-script and Indic languages (final review LL-3). */
+const JOINER_SCRIPTS = ['Arabic', 'Syriac', 'Devanagari', 'Bengali', 'Gurmukhi', 'Gujarati', 'Oriya', 'Tamil', 'Telugu', 'Kannada', 'Malayalam', 'Sinhala']
+  .map((s) => new RegExp(`^\\p{Script=${s}}$`, 'u'));
+/** Of them, the ones where a ZWJ after a virama may also end a word (old Malayalam chillu forms, Sinhala). */
+const INDIC = new Set(JOINER_SCRIPTS.slice(2));
+const scriptOf = (ch: string | undefined) => (ch === undefined ? undefined : JOINER_SCRIPTS.find((re) => re.test(ch)));
+const LETTER = /^\p{L}$/u, MARK = /^\p{M}$/u, MONGOLIAN_LETTER = /^\p{Script=Mongolian}$/u;
+/** The subdivision flags Unicode recommends: England, Scotland, Wales (a black flag, tag letters, a cancel tag). */
+const SUBDIVISION_FLAGS = ['gbeng', 'gbsct', 'gbwls']
+  .map((id) => `\u{1F3F4}${[...id].map((c) => String.fromCodePoint(0xE0000 + c.charCodeAt(0))).join('')}\u{E007F}`);
+
+/**
+ * The text without the invisible characters ordinary text needs, where it needs them (owner decision LL-3,
+ * 2026-11-28): U+FE0E/U+FE0F once after an emoji or a keycap base, ZWJ between emoji, ZWNJ/ZWJ between two letters
+ * of a script that uses them (or ZWJ after an Indic virama), a Mongolian free variation selector after a Mongolian
+ * letter, and the three subdivision flags. Anywhere else they stay, and HIDDEN refuses them: between Latin letters,
+ * next to a space, twice in a row, or tag letters that are not one of those flags.
+ */
+function withoutNeededJoiners(text: string): string {
+  let t = text;
+  for (const flag of SUBDIVISION_FLAGS) t = t.split(flag).join('\u{1F3F4}');
+  t = t.replace(/(\p{Extended_Pictographic})[\uFE0E\uFE0F]/gu, '$1').replace(/([0-9#*])\uFE0F(?=\u20E3)/g, '$1');
+  t = t.replace(/(?<=[\p{Extended_Pictographic}\p{Emoji_Modifier}])\u200D(?=\p{Extended_Pictographic})/gu, '');
+  const cs = [...t];
+  return cs.filter((c, i) => {
+    if (c === '\u200C' || c === '\u200D') {
+      let j = i - 1;
+      while (j >= 0 && MARK.test(cs[j]!)) j--;
+      const script = scriptOf(cs[j]);
+      if (!script || !LETTER.test(cs[j]!)) return true;
+      const next = cs[i + 1];
+      if (next !== undefined && (LETTER.test(next) || MARK.test(next)) && scriptOf(next) === script) return false;
+      return !(c === '\u200D' && INDIC.has(script) && j < i - 1 && scriptOf(cs[i - 1]) === script);
+    }
+    if (/[\u180B-\u180D\u180F]/.test(c)) return !(i > 0 && LETTER.test(cs[i - 1]!) && MONGOLIAN_LETTER.test(cs[i - 1]!));
+    return true;
+  }).join('');
+}
+
 /** Why a fact cannot be shown to the owner exactly as it would be stored; undefined when it can. Short: the reply quotes it. */
 export function unshownFact(parts: string[], fact: string): string | undefined {
-  if (parts.some((p) => HIDDEN.test(p.replace(/(\p{Extended_Pictographic})\uFE0F/gu, '$1')))) return 'the fact has a line break, a control or an invisible character';
+  if (parts.some((p) => HIDDEN.test(withoutNeededJoiners(p)))) return 'the fact has a line break, a control or an invisible character';
   if (/\s{2,}/.test(fact)) return 'the fact has a run of spaces';
   if (fact.length > MAX_SHOWN_FACT) return `the fact is ${fact.length} characters; keep it under ${MAX_SHOWN_FACT}`;
   return undefined;
