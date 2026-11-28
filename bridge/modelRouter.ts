@@ -145,7 +145,7 @@ interface ChainOptions {
   routeKey?: string;
   /** The route's own failure, for that error when nothing is left to try. */
   priorError?: unknown;
-  /** The route's provider: the one the dashboard names as failed once the fallback has answered (review L5). */
+  /** The route's provider (the primary for a model-only route): the one the dashboard names as failed once the fallback has answered (review L5). */
   routeProvider?: string;
 }
 
@@ -606,7 +606,7 @@ export class ModelRouter {
       console.warn(`[ModelRouter] ${route.key} (${route.provider}:${route.model}) failed (${redact(reason).slice(0, 120)}); answering with the default model.`);
       // The fallback: every attempt waits for the owner's conversation first (M-3). It is recorded for the
       // dashboard only once it has answered (review L5).
-      return this.chain(request, undefined, { fromRoute: true, attempted, skipWait: true, waitEach: { key: route.key }, routeKey: route.key, priorError: err, routeProvider: route.provider });
+      return this.chain(request, undefined, { fromRoute: true, attempted, skipWait: true, waitEach: { key: route.key }, routeKey: route.key, priorError: err, routeProvider: route.provider === "default" ? this.primary : route.provider });
     }
   }
 
@@ -770,8 +770,10 @@ export class ModelRouter {
         if (name !== order[0] || fromRoute) {
           // Visible on the dashboard too (bridge/llmStatus.ts), not only in the log; for a route's fallback, the
           // route's provider is the one that failed (review L5).
+          // The reason is the failed provider's own error: for a route, its error, not that of a fallback asked before this one.
           const failedProvider = fromRoute ? opts.routeProvider ?? order[0]! : order[0]!;
-          const reason = String((lastError as Error)?.message ?? (opts.priorError as Error)?.message ?? "failed");
+          const first = fromRoute ? opts.priorError ?? lastError : lastError;
+          const reason = String((first as Error)?.message ?? first ?? "failed");
           console.warn(`[ModelRouter] ${failedProvider} failed (${redact(reason).slice(0, 120)}); answered by the fallback "${name}".`);
           llmStatus.recordFallback(failedProvider, name, reason);
         }
@@ -856,7 +858,7 @@ export class ModelRouter {
       console.warn(`[ModelRouter] ${route.key} stream (${route.provider}:${route.model}) failed before any text (${redact(reason).slice(0, 120)}); answering with the default model.`);
       // The providers this call has not asked yet (M3): the route's own is not asked again. Recorded for the
       // dashboard only once the fallback has answered (review L5).
-      yield* this.primaryStream(request, undefined, { fromRoute: true, attempted, skipWait: true, waitEach: { key: route.key }, routeKey: route.key, priorError: err, routeProvider: route.provider });
+      yield* this.primaryStream(request, undefined, { fromRoute: true, attempted, skipWait: true, waitEach: { key: route.key }, routeKey: route.key, priorError: err, routeProvider: route.provider === "default" ? this.primary : route.provider });
     }
   }
 
@@ -986,6 +988,10 @@ export class ModelRouter {
       return;
     }
     if (opts.attempted) this.markAttempt(opts.attempted, selectedProviderName, provider, sent.model);
+    // A route's fallback that answered: now the dashboard may say so, naming the route's provider (review L5).
+    const recordRouteFallback = () => {
+      if (fromRoute) llmStatus.recordFallback(opts.routeProvider ?? selectedProviderName, selectedProviderName, String((opts.priorError as Error)?.message ?? opts.priorError ?? "failed"));
+    };
     let reported = false;
     try {
       for await (const chunk of stream.call(provider, sent)) {
@@ -997,8 +1003,7 @@ export class ModelRouter {
       // Token counts when the provider reports them for a stream (Claude does); else null, not 0.
       const usage = (provider as { lastStreamUsage?: ILLMResponse["usage"] | null }).lastStreamUsage;
       this.noteUsage(sent, selectedProviderName, started, true, fromRoute, true, usage ? { content: "", usage } : undefined);
-      // A route's fallback that answered: now the dashboard may say so, naming the route's provider (review L5).
-      if (fromRoute) llmStatus.recordFallback(opts.routeProvider ?? selectedProviderName, selectedProviderName, String((opts.priorError as Error)?.message ?? opts.priorError ?? "failed"));
+      recordRouteFallback();
     } catch (err) {
       reported = true;
       this.noteOutcomeFailure(selectedProviderName, admitted.ticket, err, request.signal, opts.attempted, provider);
@@ -1011,7 +1016,11 @@ export class ModelRouter {
       if (response.content) yield response.content;
     } finally {
       // The consumer stopped reading early: no outcome, but the call is over (a trial frees its lease).
-      if (!reported) this.guardFor(selectedProviderName).noteCancelled(admitted.ticket);
+      // Text it already read came from the fallback, so a route's fallback still answered.
+      if (!reported) {
+        this.guardFor(selectedProviderName).noteCancelled(admitted.ticket);
+        if (yielded) recordRouteFallback();
+      }
     }
   }
 }

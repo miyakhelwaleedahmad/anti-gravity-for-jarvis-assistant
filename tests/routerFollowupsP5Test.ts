@@ -53,17 +53,19 @@ function setEnv(vars: Record<string, string | undefined>): () => void {
 const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
 const httpError = (status: number, text: string) => Object.assign(new Error(`${text} (${status})`), { status });
 
-/** A scripted provider. `stream` yields its pieces, waiting `gapMs` between them; `hangAfter` stops sending after that many pieces until aborted. */
-function stub(who: string, opts: { chatFails?: boolean; streamFails?: boolean; pieces?: string[]; gapMs?: number; hangAfter?: number; noTools?: boolean } = {}) {
+/** A scripted provider. `stream` yields its pieces, waiting `gapMs` between them; `hangAfter` stops sending after that many pieces until aborted; `failModel` fails only that model (404, a model-only failure). */
+function stub(who: string, opts: { chatFails?: boolean; streamFails?: boolean; failModel?: string; pieces?: string[]; gapMs?: number; hangAfter?: number; noTools?: boolean } = {}) {
   const seen: { aborted: boolean } = { aborted: false };
   const p: Record<string, unknown> = {
     isConfigured: () => true,
     async chat(req: any) {
+      if (opts.failModel && req.model === opts.failModel) throw httpError(404, `${who} does not offer ${req.model}`);
       if (opts.chatFails) throw httpError(500, `${who} is down`);
       return { content: `${who} answered`, model: req.model };
     },
     async *streamChat(req: any) {
       req.signal?.addEventListener('abort', () => { seen.aborted = true; }, { once: true });
+      if (opts.failModel && req.model === opts.failModel) throw httpError(404, `${who} does not offer ${req.model}`);
       if (opts.streamFails) throw httpError(500, `${who} stream is down`);
       const pieces = opts.pieces ?? [`${who} streamed`];
       for (let i = 0; i < pieces.length; i++) {
@@ -78,11 +80,13 @@ function stub(who: string, opts: { chatFails?: boolean; streamFails?: boolean; p
   if (opts.noTools) p['capabilities'] = () => ({ toolCalling: false, imageInput: false, audioInput: false, structuredOutput: false, webSearch: false, ownBreaker: false });
   return { provider: p, seen };
 }
-function router(primary: Record<string, unknown>, named: Record<string, Record<string, unknown>>) {
+/** `others` are further providers of the default failover order, asked after 'a'. */
+function router(primary: Record<string, unknown>, named: Record<string, Record<string, unknown>>, others: Record<string, Record<string, unknown>> = {}) {
   const r = new ModelRouter('a');
   r.registerProvider('a', primary as never);
+  for (const [n, p] of Object.entries(others)) r.registerProvider(n, p as never);
   for (const [n, p] of Object.entries(named)) r.registerNamedProvider(n, p as never);
-  (r as any).failoverOrder = (name?: string) => (name ? [name] : ['a']);
+  (r as any).failoverOrder = (name?: string) => (name ? [name] : ['a', ...Object.keys(others)]);
   return r;
 }
 /** Reads the whole stream, but never waits longer than `limitMs`: a hang is reported as a failure, not a stuck test. */
@@ -177,6 +181,44 @@ const startCase = async () => llmStatus.snapshot().lastFallback;
   const res = await readStream(r, { messages: msg(), category: 'conversation' });
   const f = fallbackSince(t0);
   ok('L5d  a routed stream fails and the default model streams the answer: recorded', res.text === 'a streamed' && f?.from === 'elsewhere' && f?.to === 'a', `${res.text}; ${JSON.stringify(f)}`);
+  restore();
+}
+{
+  const restore = setEnv({ JARVIS_MODEL_PLANNING: 'elsewhere:plan' });
+  const r = router(stub('a', { chatFails: true }).provider, { elsewhere: stub('elsewhere', { chatFails: true }).provider }, { b: stub('b').provider });
+  const t0 = await startCase();
+  const res = await r.chat({ messages: msg(), category: 'planning' });
+  const f = fallbackSince(t0);
+  ok('L5f  the route fails, the default model fails too, the next answers: the reason is the route\'s own error',
+    res.content === 'b answered' && f?.from === 'elsewhere' && f?.to === 'b' && /elsewhere is down/.test(f?.reason ?? ''), JSON.stringify(f));
+  restore();
+}
+{
+  const restore = setEnv({ JARVIS_MODEL_CONVERSATION: 'elsewhere:talk' });
+  const r = router(stub('a', { pieces: ['Good ', 'morning.'] }).provider, { elsewhere: stub('elsewhere', { streamFails: true }).provider });
+  const t0 = await startCase();
+  let text = '';
+  for await (const piece of r.streamChat({ messages: msg(), category: 'conversation' })) { text += piece; if (text === 'Good morning.') break; }
+  const f = fallbackSince(t0);
+  ok('L5g  the default model streams the answer and the reader stops after the last piece: recorded', text === 'Good morning.' && f?.from === 'elsewhere' && f?.to === 'a', `${text}; ${JSON.stringify(f)}`);
+  restore();
+}
+{
+  const restore = setEnv({ JARVIS_MODEL_PLANNING: 'plan-model' });
+  const r = router(stub('a', { failModel: 'plan-model' }).provider, {});
+  const t0 = await startCase();
+  const res = await r.chat({ messages: msg(), category: 'planning' });
+  const f = fallbackSince(t0);
+  ok('L5h  a model-only route fails and the default model answers: the failed provider is the primary, not "default"', res.content === 'a answered' && f?.from === 'a' && f?.to === 'a', JSON.stringify(f));
+  restore();
+}
+{
+  const restore = setEnv({ JARVIS_MODEL_CONVERSATION: 'talk-model' });
+  const r = router(stub('a', { failModel: 'talk-model' }).provider, {});
+  const t0 = await startCase();
+  const res = await readStream(r, { messages: msg(), category: 'conversation' });
+  const f = fallbackSince(t0);
+  ok('L5i  the same for a model-only stream route', res.text === 'a streamed' && f?.from === 'a' && f?.to === 'a', `${res.error ?? res.text}; ${JSON.stringify(f)}`);
   restore();
 }
 {
